@@ -35,7 +35,7 @@ verification suites and reproducible delivery packages.
 `Anvil-E1` targets the authoritative HuggingFace [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2)
 text embedding pipeline (`embedding_gemma2_text` + `1_Pooling` + `2_Normalize`),
 with architecture decomposition, RTL implementation and verification conducted
-through Vulcan 0.6:
+through Vulcan 0.7:
 
 | Stage | Architectural specification (`google/embeddinggemma-2`) | Hardware engineering focus |
 | --- | --- | --- |

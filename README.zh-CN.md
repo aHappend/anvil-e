@@ -32,7 +32,7 @@
 
 `Anvil-E1` 严格对齐 HuggingFace 上的 [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2)
 纯文本嵌入管线（`embedding_gemma2_text` + `1_Pooling` + `2_Normalize`），
-由 Vulcan 0.6 从纯文字需求与官方模型配置出发，自主完成架构拆解、RTL 实现与验证签核：
+由 Vulcan 0.7 从纯文字需求与官方模型配置出发，自主完成架构拆解、RTL 实现与验证签核：
 
 | 计算阶段 | 模型权威配置（`google/embeddinggemma-2`） | 硬件工程重点 |
 | --- | --- | --- |
