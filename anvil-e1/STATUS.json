@@ -1,7 +1,48 @@
 {
+  "family": "Anvil",
+  "series": "Anvil-E",
   "chip": "Anvil-E1",
-  "target": "Google EmbeddingGemma-2 (Text-Only)",
-  "status": "running",
+  "target_model": "Google EmbeddingGemma-2 (Text-Only Edition)",
+  "github_repo": "https://github.com/aHappend/anvil-e",
+  "status": "completed",
+  "native_disposition": {
+    "workflow_phase": "completed",
+    "feedback": "",
+    "run_status": "accepted",
+    "closeout_status": "completed",
+    "driver_steps": [
+      {
+        "operation": "init",
+        "exit_code": 0
+      },
+      {
+        "operation": "run",
+        "exit_code": 0
+      }
+    ],
+    "driver_steps_ok": true,
+    "state_error": null,
+    "repairs_used": 12,
+    "designer_attempts": 6,
+    "model_call_count": 22,
+    "all_process_scopes_settled": true,
+    "reviewer_decisions": [
+      {
+        "status": "done",
+        "reason": "Anvil-E1 meets the admitted RTL delivery contract. I reviewed the twelve dedicated RTL modules, tensor-operation sequencing, signed arithmetic and rounding, external-memory ownership, reset/error handling, pooling and selected-channel normalization, together with the independently written references and public-interface testbench. The implementation retains the authoritative defaults and distinct local/full attention geometries; it does not substitute host-computed inference.\n\nThe recorded architecture, behavior and synthesis checks passed within their respective budgets. Evidence in evidence/architecture covers 413 tensor shapes, default elaboration, invalid parameters, address boundaries and packer conversion, including 65,280 finite BF16 values and rejection of 256 nonfinite values. All nine configuration/seed runs appear in evidence/behavior/run-ledger.json, with exact fixed-point comparisons, mathematical comparisons, saturation, stalls, errors and reset cancellation. The largest recorded nonsaturating output error is 0.000192654, below 0.02. The actual scoreboard accepted the unchanged trace and specifically rejected the one-bit-unit mutation at embedding transaction 0: expected 9532189, observed 9532190. The A/B Yosys scripts execute the required passes; their logs report zero structural problems, and the inspected checker requires integrated compute modules, sequential/arithmetic cells and no latches or unresolved cells.\n\nI also inspected the retained negative-angle accuracy failure and its corrected result, the occupied-output-directory traceback, and the compact-fixture/output-rotation repairs. These failures are not counted as passing runs; the subsequent admitted checks supply acceptance evidence. Review was read-only; I executed no commands. Acceptance covers the documented synthetic quantized forward contract and reduced-configuration synthesis, not official pretrained-checkpoint parity, full-default inference, throughput, physical PPA or timing closure. No required repair remains."
+      }
+    ],
+    "native_engineering_accepted": false,
+    "candidate_present": false,
+    "candidate_invalid_reason": null,
+    "final_candidate": null,
+    "initial_unrepaired_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "scientific_acceptance": false
+  },
+  "started_utc": "2026-10-14T23:31:07.454160+00:00",
+  "finished_utc": "2026-10-14T23:45:45.517364+00:00",
   "started_cst": "2026-10-15 07:31:07 UTC+8",
-  "updated_cst": "2026-10-15 07:31:07 UTC+8"
+  "finished_cst": "2026-10-15 07:45:45 UTC+8",
+  "elapsed_seconds": 876.9794869620018
 }
