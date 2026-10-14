@@ -24,7 +24,7 @@
 
 | 代际 | 芯片型号 | 目标模型与范围 | 当前状态 |
 | --- | --- | --- | --- |
-| **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（24 层 5:1 滑动窗口/全局注意力混排、512d → 768d 投影、均值池化与 L2 归一化） | In Progress — Vulcan 0.6 Autonomous RTL Design & Verification (HF google/embeddinggemma-2) |
+| **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（24 层 5:1 滑动窗口/全局注意力混排、512d → 768d 投影、均值池化与 L2 归一化） | In Progress — Autonomous Architecture & RTL Generation by Vulcan 0.6 |
 | **第二代** | **Anvil-E2** | Google EmbeddingGemma-2 · 视觉 + 文本多模态前端扩展 | 规划中 |
 | **第三代** | **Anvil-E3** | Google EmbeddingGemma-2 · 音频 + 视觉 + 文本统一嵌入加速引擎 | 规划中 |
 
@@ -41,7 +41,7 @@
 | **投影与池化（`1_Pooling`）** | 线性投影 `512 → 768`（`embedding_dim = 768`）及带掩码均值池化（`pooling_mode = "mean"`） | 有效 Token 掩码累加与倒数长度缩放 |
 | **归一化输出（`2_Normalize`）** | L2 单位向量归一化，支持 Matryoshka（`768 / 512 / 256 / 128` 维）截断输出 | 硬件倒数平方根 L2 归一化与可配置维度输出 |
 
-- **当前工程状态**：`In Progress — Vulcan 0.6 Autonomous RTL Design & Verification (HF google/embeddinggemma-2)`（最近更新：`2026-10-15 04:14:28 UTC+8`）
+- **当前工程状态**：`In Progress — Autonomous Architecture & RTL Generation by Vulcan 0.6`（最近更新：`2026-10-15 04:58:31 UTC+8`）
 - **官方模型配置快照**：[`anvil-e1/hf_embeddinggemma2_spec/`](anvil-e1/hf_embeddinggemma2_spec/)
 - **交付包目录**：[`anvil-e1/`](anvil-e1/)（`rtl/`、`tb/`、`docs/`、`reports/`）
 
