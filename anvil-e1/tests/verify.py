@@ -32,6 +32,10 @@ def stamp():
 class Execution:
     def __init__(self, output, allowance):
         self.output = ROOT / output
+        if self.output.exists():
+            retired = ROOT / "evidence" / "preparation" / f"prior-{self.output.name}-{int(time.time() * 1000)}"
+            retired.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(self.output), str(retired))
         self.output.mkdir(parents=True, exist_ok=False)
         self.deadline = time.monotonic() + allowance
         self.allowance = allowance

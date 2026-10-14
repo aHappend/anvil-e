@@ -1,43 +1,7 @@
 {
-  "family": "Anvil",
-  "series": "Anvil-E",
   "chip": "Anvil-E1",
-  "target_model": "Google EmbeddingGemma-2 (Text-Only Edition)",
-  "github_repo": "https://github.com/aHappend/anvil-e",
-  "status": "settled",
-  "native_disposition": {
-    "workflow_phase": "blocked",
-    "feedback": "Reviewer did not supply a valid independent recovery decision",
-    "run_status": "ready",
-    "closeout_status": null,
-    "driver_steps": [
-      {
-        "operation": "init",
-        "exit_code": 0
-      },
-      {
-        "operation": "run",
-        "exit_code": 2
-      }
-    ],
-    "driver_steps_ok": false,
-    "state_error": null,
-    "repairs_used": 12,
-    "designer_attempts": 6,
-    "model_call_count": 22,
-    "all_process_scopes_settled": true,
-    "reviewer_decisions": [],
-    "native_engineering_accepted": false,
-    "candidate_present": false,
-    "candidate_invalid_reason": null,
-    "final_candidate": null,
-    "initial_unrepaired_candidate": null,
-    "initial_candidate_invalid_reason": null,
-    "scientific_acceptance": false
-  },
-  "started_utc": "2026-10-14T21:27:49.919770+00:00",
-  "finished_utc": "2026-10-14T23:26:02.485016+00:00",
-  "started_cst": "2026-10-15 05:27:49 UTC+8",
-  "finished_cst": "2026-10-15 07:26:02 UTC+8",
-  "elapsed_seconds": 7091.530494797997
+  "target": "Google EmbeddingGemma-2 (Text-Only)",
+  "status": "running",
+  "started_cst": "2026-10-15 07:31:07 UTC+8",
+  "updated_cst": "2026-10-15 07:31:07 UTC+8"
 }

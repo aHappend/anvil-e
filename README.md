@@ -26,7 +26,7 @@ verification suites and reproducible delivery packages.
 
 | Generation | Design | Target model & scope | Status |
 | --- | --- | --- | --- |
-| **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (24-layer 5:1 hybrid sliding/full attention, 512d → 768d projection, mean pooling and L2 normalization) | Settled — RTL Package Published |
+| **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (24-layer 5:1 hybrid sliding/full attention, 512d → 768d projection, mean pooling and L2 normalization) | In Progress — Autonomous Architecture & RTL Generation by Vulcan 0.7 |
 | **Gen-2** | **Anvil-E2** | Google EmbeddingGemma-2 · Vision + Text token frontend integration | Planned |
 | **Gen-3** | **Anvil-E3** | Google EmbeddingGemma-2 · Audio + Vision + Text unified embedding engine | Planned |
 
@@ -44,7 +44,7 @@ through Vulcan 0.7:
 | **Projection & Pooling (`1_Pooling`)** | Linear projection `512 → 768` (`embedding_dim = 768`) followed by masked `mean` pooling (`include_prompt = true`) | Masked token accumulation and reciprocal length scaling |
 | **Normalization (`2_Normalize`)** | Unit L2 normalization with Matryoshka Representation Learning (MRL) dimensions `768 / 512 / 256 / 128` | Hardware reciprocal-square-root L2 normalizer and dimension-selectable egress |
 
-- **Current engineering status**: `Settled — RTL Package Published` (updated `-`)
+- **Current engineering status**: `In Progress — Autonomous Architecture & RTL Generation by Vulcan 0.7` (updated `2026-10-15 07:31:07 UTC+8`)
 - **Authoritative model configs**: [`anvil-e1/hf_embeddinggemma2_spec/`](anvil-e1/hf_embeddinggemma2_spec/)
 - **Deliverable directory**: [`anvil-e1/`](anvil-e1/) (`rtl/`, `tb/`, `docs/`, `reports/`)
 
