@@ -19,6 +19,7 @@ module anvil_e2_attention #(
     output wire mac_clear, mac_accumulate,
     output wire signed [47:0] mac_a, mac_b,
     input wire signed [127:0] mac_sum,
+    input wire signed [95:0] mac_product,
     output wire nonlinear_valid,
     input wire nonlinear_ready,
     output wire [2:0] nonlinear_op,
@@ -41,7 +42,7 @@ module anvil_e2_attention #(
     localparam IDLE=0, QREQ=1, QRSP=2, POSREQ=3, POSRSP=4,
         MASKREQ=5, MASKRSP=6, KPOSREQ=7, KPOSRSP=8, KREQ=9, KRSP=10,
         SCORE=12, EXPREQ=13, EXPRSP=14, VREQ=15, VRSP=16,
-        WEIGHT=18, NEXTKEY=19, FINISH=20, OUTPUT=21, DONE=22,
+        NEXTKEY=19, FINISH=20, OUTPUT=21, DONE=22,
         SCORE_WAIT=23, FINISH_WAIT=24;
     reg [4:0] state;
     reg [31:0] tokens, query, head, kv_head, dim, key, component, channel;
@@ -245,12 +246,12 @@ module anvil_e2_attention #(
                 VREQ: if (cmd_ready) state<=VRSP;
                 VRSP: if (result_valid) begin
                     if (result_error) begin error_hold<=3; state<=DONE; end
-                    else state<=WEIGHT;
-                end
-                WEIGHT: begin
-                    weighted[channel]<=weighted[channel]+mac_sum;
-                    if (channel==dim-1) begin channel<=0; state<=NEXTKEY; end
-                    else begin channel<=channel+1'b1; state<=VREQ; end
+                    else begin
+                        weighted[channel]<=weighted[channel]+
+                                           {{32{mac_product[95]}},mac_product};
+                        if (channel==dim-1) begin channel<=0; state<=NEXTKEY; end
+                        else begin channel<=channel+1'b1; state<=VREQ; end
+                    end
                 end
                 NEXTKEY: begin
                     if (key==tokens-1) begin

@@ -312,6 +312,7 @@ module anvil_e2_hybrid_layer #(
 
     wire signed [127:0] mac_sum;
     wire signed [47:0] mac_rounded;
+    wire signed [95:0] mac_product;
     wire nready, nout_valid, nout_error;
     wire nready_raw;
     wire mat_clk, mat_active, norm_clk, norm_active;
@@ -384,7 +385,7 @@ module anvil_e2_hybrid_layer #(
         .cmd_addr(att_cmd_addr), .result_valid(result_valid && state==ATT_RUN),
         .result_ready(att_result_ready), .result_data(result_data),
         .result_error(result_error), .mac_clear(att_clear), .mac_accumulate(att_accumulate),
-        .mac_a(att_a), .mac_b(att_b), .mac_sum(mac_sum),
+        .mac_a(att_a), .mac_b(att_b), .mac_sum(mac_sum), .mac_product(mac_product),
         .nonlinear_valid(att_nvalid), .nonlinear_ready(nready && state==ATT_RUN),
         .nonlinear_op(att_nop), .nonlinear_data(att_ndata),
         .nonlinear_out_valid(nout_valid && state==ATT_RUN),
@@ -471,7 +472,8 @@ module anvil_e2_hybrid_layer #(
         vector_mode==5 ? $signed({scalar,16'd0}):source_b_data;
     anvil_e2_mac mac (
         .clk(clk), .rst_n(unit_rst_n), .clear(mac_clear), .accumulate(mac_accumulate),
-        .a(mac_a), .b(mac_b), .sum(mac_sum), .rounded(mac_rounded)
+        .a(mac_a), .b(mac_b), .sum(mac_sum), .rounded(mac_rounded),
+        .product(mac_product)
     );
     wire nvalid=state==ATT_RUN ? att_nvalid:
         state==ROPE_RUN ? rope_nvalid:state==VGELU_REQ;

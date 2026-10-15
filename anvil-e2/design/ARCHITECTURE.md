@@ -170,7 +170,7 @@ validation, stage handoff or memory bridge phases.
 | Guarded division | Exact signed magnitude division, nearest-even for either sign; zero divisor or signed quotient overflow reports helper error |
 | Divider quotient-digit boundaries | Exact 16-bit digits grouped up to four per RUN edge; divisor lengths 48/49/128, normalized 64-bit numerator, a 17-bit estimate of 65536, and one-step overestimate correction; full 128-bit residue retained; no digit after count eight |
 | Two-pass attention | First pass finds the maximum; second accumulates both exact reductions in ascending key order; empty eligibility never issues a zero-denominator divide |
-| Attention final response | Successful K response clocks the dot MAC before SCORE; successful V response clocks the product before WEIGHT; stalled/error responses never accumulate |
+| Attention final response | Successful K response clocks the dot MAC before SCORE; successful V response adds the exact shared product directly to the weighted component and enters VREQ or NEXTKEY; stalled/error responses never accumulate |
 | Series group/final term | Four ordered terms per clock; evaluate term 18 once, never term 19; exact-zero tails contribute zero |
 | Repeated rotary angle | Reuse only a complete successful sine/cosine pair matching all 48 angle bits in either of two scalar entries; reset invalidates both entries |
 | Singleton matvec row | First successful weight response clears and accumulates; separate PREPARE captures the updated MAC before held output |
@@ -183,6 +183,7 @@ validation, stage handoff or memory bridge phases.
 | Rotary two-entry replacement | A hit in either entry performs no fill; a successful miss pushes the newest entry into the previous entry; a failed response never changes either entry |
 | Divider edge-local work | RUN computes one digit from pre-edge operands once; ROUND computes nearest-even from the final registered quotient/residue, never from a partly updated digit |
 | MAC clear/accumulate | Accumulate samples both operands on that edge; clear selects replacement rather than addition; clear alone zeros the sum; neither holds the sum |
+| MAC exact product tap | Combinational signed 48x48 -> 96-bit product, zero unless reset is released and accumulate is asserted; attention captures its signed-128 extension only on successful V-result retirement, never the stale registered sum |
 | Operand isolation | Bank operands are selected throughout their consuming state, including stalls; registered helpers capture only on their existing valid/ready edge |
 | Norm root remainder width | All 96 restoring steps remain exact with a 98-bit shifted remainder/trial and a 96-bit root, including the largest 192-bit radicand |
 | Trig series divisor width | Terms 1..18 use exact unsigned 12-bit divisors: sine max 1332, cosine max 1260; zero-extend to unsigned 64 bits for magnitude division |
@@ -656,8 +657,9 @@ pattern. K component zero clears/accumulates the dot product; subsequent
 components accumulate. A successful final K response enters SCORE, whose
 following edge starts division using the already registered dot sum.
 Every V response clears/accumulates its one product; the separate WEIGHT
-edge adds the registered MAC sum to the appropriate weighted component.
-Removed DOT/PRODUCT edges and the operand-hold register did not introduce
+edge has now been removed as described below: that response edge also adds
+the exact combinational product to the appropriate weighted component.
+Removed DOT/PRODUCT/WEIGHT edges and the operand-hold register did not introduce
 rounding boundaries. A stalled or erroneous result never enables the MAC;
 accepted errors retire before held stage completion as before.
 
@@ -669,11 +671,57 @@ accepted errors retire before held stage completion as before.
 | Maximum end | NEXTKEY after final key | Empty: FINISH; otherwise weighted pass, first key |
 | Weighted score response | SCORE_WAIT, second pass | Strict-tail skip or EXPREQ with original Q40 difference |
 | Exponent response | EXPRSP, successful response | Add weight to denominator; latch weight; VREQ at component zero |
-| V | VRSP, result_valid && result_ready, no error | Register single MAC product; WEIGHT |
-| V+1 | WEIGHT | Add registered product; next VREQ or NEXTKEY |
+| V stalled | VRSP, result_valid=0 | Hold weighted bank/channel/state; no MAC update |
+| V | VRSP, result_valid && result_ready, no error | Sign-extend exact shared 96-bit product and add to weighted[channel]; increment channel and enter VREQ, or reset channel and enter NEXTKEY after the final component |
 | Weighted end | NEXTKEY after final key | FINISH, then separate FINISH_WAIT for each division |
 | K/V error | Accepted erroneous result | DONE/error 3; no MAC update or new request |
 | Reset or held output | Original reset/stall conditions | Original cancellation or stable held-output semantics |
+
+### Attention V-response transfer-edge removal
+
+The localized scheduling candidate follows
+`evidence/preparation/q40-projection-attention-b17-001/receipt.json`,
+linked to
+`evidence/preparation/q40-lookup-gap-analysis-b17-001/receipt.json`.
+Those Verifier diagnostics observed an incomplete B/seed17/joint prefix,
+not completed inference or aggregate acceptance. The eight complete observed
+vision-attention windows contained 1280 V reads, each previously followed by
+one WEIGHT edge solely transferring the registered MAC product.
+
+`anvil_e2_mac` now exposes its existing signed 48-by-48 multiplication as a
+signed 96-bit combinational product alongside its unchanged registered sum
+and rounded result. The product is isolated to zero unless reset is released
+and accumulate is asserted. The hybrid engine connects that exact product to
+attention without an extra multiplier, numerical bank, memory transaction or
+public pin. It is an operand tap, not an independently valid arithmetic-result
+channel; no consumer presents it as a held result before an accepting edge.
+On a successful VRSP result retirement, the pre-edge operands are the held
+Q40 exponent and exactly promoted Q24 V word. That same edge sign-extends
+the complete 96-bit Q80 product by 32 bits, adds it to the existing signed
+128-bit weighted component, and advances the channel/state. It does not use
+the pre-edge registered MAC sum, which still belongs to the previous
+operation. The MAC continues its original clear/product capture on that edge;
+the K-response dot reduction and its following SCORE divider-start edge are
+unchanged. Ascending-key reduction order, all saturation/rounding sites and
+Q24 materialization boundaries are unchanged.
+
+No V response means no weighted update or channel advance. An erroneous
+accepted V response retires into held error 3 without enabling the product
+or writing the weighted bank. Reset retains priority, including when the
+stage/helper clock is stopped. The final component still enters NEXTKEY
+before FINISH; there is no same-edge divider start or new command acceptance.
+Only the redundant transfer edge is removed. Request addresses/order are
+unchanged, but request cycles and cycle-dependent host stalls may differ;
+the old prefix's exact cycle transcript is not an expected new waveform.
+
+This is not a demonstrated aggregate-budget remedy or a functional
+verification result. The combinational product tap changes inference and
+event scheduling and needs independent bounded validation. Verifier must
+immediately check exact integer embeddings and scratch writes, unchanged
+mathematical thresholds, K/V stalls and errors, signed/extreme products,
+final-component transitions, reset, all existing MAC consumers, sensitivity
+and A/C synthesis, then establish actual aggregate budget compliance.
+No functional simulation or synthesis was run by Designer for this change.
 
 These changes are exact arithmetic/sequencing repairs, not a revised numerical
 contract. They introduce only scalar estimator registers and temporaries,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Public-pin verification entry point. Missing coverage is a failure, not a skip."""
 import argparse
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import dataclasses
 import hashlib
 import json
@@ -41,17 +42,18 @@ def sources():
 
 
 class Run:
-    def __init__(self, directory, budget=110, repair_of=None):
+    def __init__(self, directory, budget=110, repair_of=None, *, deadline=None):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=False)
         self.start = time.time()
-        self.deadline = time.monotonic()+budget
+        self.deadline = time.monotonic()+budget if deadline is None else deadline
         self.receipt = {
             "cwd": str(ROOT), "started_at": self.start, "timeout_s": budget,
             "source_sha256": sources(), "repair_of": repair_of,
             "tools": {}, "executions": [], "assertions": [], "coverage": [],
             "status": "running",
             "entry_argv": [sys.executable, *sys.argv],
+            "absolute_monotonic_deadline": self.deadline,
         }
         self.save()
 
@@ -99,6 +101,79 @@ class Run:
     def finish(self, status, error=None):
         self.receipt.update(status=status, ended_at=time.time(), error=error)
         self.save()
+
+
+def fixture_candidates(run, cases, workers=2):
+    """Bounded scheduler candidate; each case owns its receipt and artifacts."""
+    assert workers in (1, 2)
+    assert len({name for name, _ in cases}) == len(cases), "duplicate case name"
+    started = time.monotonic()
+    results = {}
+    pending = iter(enumerate(cases))
+    failures = []
+
+    def execute(index, name, fixture):
+        child = Run(run.directory/name, deadline=run.deadline)
+        child.receipt["tools"] = run.receipt["tools"]
+        child.receipt["scheduler_case"] = {"index": index, "name": name}
+        begin = time.monotonic()
+        try:
+            execute_fixture(child, name, fixture)
+            assert len(child.receipt["coverage"]) == 1, "missing case comparison"
+            assert time.monotonic() < run.deadline, "case exceeded common deadline"
+        except Exception as error:
+            child.finish("failed", str(error))
+            return index, child, time.monotonic()-begin, str(error)
+        child.finish("passed")
+        return index, child, time.monotonic()-begin, None
+
+    # Exiting the executor waits for all launched work, including failed tools'
+    # subprocess.run timeout cleanup; no worker receives a renewed deadline.
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        active = {}
+
+        def launch():
+            if failures:
+                return
+            item = next(pending, None)
+            if item is not None:
+                index, (name, fixture) = item
+                active[pool.submit(execute, index, name, fixture)] = index
+
+        for _ in range(workers):
+            launch()
+        while active:
+            complete, _ = wait(active, return_when=FIRST_COMPLETED)
+            for future in sorted(complete, key=lambda f: active[f]):
+                index = active.pop(future)
+                try:
+                    result = future.result()
+                except Exception as error:
+                    failures.append(f"{cases[index][0]}: {error}")
+                else:
+                    results[index] = result
+                    if result[3] is not None:
+                        failures.append(f"{cases[index][0]}: {result[3]}")
+            for _ in range(workers-len(active)):
+                launch()
+
+    record = {"workers": workers, "common_deadline": run.deadline,
+              "elapsed_s": time.monotonic()-started,
+              "planned_cases": [name for name, _ in cases], "cases": []}
+    for index in sorted(results):
+        _, child, elapsed, error = results[index]
+        record["cases"].append({
+            "case": cases[index][0], "elapsed_s": elapsed, "error": error,
+            "status": child.receipt["status"],
+            "receipt": str((child.directory/"receipt.json").relative_to(ROOT)),
+        })
+        run.receipt["assertions"].extend(child.receipt["assertions"])
+        run.receipt["coverage"].extend(child.receipt["coverage"])
+    run.receipt.setdefault("scheduler_batches", []).append(record)
+    run.save()
+    assert not failures, "; ".join(failures)
+    assert len(results) == len(cases), "unfinished scheduler cases"
+    return record
 
 
 def parameter_args(c, top="anvil_e2_top"):
@@ -159,6 +234,12 @@ def bench(fixture, memory_path, scratch_words, max_cycles=3000000,
         inject_expr = f"!mem_req_write && mem_req_addr>=64'h{IDS:x} && mem_req_addr<64'h{SCRATCH:x}"
     elif inject == "write":
         inject_expr = "mem_req_write"
+    elif inject in ("vision-v", "text-v"):
+        region, following = ("vv", "soft") if inject == "vision-v" else ("v", "end")
+        inject_expr = (f"!mem_req_write && mem_req_addr>=64'h{fixture.layout[region]:x}"
+                       f" && mem_req_addr<64'h{fixture.layout[following]:x}")
+    else:
+        assert inject is None, f"unknown memory-error target: {inject}"
     reset_expr = {"request": "mem_req_valid && !mem_req_ready",
                   "response": "pending && !mem_rsp_valid",
                   "output": "emb_valid && !emb_ready"}.get(reset_phase, "0")
@@ -194,7 +275,7 @@ reg pending=0,stalled_request=0,stalled_embedding=0,stalled_done=0;
 reg [96:0] held_request;
 reg [48:0] held_embedding;
 reg [3:0] held_error;
-reg active=0, reset_done=0, injected=0;
+reg active=0, reset_done=0, injected=0, error_retired=0;
 reg [31:0] read_value;
 task automatic known;
 begin
@@ -269,13 +350,18 @@ always @(posedge clk) begin
   if(mem_rsp_valid && mem_rsp_ready) begin
    if(!pending || cycles<response_at) $fatal(1,"RESPONSE_PROTOCOL");
    pending=0; responses=responses+1;
+   if(mem_rsp_error) error_retired=1;
   end
+  if(error_retired && mem_req_valid) $fatal(1,"REQUEST_AFTER_ERROR");
   if(mem_req_valid && mem_req_ready) begin
    if(pending) $fatal(1,"MULTIPLE_OUTSTANDING");
    if(mem_req_addr[1:0]!==0) $fatal(1,"UNALIGNED");
    pending=1; response_at=cycles+2+(requests%3); requests=requests+1;
    mem_rsp_error=0; read_value=0;
-   if({inject_expr} && !injected) begin mem_rsp_error=1; injected=1; end
+   if({inject_expr} && !injected) begin
+    mem_rsp_error=1; injected=1;
+    $display("I %h",mem_req_addr);
+   end
    if(mem_req_write) begin
     if(mem_req_addr<64'h{SCRATCH:x} ||
        mem_req_addr>=64'h{SCRATCH+scratch_words*4:x}) $fatal(1,"UNEXPECTED_WRITE");
@@ -311,6 +397,8 @@ always @(posedge clk) begin
   end
   if(done_valid && done_ready) begin
    if(!active || pending || done_error!==4'd{expected_error}) $fatal(1,"DONE_ERROR %d",done_error);
+   if({int(inject is not None)} && (!injected || !error_retired))
+     $fatal(1,"MISSING_ERROR_INJECTION");
    if({expected_error}==0 && (beats!={dim} || cycles<=final_cycle)) $fatal(1,"COMPLETION_ORDER");
    if({expected_error}!=0 && beats!=0) $fatal(1,"ERROR_EMBEDDING");
    if(requests!=responses) $fatal(1,"UNRETIRED_TRANSACTION");
@@ -376,7 +464,7 @@ endmodule
         run.receipt["coverage"].append({"case": name, "reset": reset_phase})
         return
     assert out.count("TRANSCRIPT_COMPLETE") == 1, "incomplete transcript"
-    beats, observed_writes, completion = [], {}, []
+    beats, observed_writes, completion, injected_addresses = [], {}, [], []
     for line in out.splitlines():
         fields = line.split()
         if fields and fields[0] == "E":
@@ -390,9 +478,22 @@ endmodule
         elif fields and fields[0] == "C":
             assert len(fields) == 9
             completion.append([int(v) for v in fields[1:]])
+        elif fields and fields[0] == "I":
+            assert len(fields) == 2
+            injected_addresses.append(int(fields[1], 16))
     assert len(completion) == jobs and all(c[0] == expected_error for c in completion)
     if expected_error:
         assert not beats, "error produced output"
+        if inject is not None:
+            assert len(injected_addresses) == 1, "missing/duplicate memory error"
+            assert observed_writes.keys() <= writes.keys(), "error-prefix scratch address"
+            for address, actual in observed_writes.items():
+                assert actual == writes[address][:len(actual)], (
+                    f"error-prefix scratch mismatch at {address:#x}")
+            if inject in ("vision-v", "text-v"):
+                region, following = ("vv", "soft") if inject == "vision-v" else ("v", "end")
+                assert fixture.layout[region] <= injected_addresses[0] < fixture.layout[following], (
+                    "memory error did not reach the targeted attention V region")
         if expected_error in (1, 5):
             assert completion[0][1] == 0, "invalid descriptor issued memory"
     else:
@@ -409,6 +510,8 @@ endmodule
     run.receipt["coverage"].append({
         "case": name, "config": dataclasses.asdict(fixture.c), "seed": fixture.seed,
         "mode": fixture.mode, "dimension": fixture.dimension, "expected_error": expected_error,
+        "memory_error_target": inject,
+        "injected_addresses": injected_addresses,
         "compared_components": len(beats), "compared_scratch_addresses": len(observed_writes),
         "mathematical_max_abs_error": absolute, "l2_error": norm_error,
         "completion": completion[0], "transcript": str((run.directory/(name+"-simulate.stdout")).relative_to(ROOT)),
@@ -513,7 +616,8 @@ def directed(run):
     fixture.masks = [0]*len(fixture.ids)
     fixture.mem.update({MASKS+4*i: 0 for i in range(len(fixture.ids))})
     execute_fixture(run, "all-masked", fixture, expected_error=4)
-    for path, mode in (("image", 2), ("text", 0), ("write", 2)):
+    for path, mode in (("image", 2), ("text", 0), ("write", 2),
+                       ("vision-v", 2), ("text-v", 0)):
         execute_fixture(run, "memory-error-"+path, Fixture(c, 17, mode),
                         expected_error=3, inject=path)
     for phase in ("request", "response", "output"):
@@ -795,7 +899,8 @@ def main():
                                            "mutation-schedule", "b89-text", "guard-boundaries",
                                            "startup", "numerical-matrix", "guarded-norm",
                                            "guarded-division", "guarded-divider",
-                                           "guarded-nonlinear"))
+                                           "guarded-nonlinear", "six-layer-regression",
+                                           "attention-errors"))
     parser.add_argument("--output")
     parser.add_argument("--repair-of")
     parser.add_argument("--probe-seed", type=int, default=17)
@@ -846,6 +951,17 @@ def main():
                 run.tools(("python3", "iverilog", "vvp"))
                 from stages import guarded_nonlinear
                 guarded_nonlinear(run)
+            elif check == "six-layer-regression":
+                run.tools(("python3", "iverilog", "vvp"))
+                execute_fixture(run, "six-layer-numerical-regression",
+                                Fixture(dataclasses.replace(CONFIGS["C"], VISION_LAYERS=1,
+                                                            TEXT_LAYERS=6), 17, 2))
+            elif check == "attention-errors":
+                run.tools(("python3", "iverilog", "vvp"))
+                for target, mode in (("vision-v", 2), ("text-v", 0)):
+                    execute_fixture(run, "memory-error-"+target,
+                                    Fixture(CONFIGS["A"], 17, mode),
+                                    expected_error=3, inject=target)
             elif check == "numerical-matrix":
                 run.tools(("python3",))
                 for label, config in CONFIGS.items():
