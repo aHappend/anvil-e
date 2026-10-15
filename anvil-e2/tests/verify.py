@@ -868,7 +868,7 @@ def synthesis(run, labels=("A", "C"), wrapper=True):
         script.write_text("\n".join(commands)+"\n")
         try:
             run.command(["yosys", "-Q", "-t", "-s", script],
-                        label+"-yosys", timeout=60)
+                        label+"-yosys", timeout=86400)
         finally:
             log = (run.directory/(label+"-yosys.stdout")).read_text()
             headers = [line for line in log.splitlines()
