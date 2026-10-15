@@ -1,0 +1,27 @@
+{
+  "finite_bf16_compared": 65280,
+  "nonfinite_rejected": 256,
+  "default_header_tensors": 413,
+  "malformed_headers_rejected": [
+    "missing",
+    "extra",
+    "dtype",
+    "shape",
+    "overlap",
+    "outside"
+  ],
+  "synthetic_values_compared": 1450,
+  "cli_argv": [
+    "python3",
+    "design/pack_model.py",
+    "--input",
+    "/work/project/evidence/verification/architecture/attempt-20261015T082922146418Z/synthetic.safetensors",
+    "--output",
+    "/work/project/evidence/verification/architecture/attempt-20261015T082922146418Z/packed.bin",
+    "--inventory",
+    "/work/project/evidence/verification/architecture/attempt-20261015T082922146418Z/packed.json",
+    "--spec-dir",
+    "/work/project/evidence/verification/architecture/attempt-20261015T082922146418Z/synthetic-spec"
+  ],
+  "cli_exit": 0
+}

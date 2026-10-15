@@ -1,0 +1,13 @@
+{
+  "original_trace": "/work/project/evidence/preparation/phase2-official-sensitivity/attempt-20261015T081805611431Z/official-simulation.stdout.log",
+  "original_sha256": "2aef7dd2c2a4edbd7ae4bddca903acab95fc91f17ce2d58a29fbf264124ca461",
+  "altered_trace": "/work/project/evidence/preparation/phase2-official-sensitivity/attempt-20261015T081805611431Z/negative_control/altered.trace",
+  "line": 3676,
+  "job": 0,
+  "index": 0,
+  "before": 11923658,
+  "after": 11923659,
+  "entrypoint": "behavior.compare_trace(path, jobs, geometry)",
+  "unchanged_status": "passed",
+  "status": "specific-exact-mismatch-rejected"
+}

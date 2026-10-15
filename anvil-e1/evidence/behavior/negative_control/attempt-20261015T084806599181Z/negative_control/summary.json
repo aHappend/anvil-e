@@ -1,0 +1,13 @@
+{
+  "original_trace": "/work/project/evidence/behavior/negative_control/attempt-20261015T084806599181Z/official-simulation.stdout.log",
+  "original_sha256": "08b740353f3732300e76a436b1548592640e95005aa4ef7cce80cb9ce542c660",
+  "altered_trace": "/work/project/evidence/behavior/negative_control/attempt-20261015T084806599181Z/negative_control/altered.trace",
+  "line": 3676,
+  "job": 0,
+  "index": 0,
+  "before": 11924784,
+  "after": 11924785,
+  "entrypoint": "behavior.compare_trace(path, jobs, geometry)",
+  "unchanged_status": "passed",
+  "status": "specific-exact-mismatch-rejected"
+}

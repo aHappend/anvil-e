@@ -1,0 +1,915 @@
+[
+  {
+    "name": "language_model.embed_tokens.weight",
+    "shape": [
+      16,
+      4
+    ],
+    "offset_bytes": 0,
+    "size_bytes": 256
+  },
+  {
+    "name": "language_model.embedding_projection.weight",
+    "shape": [
+      6,
+      4
+    ],
+    "offset_bytes": 256,
+    "size_bytes": 96
+  },
+  {
+    "name": "language_model.norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 352,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.ple.per_layer_model_projection.weight",
+    "shape": [
+      24,
+      4
+    ],
+    "offset_bytes": 368,
+    "size_bytes": 384
+  },
+  {
+    "name": "language_model.ple.per_layer_projection_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 752,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.0.input_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 768,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.0.layer_scalar",
+    "shape": [
+      1
+    ],
+    "offset_bytes": 784,
+    "size_bytes": 4
+  },
+  {
+    "name": "language_model.layers.0.mlp.down_proj.weight",
+    "shape": [
+      4,
+      8
+    ],
+    "offset_bytes": 788,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.0.mlp.gate_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 916,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.0.mlp.up_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 1044,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.0.ple_block.per_layer_input_gate.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 1172,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.0.ple_block.per_layer_projection.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 1236,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.0.ple_block.post_per_layer_input_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 1300,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.0.post_attention_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 1316,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.0.post_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 1332,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.0.pre_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 1348,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.0.self_attn.k_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 1364,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.0.self_attn.k_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 1372,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.0.self_attn.o_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 1404,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.0.self_attn.q_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 1468,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.0.self_attn.q_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 1476,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.0.self_attn.v_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 1540,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.1.input_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 1572,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.1.layer_scalar",
+    "shape": [
+      1
+    ],
+    "offset_bytes": 1588,
+    "size_bytes": 4
+  },
+  {
+    "name": "language_model.layers.1.mlp.down_proj.weight",
+    "shape": [
+      4,
+      8
+    ],
+    "offset_bytes": 1592,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.1.mlp.gate_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 1720,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.1.mlp.up_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 1848,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.1.ple_block.per_layer_input_gate.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 1976,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.1.ple_block.per_layer_projection.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 2040,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.1.ple_block.post_per_layer_input_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2104,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.1.post_attention_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2120,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.1.post_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2136,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.1.pre_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2152,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.1.self_attn.k_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 2168,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.1.self_attn.k_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 2176,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.1.self_attn.o_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 2208,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.1.self_attn.q_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 2272,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.1.self_attn.q_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 2280,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.1.self_attn.v_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 2344,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.2.input_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2376,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.2.layer_scalar",
+    "shape": [
+      1
+    ],
+    "offset_bytes": 2392,
+    "size_bytes": 4
+  },
+  {
+    "name": "language_model.layers.2.mlp.down_proj.weight",
+    "shape": [
+      4,
+      8
+    ],
+    "offset_bytes": 2396,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.2.mlp.gate_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 2524,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.2.mlp.up_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 2652,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.2.ple_block.per_layer_input_gate.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 2780,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.2.ple_block.per_layer_projection.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 2844,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.2.ple_block.post_per_layer_input_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2908,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.2.post_attention_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2924,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.2.post_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2940,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.2.pre_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 2956,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.2.self_attn.k_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 2972,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.2.self_attn.k_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 2980,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.2.self_attn.o_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 3012,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.2.self_attn.q_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 3076,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.2.self_attn.q_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 3084,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.2.self_attn.v_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 3148,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.3.input_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 3180,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.3.layer_scalar",
+    "shape": [
+      1
+    ],
+    "offset_bytes": 3196,
+    "size_bytes": 4
+  },
+  {
+    "name": "language_model.layers.3.mlp.down_proj.weight",
+    "shape": [
+      4,
+      8
+    ],
+    "offset_bytes": 3200,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.3.mlp.gate_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 3328,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.3.mlp.up_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 3456,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.3.ple_block.per_layer_input_gate.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 3584,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.3.ple_block.per_layer_projection.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 3648,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.3.ple_block.post_per_layer_input_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 3712,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.3.post_attention_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 3728,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.3.post_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 3744,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.3.pre_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 3760,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.3.self_attn.k_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 3776,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.3.self_attn.k_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 3784,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.3.self_attn.o_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 3816,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.3.self_attn.q_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 3880,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.3.self_attn.q_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 3888,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.3.self_attn.v_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 3952,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.4.input_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 3984,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.4.layer_scalar",
+    "shape": [
+      1
+    ],
+    "offset_bytes": 4000,
+    "size_bytes": 4
+  },
+  {
+    "name": "language_model.layers.4.mlp.down_proj.weight",
+    "shape": [
+      4,
+      8
+    ],
+    "offset_bytes": 4004,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.4.mlp.gate_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 4132,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.4.mlp.up_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 4260,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.4.ple_block.per_layer_input_gate.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 4388,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.4.ple_block.per_layer_projection.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 4452,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.4.ple_block.post_per_layer_input_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 4516,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.4.post_attention_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 4532,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.4.post_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 4548,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.4.pre_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 4564,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.4.self_attn.k_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 4580,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.4.self_attn.k_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 4588,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.4.self_attn.o_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 4620,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.4.self_attn.q_norm.weight",
+    "shape": [
+      2
+    ],
+    "offset_bytes": 4684,
+    "size_bytes": 8
+  },
+  {
+    "name": "language_model.layers.4.self_attn.q_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 4692,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.4.self_attn.v_proj.weight",
+    "shape": [
+      2,
+      4
+    ],
+    "offset_bytes": 4756,
+    "size_bytes": 32
+  },
+  {
+    "name": "language_model.layers.5.input_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 4788,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.5.layer_scalar",
+    "shape": [
+      1
+    ],
+    "offset_bytes": 4804,
+    "size_bytes": 4
+  },
+  {
+    "name": "language_model.layers.5.mlp.down_proj.weight",
+    "shape": [
+      4,
+      8
+    ],
+    "offset_bytes": 4808,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.5.mlp.gate_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 4936,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.5.mlp.up_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 5064,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.5.ple_block.per_layer_input_gate.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 5192,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.5.ple_block.per_layer_projection.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 5256,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.5.ple_block.post_per_layer_input_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 5320,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.5.post_attention_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 5336,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.5.post_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 5352,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.5.pre_feedforward_layernorm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 5368,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.5.self_attn.k_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 5384,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.5.self_attn.k_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 5400,
+    "size_bytes": 64
+  },
+  {
+    "name": "language_model.layers.5.self_attn.o_proj.weight",
+    "shape": [
+      4,
+      8
+    ],
+    "offset_bytes": 5464,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.5.self_attn.q_norm.weight",
+    "shape": [
+      4
+    ],
+    "offset_bytes": 5592,
+    "size_bytes": 16
+  },
+  {
+    "name": "language_model.layers.5.self_attn.q_proj.weight",
+    "shape": [
+      8,
+      4
+    ],
+    "offset_bytes": 5608,
+    "size_bytes": 128
+  },
+  {
+    "name": "language_model.layers.5.self_attn.v_proj.weight",
+    "shape": [
+      4,
+      4
+    ],
+    "offset_bytes": 5736,
+    "size_bytes": 64
+  }
+]

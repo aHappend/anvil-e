@@ -1,0 +1,148 @@
+{
+  "retained_report": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/official_weights_comparison.json",
+  "retained_report_sha256": "741852c7129379a65c06568cf76d8e0c1a32b3cf1bc88fece962fc69263cb98a",
+  "fresh_dut_execution": false,
+  "results": [
+    {
+      "job": 12,
+      "label": "Binary64 mathematical diagnostic on quantized inputs, epsilon 17/2^24; not the required raw-weight FP32 reference",
+      "diagnostic": [
+        0.6256302599208519,
+        -0.09669441743354383,
+        -0.4561173967322022,
+        -0.3179744436451822,
+        -0.050509885780854115,
+        -0.5362228012064908
+      ],
+      "retained_rtl": [
+        0.6256183981895447,
+        -0.09669303894042969,
+        -0.45612239837646484,
+        -0.31798189878463745,
+        -0.050506591796875,
+        -0.5362285375595093
+      ],
+      "required_fp32": [
+        0.6289106011390686,
+        -0.09438454359769821,
+        -0.45392361283302307,
+        -0.31804561614990234,
+        -0.04737960919737816,
+        -0.5349004864692688
+      ],
+      "diagnostic_vs_rtl_max_error": 1.1861731307183376e-05,
+      "diagnostic_vs_fp32_max_error": 0.0032803412182167424,
+      "binary64_raw_weights_epsilon_1e6": [
+        0.6289104914322632,
+        -0.0943846522824412,
+        -0.45392367512171466,
+        -0.3180455863937825,
+        -0.04737974600776642,
+        -0.5349005449498276
+      ],
+      "binary64_raw_vs_fp32_max_error": 1.368103882612437e-07,
+      "binary64_raw_weights_epsilon_17_over_q": [
+        0.6256302599208519,
+        -0.09669441743354383,
+        -0.4561173967322022,
+        -0.3179744436451822,
+        -0.050509885780854115,
+        -0.5362228012064908
+      ],
+      "epsilon_only_max_difference": 0.0032802315114113245,
+      "hardware_epsilon_raw_vs_rtl_max_error": 1.1861731307183376e-05,
+      "layer_hidden_max_differences": [
+        0.00427931547164917,
+        0.02191948890686035,
+        0.08396874368190765,
+        0.17331523448228836,
+        0.25165802240371704,
+        0.13496196269989014
+      ]
+    },
+    {
+      "job": 13,
+      "label": "Binary64 mathematical diagnostic on quantized inputs, epsilon 17/2^24; not the required raw-weight FP32 reference",
+      "diagnostic": [
+        0.7425315626529454,
+        -0.11476212305624206,
+        -0.5413446008695326,
+        -0.3773891316469054
+      ],
+      "retained_rtl": [
+        0.7425205111503601,
+        -0.11476099491119385,
+        -0.5413527488708496,
+        -0.3773995041847229
+      ],
+      "required_fp32": [
+        0.7455207705497742,
+        -0.1118849590420723,
+        -0.5380883812904358,
+        -0.37701642513275146
+      ],
+      "diagnostic_vs_rtl_max_error": 1.1051502585290862e-05,
+      "diagnostic_vs_fp32_max_error": 0.0032562195790968307,
+      "binary64_raw_weights_epsilon_1e6": [
+        0.7455207090642686,
+        -0.11188509947439594,
+        -0.5380884954981672,
+        -0.3770164026729259
+      ],
+      "binary64_raw_vs_fp32_max_error": 1.404323236448013e-07,
+      "binary64_raw_weights_epsilon_17_over_q": [
+        0.7425315626529454,
+        -0.11476212305624206,
+        -0.5413446008695326,
+        -0.3773891316469054
+      ],
+      "epsilon_only_max_difference": 0.0032561053713654475,
+      "hardware_epsilon_raw_vs_rtl_max_error": 1.1051502585290862e-05,
+      "layer_hidden_max_differences": [
+        0.00427931547164917,
+        0.02191948890686035,
+        0.08396874368190765,
+        0.17331523448228836,
+        0.25165802240371704,
+        0.13496196269989014
+      ]
+    },
+    {
+      "job": 14,
+      "label": "Binary64 mathematical diagnostic on quantized inputs, epsilon 17/2^24; not the required raw-weight FP32 reference",
+      "diagnostic": [
+        0.9882661473535304,
+        -0.1527416838816774
+      ],
+      "retained_rtl": [
+        0.9882660508155823,
+        -0.1527424454689026
+      ],
+      "required_fp32": [
+        0.9889252185821533,
+        -0.14841419458389282
+      ],
+      "diagnostic_vs_rtl_max_error": 7.615872252009215e-07,
+      "diagnostic_vs_fp32_max_error": 0.004327489297784565,
+      "binary64_raw_weights_epsilon_1e6": [
+        0.9889252595286019,
+        -0.1484143896874125
+      ],
+      "binary64_raw_vs_fp32_max_error": 1.951035196734452e-07,
+      "binary64_raw_weights_epsilon_17_over_q": [
+        0.9882661473535304,
+        -0.1527416838816774
+      ],
+      "epsilon_only_max_difference": 0.004327294194264891,
+      "hardware_epsilon_raw_vs_rtl_max_error": 7.615872252009215e-07,
+      "layer_hidden_max_differences": [
+        0.00427931547164917,
+        0.02191948890686035,
+        0.08396874368190765,
+        0.17331523448228836,
+        0.25165802240371704,
+        0.13496196269989014
+      ]
+    }
+  ]
+}

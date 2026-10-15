@@ -1,0 +1,233 @@
+{
+  "argv": [
+    "tests/verify.py",
+    "--check",
+    "prepare-official-matrix",
+    "--output",
+    "evidence/preparation/phase2-official-matrix",
+    "--timeout-s",
+    "100",
+    "--repair-of",
+    "evidence/preparation/phase2-official-repair/attempt-20261015T081334015178Z/receipt.json"
+  ],
+  "cwd": "/work/project",
+  "start": "2026-10-15T08:15:02.323085+00:00",
+  "end": "2026-10-15T08:15:46.854112+00:00",
+  "phase_timeout_s": 100.0,
+  "source_sha256": {
+    "rtl/anvil_e1_address.sv": "c44d79b3f948a9eb9871a29af71b3fcbcde92b49549386442aedae2003f615b2",
+    "rtl/anvil_e1_attention.sv": "67676847b1d5a086432abe31c879e40ca992669fe1822900832a3aebe15f2dcd",
+    "rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
+    "rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
+    "rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
+    "rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
+    "rtl/anvil_e1_nonlinear.sv": "210e635714707f5f4a950cfbc59bae876f119ddbf071a751211d043908c48cce",
+    "rtl/anvil_e1_norm.sv": "a8196aec50e8507fc0743c05f9eb86104a9ce877400f719d3b8d6452778e624e",
+    "rtl/anvil_e1_pool.sv": "ad2bbe0adf36417a23270a94cde7c13a0de500878f94e065683513acb41d46c7",
+    "rtl/anvil_e1_rope.sv": "4b60664d10f9093a92d4b852df089c40fa30651ea631a20f65188e35d60d25c8",
+    "rtl/anvil_e1_sequencer.sv": "aa92e417a9a58bd24047ad543dd5cd2431a5dc730dd522c60689093daabacff4",
+    "rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
+    "rtl/anvil_e_top.sv": "7f5816242ea538f598807d9104386ba04db6f9bbc2977c9ca75d6ccfdcbd2fbd",
+    "design/ARCHITECTURE.md": "fff9cb3baf1a1ac05239cbc4630ecae05dd5c439407e92ab6ab973bc4d2b6f39",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "a075b86b9d5dcea41f068efee6ba9fa8c3c4a2c99c7ea8c3269a992ba856dd4f",
+    "design/pack_model.py": "9c1140e476002c7f5d98fc87eefbf064208ee64c9eff30b2998b3e4c3c630981",
+    "tests/addresses.py": "3d5dcf892c76efcf51cc361825605534d09728d0be90345ec72d78860a2eed51",
+    "tests/architecture.py": "7664778cd446b84a0c38773a281632246fc46922799c656687ce9425dff4e3a7",
+    "tests/behavior.py": "938a83e5e01d6596051a326f3bc78371a2ba452a7e73e827e0090b37356c2985",
+    "tests/model.py": "555d3c0a0499d6434c589425f18f3651e85426f244bea13b60402971d99a9a11",
+    "tests/official.py": "f2a7948665c50098f9f1cf810a978d7b7454cc074a30a479bc5eb108e0e78a0e",
+    "tests/official_fp32.py": "c6041d25a81f18a6a5a8089b0b3ad64873f09a6ebe0b9814df02175479492780",
+    "tests/packing.py": "ddcb6c4d5af6da7efba80df7855c709bad62a59647e86a933eef8c0d459e203a",
+    "tests/primitives.py": "c4f20cda43d8a1ae7e80593f411f962e1167f9400496bb108fdf8b339fc5ac8c",
+    "tests/profiling.py": "679cc513665b63cccdacc86d24cd45be560a5b937603877fecf82ceafa83652b",
+    "tests/synthesis.py": "f4d35c174854bde47e8656b5aaaebe965438d076ac35eec319cf2cfcb9bb23d2",
+    "tests/verify.py": "2687931f862da895ff9fedd85e04d4402e371e81e7d2ac1606fffc1b99924b2d",
+    "tests/addresses.sv": "6fcdccde87922f3c7aff66161c0c2cf7a499df738ed23b2c0f7c464d391a8c58",
+    "tests/forward.sv": "bdbb80830daae835be6afbcff97f811df075ec44983f1c40e09b17eab4066fdb",
+    "tests/primitives.sv": "e8edbc0eb1dac5b5ec506d8cf8dc029f704dbd55c676250d3836465cc72701d8",
+    "tests/profile_address.sv": "84b816828b4f7f4e04c19d5ee81e501f5fe84480fc25b719bca656814f9397e6",
+    "hf_embeddinggemma2_spec/config.json": "90135c44282752b2b9d9160c69682645fef5b084934f057fa756db9848b1095b",
+    "hf_embeddinggemma2_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
+    "hf_embeddinggemma2_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
+    "hf_embeddinggemma2_spec/sentence_bert_config.json": "53cddcdff8b19a51e5ace646be5c2b64ed818f01b78aea137c7c1334d36a5b5a",
+    "hf_embeddinggemma2_spec/1_Pooling/config.json": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9",
+    "hf_embeddinggemma2_spec/official_weights/google_embeddinggemma2_official_slice.safetensors": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "hf_embeddinggemma2_spec/official_weights/official_hardware_slices_fp32_q824.json": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c",
+    "hf_embeddinggemma2_spec/official_weights/official_weights_manifest.json": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad"
+  },
+  "tool_versions": {
+    "python3": {
+      "path": "/opt/qualification/bin/python3",
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-python3.stdout.log"
+    },
+    "iverilog": {
+      "path": "/usr/bin/iverilog",
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-iverilog.stdout.log"
+    },
+    "vvp": {
+      "path": "/usr/bin/vvp",
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-vvp.stdout.log"
+    }
+  },
+  "children": [
+    {
+      "argv": [
+        "/opt/qualification/bin/python3",
+        "--version"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:15:02.347101+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-python3.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-python3.stderr.log",
+      "timed_out": false,
+      "pid": 665,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.0078021639928920195
+      },
+      "duration_s": 0.01294004799274262,
+      "cpu_user_s": 0.0,
+      "cpu_system_s": 0.004112,
+      "end": "2026-10-15T08:15:02.360284+00:00"
+    },
+    {
+      "argv": [
+        "/usr/bin/iverilog",
+        "-V"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:15:02.360933+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-iverilog.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-iverilog.stderr.log",
+      "timed_out": false,
+      "pid": 666,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.006671734998235479
+      },
+      "duration_s": 0.03985295999154914,
+      "cpu_user_s": 0.001238,
+      "cpu_system_s": 0.015858999999999998,
+      "end": "2026-10-15T08:15:02.401024+00:00"
+    },
+    {
+      "argv": [
+        "/usr/bin/vvp",
+        "-V"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:15:02.401826+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-vvp.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/version-vvp.stderr.log",
+      "timed_out": false,
+      "pid": 671,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.006785446996218525
+      },
+      "duration_s": 0.015903556006378494,
+      "cpu_user_s": 0.002768,
+      "cpu_system_s": 0.003691,
+      "end": "2026-10-15T08:15:02.417957+00:00"
+    },
+    {
+      "argv": [
+        "iverilog",
+        "-g2012",
+        "-DOFFICIAL_WRAPPER",
+        "-s",
+        "forward",
+        "-o",
+        "/work/project/evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/A-official.vvp",
+        "-Pforward.VOCAB_SIZE=16",
+        "-Pforward.HIDDEN_SIZE=4",
+        "-Pforward.PER_LAYER_INPUT_SIZE=4",
+        "-Pforward.INTERMEDIATE_SIZE=8",
+        "-Pforward.EMBEDDING_DIM=6",
+        "-Pforward.NUM_LAYERS=6",
+        "-Pforward.NUM_Q_HEADS=2",
+        "-Pforward.LOCAL_KV_HEADS=1",
+        "-Pforward.FULL_KV_HEADS=1",
+        "-Pforward.LOCAL_HEAD_DIM=2",
+        "-Pforward.FULL_HEAD_DIM=4",
+        "-Pforward.SLIDING_WINDOW=2",
+        "-Pforward.MAX_SEQ_LEN=8",
+        "tests/forward.sv",
+        "rtl/anvil_e1_address.sv",
+        "rtl/anvil_e1_attention.sv",
+        "rtl/anvil_e1_controller.sv",
+        "rtl/anvil_e1_mac.sv",
+        "rtl/anvil_e1_matvec.sv",
+        "rtl/anvil_e1_memory.sv",
+        "rtl/anvil_e1_nonlinear.sv",
+        "rtl/anvil_e1_norm.sv",
+        "rtl/anvil_e1_pool.sv",
+        "rtl/anvil_e1_rope.sv",
+        "rtl/anvil_e1_sequencer.sv",
+        "rtl/anvil_e1_top.sv",
+        "rtl/anvil_e_top.sv"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:15:03.567781+00:00",
+      "timeout_s": 98.7553225550073,
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/compile-A-official.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/compile-A-official.stderr.log",
+      "timed_out": false,
+      "pid": 672,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.007145007999497466
+      },
+      "duration_s": 0.12259264801105019,
+      "cpu_user_s": 0.07051400000000001,
+      "cpu_system_s": 0.026673,
+      "end": "2026-10-15T08:15:03.690654+00:00"
+    },
+    {
+      "argv": [
+        "vvp",
+        "/work/project/evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/A-official.vvp",
+        "+image=/work/project/evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/official.hex",
+        "+jobs=/work/project/evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/official.jobs",
+        "+seed=17"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:15:04.373501+00:00",
+      "timeout_s": 97.94959738200123,
+      "stdout": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/official-simulation.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/official-simulation.stderr.log",
+      "timed_out": false,
+      "pid": 676,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.00874148499860894
+      },
+      "duration_s": 41.1133658990002,
+      "cpu_user_s": 38.428142,
+      "cpu_system_s": 0.036783,
+      "end": "2026-10-15T08:15:45.487133+00:00"
+    }
+  ],
+  "status": "failed",
+  "detail": "AssertionError: official FP32 thresholds failed for jobs [12, 13, 14]; see /work/project/evidence/preparation/phase2-official-matrix/attempt-20261015T081502322745Z/official_weights_comparison.json",
+  "repair_of": "evidence/preparation/phase2-official-repair/attempt-20261015T081334015178Z/receipt.json",
+  "acceptance_evidence": false
+}

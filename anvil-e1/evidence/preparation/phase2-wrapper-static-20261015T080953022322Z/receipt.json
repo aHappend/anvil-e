@@ -1,0 +1,157 @@
+{
+  "argv": [
+    "python3",
+    "-c",
+    "import datetime, hashlib, sys; from pathlib import Path; sys.path.insert(0, str(Path(\"tests\").resolve())); from verify import Execution, ROOT; sys.argv = sys.orig_argv; output = \"evidence/preparation/phase2-wrapper-static-\" + datetime.datetime.now(datetime.timezone.utc).strftime(\"%Y%m%dT%H%M%S%fZ\"); execution = Execution(output, 20); execution.sources.update({str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((ROOT / \"hf_embeddinggemma2_spec/official_weights\").glob(\"*\")) if p.is_file()});\ntry:\n    execution.prerequisites((\"python3\", \"iverilog\"))\n    execution.run(\"both-top-static-elaboration\", [\"iverilog\", \"-g2012\", \"-t\", \"null\", \"-s\", \"anvil_e_top\", \"-s\", \"anvil_e1_top\"] + [str(p.relative_to(ROOT)) for p in sorted((ROOT / \"rtl\").glob(\"*.sv\"))], maximum=15)\n    execution.save(\"passed\", \"Advisory static syntax/elaboration only; no simulation, numerical comparison, benchmark or synthesis executed.\")\n    print(output + \"/receipt.json\")\nexcept Exception as error:\n    execution.save(\"failed\", str(error))\n    raise"
+  ],
+  "cwd": "/work/project",
+  "start": "2026-10-15T08:09:53.022794+00:00",
+  "end": "2026-10-15T08:09:53.279852+00:00",
+  "phase_timeout_s": 20,
+  "source_sha256": {
+    "rtl/anvil_e1_address.sv": "c44d79b3f948a9eb9871a29af71b3fcbcde92b49549386442aedae2003f615b2",
+    "rtl/anvil_e1_attention.sv": "67676847b1d5a086432abe31c879e40ca992669fe1822900832a3aebe15f2dcd",
+    "rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
+    "rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
+    "rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
+    "rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
+    "rtl/anvil_e1_nonlinear.sv": "210e635714707f5f4a950cfbc59bae876f119ddbf071a751211d043908c48cce",
+    "rtl/anvil_e1_norm.sv": "a8196aec50e8507fc0743c05f9eb86104a9ce877400f719d3b8d6452778e624e",
+    "rtl/anvil_e1_pool.sv": "ad2bbe0adf36417a23270a94cde7c13a0de500878f94e065683513acb41d46c7",
+    "rtl/anvil_e1_rope.sv": "4b60664d10f9093a92d4b852df089c40fa30651ea631a20f65188e35d60d25c8",
+    "rtl/anvil_e1_sequencer.sv": "aa92e417a9a58bd24047ad543dd5cd2431a5dc730dd522c60689093daabacff4",
+    "rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
+    "rtl/anvil_e_top.sv": "7f5816242ea538f598807d9104386ba04db6f9bbc2977c9ca75d6ccfdcbd2fbd",
+    "design/ARCHITECTURE.md": "fff9cb3baf1a1ac05239cbc4630ecae05dd5c439407e92ab6ab973bc4d2b6f39",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "a075b86b9d5dcea41f068efee6ba9fa8c3c4a2c99c7ea8c3269a992ba856dd4f",
+    "design/pack_model.py": "9c1140e476002c7f5d98fc87eefbf064208ee64c9eff30b2998b3e4c3c630981",
+    "tests/addresses.py": "3d5dcf892c76efcf51cc361825605534d09728d0be90345ec72d78860a2eed51",
+    "tests/architecture.py": "edef7aa042d9a9cd417f68e3b013bed1801cb60b58ac196769508b71eea54318",
+    "tests/behavior.py": "1d008195bacaa9e74836f953d995e44a4e128992280185d53af48e4c4ea09f51",
+    "tests/model.py": "a56bb1f4eb9a39171db65d3152ebd54d3052278e6e1ed0e38473fb9e1ff0b8c2",
+    "tests/packing.py": "ddcb6c4d5af6da7efba80df7855c709bad62a59647e86a933eef8c0d459e203a",
+    "tests/primitives.py": "c4f20cda43d8a1ae7e80593f411f962e1167f9400496bb108fdf8b339fc5ac8c",
+    "tests/profiling.py": "679cc513665b63cccdacc86d24cd45be560a5b937603877fecf82ceafa83652b",
+    "tests/synthesis.py": "9a1f15ff018e7cb4f1fede23d74030959704cdf3a23c43f74899a3768e83d0d0",
+    "tests/verify.py": "4b4f7e06ffaa5b628d4ee2b3d066beeb3572a896ba15bcf2ad7d7a1e1a40e9d4",
+    "tests/addresses.sv": "6fcdccde87922f3c7aff66161c0c2cf7a499df738ed23b2c0f7c464d391a8c58",
+    "tests/forward.sv": "1725be0e2b22ba6665a4bba59d2921517f7525c26323b4d13ba9e0962dd3eaf5",
+    "tests/primitives.sv": "e8edbc0eb1dac5b5ec506d8cf8dc029f704dbd55c676250d3836465cc72701d8",
+    "tests/profile_address.sv": "84b816828b4f7f4e04c19d5ee81e501f5fe84480fc25b719bca656814f9397e6",
+    "hf_embeddinggemma2_spec/config.json": "90135c44282752b2b9d9160c69682645fef5b084934f057fa756db9848b1095b",
+    "hf_embeddinggemma2_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
+    "hf_embeddinggemma2_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
+    "hf_embeddinggemma2_spec/sentence_bert_config.json": "53cddcdff8b19a51e5ace646be5c2b64ed818f01b78aea137c7c1334d36a5b5a",
+    "hf_embeddinggemma2_spec/1_Pooling/config.json": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9",
+    "hf_embeddinggemma2_spec/official_weights/google_embeddinggemma2_official_slice.safetensors": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "hf_embeddinggemma2_spec/official_weights/official_hardware_slices_fp32_q824.json": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c",
+    "hf_embeddinggemma2_spec/official_weights/official_weights_manifest.json": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad"
+  },
+  "tool_versions": {
+    "python3": {
+      "path": "/opt/qualification/bin/python3",
+      "stdout": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/version-python3.stdout.log"
+    },
+    "iverilog": {
+      "path": "/usr/bin/iverilog",
+      "stdout": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/version-iverilog.stdout.log"
+    }
+  },
+  "children": [
+    {
+      "argv": [
+        "/opt/qualification/bin/python3",
+        "--version"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:09:53.046004+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/version-python3.stdout.log",
+      "stderr": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/version-python3.stderr.log",
+      "timed_out": false,
+      "pid": 501,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.009486216004006565
+      },
+      "duration_s": 0.014800417993683368,
+      "cpu_user_s": 0.00108,
+      "cpu_system_s": 0.0032419999999999997,
+      "end": "2026-10-15T08:09:53.061038+00:00"
+    },
+    {
+      "argv": [
+        "/usr/bin/iverilog",
+        "-V"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:09:53.061705+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/version-iverilog.stdout.log",
+      "stderr": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/version-iverilog.stderr.log",
+      "timed_out": false,
+      "pid": 502,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.006998444994678721
+      },
+      "duration_s": 0.04012727100052871,
+      "cpu_user_s": 0.0021219999999999998,
+      "cpu_system_s": 0.015346,
+      "end": "2026-10-15T08:09:53.102057+00:00"
+    },
+    {
+      "argv": [
+        "iverilog",
+        "-g2012",
+        "-t",
+        "null",
+        "-s",
+        "anvil_e_top",
+        "-s",
+        "anvil_e1_top",
+        "rtl/anvil_e1_address.sv",
+        "rtl/anvil_e1_attention.sv",
+        "rtl/anvil_e1_controller.sv",
+        "rtl/anvil_e1_mac.sv",
+        "rtl/anvil_e1_matvec.sv",
+        "rtl/anvil_e1_memory.sv",
+        "rtl/anvil_e1_nonlinear.sv",
+        "rtl/anvil_e1_norm.sv",
+        "rtl/anvil_e1_pool.sv",
+        "rtl/anvil_e1_rope.sv",
+        "rtl/anvil_e1_sequencer.sv",
+        "rtl/anvil_e1_top.sv",
+        "rtl/anvil_e_top.sv"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:09:53.103926+00:00",
+      "timeout_s": 15,
+      "stdout": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/both-top-static-elaboration.stdout.log",
+      "stderr": "evidence/preparation/phase2-wrapper-static-20261015T080953022322Z/both-top-static-elaboration.stderr.log",
+      "timed_out": false,
+      "pid": 507,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.009066811995580792
+      },
+      "duration_s": 0.17479447400546633,
+      "cpu_user_s": 0.091407,
+      "cpu_system_s": 0.031605999999999995,
+      "end": "2026-10-15T08:09:53.278941+00:00"
+    }
+  ],
+  "status": "passed",
+  "detail": "Advisory static syntax/elaboration only; no simulation, numerical comparison, benchmark or synthesis executed.",
+  "repair_of": null,
+  "acceptance_evidence": false
+}

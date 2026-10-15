@@ -1,10 +1,38 @@
 {
-  "status_label": "In Progress — Phase 2 Official Weights & Software-vs-RTL Verification",
+  "status_label": "Settled — Phase 2 Official Weights Package Published",
   "chip": "Anvil-E1",
   "phase": "Phase 2 — Official Weights & Software-vs-RTL Comparison",
   "vulcan_version": "0.8.0",
+  "status": "settled",
+  "native_disposition": {
+    "workflow_phase": "completed",
+    "feedback": "",
+    "run_status": "ready",
+    "closeout_status": "completed",
+    "driver_steps": [
+      {
+        "operation": "run",
+        "exit_code": 0
+      }
+    ],
+    "driver_steps_ok": false,
+    "state_error": null,
+    "repairs_used": 4,
+    "designer_attempts": 1,
+    "model_call_count": 14,
+    "all_process_scopes_settled": true,
+    "reviewer_decisions": [],
+    "native_engineering_accepted": false,
+    "candidate_present": false,
+    "candidate_invalid_reason": null,
+    "final_candidate": null,
+    "initial_unrepaired_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "scientific_acceptance": false
+  },
   "started_utc": "2026-10-15T08:00:35.635924+00:00",
+  "finished_utc": "2026-10-15T09:00:17.990582+00:00",
   "started_cst": "2026-10-15 16:00:35 UTC+8",
-  "status": "running",
-  "reason": "Execute Roadmap Phase 2: integrate real official HuggingFace google/embeddinggemma-2 (model.safetensors) checkpoint weights and conduct end-to-end Software-Layer (FP32/BF16) vs Hardware-RTL (SystemVerilog Q8.24) numerical accuracy and performance comparison."
+  "finished_cst": "2026-10-15 17:00:17 UTC+8",
+  "elapsed_seconds": 3576.9070704100013
 }

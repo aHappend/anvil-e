@@ -1,0 +1,204 @@
+{
+  "argv": [
+    "tests/verify.py",
+    "--check",
+    "prepare-official",
+    "--output",
+    "evidence/preparation/phase2-official-first",
+    "--timeout-s",
+    "35"
+  ],
+  "cwd": "/work/project",
+  "start": "2026-10-15T08:13:09.563482+00:00",
+  "end": "2026-10-15T08:13:10.887505+00:00",
+  "phase_timeout_s": 35.0,
+  "source_sha256": {
+    "rtl/anvil_e1_address.sv": "c44d79b3f948a9eb9871a29af71b3fcbcde92b49549386442aedae2003f615b2",
+    "rtl/anvil_e1_attention.sv": "67676847b1d5a086432abe31c879e40ca992669fe1822900832a3aebe15f2dcd",
+    "rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
+    "rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
+    "rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
+    "rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
+    "rtl/anvil_e1_nonlinear.sv": "210e635714707f5f4a950cfbc59bae876f119ddbf071a751211d043908c48cce",
+    "rtl/anvil_e1_norm.sv": "a8196aec50e8507fc0743c05f9eb86104a9ce877400f719d3b8d6452778e624e",
+    "rtl/anvil_e1_pool.sv": "ad2bbe0adf36417a23270a94cde7c13a0de500878f94e065683513acb41d46c7",
+    "rtl/anvil_e1_rope.sv": "4b60664d10f9093a92d4b852df089c40fa30651ea631a20f65188e35d60d25c8",
+    "rtl/anvil_e1_sequencer.sv": "aa92e417a9a58bd24047ad543dd5cd2431a5dc730dd522c60689093daabacff4",
+    "rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
+    "rtl/anvil_e_top.sv": "7f5816242ea538f598807d9104386ba04db6f9bbc2977c9ca75d6ccfdcbd2fbd",
+    "design/ARCHITECTURE.md": "fff9cb3baf1a1ac05239cbc4630ecae05dd5c439407e92ab6ab973bc4d2b6f39",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "a075b86b9d5dcea41f068efee6ba9fa8c3c4a2c99c7ea8c3269a992ba856dd4f",
+    "design/pack_model.py": "9c1140e476002c7f5d98fc87eefbf064208ee64c9eff30b2998b3e4c3c630981",
+    "tests/addresses.py": "3d5dcf892c76efcf51cc361825605534d09728d0be90345ec72d78860a2eed51",
+    "tests/architecture.py": "7664778cd446b84a0c38773a281632246fc46922799c656687ce9425dff4e3a7",
+    "tests/behavior.py": "e58a65915260e6af5526cd235cfeb40b8af2516439b40c01b77653fb8998f9d3",
+    "tests/model.py": "a56bb1f4eb9a39171db65d3152ebd54d3052278e6e1ed0e38473fb9e1ff0b8c2",
+    "tests/official.py": "0ee304f191ecfd8d3a5becc46c5b0a770ef361c0d029e706560dc4245283793c",
+    "tests/official_fp32.py": "c6041d25a81f18a6a5a8089b0b3ad64873f09a6ebe0b9814df02175479492780",
+    "tests/packing.py": "ddcb6c4d5af6da7efba80df7855c709bad62a59647e86a933eef8c0d459e203a",
+    "tests/primitives.py": "c4f20cda43d8a1ae7e80593f411f962e1167f9400496bb108fdf8b339fc5ac8c",
+    "tests/profiling.py": "679cc513665b63cccdacc86d24cd45be560a5b937603877fecf82ceafa83652b",
+    "tests/synthesis.py": "f4d35c174854bde47e8656b5aaaebe965438d076ac35eec319cf2cfcb9bb23d2",
+    "tests/verify.py": "b413c1a942c57899213da4eacf1b7be913500951895eed2eb239352032b90854",
+    "tests/addresses.sv": "6fcdccde87922f3c7aff66161c0c2cf7a499df738ed23b2c0f7c464d391a8c58",
+    "tests/forward.sv": "11daddfdbbcabfc397241ef327135c57b277d031d764eabf84d74177214103c1",
+    "tests/primitives.sv": "e8edbc0eb1dac5b5ec506d8cf8dc029f704dbd55c676250d3836465cc72701d8",
+    "tests/profile_address.sv": "84b816828b4f7f4e04c19d5ee81e501f5fe84480fc25b719bca656814f9397e6",
+    "hf_embeddinggemma2_spec/config.json": "90135c44282752b2b9d9160c69682645fef5b084934f057fa756db9848b1095b",
+    "hf_embeddinggemma2_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
+    "hf_embeddinggemma2_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
+    "hf_embeddinggemma2_spec/sentence_bert_config.json": "53cddcdff8b19a51e5ace646be5c2b64ed818f01b78aea137c7c1334d36a5b5a",
+    "hf_embeddinggemma2_spec/1_Pooling/config.json": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9",
+    "hf_embeddinggemma2_spec/official_weights/google_embeddinggemma2_official_slice.safetensors": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "hf_embeddinggemma2_spec/official_weights/official_hardware_slices_fp32_q824.json": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c",
+    "hf_embeddinggemma2_spec/official_weights/official_weights_manifest.json": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad"
+  },
+  "tool_versions": {
+    "python3": {
+      "path": "/opt/qualification/bin/python3",
+      "stdout": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-python3.stdout.log"
+    },
+    "iverilog": {
+      "path": "/usr/bin/iverilog",
+      "stdout": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-iverilog.stdout.log"
+    },
+    "vvp": {
+      "path": "/usr/bin/vvp",
+      "stdout": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-vvp.stdout.log"
+    }
+  },
+  "children": [
+    {
+      "argv": [
+        "/opt/qualification/bin/python3",
+        "--version"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:13:09.586608+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-python3.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-python3.stderr.log",
+      "timed_out": false,
+      "pid": 620,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.018218022989458404
+      },
+      "duration_s": 0.02335147900157608,
+      "cpu_user_s": 0.0,
+      "cpu_system_s": 0.004077,
+      "end": "2026-10-15T08:13:09.610202+00:00"
+    },
+    {
+      "argv": [
+        "/usr/bin/iverilog",
+        "-V"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:13:09.610841+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-iverilog.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-iverilog.stderr.log",
+      "timed_out": false,
+      "pid": 621,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.006928545000846498
+      },
+      "duration_s": 0.0399396310094744,
+      "cpu_user_s": 0.003186,
+      "cpu_system_s": 0.013831999999999997,
+      "end": "2026-10-15T08:13:09.651025+00:00"
+    },
+    {
+      "argv": [
+        "/usr/bin/vvp",
+        "-V"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:13:09.651826+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-vvp.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/version-vvp.stderr.log",
+      "timed_out": false,
+      "pid": 626,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.006848774995887652
+      },
+      "duration_s": 0.015770136000355706,
+      "cpu_user_s": 0.0008939999999999994,
+      "cpu_system_s": 0.005365000000000002,
+      "end": "2026-10-15T08:13:09.667830+00:00"
+    },
+    {
+      "argv": [
+        "iverilog",
+        "-g2012",
+        "-DOFFICIAL_WRAPPER",
+        "-s",
+        "forward",
+        "-o",
+        "/work/project/evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/A-official.vvp",
+        "-Pforward.VOCAB_SIZE=16",
+        "-Pforward.HIDDEN_SIZE=4",
+        "-Pforward.PER_LAYER_INPUT_SIZE=4",
+        "-Pforward.INTERMEDIATE_SIZE=8",
+        "-Pforward.EMBEDDING_DIM=6",
+        "-Pforward.NUM_LAYERS=6",
+        "-Pforward.NUM_Q_HEADS=2",
+        "-Pforward.LOCAL_KV_HEADS=1",
+        "-Pforward.FULL_KV_HEADS=1",
+        "-Pforward.LOCAL_HEAD_DIM=2",
+        "-Pforward.FULL_HEAD_DIM=4",
+        "-Pforward.SLIDING_WINDOW=2",
+        "-Pforward.MAX_SEQ_LEN=8",
+        "tests/forward.sv",
+        "rtl/anvil_e1_address.sv",
+        "rtl/anvil_e1_attention.sv",
+        "rtl/anvil_e1_controller.sv",
+        "rtl/anvil_e1_mac.sv",
+        "rtl/anvil_e1_matvec.sv",
+        "rtl/anvil_e1_memory.sv",
+        "rtl/anvil_e1_nonlinear.sv",
+        "rtl/anvil_e1_norm.sv",
+        "rtl/anvil_e1_pool.sv",
+        "rtl/anvil_e1_rope.sv",
+        "rtl/anvil_e1_sequencer.sv",
+        "rtl/anvil_e1_top.sv",
+        "rtl/anvil_e_top.sv"
+      ],
+      "cwd": "/work/project",
+      "start": "2026-10-15T08:13:10.813560+00:00",
+      "timeout_s": 33.74995405100344,
+      "stdout": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/compile-A-official.stdout.log",
+      "stderr": "evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/compile-A-official.stderr.log",
+      "timed_out": false,
+      "pid": 627,
+      "exit_code": 119,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 0.007047866005450487
+      },
+      "duration_s": 0.07278828600829002,
+      "cpu_user_s": 0.028753999999999995,
+      "cpu_system_s": 0.016837,
+      "end": "2026-10-15T08:13:10.886627+00:00"
+    }
+  ],
+  "status": "failed",
+  "detail": "AssertionError: compile-A-official: exit 119; see evidence/preparation/phase2-official-first/attempt-20261015T081309563163Z/compile-A-official.stderr.log",
+  "repair_of": null,
+  "acceptance_evidence": false
+}
