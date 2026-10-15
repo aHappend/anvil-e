@@ -13,8 +13,9 @@
   <a href="https://ahappend.github.io/vulcan/">Visit the website</a>
   · <a href="https://github.com/aHappend/vulcan-showcase">Vulcan Showcase</a>
   · <a href="README.zh-CN.md">中文</a>
-  · <a href="anvil-e1/">Anvil-E1 package</a>
-  · <a href="anvil-e2/">Anvil-E2 package</a>
+  · <a href="anvil-e1/">Anvil-E1 package</a> · <a href="anvil-e1/REPORT.pdf">Anvil-E1 Report (PDF)</a>
+  · <a href="anvil-e2/">Anvil-E2 package</a> · <a href="anvil-e2/REPORT.pdf">Anvil-E2 Report (PDF)</a>
+  · <a href="anvil-e3/">Anvil-E3 package</a>
   · <a href="brand/">Brand assets</a>
 </p>
 
@@ -28,8 +29,8 @@ verification suites and reproducible delivery packages.
 | Generation | Design | Target model & scope | Autonomous Build Time | Status |
 | --- | --- | --- | --- | --- |
 | **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (5:1 hybrid sliding/full GQA attention, PLE per-layer embeddings, `512d → 768d` projection, masked mean pooling and Matryoshka L2 normalization) | **3h 17m 25s total** (`2h 17m 48s` Phase 1 RTL + `59m 37s` Phase 2 Official HF Weights Co-Sim) | Completed & Verified — [Official Report (`REPORT.pdf`)](anvil-e1/REPORT.pdf) & Live Demo Published |
-| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | **8h 00m 15s** (`Step 122 · completed`, `20` RTL files / `3592` lines) | Completed & Verified |
-| **Gen-3** | **Anvil-E3** | Google EmbeddingGemma-2 · Audio + Vision + Text unified embedding engine | — | Planned |
+| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | **8h 00m 15s** (`Step 122 · completed`, `20` RTL files / `3592` lines) | Completed & Verified — [Official Report (`REPORT.pdf`)](anvil-e2/REPORT.pdf) Published · Phase 2 Official HF Weights Co-Sim In Progress |
+| **Gen-3** | **[Anvil-E3](anvil-e3/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Audio + Vision + Text Trimodal edition (12-layer `gemma4_audio` Conformer tower + `embed_audio` `1536d → 512d` + 16-layer `gemma4_vision` tower + 24-layer 5:1 hybrid trimodal backbone) | Running (`Step 6 · designer`) | In Progress — Trimodal Spec & Autonomous RTL Generation |
 
 ## Anvil-E2 · Generation 2 (Vision + Text Multimodal edition)
 

@@ -13,8 +13,9 @@
   <a href="https://ahappend.github.io/vulcan/">访问官网</a>
   · <a href="https://github.com/aHappend/vulcan-showcase">Vulcan 作品集</a>
   · <a href="README.md">English</a>
-  · <a href="anvil-e1/">Anvil-E1 交付包</a>
-  · <a href="anvil-e2/">Anvil-E2 交付包</a>
+  · <a href="anvil-e1/">Anvil-E1 交付包</a> · <a href="anvil-e1/REPORT.pdf">Anvil-E1 交付报告 (PDF)</a>
+  · <a href="anvil-e2/">Anvil-E2 交付包</a> · <a href="anvil-e2/REPORT.pdf">Anvil-E2 交付报告 (PDF)</a>
+  · <a href="anvil-e3/">Anvil-E3 交付包</a>
   · <a href="brand/">品牌素材</a>
 </p>
 
@@ -26,8 +27,8 @@
 | 代际 | 芯片型号 | 目标模型与范围 | 自主研发总耗时 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（5:1 滑动窗口/全局 GQA 混合注意力、PLE 逐层嵌入、512d → 768d 投影、掩码均值池化与 Matryoshka L2 归一化） | **总计 3 小时 17 分 25 秒**（一阶段 RTL 生成 `2h 17m 48s` + 二阶段 HF 官方权重软硬联调 `59m 37s`） | 已完成并验证 — [产品交付报告 (`REPORT.pdf`)](anvil-e1/REPORT.pdf) 与一键联调 Demo 已发布 |
-| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | **8 小时 00 分 15 秒**（`Step 122 · completed`，`20` 个 RTL 模块 / `3592` 行） | Completed & Verified |
-| **第三代** | **Anvil-E3** | Google EmbeddingGemma-2 · 音频 + 视觉 + 文本统一嵌入加速引擎 | — | 规划中 |
+| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | **8 小时 00 分 15 秒**（`Step 122 · completed`，`20` 个 RTL 模块 / `3592` 行） | 已完成并验证 — [产品交付报告 (`REPORT.pdf`)](anvil-e2/REPORT.pdf) 已发布 · 二阶段 HF 官方权重联调进行中 |
+| **第三代** | **[Anvil-E3](anvil-e3/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 音频 + 视觉 + 文本三模态统一嵌入引擎（12 层 `gemma4_audio` Conformer 音频塔 + `embed_audio` `1536d → 512d` + 16 层视觉塔 + 24 层混合主干） | 进行中（`Step 6 · designer`） | 进行中 — 三模态规格与自主 RTL 研发中 |
 
 ## Anvil-E2 · 第二代（视觉 + 文本多模态版）
 
