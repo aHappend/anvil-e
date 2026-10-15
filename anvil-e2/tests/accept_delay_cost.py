@@ -208,7 +208,7 @@ def prefix(run):
     boundaries(run)
 
 
-def boundaries(run):
+def boundaries(run, transform=candidate):
     fixture = Fixture(CONFIGS["A"], 17, 0)
     integer, scratch = fixture.run(Integer())
     memory = memory_file(run, fixture, "boundary-input")
@@ -243,7 +243,7 @@ def boundaries(run):
             text = prepare(original, run.directory/name, True, limit=100000,
                            boundary=True)
             if changed:
-                text = candidate(text, True)
+                text = transform(text, True)
             out, _ = simulate(run, name, text)
             complete = phase in ("completion", "back-to-back", "done")
             if phase == "response":
