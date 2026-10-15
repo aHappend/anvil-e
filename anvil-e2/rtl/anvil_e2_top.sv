@@ -5,7 +5,8 @@ module anvil_e2_top #(
     TEXT_FFN=2048, EMBED_DIM=768, VOCAB_SIZE=262144,
     POSITION_EMBEDDING_SIZE=10240, TEXT_Q_HEADS=4, LOCAL_KV_HEADS=2,
     FULL_KV_HEADS=1, LOCAL_HEAD_DIM=256, FULL_HEAD_DIM=512,
-    SLIDING_WINDOW=512, MAX_SEQ_LEN=262144
+    SLIDING_WINDOW=512, MAX_SEQ_LEN=262144,
+    parameter logic [127:0] RMS_EPSILON_Q80 = (128'd17 << 56)
 ) (
     input wire clk, rst_n, job_valid,
     input wire [1:0] job_mode,
@@ -173,7 +174,8 @@ module anvil_e2_top #(
             .VISION_LAYERS(VISION_LAYERS), .VISION_HIDDEN(VISION_HIDDEN),
             .VISION_FFN(VISION_FFN), .VISION_HEADS(VISION_HEADS),
             .VISION_HEAD_DIM(VISION_HEAD_DIM), .PATCH_SIZE(PATCH_SIZE),
-            .POSITION_EMBEDDING_SIZE(POSITION_EMBEDDING_SIZE)
+            .POSITION_EMBEDDING_SIZE(POSITION_EMBEDDING_SIZE),
+            .RMS_EPSILON_Q80(RMS_EPSILON_Q80)
         ) vision_encoder (
             `E2_MEMORY(1), .tokens(32'(p)), .layer_index(vision_layer), .patch_cols(cols),
             .weights(vision_weights), .x0_base(v0), .x1_base(v1), .q_base(vq),
@@ -202,7 +204,8 @@ module anvil_e2_top #(
             .INTERMEDIATE_SIZE(TEXT_FFN), .EMBEDDING_DIM(EMBED_DIM), .NUM_LAYERS(TEXT_LAYERS), \
             .NUM_Q_HEADS(TEXT_Q_HEADS), .LOCAL_KV_HEADS(LOCAL_KV_HEADS), \
             .FULL_KV_HEADS(FULL_KV_HEADS), .LOCAL_HEAD_DIM(LOCAL_HEAD_DIM), \
-            .FULL_HEAD_DIM(FULL_HEAD_DIM), .SLIDING_WINDOW(SLIDING_WINDOW)
+            .FULL_HEAD_DIM(FULL_HEAD_DIM), .SLIDING_WINDOW(SLIDING_WINDOW), \
+            .RMS_EPSILON_Q80(RMS_EPSILON_Q80)
 `define E2_TEXT_PORTS(I) \
             `E2_MEMORY(I), .tokens(32'(n)), .valid_tokens(valid_tokens), .output_dim(output_dim), \
             .weights(weights), .token_ids(fid), .positions(fpos), .masks(fmask), .scratch(scratch), \

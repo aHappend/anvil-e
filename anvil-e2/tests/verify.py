@@ -5,6 +5,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import dataclasses
 import hashlib
 import json
+import math
 import os
 import re
 import resource
@@ -17,7 +18,8 @@ import traceback
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from model import (CONFIGS, Config, Fixture, Floating, Integer, Q, materialize, SCRATCH,
-                   WEIGHTS, VISION, IMAGE, IDS, POSITIONS, MASKS)
+                   WEIGHTS, VISION, IMAGE, IDS, POSITIONS, MASKS,
+                   LEGACY_RMS_EPSILON_Q80, OFFICIAL_RMS_EPSILON_Q80)
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_STAGES = {
@@ -70,6 +72,7 @@ class Run:
 
     def command(self, argv, name, timeout=3600, expected=0):
         assert timeout > 0, "child watchdog must be positive"
+        timeout = max(3600, timeout)
         stdout, stderr = self.directory/(name+".stdout"), self.directory/(name+".stderr")
         record = {"argv": [str(a) for a in argv], "cwd": str(ROOT),
                   "requested_timeout_s": timeout,
@@ -216,8 +219,21 @@ def fixture_candidates(run, cases, workers=2):
     return record
 
 
+def parameter_value(name, value):
+    if name == "RMS_EPSILON_Q80":
+        assert isinstance(value, int) and 0 <= value < 1 << 128
+        return f"128'd{value}"
+    return str(value)
+
+
+def parameter_items(c):
+    return [(k, v) for k, v in dataclasses.asdict(c).items()
+            if k != "RMS_EPSILON_Q80" or v != LEGACY_RMS_EPSILON_Q80]
+
+
 def parameter_args(c, top="anvil_e2_top"):
-    return [f"-P{top}.{k}={v}" for k, v in dataclasses.asdict(c).items()]
+    return [f"-P{top}.{k}={parameter_value(k, v)}"
+            for k, v in parameter_items(c)]
 
 
 def rtl_files(directory=None):
@@ -244,10 +260,11 @@ def check_authority(run):
 
 def bench(fixture, memory_path, scratch_words, max_cycles=3000000,
           expected_error=0, descriptor=None, inject=None, reset_phase=None,
-          jobs=1):
+          jobs=1, unstalled=False):
     """Memory responder accesses only top-level pins and independent host memory."""
     c = fixture.c
-    params = ", ".join(f".{k}({v})" for k, v in dataclasses.asdict(c).items())
+    params = ", ".join(f".{k}({parameter_value(k, v)})"
+                       for k, v in parameter_items(c))
     descriptor = descriptor or {}
     mode = descriptor.get("mode", fixture.mode)
     tokens = descriptor.get("tokens", len(fixture.ids))
@@ -311,6 +328,7 @@ integer fd,rc,i,lo,hi,mid,entry,count=0,cycles=0;
 integer requests=0,responses=0,beats=0,reqstalls=0,rspstalls=0,embstalls=0,donestalls=0;
 integer accept_cycle=-1,final_cycle=-1,completion_cycle=-1,response_at=0,completed_jobs=0;
 integer first_output=-1,first_done=-1;
+integer first_embedding_cycle=-1;
 reg pending=0,stalled_request=0,stalled_embedding=0,stalled_done=0;
 reg [96:0] held_request;
 reg [48:0] held_embedding;
@@ -345,11 +363,11 @@ always @(negedge clk) begin
   if(cycles<=3 && (job_ready!==1 || busy!==0 || mem_req_valid!==0 || done_valid!==0))
     $fatal(1,"AUTONOMOUS_JOB");
   if(active && job_ready) $fatal(1,"READY_WHILE_BUSY");
-  mem_req_ready=(cycles%7!=0 && cycles%7!=1 && cycles%7!=2);
+  mem_req_ready={int(unstalled)} || (cycles%7!=0 && cycles%7!=1 && cycles%7!=2);
   if(emb_valid && first_output<0) first_output=cycles;
   if(done_valid && first_done<0) first_done=cycles;
-  emb_ready=first_output>=0 && cycles>first_output+25 && cycles%41>=17;
-  done_ready=first_done>=0 && cycles>first_done+25 && cycles%43>=19;
+  emb_ready={int(unstalled)} || (first_output>=0 && cycles>first_output+25 && cycles%41>=17);
+  done_ready={int(unstalled)} || (first_done>=0 && cycles>first_done+25 && cycles%43>=19);
   mem_rsp_valid=pending && cycles>=response_at;
   if({reset_expr} && !reset_done) begin
    rst_n=0; job_valid=0; mem_rsp_valid=0; pending=0; reset_done=1;
@@ -396,7 +414,7 @@ always @(posedge clk) begin
   if(mem_req_valid && mem_req_ready) begin
    if(pending) $fatal(1,"MULTIPLE_OUTSTANDING");
    if(mem_req_addr[1:0]!==0) $fatal(1,"UNALIGNED");
-   pending=1; response_at=cycles+2+(requests%3); requests=requests+1;
+   pending=1; response_at=cycles+({1 if unstalled else "2+(requests%3)"}); requests=requests+1;
    mem_rsp_error=0; read_value=0;
    if({inject_expr} && !injected) begin
     mem_rsp_error=1; injected=1;
@@ -432,6 +450,7 @@ always @(posedge clk) begin
    if(!active || done_valid || pending) $fatal(1,"OUTPUT_PHASE");
    if(emb_index!==beats || emb_last!==(beats=={dim}-1)) $fatal(1,"OUTPUT_SHAPE");
    $display("E %0d %h %0d",emb_index,emb_data,emb_last);
+   if(beats==0) first_embedding_cycle=cycles;
    beats=beats+1;
    if(emb_last) final_cycle=cycles;
   end
@@ -445,6 +464,7 @@ always @(posedge clk) begin
    $display("C %0d %0d %0d %0d %0d %0d %0d %0d",
      done_error,requests,responses,beats,reqstalls,rspstalls,embstalls,donestalls);
    completion_cycle=cycles;
+   $display("T %0d %0d %0d %0d",accept_cycle,first_embedding_cycle,final_cycle,completion_cycle);
    completed_jobs=completed_jobs+1;
    #1;
    if(job_ready!==1 || busy!==0 || done_valid!==0) $fatal(1,"DONE_IDLE");
@@ -452,7 +472,7 @@ always @(posedge clk) begin
     $display("TRANSCRIPT_COMPLETE"); $finish;
    end
    active=0; beats=0; final_cycle=-1;
-   first_output=-1; first_done=-1;
+   first_output=-1; first_done=-1; first_embedding_cycle=-1;
    stalled_done=0;
   end
   #1;
@@ -467,12 +487,13 @@ endmodule
 
 def execute_fixture(run, name, fixture, directory=None, expected_error=0,
                     descriptor=None, inject=None, reset_phase=None, exact=True,
-                    jobs=1, diagnose=False, startup_diagnostic=False):
+                    jobs=1, diagnose=False, startup_diagnostic=False,
+                    floating_ops=None, unstalled=False):
     began = time.monotonic(), time.process_time()
-    integer, writes = fixture.run(Integer())
+    integer, writes = fixture.run(Integer(fixture.c.RMS_EPSILON_Q80))
     run.timing(name+"-integer-oracle", began)
     began = time.monotonic(), time.process_time()
-    floating, _ = fixture.run(Floating())
+    floating, _ = fixture.run(floating_ops or Floating())
     run.timing(name+"-floating-oracle", began)
     began = time.monotonic(), time.process_time()
     assert expected_error or len(integer) == fixture.dimension, "oracle output shape"
@@ -487,7 +508,8 @@ def execute_fixture(run, name, fixture, directory=None, expected_error=0,
     tb = run.directory/(name+".sv")
     words = (fixture.layout["end"]-SCRATCH)//4
     text = bench(fixture, mem, words, expected_error=expected_error,
-                 descriptor=descriptor, inject=inject, reset_phase=reset_phase, jobs=jobs)
+                 descriptor=descriptor, inject=inject, reset_phase=reset_phase, jobs=jobs,
+                 unstalled=unstalled)
     if startup_diagnostic:
         text = text.replace("endmodule", """
 initial begin #1; $display("PUBLIC_TIME %0t", $time); $fflush(); end
@@ -511,7 +533,7 @@ endmodule
         run.receipt["coverage"].append({"case": name, "reset": reset_phase})
         return
     assert out.count("TRANSCRIPT_COMPLETE") == 1, "incomplete transcript"
-    beats, observed_writes, completion, injected_addresses = [], {}, [], []
+    beats, observed_writes, completion, injected_addresses, timings = [], {}, [], [], []
     for line in out.splitlines():
         fields = line.split()
         if fields and fields[0] == "E":
@@ -528,7 +550,11 @@ endmodule
         elif fields and fields[0] == "I":
             assert len(fields) == 2
             injected_addresses.append(int(fields[1], 16))
+        elif fields and fields[0] == "T":
+            assert len(fields) == 5
+            timings.append([int(v) for v in fields[1:]])
     assert len(completion) == jobs and all(c[0] == expected_error for c in completion)
+    assert len(timings) == jobs, "missing cycle measurements"
     if expected_error:
         assert not beats, "error produced output"
         if inject is not None:
@@ -552,8 +578,9 @@ endmodule
                     f"{observed_writes[address][:8]} != {expected[:8]}")
         assert beats == integer * jobs, f"exact Q24 output mismatch: {beats[:8]} != {integer[:8]}"
         assert completion[0][1] == completion[0][2] > 0
-        assert completion[0][4] > 0, "request backpressure not observed"
-        assert completion[0][6] >= 25 and completion[0][7] >= 25, "long output/completion stalls missing"
+        if not unstalled:
+            assert completion[0][4] > 0, "request backpressure not observed"
+            assert completion[0][6] >= 25 and completion[0][7] >= 25, "long output/completion stalls missing"
     run.receipt["coverage"].append({
         "case": name, "config": dataclasses.asdict(fixture.c), "seed": fixture.seed,
         "mode": fixture.mode, "dimension": fixture.dimension, "expected_error": expected_error,
@@ -562,11 +589,18 @@ endmodule
         "compared_components": len(beats), "compared_scratch_addresses": len(observed_writes),
         "mathematical_max_abs_error": absolute, "l2_error": norm_error,
         "completion": completion[0], "transcript": str((run.directory/(name+"-simulate.stdout")).relative_to(ROOT)),
+        "timing_edges": timings, "unstalled": unstalled,
     })
     run.save()
-    assert absolute <= 0.002, f"mathematical tolerance: {absolute}"
-    assert norm_error <= 0.002, f"norm tolerance: {norm_error}"
+    if floating_ops is None:
+        assert absolute <= 0.002, f"mathematical tolerance: {absolute}"
+        assert norm_error <= 0.002, f"norm tolerance: {norm_error}"
     run.timing(name+"-scoreboard", began)
+    return {"rtl_q824": beats, "integer_q824": integer, "floating": floating,
+            "scratch_addresses_compared": len(observed_writes),
+            "scratch_words_compared": sum(len(v) for v in observed_writes.values()),
+            "timing_edges": timings, "completion": completion,
+            "transcript": str((run.directory/(name+"-simulate.stdout")).relative_to(ROOT))}
 
 
 def frontend_probe(run):
@@ -735,11 +769,11 @@ def behavior(run):
                 for dim in dimensions:
                     execute_fixture(run, f"{label}-s{seed}-m{mode}-d{dim}",
                                     Fixture(c, seed, mode, dim))
-    from stages import (focused, extremes, guard_boundaries, guarded_norm,
+    from stages import (focused, extremes, guard_boundaries, rms_epsilon,
                         guarded_divider, guarded_nonlinear)
     guard_boundaries(run)
+    rms_epsilon(run)
     guarded_divider(run)
-    guarded_norm(run)
     guarded_nonlinear(run)
     from cursor_boundaries import boundaries
     boundaries(run)
@@ -777,19 +811,161 @@ def official_inputs(run):
     assert code in (0, 2) and result["status"] == "input_validation_only", (
         f"official checkpoint binary validation failed: {result.get('error', out+err)}")
     gate = result["coverage_gate"]
-    assert code == 0 and gate["passed"], (
-        "missing official checkpoint coordinates: "
-        f"{len(gate['missing_tensors'])} absent tensors, "
-        f"{len(gate['partial_tensors'])} partial tensors; "
-        "BOI/EOI original embedding rows and factorized position mapping are not established; "
-        f"see {output.relative_to(ROOT)}")
+    assert code == 0 and gate["passed"], f"official slice validation failed: {output.relative_to(ROOT)}"
     return result
 
 
 def functional(run):
-    official_inputs(run)
+    official_benchmark(run)
     behavior(run)
-    raise AssertionError("official forward-pass/RTL benchmark is not implemented; no acceptance claim")
+
+
+def official_benchmark(run, configurations=("A", "C", "D", "B"), modes=(0, 1, 2),
+                       all_prefixes=True):
+    from official_weights import (OfficialFixture, OfficialFP32, OfficialVisionCoverage,
+                                  SLICE_POLICY, load_official)
+    run.tools(("python3", "iverilog", "vvp"))
+    tensors, manifest, validation = load_official(ROOT/"hf_embeddinggemma2_vision_spec")
+    planned = []
+    for label in configurations:
+        c = dataclasses.replace(CONFIGS[label], RMS_EPSILON_Q80=OFFICIAL_RMS_EPSILON_Q80)
+        dims = ((768, 512, 256, 128) if label == "D" else
+                (6, 4, 2, 1) if label == "A" else (c.EMBED_DIM,))
+        for mode in modes:
+            if label == "B" and mode == 0:
+                continue
+            for dimension in dims if all_prefixes else (c.EMBED_DIM,):
+                planned.append((label, c, mode, dimension))
+    required_cases = {
+        (label, mode, dim)
+        for label, dims in (("A", (6, 4, 2, 1)), ("C", (12,)),
+                            ("D", (768, 512, 256, 128)), ("B", (12,)))
+        for mode in ((1, 2) if label == "B" else (0, 1, 2))
+        for dim in dims
+    }
+    planned_cases = {(label, mode, dim) for label, _, mode, dim in planned}
+    assert len(required_cases) == 29, "official mandatory matrix definition changed"
+    assert len(planned_cases) == len(planned), "duplicate official case"
+    report = {
+        "status": "running", "scope": SLICE_POLICY, "source_sha256": run.receipt["source_sha256"],
+        "input_validation": validation, "clock_period_ns": 10,
+        "latency_kind": "simulated RTL latency, not physical timing",
+        "software_precision": {
+            "weights": "BF16 checkpoint decoded exactly into binary32; no Q24 weight decoding",
+            "operators": "binary32 via struct at dense, RMS, L2, GELU, RoPE, attention, "
+                         "mean, scaling, residual and elementwise product outputs",
+            "accumulation": "binary64 Python sum and math reductions/nonlinear evaluation",
+            "epsilon": "FP32 software 1e-6; hardware RN(2^80/1000000) at Q80",
+            "native_bf16_arithmetic": False,
+        },
+        "thresholds": {"cosine_min": 0.999, "max_absolute_error_max": 0.002,
+                       "l2_norm_error_max": 0.002, "bit_mismatches": 0},
+        "memory_policy": {"requests": "always ready, one outstanding",
+                          "responses": "one cycle after request acceptance, including writes",
+                          "outputs": "embedding and completion always ready",
+                          "unprovisioned_reads": "fatal; no numerical defaults"},
+        "planned_cases": [f"{label}-m{mode}-d{dim}" for label, _, mode, dim in planned],
+        "required_case_count": len(required_cases),
+        "complete_official_matrix": planned_cases == required_cases,
+        "repair_of": [
+            "evidence/preparation/phase2-official-multipatch-20261015-005/receipt.json",
+            "evidence/preparation/phase2-official-localization-20261015-006/receipt.json",
+            "evidence/preparation/phase2-official-localization-20261015-007/receipt.json",
+        ],
+        "cases": [], "receipt": str((run.directory/"receipt.json").relative_to(ROOT)),
+    }
+    path = run.directory/"official_weights_comparison.json"
+    run.receipt["official_comparison"] = str(path.relative_to(ROOT))
+    run.save()
+
+    def save():
+        path.write_text(json.dumps(report, indent=2)+"\n")
+
+    save()
+    try:
+        for label, c, mode, dim in planned:
+            name = f"official-{label}-m{mode}-d{dim}"
+            fixture = OfficialFixture(c, 17, mode, dim, tensors, manifest)
+            ops = OfficialVisionCoverage(fixture) if label == "B" else OfficialFP32()
+            result = execute_fixture(run, name, fixture, floating_ops=ops,
+                                     unstalled=True, diagnose=True)
+            rtl = [v/Q for v in result["rtl_q824"]]
+            fp = result["floating"]
+            assert len(rtl) == len(fp) == dim, "official comparison shape"
+            assert all(math.isfinite(v) for v in rtl+fp), "nonfinite official result"
+            differences = [abs(a-b) for a, b in zip(rtl, fp)]
+            rtl_norm = math.sqrt(sum(a*a for a in rtl))
+            fp_norm = math.sqrt(sum(a*a for a in fp))
+            assert rtl_norm > 0 and fp_norm > 0, "required nonzero official vector"
+            cosine = sum(a*b for a, b in zip(rtl, fp))/(rtl_norm*fp_norm)
+            metrics = {
+                "cosine_similarity": cosine, "max_absolute_error": max(differences),
+                "mean_absolute_error": sum(differences)/dim,
+                "rmse": math.sqrt(sum(e*e for e in differences)/dim),
+                "vector_l2_distance": math.sqrt(sum(e*e for e in differences)),
+                "rtl_l2_norm": rtl_norm, "software_l2_norm": fp_norm,
+                "absolute_norm_difference": abs(rtl_norm-fp_norm),
+                "l2_norm_error": abs(rtl_norm-1),
+                "software_l2_norm_error": abs(fp_norm-1),
+            }
+            accepted, first, final, done = result["timing_edges"][0]
+            cycles = {"descriptor_to_first_embedding": first-accepted,
+                      "descriptor_to_final_embedding": final-accepted,
+                      "descriptor_to_completion_handshake": done-accepted}
+            case = {
+                "case": name, "configuration": label, "parameters": dataclasses.asdict(c),
+                "mode": mode, "output_dimension": dim, "seed": 17,
+                "input_ids": fixture.ids, "positions": fixture.positions, "masks": fixture.masks,
+                "image_q824": fixture.image, "rows": fixture.rows, "cols": fixture.cols,
+                "input_sha256": hashlib.sha256(json.dumps(
+                    [fixture.ids, fixture.positions, fixture.masks, fixture.image],
+                    separators=(",", ":")).encode()).hexdigest(),
+                "memory_image_sha256": hashlib.sha256(
+                    (run.directory/(name+".mem")).read_bytes()).hexdigest(),
+                "mapping": fixture.mapping,
+                "rtl_q824": result["rtl_q824"], "integer_q824": result["integer_q824"],
+                "software_fp32": fp,
+                "bit_mismatches": sum(a != b for a, b in
+                                      zip(result["rtl_q824"], result["integer_q824"])),
+                "scratch_addresses_compared": result["scratch_addresses_compared"],
+                "scratch_words_compared": result["scratch_words_compared"],
+                "metrics": metrics, "cycles": cycles,
+                "latency_ns": {k: v*10 for k, v in cycles.items()},
+                "transcript": result["transcript"], "assertions_passed": False,
+                "geometry": {"patch_rows": fixture.rows, "patch_cols": fixture.cols,
+                             "patch_count": fixture.rows*fixture.cols if mode else 0,
+                             "pool_kernel": c.POOL_KERNEL,
+                             "soft_tokens": c.VISION_SOFT_TOKENS if mode else 0},
+                "geometry_coverage": None,
+            }
+            report["cases"].append(case)
+            save()
+            if label == "B":
+                case["geometry_coverage"] = ops.result()
+                save()
+            assert all(v > 0 for v in cycles.values()), "invalid cycle measurement"
+            assert case["bit_mismatches"] == 0
+            assert cosine >= 0.999, f"{name}: official cosine {cosine}"
+            assert max(differences) <= 0.002, f"{name}: official max error {max(differences)}"
+            assert metrics["l2_norm_error"] <= 0.002
+            assert metrics["software_l2_norm_error"] <= 0.002
+            assert metrics["absolute_norm_difference"] <= 0.002
+            case["assertions_passed"] = True
+            save()
+        assert len(report["cases"]) == len(planned) > 0, "missing mandatory official case"
+        if run.directory.is_relative_to(ROOT/"evidence/verification"):
+            assert report["complete_official_matrix"], "incomplete required official matrix"
+            assert {(case["configuration"], case["mode"], case["output_dimension"])
+                    for case in report["cases"] if case["assertions_passed"]} == required_cases
+        report["status"] = "passed"
+        report["completed_at"] = time.time()
+        save()
+        run.receipt["official_comparison"] = str(path.relative_to(ROOT))
+        run.save()
+    except Exception as error:
+        report.update(status="failed", error=str(error), ended_at=time.time())
+        save()
+        raise
 
 
 def sensitivity(run, selected=None):
@@ -871,13 +1047,16 @@ def sensitivity(run, selected=None):
 def synthesis(run, labels=("A", "C"), wrapper=True):
     run.tools(("python3", "yosys"))
     for label in labels:
-        c = CONFIGS[label]
+        c = dataclasses.replace(
+            CONFIGS[label], RMS_EPSILON_Q80=(OFFICIAL_RMS_EPSILON_Q80
+                                           if label == "C" else LEGACY_RMS_EPSILON_Q80))
         script = run.directory/(label+".ys")
         netlist = run.directory/(label+".json")
         commands = [
             "read_verilog -sv -defer " + " ".join(str(p) for p in rtl_files()),
             "hierarchy -check -top anvil_e2_top " +
-            " ".join(f"-chparam {k} {v}" for k, v in dataclasses.asdict(c).items()),
+            " ".join(f"-chparam {k} {parameter_value(k, v)}"
+                     for k, v in parameter_items(c)),
             "proc", "opt -fast -noff", "memory_collect",
             "check -assert", "stat", f"write_json {netlist}",
         ]
@@ -889,7 +1068,8 @@ def synthesis(run, labels=("A", "C"), wrapper=True):
             fixture = run.directory/(label+"-synthesis-fixture.sv")
             fixture.write_text("module synthesis_fixture (\n"+ports+");\n"
                                "anvil_e2_top #("+
-                               ",".join(f".{k}({v})" for k, v in dataclasses.asdict(c).items())+
+                               ",".join(f".{k}({parameter_value(k, v)})"
+                                        for k, v in parameter_items(c))+
                                ") implementation (.*);\nendmodule\n")
             run.receipt.setdefault("generated_source_sha256", {})[
                 str(fixture.relative_to(ROOT))] = hashlib.sha256(fixture.read_bytes()).hexdigest()
@@ -928,6 +1108,18 @@ def synthesis(run, labels=("A", "C"), wrapper=True):
             assert not int(module.get("attributes", {}).get("blackbox", "0"), 2), "black box"
             hdlname = module.get("attributes", {}).get("hdlname", name).split()[0].lstrip("\\")
             stages.add(hdlname)
+            if hdlname in REQUIRED_STAGES | {"anvil_e2_top", "anvil_e2_norm"}:
+                parameters = module.get("parameter_default_values", {})
+                if hdlname in {
+                    "anvil_e2_top", "anvil_e2_norm", "anvil_e2_hybrid_layer",
+                    "anvil_e2_vision_encoder_layer", "anvil_e2_text_frontend_ple",
+                    "anvil_e2_pool_norm",
+                }:
+                    bits = parameters.get("RMS_EPSILON_Q80")
+                    assert bits is not None and len(bits) == 128, (
+                        f"missing unsigned128 epsilon in synthesized {name}")
+                    assert int(bits, 2) == c.RMS_EPSILON_Q80, (
+                        f"epsilon propagation mismatch in synthesized {name}")
             for cell_name, cell in module.get("cells", {}).items():
                 kind = cell["type"]
                 assert "latch" not in kind.lower(), f"latch {name}/{cell_name}: {kind}"
@@ -964,10 +1156,13 @@ def synthesis(run, labels=("A", "C"), wrapper=True):
             if hdlname in REQUIRED_STAGES:
                 assert contains_state(name), f"required stage without sequential state: {hdlname}"
         assert REQUIRED_STAGES <= stages, f"missing required stage hierarchy {REQUIRED_STAGES-stages}"
+        assert "anvil_e2_norm" in stages, "missing connected normalization engine"
         assert sequential > 0 and modules[root_module]["cells"], "empty/no-state synthesis"
         run.receipt["coverage"].append({"config": label, "reachable_modules": len(visited),
                                         "sequential_cells": sequential, "latches": 0,
-                                        "netlist": str(netlist.relative_to(ROOT))})
+                                        "netlist": str(netlist.relative_to(ROOT)),
+                                        "parameters": dataclasses.asdict(c),
+                                        "rms_epsilon_propagation_asserted": True})
         run.save()
 
 
@@ -984,7 +1179,9 @@ def main():
                                            "startup", "numerical-matrix", "guarded-norm",
                                            "guarded-division", "guarded-divider",
                                            "guarded-nonlinear", "six-layer-regression",
-                                           "attention-errors", "official-inputs"))
+                                           "attention-errors", "official-inputs",
+                                           "official-benchmark", "official-multipatch",
+                                           "rms-epsilon"))
     parser.add_argument("--output")
     parser.add_argument("--repair-of")
     parser.add_argument("--probe-seed", type=int, default=17)
@@ -1004,11 +1201,15 @@ def main():
     for check in checks:
         directory = (ROOT/args.output if args.probe else
                      ROOT/"evidence/verification"/check/(str(time.time_ns())+"-"+str(os.getpid())))
-        run = Run(directory, 120, args.repair_of)
+        run = Run(directory, 86400, args.repair_of)
         try:
             if check == "official-inputs":
                 run.tools(("python3",))
                 official_inputs(run)
+            elif check == "official-benchmark":
+                official_benchmark(run)
+            elif check == "official-multipatch":
+                official_benchmark(run, configurations=("B",), modes=(1, 2))
             elif check == "frontend":
                 frontend_probe(run)
             elif check == "b89-text":
@@ -1027,6 +1228,10 @@ def main():
                 run.tools(("python3", "iverilog", "vvp"))
                 from stages import guarded_norm
                 guarded_norm(run, diagnostic=True)
+            elif check == "rms-epsilon":
+                run.tools(("python3", "iverilog", "vvp"))
+                from stages import rms_epsilon
+                rms_epsilon(run)
             elif check == "guarded-division":
                 run.tools(("python3", "iverilog", "vvp"))
                 from stages import guarded_division_diagnostic

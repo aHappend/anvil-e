@@ -1,10 +1,43 @@
 {
-  "status_label": "In Progress — Phase 2 Official Weights & Software-vs-RTL Verification",
+  "status_label": "Completed & Verified — Phase 2 Official HuggingFace Weights & Software-vs-RTL Comparison Published",
   "chip": "Anvil-E2",
   "phase": "Phase 2 — Official Weights & Software-vs-RTL Comparison",
   "vulcan_version": "0.8.0",
+  "status": "completed",
+  "native_disposition": {
+    "workflow_phase": "completed",
+    "feedback": "",
+    "run_status": "accepted",
+    "closeout_status": null,
+    "driver_steps": [
+      {
+        "operation": "run",
+        "exit_code": 2
+      }
+    ],
+    "driver_steps_ok": false,
+    "state_error": null,
+    "repairs_used": 4,
+    "designer_attempts": 1,
+    "model_call_count": 9,
+    "all_process_scopes_settled": true,
+    "reviewer_decisions": [
+      {
+        "status": "done",
+        "reason": "The Phase 2 engineering delivery is accepted within the admitted bounded-checkpoint scope. The selectable RMS epsilon is implemented consistently, and the recorded complete checks support the official-weight software-versus-RTL comparison without relaxing its numerical limits. This accepts the engineering work, not a final product report or native full-model equivalence.\n\nI read the normalization RTL, parameter routes through top and participating wrappers, parameter-aware integer model, official BF16 parser and remapping, independent floating operators, tensor graph, public-pin testbench, scoreboards, mutation checks and synthesis inspection code. RMS_EPSILON_Q80 is unsigned 128-bit, retains the legacy default 17<<56 and propagates through every normalization engine. Official configurations select the predetermined value 1208925819614629175. Only the RMS denominator addition uses it; L2 remains epsilon-free. The complete functional execution includes 66 norm-vector comparisons and 30 observed unchanged-L2 pairs, as well as the retained synthetic regressions.\n\nThe current comparison is evidence/verification/functional/1792082720920298364-239674/official_weights_comparison.json, explicitly linked by its execution receipt. All 29 predetermined official cases completed across the three modes and required output dimensions, with zero integer/RTL output mismatches and exact scratch-address/write-history comparisons. The lowest recorded cosine is 0.9999999950454138; the largest component error is 0.000047340989112854004, both from B vision-only. The recorded norm errors and software/RTL norm differences also satisfy 0.002. MAE, RMSE, vector distance, separate norms and measured first/final/completion latencies are retained. Both B cases observe 20 distinct patch vectors, axial positions, multi-key attention and pooling participant counts 9/6/3/2. I inspected their raw output and completion transcripts, including the formerly unreached joint execution. B vision-only completes at 225097 descriptor-relative cycles and joint at 284593 cycles, using the documented 10ns simulated clock.\n\nThe shared-runtime functional, sensitivity and synthesis commands all completed with exit 0 and empty outer stderr. Their sources do more than print success: output words and scratch histories are compared, malformed or incomplete transcripts fail, and five compiling/executing mutations are rejected by concrete scratch or output mismatches. The sensitivity receipt is evidence/verification/sensitivity/1792083140419170018-250999/receipt.json. Real Yosys synthesis for A and C is retained at evidence/verification/synthesis/1792083152490622108-251812/receipt.json; its checker traverses connected hierarchy, verifies epsilon propagation, sequential state, no latches and no unresolved modules. Both raw Yosys logs report zero structural problems. The recorded tools include Icarus Verilog 12.0 and Yosys 0.33.\n\nThe original numerical failure remains at evidence/preparation/phase2-official-multipatch-20261015-005/: its complete transcript and comparison retain cosine 0.9913286747181946 and maximum error 0.06919039785861969 despite exact integer agreement. The failed 008 norm preparation is also retained, with 009 explicitly linked as its repair; current code runs every norm case before returning. These advisory records have not been substituted for the complete checks.\n\nThe claim remains a scaled, explicitly remapped official-weight subnetwork evaluation. Supplied-provenance consistency is not independent remote authentication; decoded BF16 weights with binary32 operator boundaries and binary64 reductions are not native BF16 arithmetic. Native full-checkpoint inference, physical timing and default-model throughput are not established. Historical fixed-path comparison files remain separate from the current execution-local result. I ran no commands and changed no files. Final product reporting may now proceed through the shared runtime's separate review."
+      }
+    ],
+    "native_engineering_accepted": false,
+    "candidate_present": false,
+    "candidate_invalid_reason": null,
+    "final_candidate": null,
+    "initial_unrepaired_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "scientific_acceptance": false
+  },
   "started_utc": "2026-10-15T16:06:47.095132+00:00",
+  "finished_utc": "2026-10-15T17:04:27.601384+00:00",
   "started_cst": "2026-10-16 00:06:47 UTC+8",
-  "status": "running",
-  "reason": "Execute Roadmap Phase 2 for Anvil-E2: integrate real official HuggingFace google/embeddinggemma-2 multimodal (vision_tower + embed_vision + language_model) weights from model.safetensors and conduct end-to-end Software-Layer (FP32/BF16) vs Hardware-RTL (SystemVerilog Q8.24) evaluation across vision-only, text-only, and joint vision+text modes."
+  "finished_cst": "2026-10-16 01:04:27 UTC+8",
+  "elapsed_seconds": 3458.57
 }

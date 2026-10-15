@@ -3,7 +3,8 @@ module anvil_e2_hybrid_layer #(
     PER_LAYER_INPUT_SIZE=512, INTERMEDIATE_SIZE=2048, EMBEDDING_DIM=768,
     NUM_LAYERS=24, NUM_Q_HEADS=4, LOCAL_KV_HEADS=2, FULL_KV_HEADS=1,
     LOCAL_HEAD_DIM=256, FULL_HEAD_DIM=512, SLIDING_WINDOW=512,
-    STAGE=1, VISION=0, POSITION_EMBEDDING_SIZE=10240, PATCH_SIZE=16
+    STAGE=1, VISION=0, POSITION_EMBEDDING_SIZE=10240, PATCH_SIZE=16,
+    parameter logic [127:0] RMS_EPSILON_Q80 = (128'd17 << 56)
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -513,7 +514,9 @@ module anvil_e2_hybrid_layer #(
     wire norm_in_ready, norm_out_valid, norm_out_last, norm_out_error;
     wire signed [47:0] norm_out_data;
     wire [31:0] norm_out_index;
-    anvil_e2_norm #(.MAX_WIDTH(WIDTH)) norm (
+    anvil_e2_norm #(
+        .MAX_WIDTH(WIDTH), .RMS_EPSILON_Q80(RMS_EPSILON_Q80)
+    ) norm (
         .clk(norm_clk), .rst_n(unit_rst_n),
         .start_valid(norm_active && (pool_owns_norm ? pool_nsvalid:state==NORM_START)),
         .start_ready(norm_start_ready_raw),

@@ -1,5 +1,6 @@
 module anvil_e2_norm #(
-    parameter integer MAX_WIDTH = 2048
+    parameter integer MAX_WIDTH = 2048,
+    parameter logic [127:0] RMS_EPSILON_Q80 = (128'd17 << 56)
 ) (
     input wire clk,
     input wire rst_n,
@@ -146,7 +147,7 @@ module anvil_e2_norm #(
                 MEAN_WAIT: if (divide_out_valid) begin
                     if (divide_error) begin error<=1; result<=0; state<=HOLD; end
                     else begin
-                        denominator_square <= $unsigned(divide_result) + (128'd17 << 56);
+                        denominator_square <= $unsigned(divide_result) + RMS_EPSILON_Q80;
                         state <= ROOT_SETUP;
                     end
                 end

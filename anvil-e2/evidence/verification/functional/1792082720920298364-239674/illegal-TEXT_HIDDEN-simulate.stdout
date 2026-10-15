@@ -1,0 +1,2 @@
+FATAL: /data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_top.sv:292: PARAMETER ERROR: unsupported Anvil-E2 geometry
+       Time: 0  Scope: anvil_e2_top.invalid_parameters

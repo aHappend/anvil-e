@@ -1,0 +1,346 @@
+{
+  "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+  "started_at": 1792081754.067362,
+  "timeout_s": 86400,
+  "source_sha256": {
+    "rtl/anvil_e2_address.sv": "e6a08eaaee2b1c3c3f94e9e61c3f58957ae26fd2044d1f71ebef72f344a9b6b4",
+    "rtl/anvil_e2_attention.sv": "8ca81d48e0d42700c28334636e0978898d8fee720418addcaa06ba413c7e9c20",
+    "rtl/anvil_e2_clock_gate.sv": "c86967e7f2860b79c463946ead2d6ca52e00e96c30c53f0017e93e9d653a6d50",
+    "rtl/anvil_e2_divide.sv": "954bbb7955f093245e2181d719a3e3705ad13dd623b14ff3cbf41c760816ffa8",
+    "rtl/anvil_e2_hybrid_layer.sv": "5fb7e8e21c9f47a5f9077ca659ac29dec6b954c689a0e1aa8b2fba2cd84a2143",
+    "rtl/anvil_e2_mac.sv": "391ca25744985062432de2b6618e409a50091c495a960cbec56543a86aa214e4",
+    "rtl/anvil_e2_matvec.sv": "564dafdc2e3369602b7b93ca37d664c62c73114454e0a573898e6d6b86020b24",
+    "rtl/anvil_e2_memory.sv": "97c47186e1096d908b08efd6c4764a0b36fd7024309ab210e6e248717d9895b9",
+    "rtl/anvil_e2_multimodal_fusion.sv": "718da5fd2b38973cd677f6577ee021b21fdb9fdd03b6ff6c08c225efffc62d7b",
+    "rtl/anvil_e2_nonlinear.sv": "a4b874890523c35bf9a53ed9482cb8bd3648f035cb0852e8621c95e48c0e218f",
+    "rtl/anvil_e2_norm.sv": "569942a5937ad2d57ba2669d9f037a1736140f886feb8d4836bd115bfec5db08",
+    "rtl/anvil_e2_pool.sv": "566fb6f59d0293d61162c39605329c852874ac9df833eb41c1ce9e9fb5b90be7",
+    "rtl/anvil_e2_pool_norm.sv": "0ccb8c048726488c825636b9ca3400c272570cb3166796a8980c31cc07970ce7",
+    "rtl/anvil_e2_rope.sv": "55c661aeca84bc149b7dd3a9cdc5856a67b14f97366be0b551bebb7ba4b39095",
+    "rtl/anvil_e2_series.sv": "8228903310522fff861dbf1be1069ecf71115169966f5b14d22fc8aee070c6a9",
+    "rtl/anvil_e2_text_frontend_ple.sv": "d93c0bfd9b0cc4b5d55756064b417ae6c91cb75c0818430ba9cdec172037dbe7",
+    "rtl/anvil_e2_top.sv": "13311731d02beb989c060bf9de99e8ce33fcc24f6381a2043882a8d4a2381c59",
+    "rtl/anvil_e2_vision_encoder_layer.sv": "c5e479940d8550c3d0ee24c8bd7e22d44deb209b117bf804de11eccccddd6a5e",
+    "rtl/anvil_e2_vision_patch_embed.sv": "960943680bd6a384b7b9c8eae3f8c6b544cd49fb99b9f8902a149ea81adc578a",
+    "rtl/anvil_e2_vision_pool_proj.sv": "fd0b72198a0102465b131ff057623e433861efcb9e52886a99ede69afabf2e7c",
+    "design/ARCHITECTURE.md": "533cb77a943641a111cdd80cc3e4a910d0fe12884a33209ed87c328e16d1313d",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "e22517d7581999272910f95531dcea651f409e24f215b76c46e5aee54aad9826",
+    "tests/accept_delay_cost.py": "14f1b1c3639d8541f2d3f89b1e00fa4ab173b8bc18516eab81516c089e6d9496",
+    "tests/attention_boundaries.py": "2d46d864480653214c871d11ca3b2bf3ad00864cc66edbea002c4a107f8f009a",
+    "tests/behavior_summary.py": "8de2f8b9e32928a8b9866d13f252194c08126d7c63e22d5a370c6b926969efc1",
+    "tests/cursor_boundaries.py": "55efb739802edf43801c707eaefd7f39ae608555ded35cde5966501f9123e168",
+    "tests/cursor_cost.py": "f3b35017863377682154dbd869a19ba5a30ec072e9bde9cb5d0e3508b91c77f6",
+    "tests/deadline_cost.py": "f3f592233a92eb34d615638e16e6ea8fc729605cbc42433a655062f25e423ee2",
+    "tests/execution_cost.py": "03556d4c73a2764081306d8cacb00b92750738401837793d4f84691c7be1b3a3",
+    "tests/model.py": "530d8228e2399b126e00294294a5b2ac99acdcd7aaa4b271fab885dae6f4abda",
+    "tests/monitor_cost.py": "adf6d103b87c77bec03e1a50f5e93a1ca08386a6692fa4e0a1ede3c96040fc96",
+    "tests/numerical_diagnostic.py": "cd9e00791d7d5a58ead2ae3e500c9000dfc22a14b8aa7ab9116a1319ff7872db",
+    "tests/official_weights.py": "a991cc6c23715b38813768eb3d2e373a75bb3cdc6c341ead74445c3fa16daead",
+    "tests/phase_counter_cost.py": "d12b251a5bc13dd48ae766e00acfaed63f3c610993dec52f3bd91ea2f33bbc96",
+    "tests/progress.py": "16924c3f25c704c4cb414f3d52c96eb099d5f5e95d14e5da219839114328af56",
+    "tests/scheduler_cost.py": "bcd440f7207bb8d2a3e3cb51d4eb7734e275e4e71aed2c2e4a489528371f24c6",
+    "tests/stages.py": "648e0f77f4b2275ed65f6480c58fc707860d6ddafdc0200544d6accaa92a2678",
+    "tests/synthesis_watchdog.py": "6b10340b1c806de3e1111bda451922528bc64f008aa0af8d209fc3364db56be6",
+    "tests/verify.py": "1934a929e9e513c83b67587645198c71fb99ca42fcff599aa1b4d7db69e9cf93",
+    "anvil_e1_reference/rtl/anvil_e1_address.sv": "c44d79b3f948a9eb9871a29af71b3fcbcde92b49549386442aedae2003f615b2",
+    "anvil_e1_reference/rtl/anvil_e1_attention.sv": "67676847b1d5a086432abe31c879e40ca992669fe1822900832a3aebe15f2dcd",
+    "anvil_e1_reference/rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
+    "anvil_e1_reference/rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
+    "anvil_e1_reference/rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
+    "anvil_e1_reference/rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
+    "anvil_e1_reference/rtl/anvil_e1_nonlinear.sv": "210e635714707f5f4a950cfbc59bae876f119ddbf071a751211d043908c48cce",
+    "anvil_e1_reference/rtl/anvil_e1_norm.sv": "a8196aec50e8507fc0743c05f9eb86104a9ce877400f719d3b8d6452778e624e",
+    "anvil_e1_reference/rtl/anvil_e1_pool.sv": "ad2bbe0adf36417a23270a94cde7c13a0de500878f94e065683513acb41d46c7",
+    "anvil_e1_reference/rtl/anvil_e1_rope.sv": "4b60664d10f9093a92d4b852df089c40fa30651ea631a20f65188e35d60d25c8",
+    "anvil_e1_reference/rtl/anvil_e1_sequencer.sv": "aa92e417a9a58bd24047ad543dd5cd2431a5dc730dd522c60689093daabacff4",
+    "anvil_e1_reference/rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
+    "hf_embeddinggemma2_vision_spec/config.json": "90eba2fc16ea674d0e03e2e9eea6405309fedc528f8f1c199fea6bb550380e04",
+    "hf_embeddinggemma2_vision_spec/vision_model_tensors.json": "b4cdf136800ef076347a9affbd03a65f5f54c7c33b1067a37387b012dbb6e8ad",
+    "hf_embeddinggemma2_vision_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
+    "hf_embeddinggemma2_vision_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
+    "hf_embeddinggemma2_vision_spec/1_Pooling/config.json": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9",
+    "hf_embeddinggemma2_vision_spec/sentence_bert_config.json": "53cddcdff8b19a51e5ace646be5c2b64ed818f01b78aea137c7c1334d36a5b5a",
+    "hf_embeddinggemma2_vision_spec/official_weights/google_embeddinggemma2_official_slice.safetensors": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "hf_embeddinggemma2_vision_spec/official_weights/official_weights_manifest.json": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad",
+    "hf_embeddinggemma2_vision_spec/official_weights/official_hardware_slices_fp32_q824.json": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c"
+  },
+  "repair_of": "evidence/verification/functional/1792080927168812449-166504/receipt.json",
+  "tools": {
+    "python3": {
+      "path": "/usr/bin/python3",
+      "version": "Python 3.12.3\n"
+    },
+    "iverilog": {
+      "path": "/usr/bin/iverilog",
+      "version": "Icarus Verilog version 12.0 (stable) ()\n\nCopyright (c) 2000-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\nIcarus Verilog Preprocessor version 12.0 (stable) ()\n\nCopyright (c) 1999-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\nIcarus Verilog Parser/Elaborator version 12.0 (stable) ()\n\nCopyright (c) 1998-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\n FLAGS DLL vvp.tgt\nvvp.tgt: Icarus Verilog VVP Code Generator 12.0 (stable) ()\n\nCopyright (c) 2001-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\n"
+    },
+    "vvp": {
+      "path": "/usr/bin/vvp",
+      "version": "Icarus Verilog runtime version 12.0 (stable) ()\n\nCopyright (c) 2001-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\n"
+    }
+  },
+  "executions": [
+    {
+      "argv": [
+        "/usr/bin/python3",
+        "--version"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/phase2-official-multipatch-20261015-005/version-python3.stdout",
+      "stderr": "evidence/preparation/phase2-official-multipatch-20261015-005/version-python3.stderr",
+      "started_at": 1792081754.111199,
+      "remaining_common_s": 86399.95583899101,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 199381,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.004300751999835484,
+      "child_user_cpu_s": 0.0,
+      "child_system_cpu_s": 0.0029779999999999997,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 14,
+      "stderr_bytes": 0,
+      "ended_at": 1792081754.1154253
+    },
+    {
+      "argv": [
+        "/usr/bin/iverilog",
+        "-V"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/phase2-official-multipatch-20261015-005/version-iverilog.stdout",
+      "stderr": "evidence/preparation/phase2-official-multipatch-20261015-005/version-iverilog.stderr",
+      "started_at": 1792081754.116879,
+      "remaining_common_s": 86399.950157875,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 199382,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.016244859987637028,
+      "child_user_cpu_s": 0.0017809999999999998,
+      "child_system_cpu_s": 0.013369,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 3294,
+      "stderr_bytes": 0,
+      "ended_at": 1792081754.1330385
+    },
+    {
+      "argv": [
+        "/usr/bin/vvp",
+        "-V"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/phase2-official-multipatch-20261015-005/version-vvp.stdout",
+      "stderr": "evidence/preparation/phase2-official-multipatch-20261015-005/version-vvp.stderr",
+      "started_at": 1792081754.1345706,
+      "remaining_common_s": 86399.932465926,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 199387,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.00816618200042285,
+      "child_user_cpu_s": 0.00109,
+      "child_system_cpu_s": 0.004357999999999997,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 0,
+      "stderr_bytes": 814,
+      "ended_at": 1792081754.1426342
+    },
+    {
+      "argv": [
+        "iverilog",
+        "-g2012",
+        "-Wall",
+        "-s",
+        "tb",
+        "-o",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12.vvp",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_address.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_attention.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_clock_gate.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_divide.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_hybrid_layer.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_mac.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_matvec.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_memory.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_multimodal_fusion.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_nonlinear.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_norm.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_pool.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_pool_norm.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_rope.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_series.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_text_frontend_ple.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_top.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_vision_encoder_layer.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_vision_patch_embed.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_vision_pool_proj.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12.sv"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 120,
+      "stdout": "evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12-compile.stdout",
+      "stderr": "evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12-compile.stderr",
+      "started_at": 1792081760.9256089,
+      "remaining_common_s": 86393.14142660101,
+      "timeout_s": 120,
+      "effective_timeout_s": 120,
+      "pid": 199634,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.2648308390052989,
+      "child_user_cpu_s": 0.19982099999999997,
+      "child_system_cpu_s": 0.056415999999999994,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 0,
+      "stderr_bytes": 6575,
+      "ended_at": 1792081761.1903973
+    },
+    {
+      "argv": [
+        "vvp",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12.vvp"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12-simulate.stdout",
+      "stderr": "evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12-simulate.stderr",
+      "started_at": 1792081761.1926055,
+      "remaining_common_s": 86392.87443118401,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 199650,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 9.137238196999533,
+      "child_user_cpu_s": 9.122916,
+      "child_system_cpu_s": 0.009999999999999995,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 47689,
+      "stderr_bytes": 0,
+      "ended_at": 1792081770.3297296
+    }
+  ],
+  "assertions": [],
+  "coverage": [
+    {
+      "case": "official-B-m1-d12",
+      "config": {
+        "VISION_LAYERS": 1,
+        "VISION_HIDDEN": 8,
+        "VISION_FFN": 7,
+        "VISION_HEADS": 2,
+        "VISION_HEAD_DIM": 4,
+        "PATCH_SIZE": 1,
+        "POOL_KERNEL": 3,
+        "VISION_SOFT_TOKENS": 4,
+        "TEXT_LAYERS": 6,
+        "TEXT_HIDDEN": 3,
+        "PLE_DIM": 3,
+        "TEXT_FFN": 5,
+        "EMBED_DIM": 12,
+        "VOCAB_SIZE": 262144,
+        "POSITION_EMBEDDING_SIZE": 10240,
+        "TEXT_Q_HEADS": 4,
+        "LOCAL_KV_HEADS": 2,
+        "FULL_KV_HEADS": 1,
+        "LOCAL_HEAD_DIM": 2,
+        "FULL_HEAD_DIM": 4,
+        "SLIDING_WINDOW": 2,
+        "MAX_SEQ_LEN": 262144
+      },
+      "seed": 17,
+      "mode": 1,
+      "dimension": 12,
+      "expected_error": 0,
+      "memory_error_target": null,
+      "injected_addresses": [],
+      "compared_components": 12,
+      "compared_scratch_addresses": 1118,
+      "mathematical_max_abs_error": 0.06919039785861969,
+      "l2_error": 2.2024502888129405e-08,
+      "completion": [
+        0,
+        37330,
+        37330,
+        12,
+        0,
+        0,
+        0,
+        0
+      ],
+      "transcript": "evidence/preparation/phase2-official-multipatch-20261015-005/official-B-m1-d12-simulate.stdout",
+      "timing_edges": [
+        [
+          4,
+          225078,
+          225089,
+          225092
+        ]
+      ],
+      "unstalled": true
+    }
+  ],
+  "status": "failed",
+  "entry_argv": [
+    "/usr/bin/python3",
+    "tests/verify.py",
+    "--probe",
+    "official-multipatch",
+    "--output",
+    "evidence/preparation/phase2-official-multipatch-20261015-005",
+    "--repair-of",
+    "evidence/verification/functional/1792080927168812449-166504/receipt.json"
+  ],
+  "absolute_monotonic_deadline": 203696.715488215,
+  "python_phases": [
+    {
+      "phase": "official-B-m1-d12-integer-oracle",
+      "elapsed_s": 0.08220376500685234,
+      "python_cpu_s": 0.08220184000000064
+    },
+    {
+      "phase": "official-B-m1-d12-floating-oracle",
+      "elapsed_s": 0.01037296699360013,
+      "python_cpu_s": 0.010373304999999888
+    },
+    {
+      "phase": "official-B-m1-d12-stimulus",
+      "elapsed_s": 0.0016191399918170646,
+      "python_cpu_s": 0.0016193570000000435
+    },
+    {
+      "phase": "official-B-m1-d12-scoreboard",
+      "elapsed_s": 0.004203910997603089,
+      "python_cpu_s": 0.004203534000000175
+    }
+  ],
+  "ended_at": 1792081770.4192684,
+  "error": "official-B-m1-d12: official cosine 0.9913286747181946"
+}

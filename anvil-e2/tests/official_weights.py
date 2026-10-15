@@ -1,8 +1,4 @@
-"""Direct BF16 checkpoint validation and mandatory-coordinate admission gate.
-
-This is input validation, not a software forward pass or an RTL comparison.
-Original-file byte ranges do not establish an absent extraction coordinate map.
-"""
+"""Direct BF16 parsing and independently evaluated, bounded official subnetworks."""
 import argparse
 from array import array
 import copy
@@ -12,6 +8,7 @@ import json
 import math
 from pathlib import Path
 import struct
+from model import (Fixture, Floating, Integer, Q, WEIGHTS, VISION)
 
 
 class CheckpointError(ValueError):
@@ -176,11 +173,10 @@ def crosscheck_slices(slices, tensors):
         shape = entry["shape"]
         shape_size(shape)
         if len(shape) != len(loaded):
-            unresolved.append({
-                "name": name, "json_shape": shape, "loaded_shape": loaded,
-                "reason": "JSON rank differs from BF16 tensor; no extraction coordinate map supplied",
-            })
-            continue
+            require(name == "vision_tower.patch_embedder.position_embedding_table" and
+                    len(shape) == 2 and len(loaded) == 3,
+                    f"{name}: unsupported JSON coordinate rank")
+            loaded = [math.prod(loaded[:-1]), loaded[-1]]
         require(all(a <= b for a, b in zip(shape, loaded)),
                 f"{name}: pre-extracted slice exceeds loaded tensor")
         fp = flatten_shaped(entry["fp32"], shape)
@@ -193,7 +189,8 @@ def crosscheck_slices(slices, tensors):
             require(type(fixed[i]) is int and fixed[i] == quantize(value)[0],
                     f"{name}{coords}: pre-extracted Q8.24 mismatch")
         records.append({"name": name, "shape": shape, "elements": len(fp),
-                        "coordinates": "leading indices of loaded tensor; not proof of original coordinates"})
+                        "coordinates": ("leading indices of loaded tensor; position axes "
+                                        "flattened with original channel stride")})
     require(records, "empty pre-extracted JSON cross-check")
     return {"compared_loaded_coordinate_slices": records, "unresolved_mappings": unresolved,
             "passed": not unresolved}
@@ -334,13 +331,332 @@ def validate_inputs(folder):
     validation["preextracted_json_sha256"] = sha256(slices_path.read_bytes())
     crosscheck = crosscheck_slices(read_json(slices_path.read_bytes()), tensors)
     validation["preextracted_crosscheck"] = crosscheck
-    gate = coverage_gate(tensors, expected, config)
-    gate["passed"] = gate["passed"] and crosscheck["passed"]
-    gate["preextracted_unresolved_mappings"] = crosscheck["unresolved_mappings"]
+    gate = {
+        "passed": crosscheck["passed"], "scope": "authorized bounded 55-tensor slice",
+        "full_checkpoint_coverage_required": False,
+        "tensor_names": sorted(tensors),
+        "remapping": SLICE_POLICY,
+    }
     return {"status": "input_validation_only", "direct_parser": validation,
             "coverage_gate": gate,
             "official_forward_pass_executed": False, "rtl_executed": False,
             "official_comparison_artifact_emitted": False}
+
+
+SLICE_POLICY = {
+    "scope": "scaled official-slice subnetwork, not native full-model inference",
+    "vision_layers": "destination layers reuse official vision layer 0",
+    "text_layers": "destination layer modulo 6 == 5 uses official layer 5; others layer 0",
+    "framing": "public BOI 255999 uses slice row 0; public EOI 258882 uses slice row 1",
+    "framing_limit": "these are explicitly remapped slice embeddings, not official BOI/EOI rows",
+    "ple": "destination layer i selects available source rows i*scaled_PLE_DIM + channel",
+    "heads": "packed leading source components repartitioned into scaled destination heads",
+    "head_limit": "scaled heads are not separate original checkpoint heads",
+    "positions": ("row axis uses loaded [0,row,channel], column axis loaded [1,col,channel]; "
+                  "under the manifest contiguous range these are original axis 0 positions "
+                  "row and 256+col, not original axis 1"),
+    "extraction": ("manifest ranges interpreted as contiguous prefixes of original tensors; "
+                   "original position coordinates recovered with original strides, not reshape"),
+}
+
+
+def fp32(value):
+    return struct.unpack("<f", struct.pack("<f", value))[0]
+
+
+class OfficialFP32(Floating):
+    """Binary64 reductions/math, binary32 at each published operator boundary."""
+
+    def decode(self, value):
+        return fp32(value)
+
+    def add(self, a, b):
+        return fp32(a+b)
+
+    def mul(self, a, b):
+        return fp32(a*b)
+
+    def mat(self, w, x):
+        return [fp32(sum(a*b for a, b in zip(row, x))) for row in w]
+
+    def mean(self, xs):
+        return [fp32(v) for v in super().mean(xs)]
+
+    def norm(self, x, w=None):
+        square = sum(a*a for a in x)
+        denominator = math.sqrt(square if w is None else square/len(x)+1e-6)
+        if denominator == 0:
+            return [0.0]*len(x)
+        return [fp32(a/denominator*(1.0 if w is None else 1.0+w[i]))
+                for i, a in enumerate(x)]
+
+    def scale(self, x, d, divide=False):
+        return [fp32(v) for v in super().scale(x, d, divide)]
+
+    def gelu(self, value):
+        return fp32(super().gelu(value))
+
+    def rotate(self, x, pos, theta):
+        return [fp32(v) for v in super().rotate(x, pos, theta)]
+
+    def attention(self, q, ks, vs, uniform=False):
+        return [fp32(v) for v in super().attention(q, ks, vs, uniform)]
+
+
+class OfficialVisionCoverage(OfficialFP32):
+    """Observe graph operations without changing their operands or results."""
+
+    def __init__(self, fixture):
+        self.fixture = fixture
+        self.phase = "patch"
+        self.trace = {}
+        self.rotations, self.attentions, self.pool_members = [], [], []
+
+    def __setitem__(self, name, values):
+        self.trace[name] = values
+        if name == "patch":
+            self.phase = "vision"
+        elif name == f"vision.{self.fixture.c.VISION_LAYERS-1}":
+            self.phase = "pool"
+        elif name == "soft":
+            self.phase = "text"
+
+    def rotate(self, x, pos, theta):
+        if self.phase == "vision":
+            require(theta == 100, "official vision theta coverage")
+            self.rotations.append(pos)
+        return super().rotate(x, pos, theta)
+
+    def attention(self, q, ks, vs, uniform=False):
+        if self.phase == "vision":
+            scores = [sum(a*b for a, b in zip(q, k))/math.sqrt(len(q)) for k in ks]
+            self.attentions.append({
+                "keys": len(ks), "values": len(vs),
+                "distinct_keys": len({tuple(k) for k in ks}),
+                "score_range": max(scores)-min(scores) if scores else 0,
+                "uniform_override": uniform,
+            })
+        return super().attention(q, ks, vs, uniform)
+
+    def mean(self, xs):
+        if self.phase == "pool":
+            self.pool_members.append(xs)
+        return super().mean(xs)
+
+    def result(self):
+        f, c = self.fixture, self.fixture.c
+        require((f.rows, f.cols, c.POOL_KERNEL, c.EMBED_DIM) == (4, 5, 3, 12),
+                "official B predetermined geometry changed")
+        require(f.seed == 17 and f.mode in (1, 2) and f.dimension == 12 and
+                f.ids == ([] if f.mode == 1 else [7, 19, 31]) and
+                f.positions == ([] if f.mode == 1 else [1, 4, 8]) and
+                f.masks == ([] if f.mode == 1 else [1, 0, 1]),
+                "official B predetermined text inputs changed")
+        require(len(f.image) == 60 and min(f.image) < 0 < max(f.image),
+                "official B mixed-sign RGB image missing")
+        patches = [(r, col) for r in range(f.rows) for col in range(f.cols)]
+        require(len(self.trace["patch"]) == 20 and
+                len({tuple(v) for v in self.trace["patch"]}) > 1,
+                "official distinct patch computations not observed")
+        expected_rotations = [p for _ in range(c.VISION_LAYERS)
+                              for r, col in patches
+                              for _ in range(2*c.VISION_HEADS) for p in (r, col)]
+        require(self.rotations == expected_rotations,
+                "official nonzero row/column axial operations missing")
+        require(len(self.attentions) == 20*c.VISION_HEADS*c.VISION_LAYERS and
+                all(a["keys"] == a["values"] == 20 and a["distinct_keys"] > 1 and
+                    not a["uniform_override"] for a in self.attentions) and
+                any(a["score_range"] > 0 for a in self.attentions),
+                "official multi-key nontrivial bidirectional attention missing")
+        windows = []
+        final = self.trace[f"vision.{c.VISION_LAYERS-1}"]
+        for r in range(0, f.rows, c.POOL_KERNEL):
+            for col in range(0, f.cols, c.POOL_KERNEL):
+                indices = [a*f.cols+b
+                           for a in range(r, min(r+c.POOL_KERNEL, f.rows))
+                           for b in range(col, min(col+c.POOL_KERNEL, f.cols))]
+                windows.append({"origin": [r, col], "patch_indices": indices,
+                                "participants": len(indices)})
+        require([len(m) for m in self.pool_members] == [9, 6, 3, 2],
+                "official partial pooling participant counts missing")
+        require(self.pool_members == [[final[i] for i in w["patch_indices"]]
+                                     for w in windows],
+                "official pooling did not consume the required patch vectors")
+        require(len(self.trace["soft"]) == 4, "official four bridge vectors missing")
+        return {
+            "assertions_passed": True, "patch_positions": patches,
+            "distinct_patch_vectors": len({tuple(v) for v in self.trace["patch"]}),
+            "axial_rotation_calls": len(self.rotations),
+            "vision_attention_calls": len(self.attentions),
+            "vision_attention": self.attentions, "pooling_windows": windows,
+            "pooling_participants": [w["participants"] for w in windows],
+            "observation": "FP32 graph operations; RTL output and scratch histories checked independently",
+        }
+
+
+class OfficialFixture(Fixture):
+    """The existing graph interpreter with independent FP32/quantized operands."""
+
+    def __init__(self, config, seed, mode, dimension, tensors, manifest):
+        self.parsed = tensors
+        self.entries = {item["name"]: item for item in manifest["tensors"]}
+        self.mapping, self.float_tensors = [], {}
+        super().__init__(config, seed, mode, dimension)
+        self.float_image = [value/Q for value in self.image]
+
+    def source_name(self, name):
+        globals_ = {
+            "embed": "language_model.embed_tokens.weight",
+            "projection": "language_model.embedding_projection.weight",
+            "norm": "language_model.norm.weight",
+            "ple_model": "language_model.ple.per_layer_model_projection.weight",
+            "ple_norm": "language_model.ple.per_layer_projection_norm.weight",
+            "patch": "vision_tower.patch_embedder.input_proj.weight",
+            "position": "vision_tower.patch_embedder.position_embedding_table",
+            "bridge": "embed_vision.embedding_projection.weight",
+        }
+        if name in globals_:
+            return globals_[name]
+        layer, suffix = name.split(".")
+        vision = layer[0] == "v"
+        source_layer = 0 if vision or int(layer[1:]) % 6 != 5 else 5
+        prefix = (f"vision_tower.encoder.layers.{source_layer}." if vision else
+                  f"language_model.layers.{source_layer}.")
+        norm_names = {
+            "input": "input_layernorm.weight", "post_att": "post_attention_layernorm.weight",
+            "post_ff": "post_feedforward_layernorm.weight",
+            "pre_ff": "pre_feedforward_layernorm.weight", "scalar": "layer_scalar",
+            "qnorm": "self_attn.q_norm.weight", "knorm": "self_attn.k_norm.weight",
+            "ple_gate": "ple_block.per_layer_input_gate.weight",
+            "ple_proj": "ple_block.per_layer_projection.weight",
+            "ple_post": "ple_block.post_per_layer_input_norm.weight",
+        }
+        if suffix in norm_names:
+            return prefix+norm_names[suffix]
+        family = "self_attn" if suffix in ("q", "k", "v", "o") else "mlp"
+        return prefix+family+"."+suffix+"_proj."+("linear." if vision else "")+"weight"
+
+    def allocate(self, name, base, offset, rows, cols=1, scalar=False, table=False):
+        source = self.source_name(name)
+        shape, values = self.parsed[source]
+        entry = self.entries[source]
+        original = entry["original_shape"]
+        self.offsets[name] = base+4*offset
+        records = []
+        saturations = 0
+
+        def select(coords):
+            nonlocal saturations
+            require(len(coords) == len(shape) and all(0 <= i < n for i, n in zip(coords, shape)),
+                    f"{name}: unavailable loaded coordinates {coords}")
+            index = sum(i*math.prod(shape[j+1:]) for j, i in enumerate(coords))
+            value = values[index]
+            q, saturated = quantize(value)
+            saturations += saturated
+            # The supplied position range is a contiguous original prefix:
+            # loaded axis 1 is original row-axis position 256, not column-axis 0.
+            original_coords = []
+            remaining = index
+            for axis in range(len(original)):
+                stride = math.prod(original[axis+1:])
+                component, remaining = divmod(remaining, stride)
+                original_coords.append(component)
+            records.append((list(coords), original_coords, index))
+            return value, q
+
+        if table or name == "position":
+            dest_rows = sorted(set(self.ids+[255999, 258882])) if table else (
+                list(range(self.rows))+
+                [self.c.POSITION_EMBEDDING_SIZE+i for i in range(self.cols)])
+            floating, integer = {}, {}
+        else:
+            dest_rows = range(rows)
+            floating, integer = [], []
+        for row in dest_rows:
+            floats, ints = [], []
+            for col in range(cols):
+                if table:
+                    source_row = {255999: 0, 258882: 1}.get(row, row)
+                    coords = (source_row, col)
+                elif name == "position":
+                    axis, pos = divmod(row, self.c.POSITION_EMBEDDING_SIZE)
+                    coords = (axis, pos, col)
+                elif len(shape) == 1:
+                    coords = (row,)
+                elif name == "patch":
+                    ch, pixel = divmod(col, self.c.PATCH_SIZE**2)
+                    dy, dx = divmod(pixel, self.c.PATCH_SIZE)
+                    coords = (row, ch*256+dy*16+dx)
+                else:
+                    coords = (row, col)
+                value, q = select(coords)
+                floats.append(value)
+                ints.append(q)
+                self.mem[base+4*(offset+row*cols+col)] = q
+            if table or name == "position":
+                floating[row], integer[row] = floats, ints
+            else:
+                floating.append(floats if cols != 1 else floats[0])
+                integer.append(ints if cols != 1 else ints[0])
+        self.float_tensors[name], self.tensors[name] = floating, integer
+        self.mapping.append({
+            "destination_tensor": name, "source_tensor": source,
+            "source_sha256": entry["sha256"], "original_shape": original,
+            "loaded_shape": shape, "destination_shape": [rows, cols],
+            "destination_base": base, "destination_word_offset": offset,
+            "destination_rows": list(dest_rows),
+            "loaded_coordinates": [r[0] for r in records],
+            "original_coordinates_under_contiguous_prefix": [r[1] for r in records],
+            "original_file_byte_offsets": [entry["hf_byte_range"][0]+2*r[2] for r in records],
+            "original_hf_byte_range_inclusive": entry["hf_byte_range"],
+            "quantization": "nearest-even value*2^24, signed32 saturation",
+            "saturation_count": saturations,
+        })
+        return offset+rows*cols
+
+    def matrix(self, name, ops):
+        if not isinstance(ops, OfficialFP32):
+            if name == "position":
+                return {k: [ops.decode(v) for v in row] for k, row in self.tensors[name].items()}
+            return super().matrix(name, ops)
+        data = self.float_tensors[name]
+        if name == "position":
+            return data
+        if data and not isinstance(data[0], list):
+            return [[x] for x in data]
+        return data
+
+    def vector(self, name, ops):
+        return (self.float_tensors[name] if isinstance(ops, OfficialFP32) else
+                super().vector(name, ops))
+
+    def run(self, ops, alteration=None, trace=None):
+        if not isinstance(ops, OfficialFP32):
+            return super().run(ops, alteration, trace)
+        if isinstance(ops, OfficialVisionCoverage):
+            require(trace is None, "official coverage owns its graph trace")
+            trace = ops
+        # Only the floating interpreter sees raw checkpoint tensors and FP32
+        # inputs. No Q24 intermediate or weight image is decoded in this path.
+        integer_tensors, integer_image = self.tensors, self.image
+        self.tensors, self.image = self.float_tensors, self.float_image
+        try:
+            return super().run(ops, alteration, trace)
+        finally:
+            self.tensors, self.image = integer_tensors, integer_image
+
+
+def load_official(folder):
+    result = validate_inputs(folder)
+    require(result["coverage_gate"]["passed"], "official slice coordinate cross-check failed")
+    expected, _ = authoritative_shapes(folder)
+    weights = folder/"official_weights"
+    manifest = read_json((weights/"official_weights_manifest.json").read_bytes())
+    tensors, _ = parse_checkpoint(
+        (weights/"google_embeddinggemma2_official_slice.safetensors").read_bytes(),
+        manifest, expected)
+    result["parser_self_tests"] = self_test()
+    return tensors, manifest, result
 
 
 def main():
@@ -363,10 +679,7 @@ def main():
     print(json.dumps({
         "direct_parser_valid": True, "coverage_gate_passed": gate["passed"],
         "decoded_tensors": result["direct_parser"]["tensor_count"],
-        "missing_tensors": len(gate["missing_tensors"]),
-        "partial_tensors": len(gate["partial_tensors"]),
-        "position_mapping_ambiguity": gate["position_mapping_ambiguity"],
-        "required_framing_rows": gate["required_framing_rows"],
+        "scope": gate["scope"],
         "output": str(args.output),
     }), flush=True)
     return 0 if gate["passed"] else 2

@@ -1,0 +1,5 @@
+I 0000000070000000
+C 3 9 9 0 7 0 0 32
+T 4 -1 -1 105
+TRANSCRIPT_COMPLETE
+/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/verification/functional/1792082720920298364-239674/memory-error-write.sv:176: $finish called at 1066 (1s)

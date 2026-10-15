@@ -1,0 +1,6 @@
+N 0 008000000000
+N 1 008000000000
+N 2 008000000000
+N 3 008000000000
+NORM_COMPLETE 4 19
+/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/verification/functional/1792082720920298364-239674/guarded-norm-31.sv:62: $finish called at 615 (1s)

@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 
 Q = 1 << 24
 EPSILON_Q24 = round(1e-6 * Q)
+LEGACY_RMS_EPSILON_Q80 = 17 << 56
 ONE = 1 << 40
 LN2 = 762123384786
 PI = 3454217652358
@@ -21,6 +22,9 @@ def rnd(n, d):
     sign = -1 if (n < 0) != (d < 0) else 1
     q, r = divmod(abs(n), abs(d))
     return sign * (q + (2*r > abs(d) or (2*r == abs(d) and q % 2)))
+
+
+OFFICIAL_RMS_EPSILON_Q80 = rnd(1 << 80, 1000000)
 
 
 def sat(x):
@@ -88,6 +92,7 @@ class Config:
     FULL_HEAD_DIM: int = 4
     SLIDING_WINDOW: int = 1
     MAX_SEQ_LEN: int = 262144
+    RMS_EPSILON_Q80: int = LEGACY_RMS_EPSILON_Q80
 
 
 CONFIGS = {
@@ -106,6 +111,10 @@ CONFIGS = {
 
 class Integer:
     zero = 0
+
+    def __init__(self, rms_epsilon_q80=LEGACY_RMS_EPSILON_Q80):
+        assert isinstance(rms_epsilon_q80, int) and 0 <= rms_epsilon_q80 < 1 << 128
+        self.rms_epsilon_q80 = rms_epsilon_q80
 
     def decode(self, x):
         return x << 16
@@ -133,7 +142,7 @@ class Integer:
     def norm(self, x, w=None):
         square = sum(a*a for a in x)
         if w is not None:
-            square = rnd(square, len(x)) + (EPSILON_Q24 << 56)
+            square = rnd(square, len(x)) + self.rms_epsilon_q80
         root = math.isqrt(square << 64)
         if not root:
             return [0]*len(x)

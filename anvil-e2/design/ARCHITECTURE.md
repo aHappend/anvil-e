@@ -15,6 +15,15 @@ comparison contract below supersedes the former no-weights assumption.
 No pretrained accuracy, native BF16 arithmetic equivalence, timing, area or
 physical-signoff claim follows from the presence of these files.
 
+The independently admitted Phase 2 amendment makes only the RMS denominator
+addition selectable at elaboration. Its implementation below is not evidence
+that the amended official comparisons pass. Historical repair notes and their
+receipts describe earlier sources and budgets; current execution uses 86400
+seconds per check, a 1048576-byte external output limit and child watchdogs of
+at least 3600 seconds bounded by the remaining shared deadline. Historical
+110-/120-second limits and pending epsilon-admission language are superseded
+by this current contract, not reapplied to the amended design.
+
 ## Ownership and interfaces frozen before implementation
 
 The top is `anvil_e2_top`, with the following architectural defaults:
@@ -28,8 +37,9 @@ The top is `anvil_e2_top`, with the following architectural defaults:
 | VOCAB_SIZE, POSITION_EMBEDDING_SIZE | 262144, 10240 |
 | TEXT_Q_HEADS, LOCAL_KV_HEADS, FULL_KV_HEADS | 4, 2, 1 |
 | LOCAL_HEAD_DIM, FULL_HEAD_DIM, SLIDING_WINDOW, MAX_SEQ_LEN | 256, 512, 512, 262144 |
+| RMS_EPSILON_Q80 | Unsigned 128-bit `(128'd17 << 56)`; official configurations override with `128'd1208925819614629175` |
 
-All parameters are positive. Layer counts, hidden/PLE/FFN/vector extents are
+All geometry parameters are positive. Layer counts, hidden/PLE/FFN/vector extents are
 bounded by 65535; the text Q-head times either head dimension must also fit.
 VISION_HIDDEN equals VISION_HEADS*VISION_HEAD_DIM, with vision head dimension
 divisible by four. Both text head dimensions are even, and each positive KV
@@ -93,6 +103,24 @@ are connected arithmetic operators, not disconnected demonstration blocks.
 Norm, attention and nonlinear each instantiate one `anvil_e2_divide` helper,
 reusing it across their guarded divisions without changing any stage memory
 interface.
+`RMS_EPSILON_Q80` is declared `parameter logic [127:0]` (unsigned) in the top,
+vision encoder, text frontend/PLE, hybrid layer, pool/norm and norm modules.
+The top passes one identical value into the vision wrapper and all three text
+stages. Each wrapper passes it into its shared hybrid engine, and every hybrid
+engine passes it to its norm helper. This covers vision and text per-head
+norms, layer norms, cached PLE and final language norm. Final L2 uses the same
+helper but never adds this parameter. Patch embedding, bridge and fusion have
+no RMS operator and need no epsilon parameter.
+
+The default implements legacy epsilon `17/2^24` without changing its integer
+value or synthetic floating definition. Official configurations must select
+`128'd1208925819614629175 = RN(2^80,1000000)` before compilation/execution,
+representing configured epsilon `1e-6` directly in Q80. Selection never depends
+on job mode, weights, measured errors or outputs. No descriptor field, public
+pin or memory word selects epsilon. This admitted override replaces only
+the RMS addition; L2 remains epsilon-free and every other arithmetic, state,
+clock-gating, materialization and memory boundary below remains unchanged.
+
 Seven `anvil_e2_clock_gate` instances isolate inactive stage clocks. The top
 controller and single-outstanding bridge retain the ungated input clock.
 Only the selected stage in START/WAIT requests clock enable; during WAIT it
@@ -173,7 +201,8 @@ validation, stage handoff or memory bridge phases.
 | Q40/Q24 signed ties | Nearest-even on both sides of zero, including negative half ties |
 | Q40 saturation endpoints | Clamp at (-2147483648)<<16 and 2147483647<<16, not the entire signed-48 range |
 | Exact promotion and scratch round trip | q promotes as q<<16; materialize(promote(q))=q; no guard sidecars |
-| RMS epsilon | Add 17<<56 to Q80 mean squares, preserving epsilon 17/2^24 |
+| RMS epsilon | Add unsigned RMS_EPSILON_Q80 to Q80 mean squares; default 17<<56, official RN(2^80,1000000)=1208925819614629175 |
+| Epsilon propagation / L2 independence | One fixed elaboration value reaches every norm through all shared engines; L2 results never depend on it |
 | Zero L2 denominator | Exact zero for every selected component |
 | Maximum guarded reductions | Explicit products and 128-bit accumulators, no implicit narrow shifts |
 | Prefix one / final norm output | Materialize the current normalized beat, not a stale buffer element |
@@ -242,7 +271,7 @@ Only the subsequent materialization table discards the sixteen guard bits.
 | layer_scalar | Provisioned signed-32 scalar promotes exactly, same guarded MAC | C(RN(a*w,W)) |
 | PLE scaling | Signed 128-bit numerator a<<40; positive Q40 floor sqrt(H<<80) divisor | C(RN(a*G,root_H)) |
 | Fusion embedding scaling | Unchanged signed Q24 input times Q40 root_H in 96 bits | Signed-32 saturation of RN(product,G), directly Q24 at X0 write |
-| RMS square reduction | Explicit signed 48x48 -> nonnegative 96-bit square; zero-extend into 128-bit sum | D=RN(sum,count)+(17<<56), unsigned 128-bit Q80 |
+| RMS square reduction | Explicit signed 48x48 -> nonnegative 96-bit square; zero-extend into 128-bit sum | D=RN(sum,count)+RMS_EPSILON_Q80, unsigned 128-bit Q80; default (17<<56), official 1208925819614629175 |
 | L2 square reduction | Same exact square/sum, selected prefix only | D=sum, no epsilon |
 | RMS/L2 root | 192-bit D<<64; 98-bit restoring remainder/trial, 96-bit root; 96 radix-4 digit steps, with leading-zero steps omitted and eight remaining steps per clock | R=floor(sqrt(D<<64)), no rounding |
 | Norm ratio | Signed 128-bit a<<72, magnitude/division/remainder and ratio t | t=RN(a<<72,R), no premature saturation |
@@ -1708,12 +1737,12 @@ implementation does not invent or fetch clipping operands.
 
 ## Phase 2 official weight integration and software-versus-RTL comparison
 
-### Inputs, provenance and available-coordinate gate
+### Inputs, provenance and authorized bounded-slice scope
 
 Required inputs, relative to `hf_embeddinggemma2_vision_spec/official_weights/`,
 are `google_embeddinggemma2_official_slice.safetensors`,
 `official_weights_manifest.json` and
-`official_hardware_slices_fp32_q824.json`. The latter is an optional numerical
+`official_hardware_slices_fp32_q824.json`. The latter is a required numerical
 cross-check of represented coordinates, never the source of weights for either
 forward pass or a source of missing coordinates. The supplied manifest names
 `google/embeddinggemma-2` and its `resolve/main/model.safetensors` URL, describes
@@ -1723,14 +1752,18 @@ This is a manifest assertion, not a Designer-computed digest or binary validatio
 Matching it establishes consistency with supplied provenance, not independent
 remote authentication or a pinned upstream revision.
 
-The following coverage findings come from manifest inspection only. Verifier
-must confirm the binary header, payload and exact original coordinates before
-any official numerical execution:
+The authoritative bounded-slice authorization supersedes the former
+full-checkpoint missing-coordinate gate. The mounted 55 tensors are the
+official operands for explicitly remapped scaled-subnetwork execution; absent
+native layers, framing rows and full-width projections are not prerequisites
+for this authorized benchmark. Direct binary validation and exact disclosure
+of consumed coordinates remain required. The following manifest coverage
+limits constrain claims, not admission of the bounded slice:
 
-| Source family | Declared available coverage | Mandatory coverage not established |
+| Source family | Declared available coverage | Native-model coverage not established |
 |---|---|---|
 | language_model.embed_tokens.weight | [256,512] of [262144,512] | BOI row255999 and EOI row258882; ordinary IDs must also be represented |
-| language_model.layers | Layers0 and5 only; many projection outputs limited to64 rows | Layers1..4,6..23 and complete projections; layer5 cannot stand in for another index |
+| language_model.layers | Layers0 and5 only; many projection outputs limited to64 rows | Layers1..4,6..23 and complete projections; reuse is a destination remapping, not native layer identity |
 | language_model.ple.per_layer_model_projection.weight | [256,512] of [12288,512] | Complete layer0 PLE and original layer-specific slices for all later layers |
 | language_model.norm / embedding_projection / PLE projection norm | [512], [768,512], [512] respectively | Complete tensors do not repair absent upstream stages |
 | vision_tower.patch_embedder.input_proj.weight | [64,768] of [768,768] | Output channels64..767 for the default patch projection |
@@ -1742,19 +1775,22 @@ In particular the position-table declared inclusive range
 1457458008..1458244439 has 786432 bytes, matching the loaded element count.
 One original axis occupies 10240*768*2=15728640 bytes, whereas one loaded
 axis occupies 256*768*2=393216 bytes. Consequently a contiguous prefix
-cannot also be the leading256 positions of each original axis. Verifier must
-resolve this against authoritative extraction metadata and original tensor
-offsets; no assumption that loaded axis1 is the original column axis is allowed.
-Header validity and a matching digest alone do not resolve this mapping.
+cannot also be the leading256 positions of each original axis. Under the
+declared contiguous-prefix interpretation, loaded `[1,p,c]` maps to original
+`[0,256+p,c]`, not `[1,p,c]`. The bounded evaluation explicitly repurposes those
+available rows as destination column positions. Neither reshaping, header
+validity nor a matching digest proves native column-axis extraction.
 
-Missing official coordinates block the affected benchmark and overall Phase 2
-acceptance. Do not alias framing IDs to ordinary rows, fabricate embeddings,
-repeat layer0, relabel layer5, zero-fill missing numerical reads, bypass fusion
-or omit required stages. IMAGE row258880 is not required as a numerical
-embedding lookup: image vectors come from the bridge. This does not remove
-the BOI/EOI requirement. Scaled available-tensor diagnostics are explicitly
-partial, not substitutes for the required multimodal result. Additional data
-must arrive through an authorized input handoff; this design does not fetch it.
+Public BOI255999 and EOI258882 use supplied embedding rows0 and1 respectively
+only under this explicit slice remapping; they are not the native special-token
+embeddings. Vision iterations reuse official layer0. Text destination layers
+whose index modulo6 is5 use official layer5; other iterations use layer0.
+These selections do not establish coverage of unmounted native layers.
+IMAGE slots still use computed bridge vectors, never an embedding-table
+substitution. No fabricated weights, implicit zero numerical reads, fusion
+bypass or omitted operators are authorized. The result is an official-weight
+scaled subnetwork, not native full-model inference or executable HuggingFace
+equivalence. `OFFICIAL_WEIGHTS_EVALUATION.md` records the same scope and limits.
 
 ### Direct parsing and exact destination mapping
 
@@ -1766,8 +1802,10 @@ permitted nonoverlapping interval layout, manifest agreement, per-tensor
 digests and finite decoded values. Safetensors `data_offsets` are half-open
 offsets relative to the extracted payload at byte8+header_length.
 Manifest `hf_byte_range` values are inclusive original-file byte coordinates,
-not offsets into the extracted file. Original tensor offsets and row/axis
-strides must reconcile every extraction; unresolved coordinates fail explicitly.
+not offsets into the extracted file. Loaded coordinates, original row/axis
+strides and the declared contiguous-prefix interpretation must be reconciled
+and recorded; an unaccounted consumed coordinate fails explicitly. The
+authorized remappings do not authenticate an upstream extraction operation.
 Decode each little-endian BF16 word by placing its16 bits in the high half of
 an IEEE754 binary32 word, using `struct` rather than decimal reconstruction.
 
@@ -1783,23 +1821,23 @@ Do not flatten an original tensor and reinterpret its leading words with a
 new column stride. Hardware storage is four-byte signed Q24; original BF16
 storage is two-byte, and these offsets must not be interchanged.
 
-| Destination | Required original-coordinate selection |
+| Destination | Authorized bounded-slice selection and limitation |
 |---|---|
-| Text globals, IDs0..4 above | Preserve token IDs and output-row identity; PLE row is original_layer*512+original_PLE_channel, not destination_layer*scaled_E |
-| Text layer tensors, IDs5..21 | Preserve original layer index and each selected input/output channel; source head rows use original_head*original_head_dim+component |
-| Text attention O projection | Select input columns with the same genuine per-query-head coordinates used by Q and attention; grouped K/V selection must agree |
+| Text globals, IDs0..4 above | Ordinary token rows7,19,31; BOI/EOI use rows0/1; leading hidden channels and actual final-projection rows. PLE selects available row destination_layer*scaled_E+channel, not native layer*512+channel |
+| Text layer tensors, IDs5..21 | Source layer0 for local iterations, layer5 for full iterations; leading available channels packed into scaled heads, not distinct native heads |
+| Text attention O projection | Leading available input columns match packed destination Q/attention components; grouped K/V follows destination geometry, not native head identity |
 | Patch input projection | Select output channels and original RGB patch columns c*16*16+dy*16+dx; a smaller patch's CHW flattening is not an original flattened prefix across all channels |
-| Factorized positions | Source coordinate (axis,position,channel) uses original strides10240*768 and768; destination uses POSITION_EMBEDDING_SIZE and V |
-| Vision encoder | Preserve original layer/head/channel identities, including matching O input columns and Q/K norm components |
+| Factorized positions | Loaded row axis uses [0,p,c]; loaded column axis [1,p,c] maps to original [0,256+p,c] under contiguous-prefix interpretation; destination axes use POSITION_EMBEDDING_SIZE and V |
+| Vision encoder | Reuse source layer0; leading projection channels packed into scaled heads with matching O columns and Q/K norm components, not separate native heads |
 | Bridge | Select original language output rows and original vision input columns consistently with both adjacent stages |
 
-These are mapping rules, not a claim that the supplied slice satisfies them.
+These remappings are authorized only for the bounded-slice evaluation.
 For every consumed tensor the generated mapping must publish its source name,
 original/loaded/destination shapes, original layer/head/row/column coordinates
 (or explicit index lists), extracted payload interval, original byte ranges,
 destination base/word offset, quantization rule and source digest. Preserve
-genuine rotary pairing and per-head identity; contiguous reduced rows are not
-automatically multiple genuine heads. Repacking changes destination strides,
+destination rotary pairing and head grouping; contiguous reduced rows are not
+multiple genuine checkpoint heads. Repacking changes destination strides,
 not source coordinates. Sparse host images are allowed, but an unprovisioned
 numerical read is an asserted failure, never an implicit zero.
 
@@ -1818,8 +1856,10 @@ FP32-boundary/binary64-reduction convention in the artifact rather than
 claiming native framework executable equivalence. Checkpoint values and
 floating intermediates are never snapped to Q24 scratch boundaries.
 Use the supplied configured RMS epsilon1e-6 and the retained1+weight norm
-convention, explicitly recording both; hardware retains its accepted
-17/2^24 epsilon and Q40 integer approximations. Do not tune either epsilon or
+convention, explicitly recording both; official hardware selects
+`RMS_EPSILON_Q80=128'd1208925819614629175` and retains Q40 integer
+approximations. Legacy synthetic configurations retain the default
+`128'd17 << 56` and their existing floating definition. Do not tune epsilon or
 operator semantics to improve measured agreement. Existing synthetic floating
 regression definitions remain unchanged.
 
@@ -1835,6 +1875,66 @@ pooling and softmax. Default output dimensions768/512/256/128 require
 normalization after truncation; any scaled-subnetwork cases are additional
 and labeled, not full-checkpoint inference.
 
+### Required official fixture matrix and multi-patch addition
+
+Retain the existing 27 seed17 official cases: A modes0/1/2 at output dimensions
+6/4/2/1, C modes0/1/2 at dimension12, and D modes0/1/2 at
+768/512/256/128. Their existing inputs and parameter selections remain fixed.
+Add exactly two predetermined B/seed17 cases, vision-only mode1 and joint
+mode2, both at EMBED_DIM=12 and output dimension12, using existing B inputs
+and geometry unchanged. Complete official-matrix acceptance requires all29
+cases; synthetic B coverage is not a substitute for these official cases.
+
+B retains VISION_HIDDEN=8, two vision heads of dimension4, VISION_FFN=7,
+one vision layer, PATCH_SIZE=1, POOL_KERNEL=3, four soft tokens, six text
+layers, TEXT_HIDDEN=3, PLE_DIM=3, TEXT_FFN=5, four query heads,
+local2/full1 KV heads, local/full head dimensions2/4 and sliding window2.
+Its 4x5 grid contains20 image patches at rows0..3 and columns0..4.
+Vision attention is bidirectional and unmasked across all20 keys per query,
+including distinct nonzero row/column positions and axial rotations.
+
+| Row-major pooling window origin | Participating rows | Participating columns | Actual count |
+|---|---|---|---|
+| (0,0) | 0..2 | 0..2 | 9 |
+| (0,3) | 0..2 | 3..4 | 6 |
+| (3,0) | 3 | 0..2 | 3 |
+| (3,3) | 3 | 3..4 | 2 |
+
+Use the existing seed17 mixed-sign CHW image without reselection. Vision-only
+has no supplied text; joint retains IDs7/19/31, positions1/4/8 and masks1/0/1.
+The four bridge outputs are framed by BOI/EOI; joint appended positions become
+7/10/14 under the unchanged six-slot frame shift. Require assertions that
+distinct patch positions, multi-key attention and multi-participant/partial
+pooling actually execute. Preserve directly parsed BF16 software operands,
+independent FP32/integer graph models, exact RTL output and scratch
+write/address agreement, and every existing numerical threshold. Record
+geometry, participant counts, remapped coordinates, fixed input hashes,
+metrics, transcript links and all three measured cycle/10ns latency intervals.
+These two additions are implemented in the verification matrix, but passing
+execution remains outstanding. The retained Verifier preparation receipt
+`evidence/preparation/phase2-official-multipatch-20261015-005/receipt.json`
+records exact B vision-only RTL/integer agreement but cosine0.9913286747181946
+and maximum component error0.06919039785861969, violating the unchanged
+0.999/0.002 limits. Joint RTL was not reached after that failure.
+
+The localization successor at
+`evidence/preparation/phase2-official-localization-20261015-007/receipt.json`
+compares matched-input norms and identifies the former hardware17/2^24 versus
+official-software1e-6 epsilon difference. The former RTL's fixed
+`128'd17 << 56` Q80 addition correctly implemented the legacy ledger, not a
+demonstrated departure from it. `OFFICIAL_WEIGHTS_EVALUATION.md` records the
+exact local observation, diagnostic-only counterfactual, measured cycles and
+receipt chain. Independent admission now authorizes the selectable RMS
+addition documented above: unchanged legacy default and predetermined official
+Q80 value. The RTL implements this narrow amendment, including propagation
+through all wrapper-internal hybrid engines. Neither admission, localization
+nor source inspection proves that epsilon selection alone meets end-to-end
+thresholds. Preserve the failed 005/006/007 receipts, fixed fixtures, software
+epsilon and numerical limits; link fresh repair execution to those records.
+Verifier must independently implement parameter-aware integer expectations
+and compile conversion, assert both exact epsilon values and full propagation,
+and prove unchanged L2 behavior before completing all current checks.
+
 ### Comparison, timing and artifact contract
 
 Verifier implements `python3 tests/verify.py --check functional`; `--check
@@ -1842,9 +1942,14 @@ behavior` remains an alias for that same complete existing matrix plus the
 official benchmark. The other entries remain `--check sensitivity` and
 `--check synthesis`; no arguments runs all three. These are Phase 2 required
 entry points, not a statement that the current verification implementation
-already provides them. Keep the declared120-second per-check execution budget
-and1048576-byte output limit; the inspected runner's86400-second default is a
-Verifier-owned discrepancy, not authorization to change check acceptance.
+already provides them. The current work-order execution configuration sets
+86400 seconds per check and a1048576-byte output limit. Earlier120-second
+check budgets and110-second aggregate watchdogs described in the historical
+repair notes above do not constrain current execution. Child execution and
+cleanup remain bounded by the common check deadline; a timeout is a failure,
+not a numerical threshold or a reason to omit mandatory cases. Child watchdogs
+are at least3600 seconds, bounded by remaining shared time; all child work
+and cleanup consume the same deadline.
 
 Compile actual `anvil_e2_top` from `rtl/*.sv` with `iverilog -g2012 -Wall`
 and run `vvp` through public pins only. For each required mode0/1/2 and
@@ -1865,23 +1970,34 @@ retain the single-outstanding request/response and held-payload policy.
 No cycle counts, similarity, throughput or numerical pass is inferred from
 source inspection.
 
-Only a completed current execution may produce
-`evidence/verification/functional/official_weights_comparison.json`.
+Retain new results beside the fresh execution's receipt as
+`official_weights_comparison.json`; do not overwrite existing fixed-path
+evidence. The requested fixed-path comparison artifacts remain historical
+when occupied and cannot stand in for the new execution-local29-case result.
 Its required contents are source/input hashes; file/manifest/tensor digests;
 direct-parser and coordinate-validation outcomes; exact mappings; software
-precision semantics; every parameter override and fixed fixture hash; per-case
+precision semantics; every parameter override including RMS_EPSILON_Q80 and
+fixed fixture hash; per-case
 mode/output dimension, exact mismatch counts, floating metrics, thresholds
 and assertion outcomes; simulator transcript/receipt links; request/response
 and backpressure policy; and all three measured cycle/latency intervals.
 Missing mandatory cases are failures, not skipped success rows. Retain failed
 executions separately; do not populate success-shaped numerical defaults or
-invent a completed comparison artifact when the coordinate gate fails.
+invent a completed comparison artifact when parsing, mapping or execution fails.
+The fresh receipt and Verifier handoff must explicitly identify the fresh
+execution-local comparison path; canonical-path association belongs to the
+shared runtime.
 
-Designer preserves the current RTL: inspection identifies no official-weight
-interface change that can repair missing source data. This documentation
-introduces no new port, scratch region, precision sidecar or bypass.
+Designer changes only the six RTL modules carrying the RMS parameter and these
+two design documents. The sole arithmetic change is the selectable RMS
+denominator addition; there is no new port, scratch region, precision sidecar
+or bypass. At most one fast static elaboration is performed before immediate
+handoff to Verifier, with no Designer simulation, oracle or synthesis probe.
 Binary provenance validation, model execution, threshold measurements,
 regressions, sensitivity and synthesis remain independent Verifier work.
+All 29 fixed official rows and fresh functional, sensitivity and synthesis
+checks are required on the amended sources; historical passes certify none
+of these amended-source outcomes.
 The shared runtime creates and independently reviews the configured product
 report only after engineering acceptance; that final report is not a check
 input or prerequisite.

@@ -1,0 +1,4 @@
+C 5 0 0 0 0 0 0 26
+T 4 -1 -1 32
+TRANSCRIPT_COMPLETE
+/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/verification/functional/1792082720920298364-239674/weight-overflow.sv:176: $finish called at 336 (1s)

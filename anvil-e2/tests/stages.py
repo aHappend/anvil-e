@@ -4,7 +4,8 @@ import math
 import random
 
 from model import (Q, ONE, Integer, materialize, clamp40, rnd,
-                   WEIGHTS, VISION, IMAGE, IDS, POSITIONS, MASKS, SCRATCH)
+                   WEIGHTS, VISION, IMAGE, IDS, POSITIONS, MASKS, SCRATCH,
+                   CONFIGS, LEGACY_RMS_EPSILON_Q80, OFFICIAL_RMS_EPSILON_Q80)
 
 
 def execute_stage(run, name, module, parameters, descriptors, memory, expected,
@@ -292,10 +293,44 @@ def guard_boundaries(run):
     run.save()
 
 
-def guarded_norm(run, diagnostic=False):
+def rms_epsilon(run):
+    """Exact rational conversion and observed epsilon-independent L2 results."""
+    from verify import parameter_value, parameter_args, parameter_items
+    quotient, remainder = divmod(1 << 80, 1000000)
+    expected = quotient + int(2*remainder > 1000000 or
+                              (2*remainder == 1000000 and quotient % 2))
+    assert expected == OFFICIAL_RMS_EPSILON_Q80 == 1208925819614629175
+    assert LEGACY_RMS_EPSILON_Q80 == 1224979098644774912 == 17 << 56
+    assert all(c.RMS_EPSILON_Q80 == LEGACY_RMS_EPSILON_Q80 for c in CONFIGS.values())
+    assert parameter_value("RMS_EPSILON_Q80", expected) == "128'd1208925819614629175"
+    official_config = dataclasses.replace(CONFIGS["A"], RMS_EPSILON_Q80=expected)
+    assert all(k != "RMS_EPSILON_Q80" for k, _ in parameter_items(CONFIGS["A"]))
+    assert "-Panvil_e2_top.RMS_EPSILON_Q80=128'd1208925819614629175" in parameter_args(
+        official_config)
+    legacy = guarded_norm(run)
+    official = guarded_norm(run, epsilon=expected)
+    l2_pairs = [(a, b) for a, b in zip(legacy, official) if a["l2"]]
+    assert l2_pairs and all(a["actual_q40"] == b["actual_q40"] for a, b in l2_pairs)
+    assert any(a["actual_q40"] != b["actual_q40"]
+               for a, b in zip(legacy, official) if not a["l2"]), "inert RMS parameter"
+    run.receipt["assertions"].append({
+        "rms_epsilon_conversion": {"numerator": 1 << 80, "denominator": 1000000,
+                                   "quotient": quotient, "remainder": remainder,
+                                   "nearest_even": expected},
+        "legacy_default_q80": LEGACY_RMS_EPSILON_Q80,
+        "official_override_q80": expected,
+        "l2_vectors_identical_across_parameters": len(l2_pairs),
+        "rms_parameter_observably_changes_results": True,
+    })
+    run.save()
+
+
+def guarded_norm(run, diagnostic=False, epsilon=None):
     """Public streaming RMS/L2 with independent guarded expected operands."""
-    from verify import rtl_files
-    ops = Integer()
+    from verify import rtl_files, parameter_value
+    selected = LEGACY_RMS_EPSILON_Q80 if epsilon is None else epsilon
+    ops = Integer(selected)
+    results = []
     cases = [
         ([ops.decode(Q//3), ops.decode(-Q//2), ops.decode(Q//7), ops.decode(-Q//11)],
          [ops.decode(Q//17), ops.decode(-Q//19), 0, ops.decode(Q//23)], False),
@@ -321,7 +356,7 @@ def guarded_norm(run, diagnostic=False):
         expected = ops.norm(values, None if l2 else weights)
         count = len(values)
         square_sum = sum(v*v for v in values)
-        denominator_square = square_sum if l2 else rnd(square_sum, count)+(17 << 56)
+        denominator_square = square_sum if l2 else rnd(square_sum, count)+selected
         root_groups = ((denominator_square.bit_length()+64+15)//16
                        if denominator_square else 0)
         loads = "\n".join(
@@ -330,7 +365,7 @@ def guarded_norm(run, diagnostic=False):
             f"expected[{i}]=48'h{e & ((1 << 48)-1):012x};"
             for i, (v, w, e) in enumerate(zip(values, weights, expected)))
         text = f"""
-module tb;
+module tb #(parameter logic [127:0] RMS_EPSILON_Q80 = (128'd17 << 56));
 reg clk=0,rst_n=0,start_valid=0,in_valid=0,out_ready=0;
 always #5 clk=~clk;
 wire start_ready,in_ready,out_valid,out_last,out_error;
@@ -343,7 +378,7 @@ reg signed [31:0] weights[0:3];
 integer cycles=0,loaded=0,beats=0,stalls=0,output_wait=0;
 reg started=0,held=0;
 reg [81:0] payload;
-anvil_e2_norm #(.MAX_WIDTH(4)) dut(
+anvil_e2_norm #(.MAX_WIDTH(4){",.RMS_EPSILON_Q80(RMS_EPSILON_Q80)" if epsilon is not None else ""}) dut(
  .clk(clk),.rst_n(rst_n),.start_valid(start_valid),.start_ready(start_ready),
  .start_count(32'd{count}),.start_l2(1'b{int(l2)}),.in_valid(in_valid),.in_ready(in_ready),
  .in_data(in_data),.in_weight(in_weight),.out_valid(out_valid),.out_ready(out_ready),
@@ -403,20 +438,26 @@ always @(posedge clk) begin
 end
 endmodule
 """)
-        name = f"guarded-norm-{case}"
+        name = f"guarded-norm-{case}" if epsilon is None else f"guarded-norm-e{epsilon}-{case}"
         tb, executable = run.directory/(name+".sv"), run.directory/(name+".vvp")
         tb.write_text(text)
-        run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable,
+        overrides = ([] if epsilon is None else
+                     [f"-Ptb.RMS_EPSILON_Q80={parameter_value('RMS_EPSILON_Q80', epsilon)}"])
+        run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable, *overrides,
                      *rtl_files(), tb], name+"-compile", timeout=5)
         out, _, _ = run.command(["vvp", executable], name+"-simulate", timeout=5)
         assert out.count("NORM_COMPLETE ") == 1
         actual = [int(line.split()[2], 16) for line in out.splitlines() if line.startswith("N ")]
         assert actual == [v & ((1 << 48)-1) for v in expected]
-        run.receipt["coverage"].append({
+        result = {
             "case": name, "input_q40": values, "weights_q24": [w >> 16 for w in weights],
             "expected_q40": expected, "compared_components": count, "l2": l2,
             "denominator_square": denominator_square, "root_groups": root_groups,
-        })
+            "rms_epsilon_q80": selected, "actual_q40": actual,
+            "selection": "RTL default (no override)" if epsilon is None else "explicit unsigned128",
+        }
+        run.receipt["coverage"].append(result)
+        results.append(result)
         covered_groups.add(root_groups)
         run.save()
     assert covered_groups == {0, 5, 6, 7, 8, 9, 10, 11}, "norm root group coverage"
@@ -426,6 +467,7 @@ endmodule
         "root_group_12": "unreachable: legal 65535-term Q40 square sums have at most 110 bits",
     })
     run.save()
+    return results
 
 
 def guarded_nonlinear(run):

@@ -1,7 +1,8 @@
 module anvil_e2_vision_encoder_layer #(
     parameter integer VISION_LAYERS=16, VISION_HIDDEN=768, VISION_FFN=3072,
     VISION_HEADS=12, VISION_HEAD_DIM=64, PATCH_SIZE=16,
-    POSITION_EMBEDDING_SIZE=10240
+    POSITION_EMBEDDING_SIZE=10240,
+    parameter logic [127:0] RMS_EPSILON_Q80 = (128'd17 << 56)
 ) (
     input wire clk, rst_n, start_valid,
     output wire start_ready,
@@ -27,7 +28,8 @@ module anvil_e2_vision_encoder_layer #(
         .LOCAL_KV_HEADS(VISION_HEADS), .FULL_KV_HEADS(VISION_HEADS),
         .LOCAL_HEAD_DIM(VISION_HEAD_DIM), .FULL_HEAD_DIM(VISION_HEAD_DIM),
         .STAGE(1), .VISION(1), .PATCH_SIZE(PATCH_SIZE),
-        .POSITION_EMBEDDING_SIZE(POSITION_EMBEDDING_SIZE)
+        .POSITION_EMBEDDING_SIZE(POSITION_EMBEDDING_SIZE),
+        .RMS_EPSILON_Q80(RMS_EPSILON_Q80)
     ) engine (
         .clk(clk), .rst_n(rst_n), .start_valid(start_valid), .start_ready(start_ready),
         .tokens(tokens), .valid_tokens(tokens), .output_dim(16'd6),

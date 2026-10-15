@@ -1,0 +1,3 @@
+RESET_OBSERVED response
+RESET_COMPLETE
+/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/verification/functional/1792080927168812449-166504/reset-response.sv:83: $finish called at 142 (1s)
