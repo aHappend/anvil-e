@@ -1,10 +1,38 @@
 {
-  "status_label": "In Progress — Phase 2 Official Weights & Software-vs-RTL Verification",
+  "status_label": "Settled — Phase 2 Official Weights Package Published",
   "chip": "Anvil-E2",
   "phase": "Phase 2 — Official Weights & Software-vs-RTL Comparison",
   "vulcan_version": "0.8.0",
+  "status": "settled",
+  "native_disposition": {
+    "workflow_phase": "blocked",
+    "feedback": "[{\"cause\": \"environment\", \"detail\": \"Executable unavailable: pdffonts\"}, {\"cause\": \"environment\", \"detail\": \"Executable unavailable: pdfinfo\"}, {\"cause\": \"environment\", \"detail\": \"Executable unavailable: pdftoppm\"}, {\"cause\": \"environment\", \"detail\": \"Executable unavailable: pdftotext\"}, {\"cause\": \"environment\", \"detail\": \"Executable unavailable: xelatex\"}]",
+    "run_status": "ready",
+    "closeout_status": null,
+    "driver_steps": [
+      {
+        "operation": "run",
+        "exit_code": 2
+      }
+    ],
+    "driver_steps_ok": false,
+    "state_error": null,
+    "repairs_used": 0,
+    "designer_attempts": 0,
+    "model_call_count": 2,
+    "all_process_scopes_settled": false,
+    "reviewer_decisions": [],
+    "native_engineering_accepted": false,
+    "candidate_present": false,
+    "candidate_invalid_reason": null,
+    "final_candidate": null,
+    "initial_unrepaired_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "scientific_acceptance": false
+  },
   "started_utc": "2026-10-15T15:12:16.029910+00:00",
+  "finished_utc": "2026-10-15T15:15:49.728503+00:00",
   "started_cst": "2026-10-15 23:12:16 UTC+8",
-  "status": "running",
-  "reason": "Execute Roadmap Phase 2 for Anvil-E2: integrate real official HuggingFace google/embeddinggemma-2 multimodal (vision_tower + embed_vision + language_model) weights from model.safetensors and conduct end-to-end Software-Layer (FP32/BF16) vs Hardware-RTL (SystemVerilog Q8.24) evaluation across vision-only, text-only, and joint vision+text modes."
+  "finished_cst": "2026-10-15 23:15:49 UTC+8",
+  "elapsed_seconds": 211.72491029799858
 }
