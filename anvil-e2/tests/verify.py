@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import resource
 from pathlib import Path
 import shutil
 import subprocess
@@ -42,11 +43,13 @@ def sources():
 
 
 class Run:
-    def __init__(self, directory, budget=86400, repair_of=None, *, deadline=None):
+    def __init__(self, directory, budget=110, repair_of=None, *, deadline=None):
+        began = time.monotonic()
+        assert 0 < budget <= 110, "runner budget must be bounded by 110 seconds"
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=False)
         self.start = time.time()
-        self.deadline = time.monotonic()+budget if deadline is None else deadline
+        self.deadline = min(began+budget, deadline) if deadline is not None else began+budget
         self.receipt = {
             "cwd": str(ROOT), "started_at": self.start, "timeout_s": budget,
             "source_sha256": sources(), "repair_of": repair_of,
@@ -62,31 +65,65 @@ class Run:
         # never reopened by another invocation.
         (self.directory/"receipt.json").write_text(json.dumps(self.receipt, indent=2))
 
-    def command(self, argv, name, timeout=3600, expected=0):
-        remaining = self.deadline-time.monotonic()
-        assert remaining > 1, "operation budget exhausted"
+    def command(self, argv, name, timeout=20, expected=0):
+        assert timeout > 0, "child watchdog must be positive"
         stdout, stderr = self.directory/(name+".stdout"), self.directory/(name+".stderr")
         record = {"argv": [str(a) for a in argv], "cwd": str(ROOT),
-                  "started_at": time.time(), "timeout_s": max(timeout, 3600),
+                  "requested_timeout_s": timeout,
                   "stdout": str(stdout.relative_to(ROOT)),
                   "stderr": str(stderr.relative_to(ROOT))}
         self.receipt["executions"].append(record)
         self.save()
+        process = None
+        usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+        begin = time.monotonic()
         try:
             with stdout.open("w") as out, stderr.open("w") as err:
-                result = subprocess.run(record["argv"], cwd=ROOT, stdout=out, stderr=err,
-                                        timeout=record["timeout_s"], check=False)
-            record.update(exit_code=result.returncode, timed_out=False)
-        except subprocess.TimeoutExpired:
-            record.update(exit_code=None, timed_out=True)
-            raise AssertionError(f"tool timeout: {name}")
+                remaining = self.deadline-time.monotonic()
+                effective = min(timeout, remaining)
+                record.update(started_at=time.time(), remaining_common_s=remaining,
+                              timeout_s=max(0, effective), effective_timeout_s=max(0, effective))
+                assert effective > 0, "operation budget exhausted"
+                launch = time.monotonic()
+                process = subprocess.Popen(record["argv"], cwd=ROOT, stdout=out, stderr=err)
+                record["pid"] = process.pid
+                # Launch overhead consumes the same watchdog, not a fresh one.
+                wait_limit = min(launch+effective, self.deadline)-time.monotonic()
+                try:
+                    process.wait(timeout=max(0, wait_limit))
+                    record.update(exit_code=process.returncode, timed_out=False)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                    record.update(exit_code=process.returncode, timed_out=True)
+                    raise AssertionError(f"tool timeout: {name}")
         finally:
+            if process is not None and process.returncode is None:
+                process.kill()
+                process.wait()
+            after = resource.getrusage(resource.RUSAGE_CHILDREN)
+            record.update(
+                elapsed_s=time.monotonic()-begin,
+                child_user_cpu_s=after.ru_utime-usage.ru_utime,
+                child_system_cpu_s=after.ru_stime-usage.ru_stime,
+                cpu_accounting="RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+                cleanup={"launched": process is not None,
+                         "direct_child_reaped": process is not None and process.returncode is not None},
+                stdout_bytes=stdout.stat().st_size if stdout.exists() else 0,
+                stderr_bytes=stderr.stat().st_size if stderr.exists() else 0)
             record["ended_at"] = time.time()
             self.save()
         if expected is not None:
-            assert result.returncode == expected, (
-                f"{name}: exit {result.returncode}, expected {expected}; see {stderr}")
-        return stdout.read_text(), stderr.read_text(), result.returncode
+            assert process.returncode == expected, (
+                f"{name}: exit {process.returncode}, expected {expected}; see {stderr}")
+        return stdout.read_text(), stderr.read_text(), process.returncode
+
+    def timing(self, name, began):
+        self.receipt.setdefault("python_phases", []).append({
+            "phase": name, "elapsed_s": time.monotonic()-began[0],
+            "python_cpu_s": time.process_time()-began[1]})
+        self.save()
+        assert time.monotonic() < self.deadline, "operation budget exhausted"
 
     def tools(self, names):
         for name in names:
@@ -428,8 +465,13 @@ endmodule
 def execute_fixture(run, name, fixture, directory=None, expected_error=0,
                     descriptor=None, inject=None, reset_phase=None, exact=True,
                     jobs=1, diagnose=False, startup_diagnostic=False):
+    began = time.monotonic(), time.process_time()
     integer, writes = fixture.run(Integer())
+    run.timing(name+"-integer-oracle", began)
+    began = time.monotonic(), time.process_time()
     floating, _ = fixture.run(Floating())
+    run.timing(name+"-floating-oracle", began)
+    began = time.monotonic(), time.process_time()
     assert expected_error or len(integer) == fixture.dimension, "oracle output shape"
     absolute = max((abs(a/Q-b) for a, b in zip(integer, floating)), default=0)
     norm_error = abs(sum((a/Q)**2 for a in integer)**0.5-1) if any(integer) else 0
@@ -454,11 +496,13 @@ end
 endmodule
 """)
     tb.write_text(text)
+    run.timing(name+"-stimulus", began)
     executable = run.directory/(name+".vvp")
     run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable,
                  *rtl_files(directory), tb], name+"-compile", timeout=20)
     out, _, _ = run.command(["vvp", *(["-v"] if startup_diagnostic else []), executable],
                             name+"-simulate", timeout=5 if startup_diagnostic else 45)
+    began = time.monotonic(), time.process_time()
     if reset_phase:
         assert f"RESET_OBSERVED {reset_phase}" in out and "RESET_COMPLETE" in out
         run.receipt["coverage"].append({"case": name, "reset": reset_phase})
@@ -519,6 +563,7 @@ endmodule
     run.save()
     assert absolute <= 0.002, f"mathematical tolerance: {absolute}"
     assert norm_error <= 0.002, f"norm tolerance: {norm_error}"
+    run.timing(name+"-scoreboard", began)
 
 
 def frontend_probe(run):
