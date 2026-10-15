@@ -32,7 +32,7 @@ module anvil_e2_matvec #(
         PREPARE=5, OUTPUT=6, DONE=7;
     reg [2:0] state;
     reg [31:0] rows, cols, row, col;
-    reg [63:0] base;
+    reg [63:0] base, weight_addr;
     reg signed [47:0] inputs [0:MAX_INPUT-1];
     reg signed [47:0] result_hold;
     reg [3:0] error_hold;
@@ -44,7 +44,9 @@ module anvil_e2_matvec #(
     assign start_ready=rst_n && state==IDLE;
     assign in_ready=rst_n && state==LOAD;
     assign cmd_valid=rst_n && state==REQUEST;
-    assign cmd_addr=rst_n ? base+(64'(row)*cols+col)*64'd4:64'd0;
+    assign cmd_addr=rst_n ?
+        ((state==REQUEST || state==RESPONSE) ? weight_addr :
+            base+(64'(row)*cols+col)*64'd4):64'd0;
     assign result_ready=rst_n && state==RESPONSE;
     assign mac_clear=mac_accumulate && col==0;
     assign mac_accumulate=rst_n && state==RESPONSE && result_valid && !result_error;
@@ -58,12 +60,13 @@ module anvil_e2_matvec #(
     assign done_error=rst_n ? error_hold:4'd0;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state<=IDLE; rows<=0; cols<=0; row<=0; col<=0; base<=0;
+            state<=IDLE; rows<=0; cols<=0; row<=0; col<=0; base<=0; weight_addr<=0;
             result_hold<=0; error_hold<=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
                     rows<=start_rows; cols<=start_cols; base<=start_weights;
+                    weight_addr<=start_weights;
                     row<=0; col<=0; error_hold<=0;
                     if (start_rows==0 || start_cols==0 || start_cols>MAX_INPUT ||
                         |start_weights[1:0]) begin
@@ -80,8 +83,11 @@ module anvil_e2_matvec #(
                 REQUEST: if (cmd_ready) state<=RESPONSE;
                 RESPONSE: if (result_valid) begin
                     if (result_error) begin error_hold<=3; state<=DONE; end
-                    else if (col==cols-1) state<=PREPARE;
-                    else begin col<=col+1'b1; state<=REQUEST; end
+                    else begin
+                        weight_addr<=weight_addr+64'd4;
+                        if (col==cols-1) state<=PREPARE;
+                        else begin col<=col+1'b1; state<=REQUEST; end
+                    end
                 end
                 PREPARE: begin result_hold<=mac_rounded; state<=OUTPUT; end
                 OUTPUT: if (out_ready) begin

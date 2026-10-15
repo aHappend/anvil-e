@@ -174,6 +174,7 @@ validation, stage handoff or memory bridge phases.
 | Series group/final term | Four ordered terms per clock; evaluate term 18 once, never term 19; exact-zero tails contribute zero |
 | Repeated rotary angle | Reuse only a complete successful sine/cosine pair matching all 48 angle bits in either of two scalar entries; reset invalidates both entries |
 | Singleton matvec row | First successful weight response clears and accumulates; separate PREPARE captures the updated MAC before held output |
+| Matvec weight cursor | Capture base at accepted start; advance four bytes only on each successful weight-result retirement, including row-final and matrix-final elements; stalls/errors never advance |
 | Nonlinear non-series division | RECIP, RSQRT and GELU ratio use full signed-128 numerator/unsigned-128 divisor channels; no narrowed ratio or premature saturation |
 | Rotary angle product width transition | Use unsigned 64-bit modulus only when the entire product fits; otherwise preserve the signed 96-bit modulus |
 | Series bounded division | Divisors 1..18 and the actual sine/cosine quadratic divisors through term 18; exact unsigned-64 quotient, reconstructed residue and signed ties; reachable numerators strictly below 64*G |
@@ -525,6 +526,63 @@ single-/multi-column matvec responses, stalls/errors, exact scratch histories,
 mathematical thresholds, all mutations and A/C zero-latch synthesis. No
 functional simulation, oracle or synthesis execution was performed by Designer
 for this repair.
+
+### Dense-projection sequential weight-address cursor
+
+`anvil_e2_matvec` uses a registered 64-bit `weight_addr` for its REQUEST and
+RESPONSE address path instead of reevaluating
+`base + 4*(row*cols + col)` there. At `start_valid && start_ready`, it captures
+`start_weights` alongside the existing descriptor. Let `n` be the number of
+successfully retired weight results since that start. The cursor invariant is
+`weight_addr = start_weights + 4*n`. At every REQUEST and RESPONSE,
+`n = row*cols + col`, so the command address is identical to the former
+row-major expression. The original widened 128-bit byte-extent validation,
+alignment checks and descriptor-error priority remain unchanged.
+
+| Matvec edge/phase | Pre-edge event | Post-edge cursor and control |
+|---|---|---|
+| Reset | rst_n=0 asynchronously | Cursor zero; original reset outputs and IDLE |
+| Start | start_valid && start_ready | Cursor captures start_weights; original validation and LOAD/DONE decision |
+| Input load | in_valid && in_ready | Cursor holds; original input bank and column updates |
+| Request stall/acceptance | REQUEST, with either cmd_ready value | Cursor holds; original REQUEST/RESPONSE transition |
+| Response stall | RESPONSE, result_valid=0 | Cursor holds; no MAC accumulation |
+| Successful weight retirement | result_valid && result_ready && !result_error | Cursor adds four; original MAC clear/accumulate and column/phase update |
+| Erroneous weight retirement | result_valid && result_ready && result_error | Cursor holds; original held DONE/error 3; no MAC accumulation |
+| Row result and output stall | PREPARE or OUTPUT | Cursor holds at next row's first weight; original registered MAC capture and held output |
+| Nonfinal row output acceptance | out_valid && out_ready && !out_last | Cursor holds; increment row, reset column, enter REQUEST |
+| Final row output/completion | Final output or completion accepted | Cursor holds at validated one-past-matrix address; no additional request |
+
+Advancing on the row-final successful response prepares the next row without
+a second increment on output acceptance. This also handles one-column and
+one-row matrices without wrap-based terminal logic. The final successful
+matrix response advances once to the validated end address, which is never
+requested. A new accepted start replaces the cursor; reset cancels it.
+The cursor is not used while cmd_valid is inactive outside RESPONSE: the
+original base/row/column expression remains selected in LOAD, PREPARE,
+OUTPUT, DONE and IDLE to preserve existing inactive address values exactly,
+including after errors and completion. Reset still forces cmd_addr to zero.
+
+This change adds one scalar register, not prefetch, caching, transactions or
+storage precision. Request count/order, all accepting edges, MAC sequencing
+and Q40/Q24 arithmetic are unchanged. The inactive-address compatibility
+expression and descriptor extent multiplication are deliberately retained;
+only the active weight-address path is strength-reduced. Runtime benefit
+remains unproven: source inspection does not establish that this multiplication
+dominates simulator CPU cost or that aggregate checks fit their budgets.
+
+The retained aggregate failure is
+`evidence/preparation/q40-response-edge-aggregate-cost-001/receipt.json`.
+The failed concurrent candidate in
+`evidence/preparation/q40-two-worker-paired-001/receipt.json` remains
+unadopted; neither concurrency nor longer budgets is part of this change.
+Verifier must first perform bounded serial before/after comparisons of the
+unchanged B/seed17/joint and C/seed89/joint fixtures, retaining exact embeddings,
+complete scratch histories, mathematical tolerances, request ordering and
+actual timings. Singleton/final-row behavior, independent request/response
+stalls, reset and memory-error retirement require independent coverage.
+Aggregate closure remains pending until measured useful headroom supports
+an attempt within the unchanged budgets. Designer performs no functional
+simulation or synthesis for this candidate.
 
 ### Historical bounded-operand division execution-cost repair
 
