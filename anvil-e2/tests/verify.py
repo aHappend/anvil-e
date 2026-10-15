@@ -695,6 +695,8 @@ def behavior(run):
     guarded_nonlinear(run)
     from cursor_boundaries import boundaries
     boundaries(run)
+    from attention_boundaries import boundaries as attention_boundaries
+    attention_boundaries(run)
     focused(run)
     directed(run)
     illegal_parameters(run)

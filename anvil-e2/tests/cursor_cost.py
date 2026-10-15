@@ -51,25 +51,38 @@ end
         return super().command(argv, name, **kwargs)
 
 
-def paired(run):
-    assert hashlib.sha256(BEFORE.read_bytes()).hexdigest() == BEFORE_SHA
+def paired(run, implementation="matvec", configuration=None):
+    before = BEFORE
+    before_sha = BEFORE_SHA
+    if implementation == "attention":
+        before = ROOT / (
+            "evidence/preparation/q40-cursor-serial-paired-001/"
+            "before-rtl/anvil_e2_attention.sv")
+        before_sha = "628391f3c0f69d8d4ebaf2e1176718ef30bd0f6a84e430b5024e733d47baa575"
+    assert hashlib.sha256(before.read_bytes()).hexdigest() == before_sha
     baseline = run.directory / "before-rtl"
     baseline.mkdir()
     for source in rtl_files():
-        shutil.copyfile(BEFORE if source.name == BEFORE.name else source,
+        shutil.copyfile(before if source.name == before.name else source,
                         baseline / source.name)
     run.receipt["comparison_sources"] = {
-        "before_origin": str(BEFORE.relative_to(ROOT)),
+        "before_origin": str(before.relative_to(ROOT)),
         "before_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                           for p in sorted(baseline.glob("*.sv"))},
-        "only_replaced_implementation": BEFORE.name,
+        "only_replaced_implementation": before.name,
         "accepted_rtl_unchanged": True,
         "acceptance_evidence": False,
         "concurrency_adopted": False,
     }
+    run.receipt["related_evidence"] = [
+        "evidence/preparation/q40-cursor-serial-paired-001/receipt.json",
+        "evidence/preparation/q40-projection-attention-b17-001/receipt.json",
+    ]
     run.save()
     results = []
     for label, seed in (("B", 17), ("C", 89)):
+        if configuration is not None and label != configuration:
+            continue
         arms = []
         for arm, directory in (("before", baseline), ("after", None)):
             name = f"{arm}-{label}-s{seed}-m2-d12"
@@ -131,13 +144,17 @@ def paired(run):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
+    parser.add_argument("--implementation", choices=("matvec", "attention"),
+                        default="matvec")
+    parser.add_argument("--configuration", choices=("B", "C"))
+    parser.add_argument("--repair-of")
     args = parser.parse_args()
     directory = (ROOT / args.output).resolve()
     assert directory.is_relative_to(ROOT / "evidence/preparation")
-    run = Run(directory)
+    run = Run(directory, repair_of=args.repair_of)
     try:
         run.tools(("python3", "iverilog", "vvp"))
-        paired(run)
+        paired(run, args.implementation, args.configuration)
     except Exception as error:
         (directory / "diagnostic.stderr").write_text(traceback.format_exc())
         run.finish("failed", str(error))
