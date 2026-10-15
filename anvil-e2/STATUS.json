@@ -2,12 +2,12 @@
   "chip": "Anvil-E2",
   "target": "Google EmbeddingGemma-2 (Vision + Text Multimodal)",
   "vulcan_version": "0.8.0",
-  "status": "verifier",
+  "status": "recovery_feedback",
   "started_cst": "2026-10-15 15:11:49 UTC+8",
-  "updated_cst": "2026-10-15 21:31:44 UTC+8",
-  "step": 103,
-  "workflow_phase": "verifier",
-  "total_elapsed_en": "6h 19m 55s",
+  "updated_cst": "2026-10-15 21:35:47 UTC+8",
+  "step": 104,
+  "workflow_phase": "recovery_feedback",
+  "total_elapsed_en": "6h 23m 58s",
   "rtl_files": 20,
   "rtl_lines": 3592
 }
