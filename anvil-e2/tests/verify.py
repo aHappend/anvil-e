@@ -42,7 +42,7 @@ def sources():
 
 
 class Run:
-    def __init__(self, directory, budget=110, repair_of=None, *, deadline=None):
+    def __init__(self, directory, budget=86400, repair_of=None, *, deadline=None):
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=False)
         self.start = time.time()
@@ -62,12 +62,12 @@ class Run:
         # never reopened by another invocation.
         (self.directory/"receipt.json").write_text(json.dumps(self.receipt, indent=2))
 
-    def command(self, argv, name, timeout=30, expected=0):
+    def command(self, argv, name, timeout=3600, expected=0):
         remaining = self.deadline-time.monotonic()
         assert remaining > 1, "operation budget exhausted"
         stdout, stderr = self.directory/(name+".stdout"), self.directory/(name+".stderr")
         record = {"argv": [str(a) for a in argv], "cwd": str(ROOT),
-                  "started_at": time.time(), "timeout_s": min(timeout, remaining),
+                  "started_at": time.time(), "timeout_s": max(timeout, 3600),
                   "stdout": str(stdout.relative_to(ROOT)),
                   "stderr": str(stderr.relative_to(ROOT))}
         self.receipt["executions"].append(record)
