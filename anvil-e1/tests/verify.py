@@ -17,7 +17,8 @@ import time
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 INPUTS = ("rtl/*.sv", "design/*.md", "design/*.py", "tests/*.py", "tests/*.sv",
-          "hf_embeddinggemma2_spec/*.json", "hf_embeddinggemma2_spec/1_Pooling/config.json")
+          "hf_embeddinggemma2_spec/*.json", "hf_embeddinggemma2_spec/1_Pooling/config.json",
+          "hf_embeddinggemma2_spec/official_weights/*")
 
 
 def identities():
@@ -31,11 +32,9 @@ def stamp():
 
 class Execution:
     def __init__(self, output, allowance):
-        self.output = ROOT / output
-        if self.output.exists():
-            retired = ROOT / "evidence" / "preparation" / f"prior-{self.output.name}-{int(time.time() * 1000)}"
-            retired.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(self.output), str(retired))
+        self.published_output = ROOT / output
+        self.output = self.published_output / (
+            "attempt-" + datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
         self.output.mkdir(parents=True, exist_ok=False)
         self.deadline = time.monotonic() + allowance
         self.allowance = allowance
@@ -160,6 +159,10 @@ class Execution:
                    "children": self.children, "status": status, "detail": detail,
                    "repair_of": self.repair_of,
                    "acceptance_evidence": "/preparation/" not in str(self.output)}
+        if status in ("passed", "failed"):
+            receipt["generated_output_sha256"] = {
+                str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in self.output.rglob("*") if p.is_file() and p.name != "receipt.json"}
         (self.output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 
 
@@ -172,7 +175,10 @@ def elaborate(execution):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", choices=("architecture", "behavior", "synthesis",
+    parser.add_argument("--check", choices=("architecture", "behavior", "functional", "sensitivity", "synthesis",
+                                          "prepare-official", "prepare-official-matrix",
+                                          "prepare-official-sensitivity",
+                                          "prepare-official-diagnosis",
                                           "prepare-elaboration", "prepare-primitives",
                                           "prepare-forward", "prepare-integration",
                                           "prepare-scoreboard", "prepare-cost",
@@ -186,6 +192,7 @@ def main():
     parser.add_argument("--seeds", default="17,89,203")
     parser.add_argument("--configs", default="A,B,C")
     parser.add_argument("--repair-of")
+    parser.add_argument("--diagnostic-report")
     args = parser.parse_args()
     execution = Execution(args.output, args.timeout_s)
     execution.repair_of = args.repair_of
@@ -230,6 +237,23 @@ def main():
         elif args.check in ("architecture", "prepare-architecture"):
             from architecture import verify_architecture
             verify_architecture(execution)
+        elif args.check == "prepare-official-diagnosis":
+            from official import diagnose_official
+            if not args.diagnostic_report:
+                raise ValueError("diagnostic report is required")
+            diagnose_official(execution, args.diagnostic_report)
+        elif args.check in ("sensitivity", "prepare-official", "prepare-official-matrix",
+                            "prepare-official-sensitivity"):
+            from official import verify_official
+            verify_official(execution, sensitivity=args.check in
+                            ("sensitivity", "prepare-official-sensitivity"),
+                            minimal=args.check == "prepare-official")
+        elif args.check == "functional":
+            from behavior import verify_behavior
+            from official import verify_official
+            verify_behavior(execution, args.configs.split(","),
+                            list(map(int, args.seeds.split(","))))
+            verify_official(execution)
         elif args.check == "behavior":
             from behavior import verify_behavior
             verify_behavior(execution, args.configs.split(","),
@@ -239,6 +263,15 @@ def main():
             verify_synthesis(execution, args.configs.split(","),
                              probe=args.check=="prepare-synthesis")
         execution.remaining()
+        if args.check == "functional":
+            source = execution.output/"official_weights_comparison.json"
+            published = execution.published_output/source.name
+            if published.exists():
+                old_hash = hashlib.sha256(published.read_bytes()).hexdigest()
+                history = execution.published_output/("official_weights_comparison."+old_hash+".json")
+                if not history.exists():
+                    history.write_bytes(published.read_bytes())
+            published.write_bytes(source.read_bytes())
         execution.save("passed")
     except (AssertionError, RuntimeError, TimeoutError, OSError, ValueError,
             ImportError, KeyError) as error:

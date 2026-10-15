@@ -20,6 +20,7 @@ module anvil_e1_norm #(
 );
     localparam IDLE=3'd0, LOAD=3'd1, SETUP=3'd2,
                ROOT=3'd3, PREPARE=3'd4, HOLD=3'd5;
+    localparam [95:0] EPSILON_Q48 = 96'd281474977;
     reg [2:0] state;
     reg [31:0] count, index;
     reg l2;
@@ -111,7 +112,7 @@ module anvil_e1_norm #(
                         if (residue > count-residue ||
                             (residue == count-residue && denominator_square[0]))
                             denominator_square = denominator_square + 96'd1;
-                        denominator_square = denominator_square + 96'd285212672;
+                        denominator_square = denominator_square + EPSILON_Q48;
                     end
                     radicand <= {denominator_square,64'd0};
                     root_value <= 0;

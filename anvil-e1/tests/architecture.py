@@ -1,9 +1,11 @@
 """Authoritative geometry, packing and elaboration gates."""
 import json
+import math
 import re
+from fractions import Fraction
 from pathlib import Path
 
-from model import Geometry, CONFIGS, inventory
+from model import Arithmetic, EPSILON_Q48, Q, Geometry, CONFIGS, inventory
 
 DEFAULT = Geometry(262144,512,512,2048,768,24,4,2,1,256,512,512,262144)
 
@@ -23,6 +25,12 @@ def verify_architecture(execution):
         assert c[n] == v, (n,c[n],v)
     assert c["hidden_activation"] == "gelu_pytorch_tanh"
     assert c["rms_norm_eps"] == 1e-6 and c["attention_bias"] is False
+    epsilon = round(Fraction(2**48, 1_000_000))
+    assert epsilon == EPSILON_Q48 == 281474977
+    tiny_root = math.isqrt((1+epsilon)*2**64)
+    assert Arithmetic(True).norm([1], [0]) == [round(Fraction(2**56, tiny_root))]
+    assert Arithmetic(False).floating_epsilon == epsilon/2**48
+    assert Arithmetic(True).norm([0, 0], None) == [0, 0]
     assert c["attention_dropout"] == 0
     assert (c["bos_token_id"],c["eos_token_id"],c["pad_token_id"]) == (2,1,0)
     assert c["layer_types"] == [
@@ -65,9 +73,25 @@ def verify_architecture(execution):
     top = (root/"rtl/anvil_e1_top.sv").read_text()
     for n,v in DEFAULT.parameters().items():
         assert re.search(r"\b"+n+r"\s*=\s*"+str(v)+r"\b",top), (n,v)
+    wrapper = (root/"rtl/anvil_e_top.sv").read_text()
+    for n,v in DEFAULT.parameters().items():
+        assert re.search(r"\b"+n+r"\s*=\s*"+str(v)+r"\b",wrapper), (n,v)
+        assert f".{n}({n})" in wrapper
+    assert len(re.findall(r"\banvil_e1_top\s*#\(",wrapper)) == 1
+    assert re.search(r"\)\s*core\s*\(",wrapper)
+    assert not re.search(r"\b(always|always_ff|always_comb|assign|initial|reg|logic)\b",wrapper)
+    def ports(text):
+        section = text[text.index(") (")+3:text.index(");")]
+        return re.findall(r"\b(?:input|output)\s+(?:wire\s+)?(?:signed\s+)?"
+                          r"(?:\[[^]]+\]\s*)?([\w ,]+)", section)
+    assert ports(wrapper) == ports(top), "wrapper public interface differs"
     assert not any(re.search(r"\b(real|shortreal|DPI)\b",p.read_text()) for p in sources)
     execution.run("default-elaboration",["iverilog","-g2012","-t","null",
         "-s","anvil_e1_top"]+[str(p) for p in sources])
+    execution.run("wrapper-default-elaboration",["iverilog","-g2012","-t","null",
+        "-s","anvil_e_top"]+[str(p) for p in sources])
+    from official import load_official
+    load_official(execution)
     for name,value in (("HIDDEN_SIZE",0),("LOCAL_KV_HEADS",0),
             ("NUM_Q_HEADS",3),("LOCAL_HEAD_DIM",3),("EMBEDDING_DIM",7),
             ("SLIDING_WINDOW",0),("MAX_SEQ_LEN",0)):
@@ -87,5 +111,6 @@ def verify_architecture(execution):
     verify_addresses(execution)
     (execution.output/"architecture-summary.json").write_text(json.dumps({
         "expanded_tensors":413,"full_layers":[5,11,17,23],
+        "rms_epsilon_q48":epsilon,"l2_epsilon":0,
         "default_weights_bytes":sum(e["size_bytes"] for e in entries),
         "rtl_modules":names,"invalid_parameters_checked":7},indent=2)+"\n")

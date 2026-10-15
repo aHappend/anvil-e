@@ -2,6 +2,7 @@
 import json
 import math
 import re
+from fractions import Fraction
 from pathlib import Path
 
 Q = 1 << 24
@@ -89,3 +90,93 @@ def verify_primitives(execution):
         {"cases":ledger,"max_errors":maxima,"failures":failures},indent=2)+"\n")
     if failures:
         raise AssertionError(f"primitive accuracy failure: {failures[0]}")
+    verify_norm(execution)
+
+
+def verify_norm(execution):
+    """Public-pin RMS/L2 checks; expectations do not use model.py or DUT internals."""
+    epsilon = round(Fraction(2**48, 10**6))
+    if epsilon != 281474977 or epsilon == 17*Q:
+        raise AssertionError("incorrect independently derived Q48 epsilon")
+    cases = []
+    for values in ([0], [0]*4, [1], [-1], [1, 0], [3, 0],
+                   [1, 2], [1, -2, 3], [17, -17, 31, -31],
+                   [16777, -16777, 8388, -8388],
+                   [1, -2, 3, -4, 5, -6], [0]*16,
+                   [2147483647, -2147483648, Q]):
+        for l2 in (False, True):
+            weights = [(i % 4 - 1)*Q//4 for i in range(len(values))]
+            cases.append({"values":values, "weights":weights, "l2":l2,
+                          "count":len(values)})
+    for count in (0, 17):
+        cases.append({"values":[], "weights":[], "l2":False, "count":count})
+
+    def expected(case, eps):
+        values = case["values"]
+        if not values:
+            return [(0, 0, 1, 1)]
+        squares = sum(v*v for v in values)
+        denominator = squares if case["l2"] else round(Fraction(squares, len(values)))+eps
+        root = math.isqrt(denominator*2**64)
+        result = []
+        for i, (value, weight) in enumerate(zip(values, case["weights"])):
+            normalized = round(Fraction(value*2**56, root)) if root else 0
+            weighted = normalized if case["l2"] else round(
+                Fraction(normalized*(Q+weight), Q))
+            result.append((i, min(2**31-1, max(-2**31, weighted)),
+                           int(i == len(values)-1), 0))
+        return result
+
+    path = execution.output/"norm-input.txt"
+    path.write_text("".join(
+        f"{tag} {int(case['l2'])} {case['count']}\n"+
+        "".join(f"{v} {w}\n" for v, w in zip(case["values"], case["weights"]))
+        for tag, case in enumerate(cases)))
+    binary = execution.output/"norm.vvp"
+    execution.run("norm-compile", ["iverilog", "-g2012", "-Wall", "-s", "norm",
+                  "-o", str(binary), "tests/norm.sv", "rtl/anvil_e1_norm.sv"])
+    trace = execution.run("norm-simulation", ["vvp", str(binary), f"+input={path}"])
+    observed = {tag:[] for tag in range(len(cases))}
+    completed = False
+    next_tag = 0
+    for line in trace.read_text().splitlines():
+        fields = line.split()
+        if fields and fields[0] == "NORM" and len(fields) == 6 and not completed:
+            tag, index, data, last, error = map(int, fields[1:])
+            if tag != next_tag:
+                raise AssertionError("out-of-order normalization transaction")
+            observed[tag].append((index, data, last, error))
+            if last == 1:
+                next_tag += 1
+        elif fields == ["COMPLETE", str(len(cases))] and not completed:
+            if next_tag != len(cases):
+                raise AssertionError("incomplete normalization transactions")
+            completed = True
+        elif re.fullmatch(r"tests/norm\.sv:\d+: \$finish called at \d+ \([^)]+\)", line):
+            pass
+        elif fields:
+            raise AssertionError(f"unexpected normalization diagnostic: {line}")
+    if not completed:
+        raise AssertionError("missing normalization completion")
+    ledger = []
+    discriminating = 0
+    failures = []
+    for tag, case in enumerate(cases):
+        wanted = expected(case, epsilon)
+        historical = expected(case, 17*Q)
+        distinguishes = wanted != historical
+        discriminating += distinguishes
+        row = {"tag":tag, **case, "expected":wanted, "observed":observed[tag],
+               "historical_q824_first_expected":historical,
+               "distinguishes_epsilon":distinguishes,
+               "status":"passed" if observed[tag] == wanted else "failed"}
+        ledger.append(row)
+        if observed[tag] != wanted:
+            failures.append(row)
+    (execution.output/"norm-comparisons.json").write_text(json.dumps({
+        "epsilon_q48":epsilon, "epsilon_derivation":"round(Fraction(2**48, 10**6))",
+        "expected_entrypoint":"primitives.verify_norm.expected; no Designer/model imports",
+        "cases":ledger, "discriminating_rms_cases":discriminating,
+        "failures":failures}, indent=2)+"\n")
+    if failures or discriminating < 6:
+        raise AssertionError(f"normalization contract failure: {failures or discriminating}")

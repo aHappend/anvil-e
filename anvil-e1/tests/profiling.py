@@ -99,7 +99,7 @@ def profile_synthesis(execution, configs):
 def profile_simulation(execution):
     from behavior import compile_forward, fixtures
     output = execution.output
-    binary = compile_forward(execution, "C")
+    binary = compile_forward(execution, "C", profile=True)
     image, jobs_path, _ = fixtures(execution, "C", 17, minimal=True)
     stages = []
     summary = {"diagnostic_only": True, "fixed_cycles": 100000,

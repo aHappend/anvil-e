@@ -19,7 +19,11 @@ module forward;
     wire signed [31:0] emb_data;
     wire [15:0] emb_index;
     wire [3:0] done_error;
+`ifdef OFFICIAL_WRAPPER
+    anvil_e_top #(
+`else
     anvil_e1_top #(
+`endif
         .VOCAB_SIZE(VOCAB_SIZE), .HIDDEN_SIZE(HIDDEN_SIZE),
         .PER_LAYER_INPUT_SIZE(PER_LAYER_INPUT_SIZE),
         .INTERMEDIATE_SIZE(INTERMEDIATE_SIZE), .EMBEDDING_DIM(EMBEDDING_DIM),
@@ -62,39 +66,21 @@ module forward;
             if(job_valid && job_ready) begin
                 if(active) $fatal(1,"DESCRIPTOR_OVERLAP");
                 active=1;
+                $display("JOB %0d %0d",jobid,cycle);
             end
             if(mem_req_valid && !mem_req_ready) coverage[0]=coverage[0]+1;
             if(pending && !mem_rsp_valid) coverage[1]=coverage[1]+1;
             if(emb_valid && !emb_ready) coverage[2]=coverage[2]+1;
             if(done_valid && !done_ready) coverage[3]=coverage[3]+1;
             if(job_valid && !job_ready) coverage[4]=coverage[4]+1;
-            // Coverage taps observe operation retirement, never oracle data.
-            if(dut.legal_datapath.sequencer.mat_done_valid &&
-               dut.legal_datapath.sequencer.state==9 &&
-               dut.legal_datapath.sequencer.mat_error==0) coverage[5]=coverage[5]+1;
-            if(dut.legal_datapath.sequencer.norm_out_valid &&
-               dut.legal_datapath.sequencer.norm_out_last &&
-               dut.legal_datapath.sequencer.norm.out_ready)
-                coverage[6]=coverage[6]+1;
-            if(dut.legal_datapath.sequencer.rope_out_valid &&
-               dut.legal_datapath.sequencer.state==21)
-                coverage[7]=coverage[7]+1;
-            if(dut.legal_datapath.sequencer.att_done_valid &&
-               dut.legal_datapath.sequencer.state==23 &&
-               dut.legal_datapath.sequencer.att_error==0) begin
-                if(dut.legal_datapath.sequencer.full_mode)
-                    coverage[9]=coverage[9]+1;
-                else coverage[8]=coverage[8]+1;
-            end
-            if(dut.legal_datapath.sequencer.nout_valid &&
-               dut.legal_datapath.sequencer.nout_ready &&
-               dut.legal_datapath.sequencer.nonlinear.operation==5)
-                coverage[10]=coverage[10]+1;
-            if(dut.legal_datapath.sequencer.pool_done_valid &&
-               dut.legal_datapath.sequencer.state==26)
-                coverage[11]=coverage[11]+1;
-            if(dut.legal_datapath.sequencer.state==17)
-                coverage[12]=coverage[12]+1;
+            if(mem_req_valid && mem_req_ready && !mem_req_write) coverage[5]=coverage[5]+1;
+            if(mem_req_valid && mem_req_ready && mem_req_write) coverage[6]=coverage[6]+1;
+            if(mem_rsp_valid && mem_rsp_ready && !mem_rsp_error) coverage[7]=coverage[7]+1;
+            if(mem_rsp_valid && mem_rsp_ready && mem_rsp_error) coverage[8]=coverage[8]+1;
+            if(emb_valid && emb_ready) coverage[9]=coverage[9]+1;
+            if(emb_valid && emb_ready && emb_last) coverage[10]=coverage[10]+1;
+            if(done_valid && done_ready && done_error==0) coverage[11]=coverage[11]+1;
+            if(done_valid && done_ready && done_error!=0) coverage[12]=coverage[12]+1;
             if(req_held && (!mem_req_valid ||
                 {mem_req_write,mem_req_addr,mem_req_wdata} !== held_request))
                 $fatal(1,"REQUEST_STABILITY");
@@ -117,6 +103,7 @@ module forward;
             end
             if(mem_req_valid && mem_req_ready) begin
                 if(pending) $fatal(1,"MULTIPLE_OUTSTANDING");
+                if(mem_rsp_ready) $fatal(1,"EARLY_RESPONSE_READY");
                 if(mem_req_addr[1:0]!=0 || mem_req_addr>=1048576)
                     $fatal(1,"UNMAPPED_ADDRESS %h",mem_req_addr);
                 pending=1; delay_left=(cycle+random_seed)%4+1;
@@ -138,6 +125,7 @@ module forward;
         end
     end
     always @(negedge clk) begin
+`ifdef INTERNAL_PROFILE
         if (profile_cycles>0) begin
             if (profile_capture) $fdisplay(profile_fd,"%h %h %0d %0d %0d %0d",
                 dut.legal_datapath.sequencer.weights,
@@ -169,6 +157,7 @@ module forward;
                 $finish;
             end
         end
+`endif
         if(rst_n) begin
             mem_req_ready=(cycle+random_seed)%5!=0;
             emb_ready=reset_mode==3 ? 0:(cycle+random_seed)%7>=3;
@@ -227,7 +216,6 @@ module forward;
             requests=0; fault_request=fault; reset_mode=reset; job_start=cycle;
             job_valid=1;
             @(posedge clk);
-            $display("JOB %0d %0d",jobid,cycle);
             @(negedge clk); #1; job_valid=0;
             job_tokens=32'hffffffff; job_output_dim=0;
             weights_base=64'hffffffffffffffff; tokens_base=0;
@@ -247,8 +235,7 @@ module forward;
                     coverage[13]=coverage[13]+1;
                 end
                 if(reset_mode==2) begin
-                    if(!busy || emb_valid || done_valid ||
-                       !dut.legal_datapath.engine_owner)
+                    if(!busy || emb_valid || done_valid || requests==0)
                         $fatal(1,"RESET_COMPUTE_NOT_OBSERVED");
                     coverage[14]=coverage[14]+1;
                 end

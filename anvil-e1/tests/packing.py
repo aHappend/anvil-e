@@ -43,6 +43,15 @@ def verify_packing(execution):
             finite += 1
     default_entries = inventory(DEFAULT)
     expected = {e["name"]:{"shape":e["shape"]} for e in default_entries}
+    official = Path("hf_embeddinggemma2_spec/official_weights/"
+                    "google_embeddinggemma2_official_slice.safetensors")
+    with official.open("rb") as stream:
+        try:
+            packer.read_header(stream, official.stat().st_size, expected)
+        except ValueError as error:
+            (output/"official-partial-checkpoint-rejection.log").write_text(str(error)+"\n")
+        else:
+            raise AssertionError("partial official slice accepted as a complete checkpoint")
     def header(entries):
         result,offset = {},0
         for e in entries:

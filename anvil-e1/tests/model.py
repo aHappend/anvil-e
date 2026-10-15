@@ -2,12 +2,18 @@
 
 No design Python helpers or DUT state are used. Quantized weights are the common
 inputs, not the expected activations. Fixed arithmetic follows ARCHITECTURE.md.
+RMS epsilon is independently rounded directly to Q48; the quantized-input
+mathematical path uses that exact rational value. L2 has no epsilon. Historical
+epsilon-isolation callers must explicitly request their old 17/2^24 value.
 """
 import math
 from dataclasses import dataclass
+from fractions import Fraction
 
 Q = 1 << 24
 F = 1 << 40
+EPSILON_Q48 = round(Fraction(1 << 48, 1_000_000))
+SATURATION_COUNT = 0
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,8 @@ def nearest(n, d):
 
 
 def sat(n):
+    global SATURATION_COUNT
+    SATURATION_COUNT += not (-(1 << 31) <= n < (1 << 31))
     return max(-(1 << 31), min((1 << 31) - 1, n))
 
 
@@ -142,8 +150,9 @@ def nonlinear(op, x):
 
 
 class Arithmetic:
-    def __init__(self, fixed):
+    def __init__(self, fixed, floating_epsilon=EPSILON_Q48/(Q*Q)):
         self.fixed = fixed
+        self.floating_epsilon = floating_epsilon
 
     def add(self, a, b):
         return sat(a+b) if self.fixed else a+b
@@ -160,7 +169,7 @@ class Arithmetic:
     def norm(self, x, weights=None):
         if self.fixed:
             squares = sum(a*a for a in x)
-            square = squares if weights is None else nearest(squares, len(x)) + 17*Q
+            square = squares if weights is None else nearest(squares, len(x)) + EPSILON_Q48
             root = math.isqrt(square << 64)
             normalized = [nearest(a << 56, root) if root else 0 for a in x]
             if weights is None:
@@ -168,7 +177,7 @@ class Arithmetic:
             return [sat(nearest(a*(Q+w), Q)) for a, w in zip(normalized, weights)]
         divisor = math.sqrt(sum(a*a for a in x) /
                             (len(x) if weights is not None else 1) +
-                            (17/Q if weights is not None else 0))
+                            (self.floating_epsilon if weights is not None else 0))
         return [(a/divisor if divisor else 0) *
                 (1+weights[i] if weights is not None else 1)
                 for i, a in enumerate(x)]
@@ -220,14 +229,18 @@ class Arithmetic:
                 for j in range(len(query))]
 
 
-def forward_details(g, quantized_weights, ids, positions, masks, output_dim, fixed):
+def forward_details(g, quantized_weights, ids, positions, masks, output_dim, fixed,
+                    diagnostics=None, raw_weights=None,
+                    floating_epsilon=EPSILON_Q48/(Q*Q)):
     if not any(masks):
         raise ValueError("all tokens masked")
     if output_dim not in (g.E, 2*g.E//3, g.E//3, g.E//6):
         raise ValueError("invalid output dimension")
-    weights = quantized_weights if fixed else {
+    if fixed and raw_weights is not None:
+        raise ValueError("raw floating coefficients are not integer-oracle inputs")
+    weights = raw_weights if raw_weights is not None else quantized_weights if fixed else {
         n: [v/Q for v in values] for n, values in quantized_weights.items()}
-    a = Arithmetic(fixed)
+    a = Arithmetic(fixed, floating_epsilon)
     def global_(name):
         return weights["language_model."+name]
     root = math.isqrt(g.H << 80)
@@ -288,6 +301,8 @@ def forward_details(g, quantized_weights, ids, positions, masks, output_dim, fix
                        for v,b in zip(current,branch)]
             next_x.append(current)
         x = next_x
+        if diagnostics is not None:
+            diagnostics.append({"layer": layer, "hidden_q824": x})
     projected = [a.matrix(global_("embedding_projection.weight"),
                          a.norm(v,global_("norm.weight"))) for v in x]
     valid = sum(masks)

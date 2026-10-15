@@ -17,6 +17,15 @@ executable forward code. The forward equations below are the adopted work-order
 Gemma-family conventions, not recovered official implementation evidence.
 Vision and audio are excluded.
 
+Phase 2 adds `rtl/anvil_e_top.sv` as the official-weight integration root.
+It contains only the parameter-forwarding instance `core` of `anvil_e1_top`,
+with identical ports/defaults and zero additional stages. Direct use of
+`anvil_e1_top` remains supported; its twelve-module implementation is retained.
+[Official weight evaluation](OFFICIAL_WEIGHTS_EVALUATION.md) defines the
+supplied checkpoint-slice scope, deterministic mapping, independent FP32 and
+integer comparisons, cycle accounting and current verification handoff.
+Historical diagnostics below are not current Phase 2 acceptance.
+
 ## Geometry and tensor packing
 
 The implemented controller/address module defaults are V=262144, H=512, P=512, I=2048, E=768,
@@ -65,7 +74,9 @@ python3 design/pack_model.py --input /supplied/model.safetensors \
   --output weights.q24.bin --inventory weights.inventory.json
 ```
 
-No checkpoint is included or downloaded. Parent output directories must exist.
+The supplied Phase 2 official slice is present, but is not a complete default
+checkpoint and must be rejected by this strict complete-checkpoint CLI.
+No checkpoint is downloaded. Parent output directories must exist.
 The packer validates header keys, dtype, shapes, data extents, complete
 nonoverlapping payload layout and finite pure-text weights. Unrelated
 non-language-model tensors are explicitly excluded and listed in inventory;
@@ -80,7 +91,10 @@ and saturation to [-128,128-2^-24]. NaN and infinity are errors, not zeros.
 ## Forward equations and tensor bindings
 
 Let `R(x,w) = x * rsqrt(mean(x*x)+epsilon) * (1+w)`, with
-epsilon equal to 17/2^24 and norm weights using a unit offset everywhere.
+hardware epsilon represented directly at Q48 as `281474977/2^48`
+(nearest/ties-even representation of 1e-6) and norm weights using a unit
+offset everywhere. The raw-weight FP32 software comparison uses floating
+epsilon 1e-6 rounded at its FP32 boundary, not the hardware constant.
 Matrix multiplication uses row-major output rows. For token t:
 
 ```
@@ -301,7 +315,13 @@ legal maximum 65535) and `start_l2`, then exactly count data/weight pairs.
 Each accepted pair is buffered in bounded vector storage and its full 64-bit
 square is accumulated in 96 unsigned bits. In RMS mode, nearest/ties-even
 division by count produces the Q48 mean-square, then adds epsilon in Q48:
-`17<<24 = 285212672`. L2 mode uses the sum without mean, epsilon or weights.
+`EPSILON_Q48 = round_ties_even(1e-6 * 2^48) = 281474977`.
+Thus `denominator_square = round_ties_even(sum(x_q24[i]^2)/count)
++ EPSILON_Q48`. This replaces the historical Q8.24-first epsilon
+`17/2^24`, which added `285212672` at Q48; no legacy mode is retained.
+The shared RMS path applies this constant uniformly to global PLE projection
+normalization, all input/residual-path norms, per-head q/k norms and final
+RMSNorm. L2 mode uses the sum without mean, epsilon or weights.
 The denominator is not truncated to Q8.24.
 
 The unit restores floor sqrt of `(denominator_Q48 << 64)` using an 80-step
@@ -473,8 +493,9 @@ versions must be documented from the actual independent results, not invented.
 
 `anvil_e1_top` connects the controller, the single registered external-memory
 bridge and the hardwired sequencer. The sequencer instantiates the live matrix,
-attention, RoPE, norm, nonlinear, MAC and pool executors. There are twelve RTL
-files, each defining exactly one module. All `rtl/*.sv` files are required.
+attention, RoPE, norm, nonlinear, MAC and pool executors. These twelve RTL
+files each define exactly one module. Phase 2 adds the thirteenth file,
+`anvil_e_top.sv`, containing only the wrapper module. All `rtl/*.sv` files are required.
 There is no host-computed operation callback, external arithmetic service,
 inference bypass, real-valued RTL arithmetic or checkpoint-sized internal array.
 
@@ -579,19 +600,24 @@ and completion rather than producing an error completion.
 Static syntax/elaboration command from the delivered root:
 
 ```
-iverilog -g2012 -t null -s anvil_e1_top rtl/*.sv
+iverilog -g2012 -t null -s anvil_e_top rtl/*.sv
 ```
 
 Independent reproduction entrypoints remain:
 
 ```
-python3 tests/verify.py --check architecture --output evidence/architecture --timeout-s 50
-python3 tests/verify.py --check behavior --seeds 17,89,203 --configs A,B,C --output evidence/behavior --timeout-s 200
-python3 tests/verify.py --check synthesis --configs A,B --output evidence/synthesis --timeout-s 120
+python3 tests/verify.py --check architecture --output evidence/verification/architecture --timeout-s 50
+python3 tests/verify.py --check functional --seeds 17,89,203 --configs A,B,C --output evidence/verification/functional --timeout-s 200
+python3 tests/verify.py --check sensitivity --output evidence/behavior/negative_control --timeout-s 20
+python3 tests/verify.py --check synthesis --configs A,B --output evidence/verification/synthesis --timeout-s 120
 ```
 
-These commands are the admitted Verifier contract, not Designer-executed
-results or a claim that Verifier-owned entrypoints already exist.
+These Phase 2 commands are the admitted Verifier contract, not
+Designer-executed results or a claim that the new Verifier-owned functional
+and sensitivity entrypoints already exist. The original behavior runner and
+its coverage must be retained within the functional check. Check-level outer
+timeouts are respectively 70,220,40,140 seconds; the inner allowances above
+are phase-wide, including every child, and must not be renewed per job.
 
 ## Retained static diagnostics
 
