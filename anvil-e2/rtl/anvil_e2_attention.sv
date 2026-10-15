@@ -96,18 +96,30 @@ module anvil_e2_attention #(
             else saturate=value[47:0];
         end
     endfunction
+    wire divide_clk, divide_active;
+    wire divide_in_ready_raw, divide_out_valid_raw;
     wire divide_in_ready, divide_out_valid, divide_error;
     wire signed [127:0] divide_result;
     wire signed [47:0] finished_value=denominator==0 ? 48'sd0:saturate(divide_result);
-    anvil_e2_divide divider (
+    anvil_e2_clock_gate divide_clock (
         .clk(clk), .rst_n(rst_n),
-        .in_valid(rst_n && (state==SCORE || (state==FINISH && denominator!=0))),
-        .in_ready(divide_in_ready),
+        .enable(state==SCORE || state==SCORE_WAIT ||
+            ((state==FINISH || state==FINISH_WAIT) && denominator!=0)),
+        .active(divide_active), .gated_clk(divide_clk)
+    );
+    assign divide_in_ready=divide_active && divide_in_ready_raw;
+    assign divide_out_valid=divide_active && divide_out_valid_raw;
+    anvil_e2_divide divider (
+        .clk(divide_clk), .rst_n(rst_n),
+        .in_valid(rst_n && divide_active &&
+            (state==SCORE || (state==FINISH && denominator!=0))),
+        .in_ready(divide_in_ready_raw),
         .in_numerator(state==SCORE ? mac_sum:weighted[channel]),
         .in_denominator(state==SCORE ?
             {64'd0,full_mode ? FULL_ROOT:LOCAL_ROOT}:$unsigned(denominator)),
-        .out_valid(divide_out_valid),
-        .out_ready(state==SCORE_WAIT || state==FINISH_WAIT),
+        .out_valid(divide_out_valid_raw),
+        .out_ready(rst_n && divide_active &&
+            (state==SCORE_WAIT || state==FINISH_WAIT)),
         .out_data(divide_result), .out_error(divide_error)
     );
     initial begin

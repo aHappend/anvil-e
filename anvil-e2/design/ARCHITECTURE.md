@@ -102,6 +102,10 @@ and nonlinear helpers. These gates use the same high-while-disabled primitive,
 direct asynchronous reset and active-qualified input handshake as the stage
 gates. The MAC remains on the engine clock because memory-result acceptance
 can enable it on that very edge.
+The attention-owned divider has its own instance of the same gate. Only SCORE,
+SCORE_WAIT and nonzero-denominator FINISH/FINISH_WAIT request its clock.
+Registered active ownership qualifies both sides of its input and output
+handshakes; memory, nonlinear, output and completion phases do not request it.
 The combinational `anvil_e2_series` helper supplies four exact recurrence steps
 to the nonlinear and rotary controllers; only their existing SERIES edge
 captures its outputs. It adds no storage or handshake channel.
@@ -127,6 +131,8 @@ captures its outputs. It adds no storage or handshake channel.
 | Helper wake | Local START/request with helper active=0 | no helper input handshake | Enable registers one; controller retains START/request |
 | Helper start | Local START/request, active=1 and helper ready | helper input/ownership acceptance | Original LOAD/run/wait phase; operands captured only on this edge |
 | Helper retirement | Held helper output/completion accepted | release helper ownership | Helper IDLE; controller advances; gate may sleep on a later edge |
+| Attention divider wake | SCORE or nonzero FINISH, divide_active=0 | no divider input acceptance or controller advance | Registered enable becomes one; remain in request state until a subsequent real divider edge |
+| Attention divider result | SCORE_WAIT or nonzero FINISH_WAIT, divide_active=1 and divider out_valid | Result retirement by divider and attention together | Divider IDLE; attention captures result/error and advances; enable remains set through this edge |
 | Stage completion | done_valid && done_ready | owner release | next START or error completion |
 | Embedding stalled | emb_valid=1, emb_ready=0 | none | data/index/last unchanged |
 | Nonfinal embedding | emb_valid && emb_ready | output beat | next registered beat may appear |
@@ -170,6 +176,7 @@ validation, stage handoff or memory bridge phases.
 | Guarded division | Exact signed magnitude division, nearest-even for either sign; zero divisor or signed quotient overflow reports helper error |
 | Divider quotient-digit boundaries | Exact 16-bit digits grouped up to four per RUN edge; divisor lengths 48/49/128, normalized 64-bit numerator, a 17-bit estimate of 65536, and one-step overestimate correction; full 128-bit residue retained; no digit after count eight |
 | Two-pass attention | First pass finds the maximum; second accumulates both exact reductions in ascending key order; empty eligibility never issues a zero-denominator divide |
+| Attention divider sleep/wake/reuse | Registered active qualifies ready/valid consumption and divider input/output acceptance; request state waits through wake, wait state keeps clock running through retirement; consecutive FINISH components may reuse the active clock; zero denominator never requests it; asynchronous reset cancels both gate and divider |
 | Attention final response | Successful K response clocks the dot MAC before SCORE; successful V response adds the exact shared product directly to the weighted component and enters VREQ or NEXTKEY; stalled/error responses never accumulate |
 | Attention address cursors | Capture query/head origins at start; successful nonfinal Q/K/V responses advance their component cursor by four; NEXTKEY advances fixed-stride K/V origins and metadata even for skipped keys, or rewinds all key cursors at the final key; no new FSM edge |
 | Series group/final term | Four ordered terms per clock; evaluate term 18 once, never term 19; exact-zero tails contribute zero |
@@ -349,14 +356,70 @@ PREPARE (divider start) -> RATIO_WAIT (registered result acceptance) -> APPLY
 (norm weight and original Q24 weight rounding) -> held output. Zero-root
 components go directly from PREPARE to held zero. The next component cannot
 start until the previous output retires.
-Attention follows successful KRSP (dot MAC acceptance) -> SCORE (divider start)
+Attention follows successful KRSP (dot MAC acceptance) -> SCORE (divider wake/start)
 -> SCORE_WAIT (result acceptance and original score/max processing).
 After both key passes, each component
-follows FINISH (divider start) -> FINISH_WAIT (result acceptance and capture).
+follows FINISH (divider wake/start) -> FINISH_WAIT (result acceptance and capture).
 The empty-denominator path uses FINISH_WAIT without a divider request.
 Only after all component captures does OUTPUT present its registered first
 beat. Helper errors propagate through the existing arithmetic-error channels.
 Reset cancels helper work along with its owning stage.
+
+### Attention-owned divider clock-isolation candidate
+
+Only `anvil_e2_attention`'s divider clock is newly isolated; the divider
+algorithm, norm/nonlinear divider clocks and all other accepted optimizations
+are unchanged. This is an execution-cost hypothesis, not a numerical repair
+or a demonstrated speedup. The complete B/seed17/joint observation at
+`evidence/preparation/q40-public-phase-cost-b17-001/receipt.json` and its
+read-only analysis at
+`evidence/preparation/q40-public-phase-cost-b17-analysis-001/receipt.json`
+combine multiple operators with responder/monitor work. They do not establish
+dominant idle-divider cost or resolve the retained aggregate deadline failure.
+
+The gate uses the attention input clock and its direct asynchronous reset.
+Its enable is true in SCORE/SCORE_WAIT and, only when the accumulated
+denominator is nonzero, FINISH/FINISH_WAIT. The existing gate holds its
+output high while inactive and registers enable on an input rising edge.
+An inactive divider's raw IDLE ready is not an accepting event: both
+the controller's ready observation and the divider's input valid require
+registered `divide_active`. Likewise, the controller's result-valid
+observation and the divider's output ready require that active ownership.
+No raw ready/valid value can advance the controller during wake.
+
+| Attention divider phase | Pre-edge condition | Post-edge behavior |
+|---|---|---|
+| Reset, including stopped clocks | rst_n=0 | Gate inactive; divider IDLE/result/error reset directly; attention IDLE; canceled work cannot resume |
+| Wake | SCORE or nonzero FINISH; active=0 | Gate registers active=1; attention holds request state/operands; no input accepted |
+| Input | Request state; active=1 and qualified ready | Both sides accept the same operands; attention enters its existing WAIT; divider starts its unchanged calculation |
+| Calculation or held result | SCORE_WAIT or nonzero FINISH_WAIT | Enable stays asserted; result cannot be consumed before qualified valid; unchanged arithmetic and held data/error |
+| Result retirement | WAIT; active=1 and qualified valid | Attention captures result/error and advances; divider retires HOLD to IDLE on the same edge; gate remains active through retirement |
+| Sleep | A later edge outside divider-owned phases | Enable clears; divider remains IDLE; no new division or stale-result consumption |
+| Consecutive final components | Nonfinal successful FINISH_WAIT returns to FINISH | Ownership stays active across both states; next input accepts only after prior result retirement |
+| Empty denominator | FINISH then FINISH_WAIT with denominator=0 | Existing registered zero captures; no divider request or required wake; output begins only after all components are captured |
+
+Waking a sleeping divider adds a request-state edge. Memory request ordering,
+addresses and numerical operands/results are unchanged, but elapsed cycles
+and cycle-dependent responder stalls may change. No request/response phase,
+scratch word/traffic geometry, materialization boundary or public pin changes.
+SCORE_WAIT/FINISH_WAIT cannot release clock ownership before result retirement,
+including a held arithmetic error. Memory errors retain the existing first-error
+retirement path and never start a division; reset reaches the divider even
+when parent or local clocks are stopped. Public output/completion backpressure
+continues to use attention's existing registered buffers, not divider storage.
+
+Designer performs only static elaboration. Verifier must retain separate,
+serial complete B/seed17/joint and C/seed89/joint before/after comparisons
+under unchanged fixtures, independent expectations, child watchdogs and
+common deadlines. Check exact embeddings, scratch histories, request ordering
+and payloads rather than require the old cycle transcript. Exercise divider
+wake/reuse, local/full and vision/text paths, stalls, zero denominator, errors,
+reset/cancellation and actual A/C connected-hierarchy/zero-latch synthesis.
+The obligations in the analysis receipt remain outstanding. Useful complete-
+fixture headroom must be demonstrated before repeating the known-failing
+aggregate; all mandatory coverage, 0.002 thresholds and admitted budgets remain
+unchanged. No simulation, synthesis, speedup or budget compliance is claimed
+by this implementation handoff.
 
 ### Exact grouped-root and divider execution-cost repair
 
