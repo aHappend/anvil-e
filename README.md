@@ -28,7 +28,7 @@ verification suites and reproducible delivery packages.
 | Generation | Design | Target model & scope | Status |
 | --- | --- | --- | --- |
 | **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (24-layer 5:1 hybrid sliding/full attention, 512d → 768d projection, mean pooling and L2 normalization) | Completed & Verified — Full Pure-Text RTL Delivery Package Published |
-| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | Settled — Vision+Text RTL Package Published |
+| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8 |
 | **Gen-3** | **Anvil-E3** | Google EmbeddingGemma-2 · Audio + Vision + Text unified embedding engine | Planned |
 
 ## Anvil-E2 · Generation 2 (Vision + Text Multimodal edition)
@@ -44,7 +44,7 @@ engineered autonomously with **Vulcan 0.8**:
 | **Spatial Pooler & Vision Bridge (`embed_vision`)** | `pooling_kernel_size = 3` spatial pooling (`default_output_length = 280` soft tokens) + `embedding_projection [512, 768]` | 3×3 spatial token aggregation, 768 → 512 projection and `BOI`/`IMAGE`/`EOI` token stream fusion |
 | **Multimodal Backbone & Output (`0_Transformer` + `1_Pooling` + `2_Normalize`)** | 24-layer 5:1 hybrid sliding/full attention (`512d` + PLE `512d`), `512 → 768` projection, masked mean pooling and Matryoshka L2 normalization (`768 / 512 / 256 / 128`) | Unified vision+text sequence attention, masked accumulation and reciprocal-sqrt L2 normalization |
 
-- **Current engineering status**: `Settled — Vision+Text RTL Package Published` (updated `-`)
+- **Current engineering status**: `In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8` (updated `2026-10-15 19:16:50 UTC+8`)
 - **Authoritative model configs**: [`anvil-e2/hf_embeddinggemma2_vision_spec/`](anvil-e2/hf_embeddinggemma2_vision_spec/)
 - **Deliverable directory**: [`anvil-e2/`](anvil-e2/) (`rtl/`, `design/`, `tests/`)
 
