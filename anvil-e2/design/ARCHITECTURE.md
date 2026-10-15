@@ -171,6 +171,7 @@ validation, stage handoff or memory bridge phases.
 | Divider quotient-digit boundaries | Exact 16-bit digits grouped up to four per RUN edge; divisor lengths 48/49/128, normalized 64-bit numerator, a 17-bit estimate of 65536, and one-step overestimate correction; full 128-bit residue retained; no digit after count eight |
 | Two-pass attention | First pass finds the maximum; second accumulates both exact reductions in ascending key order; empty eligibility never issues a zero-denominator divide |
 | Attention final response | Successful K response clocks the dot MAC before SCORE; successful V response adds the exact shared product directly to the weighted component and enters VREQ or NEXTKEY; stalled/error responses never accumulate |
+| Attention address cursors | Capture query/head origins at start; successful nonfinal Q/K/V responses advance their component cursor by four; NEXTKEY advances fixed-stride K/V origins and metadata even for skipped keys, or rewinds all key cursors at the final key; no new FSM edge |
 | Series group/final term | Four ordered terms per clock; evaluate term 18 once, never term 19; exact-zero tails contribute zero |
 | Repeated rotary angle | Reuse only a complete successful sine/cosine pair matching all 48 angle bits in either of two scalar entries; reset invalidates both entries |
 | Singleton matvec row | First successful weight response clears and accumulates; separate PREPARE captures the updated MAC before held output |
@@ -734,6 +735,91 @@ accepted errors retire before held stage completion as before.
 | Weighted end | NEXTKEY after final key | FINISH, then separate FINISH_WAIT for each division |
 | K/V error | Accepted erroneous result | DONE/error 3; no MAC update or new request |
 | Reset or held output | Original reset/stall conditions | Original cancellation or stable held-output semantics |
+
+### Attention descriptor-hoisted address cursors
+
+`anvil_e2_attention` now captures the invariant query and grouped-KV head
+address terms on its existing accepted descriptor edge. Its command-address
+mux selects registered cursors instead of recomputing products involving the
+runtime head dimension for each request. The FSM, accepting edges, command
+ordering and arithmetic datapath are unchanged; this is separate from the
+earlier V-response transfer-edge removal below.
+
+Let `d` be the selected head dimension, `D=max(LOCAL_HEAD_DIM,FULL_HEAD_DIM)`,
+`K=max(LOCAL_KV_HEADS,FULL_KV_HEADS)`, `Q=NUM_Q_HEADS`, and
+`hkv=start_head/(Q/selected_KV_heads)`. All following byte-address expressions
+use unsigned 64-bit arithmetic, retaining the old modulo-2^64 expression
+semantics; top-level extent validation is unchanged.
+The accepted descriptor establishes:
+
+| Register/origin | Captured value |
+|---|---|
+| Query component cursor | start_q_base + 4*(start_query*Q*D + start_head*d) |
+| Query position address | start_positions_base + 4*start_query |
+| K/V head origins | start_k_base/start_v_base + 4*hkv*d |
+| K/V key origins and component cursors | Corresponding K/V head origin, for key zero |
+| Key position/mask cursors | start_positions_base/start_mask_base |
+
+At each KREQ/VREQ the key origin equals its head origin plus
+`key*(4*K*D)`. The K component cursor equals that key origin plus
+`4*component`; the V cursor equals its own key origin plus `4*channel`.
+At QREQ the query cursor equals its captured origin plus `4*component`.
+The token stride is the compile-time maximum-head padded stride, not `d`;
+only the active head offset and component traversal use `d`.
+
+| Attention edge/phase | Pre-edge event | Post-edge address/control behavior |
+|---|---|---|
+| Reset | rst_n=0 asynchronously | All cursor/origin registers zero; original reset outputs and IDLE |
+| Descriptor acceptance | start_valid && start_ready | Capture all origins/cursors and original descriptor; original QREQ or error-DONE decision |
+| Q/K/V request stall or acceptance | Existing request state, either cmd_ready value | Cursors hold; original request/response transition |
+| Response stall or error | result_valid=0, or accepted result_error | Cursors hold; original wait or DONE/error 3; no added request |
+| Successful nonfinal Q/K/V response | Existing response retirement, component/channel not final | Corresponding component cursor adds four alongside original counter increment |
+| Successful final Q/K/V response | Existing final response retirement | Corresponding cursor holds; original phase transition and counter behavior |
+| Mask/position/score/exp processing | Existing eligibility or arithmetic phase | Cursors hold; original eligibility, reductions and transitions |
+| NEXTKEY, nonfinal key | Existing unconditional NEXTKEY edge | K/V key origins add 4*K*D, component cursors capture those next origins, metadata adds four; original key increment and next phase |
+| NEXTKEY, final key | Existing unconditional NEXTKEY edge | Key origins/component cursors rewind to captured head origins; metadata rewinds to captured bases; original pass restart or FINISH decision |
+| Output/completion stall or retirement | Original output/done handshake | Address registers hold; original held outputs and completion |
+
+NEXTKEY updates every traversal cursor even when a key was masked, outside
+the local window, omitted from V reads in the maximum pass, or assigned a
+zero tail weight in the weighted pass. It never derives a next-key address
+from a partly consumed component cursor. The final-key rewind occurs before
+the second pass's first request, including a singleton token. Vision begins
+directly at KREQ after query loading; text retains its query-position,
+mask and optional key-position reads. Final-key completion also rewinds
+internally but exposes no request. No cursor advances on an erroneous
+response, and reset cancels all traversal state.
+
+`cmd_addr` remains exactly zero in every nonrequest state, including response,
+output, error completion and idle, and while reset is asserted. Request
+payloads remain stable across stalls. No precision boundary, tensor cache,
+external transaction, stage interface or ownership edge is added or removed.
+The accepted matvec cursor implementation remains unchanged.
+
+The pre-change attention source is retained byte-for-byte at
+`evidence/preparation/q40-cursor-serial-paired-001/before-rtl/anvil_e2_attention.sv`
+(SHA-256 `628391f3c0f69d8d4ebaf2e1176718ef30bd0f6a84e430b5024e733d47baa575`).
+Verifier must use a disposable current-source copy with only this pre-change
+attention file substituted, thereby retaining the accepted matvec cursor and
+all other current sources. Fresh project-local receipts must link
+`evidence/preparation/q40-cursor-serial-paired-001/receipt.json` and
+`evidence/preparation/q40-projection-attention-b17-001/receipt.json`.
+Compare complete unchanged B/seed17/joint and C/seed89/joint runs, including
+public request/response cycles and payloads, embeddings and scratch writes,
+against independent oracles. Targeted public-pin boundaries must cover both
+passes, vision/text and local/full dimensions, every KV head group, masked
+and skipped keys, tail-zero weights, singleton/final-key rewind, last
+component, descriptor capture, request/response/output stalls, error retirement,
+reset and inactive output values.
+
+This targets repeated address computation, not a proven dominant CPU cost
+or numerical defect. Only static elaboration is Designer-owned; functional
+comparison, serial cost measurements, sensitivity and synthesis are pending
+Verifier work. One timing pair does not establish useful aggregate headroom.
+The retained aggregate deadline failure and failed two-worker candidate remain
+unresolved; concurrency stays unadopted. Demonstrated sufficient headroom is
+required before another aggregate attempt. All mandatory coverage,
+mathematical 0.002 thresholds and admitted 120-second budgets are unchanged.
 
 ### Attention V-response transfer-edge removal
 

@@ -39,17 +39,21 @@ module anvil_e2_attention #(
 );
     localparam integer DM=LOCAL_HEAD_DIM>FULL_HEAD_DIM ? LOCAL_HEAD_DIM:FULL_HEAD_DIM;
     localparam integer KM=LOCAL_KV_HEADS>FULL_KV_HEADS ? LOCAL_KV_HEADS:FULL_KV_HEADS;
+    localparam [63:0] KV_TOKEN_BYTES=64'(KM)*DM*64'd4;
     localparam IDLE=0, QREQ=1, QRSP=2, POSREQ=3, POSRSP=4,
         MASKREQ=5, MASKRSP=6, KPOSREQ=7, KPOSRSP=8, KREQ=9, KRSP=10,
         SCORE=12, EXPREQ=13, EXPRSP=14, VREQ=15, VRSP=16,
         NEXTKEY=19, FINISH=20, OUTPUT=21, DONE=22,
         SCORE_WAIT=23, FINISH_WAIT=24;
     reg [4:0] state;
-    reg [31:0] tokens, query, head, kv_head, dim, key, component, channel;
+    reg [31:0] tokens, dim, key, component, channel;
     reg [31:0] query_position;
     reg full_mode, found_key;
     reg weighted_pass;
-    reg [63:0] q_base, k_base, v_base, position_base, mask_base;
+    reg [63:0] position_base, mask_base;
+    reg [63:0] q_addr, query_position_addr, key_position_addr, key_mask_addr;
+    reg [63:0] k_head_base, v_head_base, k_key_base, v_key_base, k_addr, v_addr;
+    reg [63:0] kv_byte_offset;
     reg signed [47:0] q_values [0:DM-1];
     reg signed [127:0] weighted [0:DM-1];
     reg signed [47:0] values [0:DM-1];
@@ -119,12 +123,12 @@ module anvil_e2_attention #(
     assign cmd_valid=rst_n && (state==QREQ || state==POSREQ || state==MASKREQ ||
                                state==KPOSREQ || state==KREQ || state==VREQ);
     assign cmd_addr=!rst_n ? 64'd0 :
-        state==QREQ ? q_base+(64'(query)*NUM_Q_HEADS*DM+64'(head)*dim+component)*64'd4:
-        state==POSREQ ? position_base+64'(query)*64'd4:
-        state==MASKREQ ? mask_base+64'(key)*64'd4:
-        state==KPOSREQ ? position_base+64'(key)*64'd4:
-        state==KREQ ? k_base+(64'(key)*KM*DM+64'(kv_head)*dim+component)*64'd4:
-        state==VREQ ? v_base+(64'(key)*KM*DM+64'(kv_head)*dim+channel)*64'd4:64'd0;
+        state==QREQ ? q_addr:
+        state==POSREQ ? query_position_addr:
+        state==MASKREQ ? key_mask_addr:
+        state==KPOSREQ ? key_position_addr:
+        state==KREQ ? k_addr:
+        state==VREQ ? v_addr:64'd0;
     assign result_ready=rst_n && (state==QRSP || state==POSRSP || state==MASKRSP ||
                                   state==KPOSRSP || state==KRSP || state==VRSP);
     assign mac_clear=mac_accumulate && (state==VRSP || component==0);
@@ -146,10 +150,13 @@ module anvil_e2_attention #(
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state<=IDLE; tokens<=0; query<=0; head<=0; kv_head<=0; dim<=0;
+            state<=IDLE; tokens<=0; dim<=0;
             key<=0; component<=0; channel<=0; query_position<=0;
             full_mode<=0; found_key<=0; weighted_pass<=0;
-            q_base<=0; k_base<=0; v_base<=0; position_base<=0; mask_base<=0;
+            position_base<=0; mask_base<=0;
+            q_addr<=0; query_position_addr<=0; key_position_addr<=0; key_mask_addr<=0;
+            k_head_base<=0; v_head_base<=0; k_key_base<=0; v_key_base<=0;
+            k_addr<=0; v_addr<=0; kv_byte_offset=0;
             score_max<=0; score_value<=0; exponential<=0;
             denominator<=0; error_hold<=0; data_hold<=0; index_hold<=0; last_hold<=0;
             difference=0; position_difference=0;
@@ -157,12 +164,23 @@ module anvil_e2_attention #(
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
-                    tokens<=start_tokens; query<=start_query; head<=start_head;
+                    tokens<=start_tokens;
                     full_mode<=start_full;
                     dim<=start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
-                    kv_head<=start_head/(NUM_Q_HEADS/(start_full ? FULL_KV_HEADS:LOCAL_KV_HEADS));
-                    q_base<=start_q_base; k_base<=start_k_base; v_base<=start_v_base;
+                    kv_byte_offset=64'(start_head/
+                        (NUM_Q_HEADS/(start_full ? FULL_KV_HEADS:LOCAL_KV_HEADS)))*
+                        64'(start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM)*64'd4;
+                    q_addr<=start_q_base+(64'(start_query)*NUM_Q_HEADS*DM+
+                        64'(start_head)*64'(start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM))*64'd4;
+                    k_head_base<=start_k_base+kv_byte_offset;
+                    v_head_base<=start_v_base+kv_byte_offset;
+                    k_key_base<=start_k_base+kv_byte_offset;
+                    v_key_base<=start_v_base+kv_byte_offset;
+                    k_addr<=start_k_base+kv_byte_offset;
+                    v_addr<=start_v_base+kv_byte_offset;
                     position_base<=start_positions_base; mask_base<=start_mask_base;
+                    query_position_addr<=start_positions_base+64'(start_query)*64'd4;
+                    key_position_addr<=start_positions_base; key_mask_addr<=start_mask_base;
                     component<=0; channel<=0; key<=0; weighted_pass<=0; found_key<=0;
                     denominator<=0; error_hold<=0;
                     if (start_tokens==0 || start_query>=start_tokens || start_head>=NUM_Q_HEADS) begin
@@ -180,7 +198,10 @@ module anvil_e2_attention #(
                             if (VISION) state<=KREQ;
                             else state<=POSREQ;
                         end
-                        else begin component<=component+1'b1; state<=QREQ; end
+                        else begin
+                            component<=component+1'b1; q_addr<=q_addr+64'd4;
+                            state<=QREQ;
+                        end
                     end
                 end
                 POSREQ: if (cmd_ready) state<=POSRSP;
@@ -211,7 +232,10 @@ module anvil_e2_attention #(
                 KRSP: if (result_valid) begin
                     if (result_error) begin error_hold<=3; state<=DONE; end
                     else if (component==dim-1) state<=SCORE;
-                    else begin component<=component+1'b1; state<=KREQ; end
+                    else begin
+                        component<=component+1'b1; k_addr<=k_addr+64'd4;
+                        state<=KREQ;
+                    end
                 end
                 SCORE: if (divide_in_ready) state<=SCORE_WAIT;
                 SCORE_WAIT: if (divide_out_valid) begin
@@ -250,12 +274,18 @@ module anvil_e2_attention #(
                         weighted[channel]<=weighted[channel]+
                                            {{32{mac_product[95]}},mac_product};
                         if (channel==dim-1) begin channel<=0; state<=NEXTKEY; end
-                        else begin channel<=channel+1'b1; state<=VREQ; end
+                        else begin
+                            channel<=channel+1'b1; v_addr<=v_addr+64'd4;
+                            state<=VREQ;
+                        end
                     end
                 end
                 NEXTKEY: begin
                     if (key==tokens-1) begin
                         key<=0;
+                        k_key_base<=k_head_base; v_key_base<=v_head_base;
+                        k_addr<=k_head_base; v_addr<=v_head_base;
+                        key_position_addr<=position_base; key_mask_addr<=mask_base;
                         if (weighted_pass || !found_key) begin
                             channel<=0; state<=FINISH;
                         end
@@ -266,6 +296,12 @@ module anvil_e2_attention #(
                         end
                     end else begin
                         key<=key+1'b1;
+                        k_key_base<=k_key_base+KV_TOKEN_BYTES;
+                        v_key_base<=v_key_base+KV_TOKEN_BYTES;
+                        k_addr<=k_key_base+KV_TOKEN_BYTES;
+                        v_addr<=v_key_base+KV_TOKEN_BYTES;
+                        key_position_addr<=key_position_addr+64'd4;
+                        key_mask_addr<=key_mask_addr+64'd4;
                         if (VISION) begin component<=0; state<=KREQ; end
                         else state<=MASKREQ;
                     end
