@@ -693,6 +693,8 @@ def behavior(run):
     guarded_divider(run)
     guarded_norm(run)
     guarded_nonlinear(run)
+    from cursor_boundaries import boundaries
+    boundaries(run)
     focused(run)
     directed(run)
     illegal_parameters(run)
