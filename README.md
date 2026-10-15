@@ -28,7 +28,7 @@ verification suites and reproducible delivery packages.
 | Generation | Design | Target model & scope | Autonomous Build Time | Status |
 | --- | --- | --- | --- | --- |
 | **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (5:1 hybrid sliding/full GQA attention, PLE per-layer embeddings, `512d → 768d` projection, masked mean pooling and Matryoshka L2 normalization) | **3h 17m 25s total** (`2h 17m 48s` Phase 1 RTL + `59m 37s` Phase 2 Official HF Weights Co-Sim) | Completed & Verified — [Official Report (`REPORT.pdf`)](anvil-e1/REPORT.pdf) & Live Demo Published |
-| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | **5h 25m 05s** (`Step 81 · designer`, `20` RTL files / `3580` lines) | In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8 |
+| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | **5h 26m 07s** (`Step 82 · verifier`, `20` RTL files / `3580` lines) | In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8 |
 | **Gen-3** | **Anvil-E3** | Google EmbeddingGemma-2 · Audio + Vision + Text unified embedding engine | — | Planned |
 
 ## Anvil-E2 · Generation 2 (Vision + Text Multimodal edition)
@@ -44,7 +44,7 @@ engineered autonomously with **Vulcan 0.8**:
 | **Spatial Pooler & Vision Bridge (`embed_vision`)** | `pooling_kernel_size = 3` spatial pooling (`default_output_length = 280` soft tokens) + `embedding_projection [512, 768]` | 3×3 spatial token aggregation, 768 → 512 projection and `BOI`/`IMAGE`/`EOI` token stream fusion |
 | **Multimodal Backbone & Output (`0_Transformer` + `1_Pooling` + `2_Normalize`)** | 24-layer 5:1 hybrid sliding/full attention (`512d` + PLE `512d`), `512 → 768` projection, masked mean pooling and Matryoshka L2 normalization (`768 / 512 / 256 / 128`) | Unified vision+text sequence attention, masked accumulation and reciprocal-sqrt L2 normalization |
 
-- **Current engineering status**: `In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8` (`Step 81 · designer`, `20` RTL files / `3580` lines, updated `2026-10-15 20:36:54 UTC+8`)
+- **Current engineering status**: `In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8` (`Step 82 · verifier`, `20` RTL files / `3580` lines, updated `2026-10-15 20:37:56 UTC+8`)
 - **Authoritative model configs**: [`anvil-e2/hf_embeddinggemma2_vision_spec/`](anvil-e2/hf_embeddinggemma2_vision_spec/)
 - **Deliverable directory**: [`anvil-e2/`](anvil-e2/) (`rtl/`, `design/`, `tests/`)
 
