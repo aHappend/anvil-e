@@ -1,4 +1,4 @@
-"""Advisory real-DUT comparison of conditional held-payload capture only."""
+"""Advisory, unadopted public-monitor cost experiments."""
 import argparse
 import dataclasses
 import hashlib
@@ -11,8 +11,209 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from model import CONFIGS, Fixture, Floating, Integer, Q, SCRATCH
-from progress import monitored_prefix
+from progress import PUBLIC_FIELDS, monitored_prefix
 from verify import ROOT, Run, bench, rtl_files
+
+
+PUBLIC_VECTOR = "{" + ",".join(name for name, _ in PUBLIC_FIELDS) + "}"
+
+
+def shared_predicate(text):
+    """Cache reductions on changes; refresh stale snapshots at the same sample."""
+    before = f""" if ((^{PUBLIC_VECTOR})===1'bx) $fatal(1,"UNKNOWN_PUBLIC cycle=%0d",cycles);
+ if (!rst_n && {PUBLIC_VECTOR} !== '0) $fatal(1,"RESET_OUTPUT cycle=%0d",cycles);"""
+    after = """ if (!predicate_initialized || predicate_public !== PUBLIC_VECTOR ||
+     predicate_reset !== rst_n) refresh_predicate();
+ if (predicate_unknown) $fatal(1,"UNKNOWN_PUBLIC cycle=%0d",cycles);
+ if (predicate_nonzero_reset) $fatal(1,"RESET_OUTPUT cycle=%0d",cycles);""".replace(
+        "PUBLIC_VECTOR", PUBLIC_VECTOR)
+    declarations = f"""
+reg predicate_initialized=0;
+reg [155:0] predicate_public;
+reg predicate_reset,predicate_unknown,predicate_nonzero_reset;
+task automatic refresh_predicate;
+begin
+ predicate_public={PUBLIC_VECTOR};
+ predicate_reset=rst_n;
+ predicate_unknown=((^{PUBLIC_VECTOR})===1'bx);
+ predicate_nonzero_reset=(!rst_n && {PUBLIC_VECTOR} !== '0);
+ predicate_initialized=1;
+end
+endtask
+always @({",".join(name for name, _ in PUBLIC_FIELDS)},rst_n) refresh_predicate();
+"""
+    assert text.count(before) == 1, "known predicate replacement not unique"
+    assert text.count("task automatic known;") == 1
+    return text.replace(before, after).replace(
+        "task automatic known;", declarations + "\ntask automatic known;")
+
+
+def predicate_fixture(run):
+    """Compare both rejection classes, with an independent bit-vector oracle."""
+    fields = "\n".join(f"reg [{width-1}:0] {name};" for name, width in PUBLIC_FIELDS)
+    template = f"""
+module tb;
+reg clk=0,rst_n;
+integer cycles=0,checks=0,old_rejection,new_rejection;
+{fields}
+task automatic known;
+begin
+ if ((^{PUBLIC_VECTOR})===1'bx) $fatal(1,"UNKNOWN_PUBLIC cycle=%0d",cycles);
+ if (!rst_n && {PUBLIC_VECTOR} !== '0) $fatal(1,"RESET_OUTPUT cycle=%0d",cycles);
+end
+endtask
+endmodule
+"""
+    changed = shared_predicate(template)
+    declarations = changed[changed.index("reg predicate_initialized"):
+                           changed.index("task automatic known;")]
+    body = changed[changed.index("task automatic known;"):changed.index("endmodule")]
+    body = body.replace("task automatic known;", "task automatic candidate_known;")
+    body = body.replace('$fatal(1,"UNKNOWN_PUBLIC cycle=%0d",cycles)',
+                        "new_rejection=new_rejection|1")
+    body = body.replace('$fatal(1,"RESET_OUTPUT cycle=%0d",cycles)',
+                        "new_rejection=new_rejection|2")
+    check = f"""
+task automatic compare(input integer expected,input integer phase);
+begin
+ old_rejection=0; new_rejection=0;
+ if ((^{PUBLIC_VECTOR})===1'bx) old_rejection=old_rejection|1;
+ if (!rst_n && {PUBLIC_VECTOR} !== '0) old_rejection=old_rejection|2;
+ candidate_known();
+ if(old_rejection!==expected || new_rejection!==old_rejection)
+  $fatal(1,"PREDICATE_BLIND_SPOT check=%0d phase=%0d old=%0d new=%0d expected=%0d",
+         checks,phase,old_rejection,new_rejection,expected);
+ checks=checks+1;
+ $display("PREDICATE %0d %0d %0d",checks,phase,old_rejection);
+end
+endtask
+"""
+    # Each update is observed immediately, after #0, and after an NBA. No
+    # settling delay is inserted before the immediate same-timestamp sample.
+    stimulus = ["compare(1,0);", "#0; compare(1,1);",
+                f"{PUBLIC_VECTOR}='0; rst_n=0; compare(0,2);",
+                "#0; compare(0,3);", "#1; compare(0,4);"]
+    cases = []
+    for field, width in PUBLIC_FIELDS:
+        for bit in range(width):
+            target = f"{field}[{bit}]"
+            for reset in (0, 1):
+                for value, code in (("1'bx", 1), ("1'bz", 1), ("1'b1", 0)):
+                    expected = code | (2 if reset == 0 else 0)
+                    # Drive clock edges and all original observation phases.
+                    for phase in range(5):
+                        stimulus.extend([
+                            f"#1; {PUBLIC_VECTOR}='0; rst_n={reset}; clk=0;",
+                            "compare(0,5);",
+                        ])
+                        if phase == 0:
+                            stimulus.append(f"{target}={value}; compare({expected},10);")
+                        elif phase == 1:
+                            stimulus.append(f"clk=1; {target}={value}; compare({expected},11);")
+                        elif phase == 2:
+                            stimulus.append(f"#0; {target}={value}; compare({expected},12);")
+                        elif phase == 3:
+                            stimulus.append(
+                                f"{target}<={value}; @({target}); compare({expected},13);")
+                        else:
+                            stimulus.append(f"clk=1; #1; clk=0; {target}={value}; "
+                                            f"compare({expected},14);")
+                        stimulus.extend([
+                            f"#0; compare({expected},20);",
+                            f"#1; compare({expected},21);",
+                            f"rst_n={1-reset}; compare({code | (2 if reset else 0)},22);",
+                            f"{PUBLIC_VECTOR}='0; compare(0,23);",
+                        ])
+                        cases.append((field, bit, reset, value, phase))
+    text = (template[:template.index("task automatic known;")] +
+            declarations + body + check + "\ninitial begin\n" +
+            "\n".join(stimulus) +
+            '\n$display("PREDICATE_COMPLETE %0d",checks); $finish;\nend\nendmodule\n')
+    folder = run.directory/"predicate-fixture"
+    folder.mkdir()
+    tb, exe = folder/"tb.sv", folder/"tb.vvp"
+    tb.write_text(text)
+    run.receipt["generated_source_sha256"] = {
+        str(tb.relative_to(ROOT)): hashlib.sha256(tb.read_bytes()).hexdigest()}
+    run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", exe, tb],
+                "predicate-compile", timeout=10)
+    out, _, _ = run.command(["vvp", exe], "predicate-simulate", timeout=20)
+    expected_checks = 5 + 6*len(cases)
+    assert f"PREDICATE_COMPLETE {expected_checks}" in out
+    assert sum(line.startswith("PREDICATE ") for line in out.splitlines()) == expected_checks
+    run.receipt["assertions"].append({
+        "standalone_exact_rejection_comparisons": expected_checks,
+        "injections": len(cases), "public_bits": sum(w for _, w in PUBLIC_FIELDS),
+        "values": ["X", "Z", "one"], "reset_values": [0, 1],
+        "phases": ["immediate", "posedge-active", "inactive",
+                   "post-NBA-change", "negedge-active"],
+        "initial_unknowns": True, "reset_transition_same_timestamp": True,
+        "coherence_guard": "Refresh on snapshot mismatch before every consumption; "
+                           "change-driven scheduling alone is not assumed coherent."})
+    run.save()
+
+
+def predicate_probe(run, phase):
+    run.receipt["candidate"] = {
+        "diagnostic_only": True, "production_changed": False,
+        "delta": "Shared change-driven X/Z and reset-zero reductions with a "
+                 "same-sample snapshot coherence guard; no held-capture change.",
+        "decision_rule": "Both balanced unrecorded arms must be at least 15% "
+                         "faster; prefix evidence never proves aggregate compliance.",
+        "adopted": False}
+    predicate_fixture(run)
+    if phase == "standalone":
+        return
+    fixture = Fixture(CONFIGS["B"], 17, 2)
+    integer, expected = fixture.run(Integer())
+    floating, _ = fixture.run(Floating())
+    absolute = max(abs(a/Q-b) for a, b in zip(integer, floating))
+    norm_error = abs(sum((a/Q)**2 for a in integer)**0.5-1)
+    assert absolute <= 0.002 and norm_error <= 0.002
+    run.receipt["fixture"] = {
+        "configuration": dataclasses.asdict(fixture.c), "seed": 17, "mode": 2,
+        "prefix_cycles": 100000, "mathematical_max_abs_error": absolute,
+        "l2_error": norm_error, "full_fixture_complete": False}
+    memory = memory_file(run, fixture, "input")
+    original = observations(bench(fixture, memory, (fixture.layout["end"]-SCRATCH)//4))
+    candidate = shared_predicate(original)
+    outputs, timings = {}, {}
+    for name, source, recorded in (
+            ("baseline-recorded", original, True), ("candidate-recorded", candidate, True),
+            ("baseline-timing-1", original, False), ("candidate-timing-1", candidate, False),
+            ("candidate-timing-2", candidate, False), ("baseline-timing-2", original, False)):
+        text = monitored_prefix(source, run.directory/name, 100000, baseline=not recorded)
+        outputs[name], timings[name] = simulate(run, name, text)
+        assert outputs[name].count("DIAGNOSTIC_STOP_INCOMPLETE") == 1
+        assert "TRANSCRIPT_COMPLETE" not in outputs[name]
+        writes_checked(outputs[name], expected)
+    baseline = outputs["baseline-recorded"]
+    assert records(baseline) == records(outputs["candidate-recorded"])
+    sampled = changes(run.directory/"baseline-recorded/public-samples.mem")
+    assert sampled == changes(run.directory/"candidate-recorded/public-samples.mem")
+    samples = int(re.search(r"^SAMPLES (\d+)$", baseline, re.M)[1])
+    assert samples == 300004
+    tags = ("T ", "R ", "W ", "PROGRESS ", "DIAGNOSTIC_STOP_")
+    traffic = lambda out: [line for line in out.splitlines() if line.startswith(tags)]
+    assert all(traffic(out) == traffic(baseline) for out in outputs.values())
+    run.receipt["assertions"].append({
+        "sampled_public_and_host_observations_exact": samples,
+        "wide_change_records_exact": len(sampled),
+        "request_records_exact": sum(s.startswith("T ") for s in baseline.splitlines()),
+        "response_records_exact": sum(s.startswith("R ") for s in baseline.splitlines()),
+        "independent_prefix_writes": writes_checked(baseline, expected),
+        "all_six_arms_identical_public_traffic": True})
+    ratios = [timings[f"candidate-timing-{i}"]/timings[f"baseline-timing-{i}"]
+              for i in (1, 2)]
+    run.receipt["cost_comparison"] = {
+        "baseline_s": [timings[f"baseline-timing-{i}"] for i in (1, 2)],
+        "candidate_s": [timings[f"candidate-timing-{i}"] for i in (1, 2)],
+        "candidate_over_baseline": ratios,
+        "useful_prefix_headroom": all(r <= 0.85 for r in ratios),
+        "adopted": False,
+        "limitation": "Deliberately incomplete prefix; no aggregate compliance "
+                      "or dominant simulator-cost attribution is established."}
+    run.save()
 
 
 def conditional_capture(text):
@@ -279,18 +480,25 @@ def main():
     parser.add_argument("--repair-of", default=(
         "evidence/preparation/q40-current-monitored-host-b17-007/receipt.json"))
     parser.add_argument("--retained-prefix")
+    parser.add_argument("--candidate", choices=("held-capture", "shared-predicate"),
+                        default="held-capture")
+    parser.add_argument("--phase", choices=("standalone", "prefix"), default="prefix")
     args = parser.parse_args()
     run = Run(ROOT/args.output, budget=110, repair_of=args.repair_of)
     try:
         run.tools(("python3", "iverilog", "vvp"))
-        probe(run, args.retained_prefix)
+        if args.candidate == "shared-predicate":
+            assert not args.retained_prefix, "predicate trial requires fresh execution"
+            predicate_probe(run, args.phase)
+        else:
+            probe(run, args.retained_prefix)
         run.finish("diagnostic-complete")
     except Exception as error:
         run.receipt["traceback"] = traceback.format_exc()
         run.finish("failed", str(error))
         raise
     print(json.dumps({"receipt": args.output + "/receipt.json",
-                      "cost_comparison": run.receipt["cost_comparison"]}))
+                      "cost_comparison": run.receipt.get("cost_comparison")}))
 
 
 if __name__ == "__main__":
