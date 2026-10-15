@@ -1,0 +1,10 @@
+{
+  "status_label": "In Progress — Phase 2 Official Weights & Software-vs-RTL Verification",
+  "chip": "Anvil-E1",
+  "phase": "Phase 2 — Official Weights & Software-vs-RTL Comparison",
+  "vulcan_version": "0.8.0",
+  "started_utc": "2026-10-15T07:46:14.490323+00:00",
+  "started_cst": "2026-10-15 15:46:14 UTC+8",
+  "status": "running",
+  "reason": "Execute Roadmap Phase 2: integrate real official HuggingFace google/embeddinggemma-2 (model.safetensors) checkpoint weights and conduct end-to-end Software-Layer (FP32/BF16) vs Hardware-RTL (SystemVerilog Q8.24) numerical accuracy and performance comparison."
+}
