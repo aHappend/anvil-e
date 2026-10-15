@@ -1,0 +1,1120 @@
+{
+  "source_repo": "google/embeddinggemma-2",
+  "source_url": "https://huggingface.co/google/embeddinggemma-2/resolve/main/model.safetensors",
+  "safetensors_total_bytes": 1488915288,
+  "safetensors_header_bytes": 171296,
+  "extracted_safetensors_file": "google_embeddinggemma2_official_slice.safetensors",
+  "extracted_safetensors_sha256": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+  "tensor_count_extracted": 55,
+  "tensors": [
+    {
+      "name": "language_model.embed_tokens.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        262144,
+        512
+      ],
+      "loaded_shape": [
+        256,
+        512
+      ],
+      "hf_byte_range": [
+        612180776,
+        612442919
+      ],
+      "sha256": "22a114b399eb8026bf996969b8f4dbd13e01185900f8ebd7470be39bc8acfe1f",
+      "min": -0.2412109375,
+      "max": 0.3125,
+      "mean": 5.7229152474747025e-05,
+      "std": 0.04418633018901036
+    },
+    {
+      "name": "language_model.norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1141601112,
+        1141602135
+      ],
+      "sha256": "05b4ed217245085eead25a8de1d100a176273b01fff0953f3612722bd0730bc6",
+      "min": -1.8125,
+      "max": 21.5,
+      "mean": 7.96903920173645,
+      "std": 2.384251495086063
+    },
+    {
+      "name": "language_model.embedding_projection.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768,
+        512
+      ],
+      "loaded_shape": [
+        768,
+        512
+      ],
+      "hf_byte_range": [
+        880616232,
+        881402663
+      ],
+      "sha256": "8bf40642666dd27ce49c627e2c4398945e1c5957852b5210f1c1be6324dd9b63",
+      "min": -10.5,
+      "max": 10.8125,
+      "mean": -0.0009046962851850063,
+      "std": 1.1017330416856825
+    },
+    {
+      "name": "language_model.ple.per_layer_model_projection.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        12288,
+        512
+      ],
+      "loaded_shape": [
+        256,
+        512
+      ],
+      "hf_byte_range": [
+        1141602136,
+        1141864279
+      ],
+      "sha256": "ee3a3e84475818c53ad801444043a01d5abf5ff6d6a8a492c91fbab7820e7894",
+      "min": -0.375,
+      "max": 0.396484375,
+      "mean": -0.00014916583037916098,
+      "std": 0.04418162106489394
+    },
+    {
+      "name": "language_model.ple.per_layer_projection_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1154185048,
+        1154186071
+      ],
+      "sha256": "e51aad2375f2639291649c94319209878b3f18b55dc94b415256f665ff4c1cc6",
+      "min": 4.875,
+      "max": 52.75,
+      "mean": 9.365966796875,
+      "std": 2.5417635943478003
+    },
+    {
+      "name": "language_model.layers.0.input_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        881402664,
+        881403687
+      ],
+      "sha256": "4ce4304b85bdd11572b10fc28a610452d95962328153fde6f8e7f328699a8286",
+      "min": 4.84375,
+      "max": 39.25,
+      "mean": 6.5736083984375,
+      "std": 3.135525275669622
+    },
+    {
+      "name": "language_model.layers.0.layer_scalar",
+      "dtype": "BF16",
+      "original_shape": [
+        1
+      ],
+      "loaded_shape": [
+        1
+      ],
+      "hf_byte_range": [
+        881403688,
+        881403689
+      ],
+      "sha256": "8487a75c0de4c73162af36a68bd4a6cea9a15b41d7f4ce6f34260565406c9728",
+      "min": 0.390625,
+      "max": 0.390625,
+      "mean": 0.390625,
+      "std": 0.0
+    },
+    {
+      "name": "language_model.layers.0.self_attn.q_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        1024,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        890321706,
+        890387241
+      ],
+      "sha256": "e50f6403faf3bc9b22d1ef02d59d80162f208ac1e44a16b4a6c419817a40cf4f",
+      "min": -0.2421875,
+      "max": 0.2158203125,
+      "mean": -0.00014710538221152092,
+      "std": 0.04522312746688052
+    },
+    {
+      "name": "language_model.layers.0.self_attn.k_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        888748330,
+        888813865
+      ],
+      "sha256": "b01f049c380ab8aec77c4e2dd5966f7d9ab74fed9903d27c32741903d70b6b1e",
+      "min": -0.275390625,
+      "max": 0.1806640625,
+      "mean": -0.00013533249193642405,
+      "std": 0.044113101868417014
+    },
+    {
+      "name": "language_model.layers.0.self_attn.v_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        891370282,
+        891435817
+      ],
+      "sha256": "ce3d9a47d78f454650bb80640399d640cb2bdd97d2e872a5bcce6e8d930635d3",
+      "min": -0.82421875,
+      "max": 0.64453125,
+      "mean": 0.00032876560430850077,
+      "std": 0.05124977185958661
+    },
+    {
+      "name": "language_model.layers.0.self_attn.o_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        1024
+      ],
+      "loaded_shape": [
+        64,
+        1024
+      ],
+      "hf_byte_range": [
+        889272618,
+        889403689
+      ],
+      "sha256": "a79285c351399cd8fe6dc3018c9c18cf07fc6add6a5dd06a15d0b9e592c0dc63",
+      "min": -0.208984375,
+      "max": 0.255859375,
+      "mean": 6.33475544589146e-05,
+      "std": 0.031102754014083935
+    },
+    {
+      "name": "language_model.layers.0.self_attn.q_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        256
+      ],
+      "loaded_shape": [
+        256
+      ],
+      "hf_byte_range": [
+        890321194,
+        890321705
+      ],
+      "sha256": "a80f3176d8c4e9c8d113aee90863711847acaf9bc112dc49f85690fd355c7866",
+      "min": 1.0234375,
+      "max": 1.0234375,
+      "mean": 1.0234375,
+      "std": 0.0
+    },
+    {
+      "name": "language_model.layers.0.self_attn.k_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        256
+      ],
+      "loaded_shape": [
+        256
+      ],
+      "hf_byte_range": [
+        888747818,
+        888748329
+      ],
+      "sha256": "82dbd230fa6158cdafdf769a7ed09db864b9b957b379d356408db8c75496b1b4",
+      "min": 0.1220703125,
+      "max": 0.1220703125,
+      "mean": 0.1220703125,
+      "std": 0.0
+    },
+    {
+      "name": "language_model.layers.0.post_attention_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        888744746,
+        888745769
+      ],
+      "sha256": "202c730ccb1df794bfa5bfca5b824d471b72e276c13e652f802b6f114f1ab93a",
+      "min": 0.00011730194091796875,
+      "max": 4.03125,
+      "mean": 1.1914303973317146,
+      "std": 0.9174338261313658
+    },
+    {
+      "name": "language_model.layers.0.pre_feedforward_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        888746794,
+        888747817
+      ],
+      "sha256": "c4b2d8f7ac49da11dd20035dec398f256da0c7e7563654c1e5978e21c6f6688d",
+      "min": 0.34765625,
+      "max": 2.671875,
+      "mean": 1.0928764343261719,
+      "std": 0.24577866283365665
+    },
+    {
+      "name": "language_model.layers.0.mlp.gate_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        2048,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        883500842,
+        883566377
+      ],
+      "sha256": "602ee6efed0a6270c385c47396f25c68d3669361ea5d3a97e6f0e6245feafed0",
+      "min": -0.2333984375,
+      "max": 0.2119140625,
+      "mean": -0.00046190666307666106,
+      "std": 0.043497366484676475
+    },
+    {
+      "name": "language_model.layers.0.mlp.up_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        2048,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        885597994,
+        885663529
+      ],
+      "sha256": "c4c9783930b4386eca04e71b7e491efc2bed23f8959b3b58c2fa98a7f829d962",
+      "min": -0.34765625,
+      "max": 0.203125,
+      "mean": -8.389407776121516e-05,
+      "std": 0.0432703045759304
+    },
+    {
+      "name": "language_model.layers.0.mlp.down_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        2048
+      ],
+      "loaded_shape": [
+        64,
+        2048
+      ],
+      "hf_byte_range": [
+        881403690,
+        881665833
+      ],
+      "sha256": "5247158546fb7baeeeefda7acfe16c7265f9d3174865b96803d83771f348a734",
+      "min": -0.12890625,
+      "max": 0.14453125,
+      "mean": 2.5658975019382524e-05,
+      "std": 0.022226219451108236
+    },
+    {
+      "name": "language_model.layers.0.post_feedforward_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        888745770,
+        888746793
+      ],
+      "sha256": "330e8aad26a0947e5533da0448510374c2c0c3ed74233a92f91b5dab847c1472",
+      "min": 2.110004425048828e-05,
+      "max": 2.03125,
+      "mean": 1.609634708845988,
+      "std": 0.34565218613270593
+    },
+    {
+      "name": "language_model.layers.0.ple_block.per_layer_input_gate.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        887695146,
+        887760681
+      ],
+      "sha256": "3e2bf6c735be9b369f5a3a3d1479947be65608ba3c035d0fac39a21d3c3a4f34",
+      "min": -0.0908203125,
+      "max": 0.08154296875,
+      "mean": -7.654513046873035e-05,
+      "std": 0.018023102666758484
+    },
+    {
+      "name": "language_model.layers.0.ple_block.per_layer_projection.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        888219434,
+        888284969
+      ],
+      "sha256": "30e1b926c3857632bbe8e26da90f394b088f9a479b40423bd6af23bc0d8ed750",
+      "min": -0.5859375,
+      "max": 0.9140625,
+      "mean": -0.00012530643232366856,
+      "std": 0.05041720820026357
+    },
+    {
+      "name": "language_model.layers.0.ple_block.post_per_layer_input_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        888743722,
+        888744745
+      ],
+      "sha256": "ad8518c09d63a039b4576e8356b610c0d4a2bd3ed340b959fad26292c8df9a54",
+      "min": 3.725290298461914e-06,
+      "max": 1.3125,
+      "mean": 1.0442085338872857,
+      "std": 0.23616098628219712
+    },
+    {
+      "name": "language_model.layers.5.input_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1087043406,
+        1087044429
+      ],
+      "sha256": "fe027298cc1c6df3a3a1e7f673103291f0f787f446fe15cf4290dacfbdd3f5eb",
+      "min": 1.7421875,
+      "max": 29.5,
+      "mean": 3.7080841064453125,
+      "std": 2.2147002185735656
+    },
+    {
+      "name": "language_model.layers.5.layer_scalar",
+      "dtype": "BF16",
+      "original_shape": [
+        1
+      ],
+      "loaded_shape": [
+        1
+      ],
+      "hf_byte_range": [
+        1087044430,
+        1087044431
+      ],
+      "sha256": "7edc4115323582c30760a3e66cda505c56c6948ca3a8245bf12e76f9f0bb4be9",
+      "min": 0.45703125,
+      "max": 0.45703125,
+      "mean": 0.45703125,
+      "std": 0.0
+    },
+    {
+      "name": "language_model.layers.5.self_attn.q_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        2048,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        1097012048,
+        1097077583
+      ],
+      "sha256": "18c8b2cd77703bc0179c8a13b3fa1874cf57d84288e1c3d545700dd0b0473f77",
+      "min": -0.1650390625,
+      "max": 0.1708984375,
+      "mean": 9.110938731282658e-05,
+      "std": 0.040552390878910945
+    },
+    {
+      "name": "language_model.layers.5.self_attn.k_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        1094389584,
+        1094455119
+      ],
+      "sha256": "8c2dccf0f4de5d4c09f2035a48aa63c2ddaddeb3e70356bd5dccc96eb00665b7",
+      "min": -0.2353515625,
+      "max": 0.318359375,
+      "mean": 0.00024921764679675107,
+      "std": 0.030186407235689806
+    },
+    {
+      "name": "language_model.layers.5.self_attn.v_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        1099109200,
+        1099174735
+      ],
+      "sha256": "ac63e2994bb0edd5218dc90dda905cf5d15ec4b45da87d28f4658f55a9160de7",
+      "min": -0.578125,
+      "max": 0.734375,
+      "mean": 1.7727744079820695e-05,
+      "std": 0.0514803908583214
+    },
+    {
+      "name": "language_model.layers.5.self_attn.o_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        2048
+      ],
+      "loaded_shape": [
+        64,
+        2048
+      ],
+      "hf_byte_range": [
+        1094913872,
+        1095176015
+      ],
+      "sha256": "1d2099589c1ce0d1c5962f4befed30ff2754e80fadbb5258bc38ca4db0682862",
+      "min": -0.11669921875,
+      "max": 0.126953125,
+      "mean": 2.96571502929055e-05,
+      "std": 0.022833463040573574
+    },
+    {
+      "name": "language_model.layers.5.self_attn.q_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1097011024,
+        1097012047
+      ],
+      "sha256": "dedec5aca61118d9dfeaf8c5b8be161726b81beacc6fbcbed9dbc4a7d663c8ed",
+      "min": 0.99609375,
+      "max": 0.99609375,
+      "mean": 0.99609375,
+      "std": 0.0
+    },
+    {
+      "name": "language_model.layers.5.self_attn.k_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1094388560,
+        1094389583
+      ],
+      "sha256": "af3b5037dc9efd6b449d3e2a5e5a82789c947c5e0d83c59b52f4feb1a84e9236",
+      "min": 0.06298828125,
+      "max": 0.06298828125,
+      "mean": 0.06298828125,
+      "std": 0.0
+    },
+    {
+      "name": "language_model.layers.5.post_attention_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1094385488,
+        1094386511
+      ],
+      "sha256": "a1db244c820178e77bbb8aa5b22a4bb77b78b66c3cf07778e3666906448373e8",
+      "min": 5.960464477539063e-08,
+      "max": 1.109375,
+      "mean": 0.8745330038364045,
+      "std": 0.2645163341467743
+    },
+    {
+      "name": "language_model.layers.5.pre_feedforward_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1094387536,
+        1094388559
+      ],
+      "sha256": "c71652eeaea1f697763286187e5272ffc3a22c9e34dd4ee8b2855055522171de",
+      "min": -0.00118255615234375,
+      "max": 8.3125,
+      "mean": 0.8067489415407181,
+      "std": 0.5316000508043963
+    },
+    {
+      "name": "language_model.layers.5.mlp.gate_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        2048,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        1089141584,
+        1089207119
+      ],
+      "sha256": "b3f482d0b3a750355d7f670a9633e501364d967c744a9477eaed45edc7538be3",
+      "min": -0.193359375,
+      "max": 0.17578125,
+      "mean": -0.00043643356275424594,
+      "std": 0.04281174839388463
+    },
+    {
+      "name": "language_model.layers.5.mlp.up_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        2048,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        1091238736,
+        1091304271
+      ],
+      "sha256": "a40b20b5d00b61eed8dd8fd68ab851a5ec5f6b1bf8f7a3a5ccbc2cac49582ce2",
+      "min": -0.17578125,
+      "max": 0.19921875,
+      "mean": -0.0002785503891118424,
+      "std": 0.043358591781169006
+    },
+    {
+      "name": "language_model.layers.5.mlp.down_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        2048
+      ],
+      "loaded_shape": [
+        64,
+        2048
+      ],
+      "hf_byte_range": [
+        1087044432,
+        1087306575
+      ],
+      "sha256": "67b94a15e654a6bdfe3e44a77a740d857af24493637ffb60165e44313a4cb4d7",
+      "min": -0.1875,
+      "max": 0.197265625,
+      "mean": -9.05567710205446e-05,
+      "std": 0.02150487110035547
+    },
+    {
+      "name": "language_model.layers.5.post_feedforward_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1094386512,
+        1094387535
+      ],
+      "sha256": "5f41c5d9c69456831f0b00370e50a416866a72a2990505fae32f5150e33d1712",
+      "min": 0.004180908203125,
+      "max": 3.203125,
+      "mean": 2.383467972278595,
+      "std": 0.8014456656569164
+    },
+    {
+      "name": "language_model.layers.5.ple_block.per_layer_input_gate.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        1093335888,
+        1093401423
+      ],
+      "sha256": "80d0657280a3011ac26ab161f50b4bab38bdeac69c7b1a45a9eee9d4200db757",
+      "min": -0.1689453125,
+      "max": 0.1884765625,
+      "mean": -0.00041544400642123946,
+      "std": 0.02277716119439857
+    },
+    {
+      "name": "language_model.layers.5.ple_block.per_layer_projection.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        512
+      ],
+      "loaded_shape": [
+        64,
+        512
+      ],
+      "hf_byte_range": [
+        1093860176,
+        1093925711
+      ],
+      "sha256": "e3316f74c1b2482cec0b3a2865746d026573979b966d14187fee197094cb585d",
+      "min": -0.2041015625,
+      "max": 0.236328125,
+      "mean": 0.00035542271302801964,
+      "std": 0.04265909914158363
+    },
+    {
+      "name": "language_model.layers.5.ple_block.post_per_layer_input_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512
+      ],
+      "loaded_shape": [
+        512
+      ],
+      "hf_byte_range": [
+        1094384464,
+        1094385487
+      ],
+      "sha256": "91f3447bd156a1d9bf056264ec49f753b22282c2d7eb671e3e3c437c8b3256f0",
+      "min": 0.00020503997802734375,
+      "max": 1.9140625,
+      "mean": 1.3851584251970053,
+      "std": 0.49927257732498975
+    },
+    {
+      "name": "vision_tower.patch_embedder.input_proj.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        1456278360,
+        1456376663
+      ],
+      "sha256": "b039150f96530595ab907e38e5dae752100e0462323ef04ae785cd28fec8b4f5",
+      "min": -0.21484375,
+      "max": 0.216796875,
+      "mean": 1.7186726970782235e-05,
+      "std": 0.031573303831450475
+    },
+    {
+      "name": "vision_tower.patch_embedder.position_embedding_table",
+      "dtype": "BF16",
+      "original_shape": [
+        2,
+        10240,
+        768
+      ],
+      "loaded_shape": [
+        2,
+        256,
+        768
+      ],
+      "hf_byte_range": [
+        1457458008,
+        1458244439
+      ],
+      "sha256": "8e45dcf46c1ef088dc0a097b6d37e716fdf1bea7e4e3bf2724f5172358822866",
+      "min": -0.341796875,
+      "max": 0.375,
+      "mean": -7.799688914472148e-05,
+      "std": 0.032826472344035414
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.input_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768
+      ],
+      "loaded_shape": [
+        768
+      ],
+      "hf_byte_range": [
+        1154186072,
+        1154187607
+      ],
+      "sha256": "e3e24803512541af1ede99c5351d972f64d0796b860169622a23695736ce6ca2",
+      "min": -3.40625,
+      "max": 25.625,
+      "mean": 3.0635271072387695,
+      "std": 4.572960001977245
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.self_attn.q_proj.linear.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        1170707544,
+        1170805847
+      ],
+      "sha256": "9c4b5f6a21a8d40cb3831c4bb17ab53b61d387265ccbddb54f5c40ff49dc099e",
+      "min": -0.2392578125,
+      "max": 0.2734375,
+      "mean": -4.483156060549239e-05,
+      "std": 0.03487490239290867
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.self_attn.k_proj.linear.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        1168348120,
+        1168446423
+      ],
+      "sha256": "91c5234206baacd887948e4e6d9c63b7a4533a142470c95f1732c35d516ce569",
+      "min": -0.244140625,
+      "max": 0.27734375,
+      "mean": -0.00042485607961377053,
+      "std": 0.03408142313721644
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.self_attn.v_proj.linear.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        1171887192,
+        1171985495
+      ],
+      "sha256": "71be7859f600d0e8dca11b831a9ef0bdca78741fc19872c25a70f5dd5fc07680",
+      "min": -0.267578125,
+      "max": 0.267578125,
+      "mean": -9.084562316274969e-05,
+      "std": 0.035080977071013375
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.self_attn.o_proj.linear.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        1169527768,
+        1169626071
+      ],
+      "sha256": "8948096a1b475b270207aa50f130eda3db667716e97882d969940797a9da5059",
+      "min": -0.32421875,
+      "max": 0.33203125,
+      "mean": 0.00020352724355158594,
+      "std": 0.03532756517633428
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.self_attn.q_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        64
+      ],
+      "loaded_shape": [
+        64
+      ],
+      "hf_byte_range": [
+        1170707416,
+        1170707543
+      ],
+      "sha256": "ac6e9705df32919796b33300a07d838cf17b62ff61956e0f443dfe2afdfa5525",
+      "min": 1.0078125,
+      "max": 1.0078125,
+      "mean": 1.0078125,
+      "std": 0.0
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.self_attn.k_norm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        64
+      ],
+      "loaded_shape": [
+        64
+      ],
+      "hf_byte_range": [
+        1168347992,
+        1168348119
+      ],
+      "sha256": "e54de08a79307cf977cdf6cbc3baa3517074f32db5abc20909938fac3aeb5c86",
+      "min": 0.498046875,
+      "max": 0.498046875,
+      "mean": 0.498046875,
+      "std": 0.0
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.post_attention_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768
+      ],
+      "loaded_shape": [
+        768
+      ],
+      "hf_byte_range": [
+        1168343384,
+        1168344919
+      ],
+      "sha256": "ab619204e6ebc8b14f47511a55dfabe850b65d3eed5a945e364f31ca155ce4ec",
+      "min": -0.50390625,
+      "max": 13.9375,
+      "mean": 0.28972965975602466,
+      "std": 0.6662750617417708
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.pre_feedforward_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768
+      ],
+      "loaded_shape": [
+        768
+      ],
+      "hf_byte_range": [
+        1168346456,
+        1168347991
+      ],
+      "sha256": "cf97954580d3eb73838ee84aada1efc556124a1c7911a6ae4e8fb055a48d3c05",
+      "min": -0.439453125,
+      "max": 33.0,
+      "mean": 2.0205706072350345,
+      "std": 3.4273272044314567
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.mlp.gate_proj.linear.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        3072,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        1158906200,
+        1159004503
+      ],
+      "sha256": "ac953bbfd143af22e6b8e57c8c7c987f4c67d90a468e75ff1fb5b8cee85a5553",
+      "min": -0.265625,
+      "max": 0.283203125,
+      "mean": -0.00012270383770858947,
+      "std": 0.036660396697516445
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.mlp.up_proj.linear.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        3072,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        1163624792,
+        1163723095
+      ],
+      "sha256": "d2eb2688bfde7c0ca1397c9c9098c36fb15f3aac4d6438fdef85ad764bb11c1a",
+      "min": -0.23046875,
+      "max": 0.2412109375,
+      "mean": 0.000475487612732195,
+      "std": 0.03612596889890182
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.mlp.down_proj.linear.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768,
+        3072
+      ],
+      "loaded_shape": [
+        64,
+        3072
+      ],
+      "hf_byte_range": [
+        1154187608,
+        1154580823
+      ],
+      "sha256": "63808c7238e8692e0270e2c9886db02e32f44f949536ebb7c5aab28fa109d9a7",
+      "min": -0.12890625,
+      "max": 0.12353515625,
+      "mean": -2.7598915463518853e-05,
+      "std": 0.01597714705748002
+    },
+    {
+      "name": "vision_tower.encoder.layers.0.post_feedforward_layernorm.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        768
+      ],
+      "loaded_shape": [
+        768
+      ],
+      "hf_byte_range": [
+        1168344920,
+        1168346455
+      ],
+      "sha256": "6dd8dc6294c4dbcd545f58457f46ebb7d2379cbeb4bc58be4ef0266e24860138",
+      "min": -0.80859375,
+      "max": 19.625,
+      "mean": 0.9316826264063517,
+      "std": 1.3475330474767329
+    },
+    {
+      "name": "embed_vision.embedding_projection.weight",
+      "dtype": "BF16",
+      "original_shape": [
+        512,
+        768
+      ],
+      "loaded_shape": [
+        64,
+        768
+      ],
+      "hf_byte_range": [
+        611394344,
+        611492647
+      ],
+      "sha256": "70e0f3280e07fcb9782107cf0db266e381741c209adeecce75c66594c7a709c0",
+      "min": -0.2294921875,
+      "max": 0.2373046875,
+      "mean": -1.3701729206635113e-05,
+      "std": 0.036346609235030726
+    }
+  ]
+}

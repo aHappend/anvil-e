@@ -26,7 +26,7 @@
 | 代际 | 芯片型号 | 目标模型与范围 | 自主研发总耗时 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（5:1 滑动窗口/全局 GQA 混合注意力、PLE 逐层嵌入、512d → 768d 投影、掩码均值池化与 Matryoshka L2 归一化） | **总计 3 小时 17 分 25 秒**（一阶段 RTL 生成 `2h 17m 48s` + 二阶段 HF 官方权重软硬联调 `59m 37s`） | 已完成并验证 — [产品交付报告 (`REPORT.pdf`)](anvil-e1/REPORT.pdf) 与一键联调 Demo 已发布 |
-| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | **7 小时 52 分 05 秒**（`Step 122 · completed`，`20` 个 RTL 模块 / `3592` 行） | Completed & Verified |
+| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | **8 小时 00 分 15 秒**（`Step 122 · completed`，`20` 个 RTL 模块 / `3592` 行） | Completed & Verified |
 | **第三代** | **Anvil-E3** | Google EmbeddingGemma-2 · 音频 + 视觉 + 文本统一嵌入加速引擎 | — | 规划中 |
 
 ## Anvil-E2 · 第二代（视觉 + 文本多模态版）
