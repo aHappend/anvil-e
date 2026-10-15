@@ -1,0 +1,10 @@
+{
+  "status_label": "In Progress — Phase 2 Official Weights & Software-vs-RTL Verification",
+  "chip": "Anvil-E2",
+  "phase": "Phase 2 — Official Weights & Software-vs-RTL Comparison",
+  "vulcan_version": "0.8.0",
+  "started_utc": "2026-10-15T11:11:56.226410+00:00",
+  "started_cst": "2026-10-15 19:11:56 UTC+8",
+  "status": "running",
+  "reason": "Execute Roadmap Phase 2 for Anvil-E2: integrate real official HuggingFace google/embeddinggemma-2 multimodal (vision_tower + embed_vision + language_model) weights from model.safetensors and conduct end-to-end Software-Layer (FP32/BF16) vs Hardware-RTL (SystemVerilog Q8.24) evaluation across vision-only, text-only, and joint vision+text modes."
+}
