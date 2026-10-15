@@ -72,7 +72,9 @@ def boundaries(run, directory=None, prefix="attention"):
               for k in ("singleton", "empty", "final-skipped", "carry")]
     cases += [(1, 1, 3, "tail", "", None), (1, 0, 3, "singleton", "", None)]
     cases += [(0, 0, 3, "mixed", phase, None)
-              for phase in ("idle", "request", "response", "output")]
+              for phase in ("idle", "request", "response", "output",
+                            "score-wake", "finish-wake")]
+    cases += [(v, f, 3, "reuse", "", None) for v in (0, 1) for f in (0, 1)]
     cases += [(0, 0, 3, "mixed", "", tag)
               for tag in ("Q:first", "Q:last", "query-position:first",
                           "mask0:first", "position0:first", "K0:first", "K0:last",
@@ -90,6 +92,9 @@ def boundaries(run, directory=None, prefix="attention"):
             assert indices, fault
             error_at = indices[0 if end == "first" else -1]
         count = error_at+1 if fault else len(requests)
+        score_request = next((i for i, r in enumerate(requests)
+                              if r[2] == "K0" and
+                              (i+1 == len(requests) or requests[i+1][2] != "K0")), -1)
         assignments = "\n".join(
             [f"addresses[{i}]=64'h{a:x}; words[{i}]=32'h{b & 0xffffffff:08x};"
              for i, (a, b, _) in enumerate(requests)] +
@@ -100,6 +105,10 @@ def boundaries(run, directory=None, prefix="attention"):
             "request": "cmd_valid && !cmd_ready",
             "response": "pending && !result_valid",
             "output": "out_valid && !out_ready",
+            "score-wake": (f"responses=={score_request+1} && !pending && "
+                           "!cmd_valid && cycles==response_cycle+3"),
+            "finish-wake": (f"responses=={len(requests)} && !pending && "
+                            "!out_valid && cycles==response_cycle+3"),
         }[reset]
         text = f"""
 module tb;
@@ -150,6 +159,7 @@ reg signed [47:0] expected[0:{dim-1}];
 integer cycles=0,requests=0,responses=0,outputs=0,request_cycle=-1,response_cycle=-1;
 integer first_out=-1,first_done=-1,reqstalls=0,rspwait=0,outstalls=0,donestalls=0;
 integer first_cmd=-1;
+integer jobs=0;
 reg active=0,pending=0,retired_error=0,held_cmd=0,held_out=0,held_done=0;
 reg [63:0] held_addr;
 reg [80:0] held_output;
@@ -214,10 +224,12 @@ always @(posedge clk) begin
   if(held_done) donestalls=donestalls+1;
   if(start_valid && start_ready) begin
    if(active) $fatal(1,"ATTENTION_DUPLICATE_START"); active=1;
+   $display("H START");
   end
   if(result_valid && result_ready) begin
    if(!pending || cycles<=request_cycle) $fatal(1,"ATTENTION_RESPONSE");
    pending=0; responses=responses+1;
+   $display("H RESPONSE %h %b",result_data,result_error);
    if(result_error) retired_error=1;
   end
   if(retired_error && cmd_valid) $fatal(1,"ATTENTION_AFTER_ERROR");
@@ -225,13 +237,17 @@ always @(posedge clk) begin
    if(!active || pending || requests>={count} || cmd_addr!==addresses[requests])
     $fatal(1,"ATTENTION_REQUEST_ORDER %0d %h",requests,cmd_addr);
    request_cycle=cycles; response_cycle=cycles+3+requests%4; pending=1;
+   $display("H REQUEST %h",cmd_addr);
    result_data=words[requests]; result_error=requests=={error_at}; requests=requests+1;
   end
   if(out_valid) begin
    if({int(bool(fault))} || outputs>={dim} || out_index!==outputs ||
       out_last!==(outputs=={dim-1}) || out_data!==expected[outputs])
     $fatal(1,"ATTENTION_EXPECTED_OUTPUT %0d %h",outputs,out_data);
-   if(out_ready) outputs=outputs+1;
+   if(out_ready) begin
+    $display("H OUTPUT %h %0d %b",out_data,out_index,out_last);
+    outputs=outputs+1;
+   end
   end
   if(done_valid && done_ready) begin
    if(pending || requests!={count} || responses!=requests ||
@@ -239,7 +255,19 @@ always @(posedge clk) begin
       reqstalls==0 || rspwait==0 || donestalls<9 ||
       ({int(not fault)} && outstalls<8))
     $fatal(1,"ATTENTION_COMPLETION");
-   $display("ATTENTION_COMPLETE %0d %0d %0d",requests,responses,outputs); $finish;
+   $display("H DONE %0d %0d %0d %0d",requests,responses,outputs,done_error);
+   jobs=jobs+1;
+   if(jobs=={2 if kind == "reuse" else 1}) begin
+    $display("ATTENTION_COMPLETE %0d %0d %0d",requests,responses,outputs); $finish;
+   end else begin
+    active=0; requests=0; responses=0; outputs=0;
+    first_cmd=-1; first_out=-1; first_done=-1;
+    reqstalls=0; rspwait=0; outstalls=0; donestalls=0;
+    held_cmd=0; held_out=0; held_done=0;
+    start_tokens={n}; start_query={query}; start_head={head}; start_full={full};
+    qb=64'h{bases[0]:x}; kb=64'h{bases[1]:x}; vb=64'h{bases[2]:x};
+    pb=64'h{bases[3]:x}; mb=64'h{bases[4]:x};
+   end
   end
  end
  #1; sample();
@@ -260,6 +288,9 @@ endmodule
             "kind": kind, "reset_phase": reset or None, "fault": fault,
             "expected_requests": count, "eligible_keys": eligible,
             "weighted_keys": weighted_keys, "expected_q40": expected,
+            "jobs": 2 if kind == "reuse" else 1,
+            "transaction_history_sha256": hashlib.sha256("\n".join(
+                line for line in out.splitlines() if line.startswith("H ")).encode()).hexdigest(),
             "public_samples_sha256": hashlib.sha256("\n".join(
                 line for line in out.splitlines() if line.startswith("P ")).encode()).hexdigest(),
             "transcript": str((run.directory/(name+"-simulate.stdout")).relative_to(ROOT)),
@@ -274,6 +305,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--before-directory")
+    parser.add_argument("--allow-latency-change", action="store_true")
     parser.add_argument("--repair-of")
     args = parser.parse_args()
     directory = (ROOT / args.output).resolve()
@@ -293,10 +325,15 @@ def main():
                 str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in rtl_files(before)}
             original = boundaries(run, before, "before")
-            assert [c["public_samples_sha256"] for c in current] == [
-                c["public_samples_sha256"] for c in original], "public cycle behavior changed"
+            key = ("transaction_history_sha256" if args.allow_latency_change
+                   else "public_samples_sha256")
+            assert [c[key] for c in current] == [
+                c[key] for c in original], "public comparison changed"
             run.receipt["assertions"].append(
-                "Every sampled public attention pin matches, including inactive values.")
+                "Independent pin assertions pass in both arms; " +
+                ("accepted transaction histories match; latency may change."
+                 if args.allow_latency_change else
+                 "every sampled public attention pin matches, including inactive values."))
     except Exception as error:
         (directory/"diagnostic.stderr").write_text(traceback.format_exc())
         run.finish("failed", str(error))

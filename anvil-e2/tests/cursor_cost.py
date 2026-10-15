@@ -59,12 +59,30 @@ def paired(run, implementation="matvec", configuration=None):
             "evidence/preparation/q40-cursor-serial-paired-001/"
             "before-rtl/anvil_e2_attention.sv")
         before_sha = "628391f3c0f69d8d4ebaf2e1176718ef30bd0f6a84e430b5024e733d47baa575"
+    if implementation == "attention-divider":
+        before = ROOT / (
+            "evidence/preparation/q40-attention-cursor-mutation-schedule-001/"
+            "full-local-schedule/anvil_e2_attention.sv")
+        before_sha = "b19740f06fe41517f8f72b83880007befeb8cfff14b52b50046fd5805025327a"
     assert hashlib.sha256(before.read_bytes()).hexdigest() == before_sha
     baseline = run.directory / "before-rtl"
     baseline.mkdir()
     for source in rtl_files():
         shutil.copyfile(before if source.name == before.name else source,
                         baseline / source.name)
+    if implementation == "attention-divider":
+        path = baseline / before.name
+        text = path.read_text()
+        mutation = "else if (full_mode && VISION)"
+        assert text.count(mutation) == 1
+        path.write_text(text.replace(mutation, "else if (full_mode)"))
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+            "20dffa09c1b2999fbe6017d509cae4efd54e43d45eb298e613ee95cd7e58c2ab")
+        run.receipt["baseline_reconstruction"] = {
+            "restored_disposable_schedule_mutation": mutation,
+            "required_original_sha256": "20dffa09c1b2999fbe6017d509cae4efd54e43d45eb298e613ee95cd7e58c2ab",
+            "identity_receipt": "evidence/preparation/q40-public-phase-cost-b17-analysis-001/receipt.json",
+        }
     run.receipt["comparison_sources"] = {
         "before_origin": str(before.relative_to(ROOT)),
         "before_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
@@ -117,18 +135,30 @@ def paired(run, implementation="matvec", configuration=None):
             run.receipt["coverage"].extend(child.receipt["coverage"])
             run.receipt.setdefault("completed_arms", []).append(arms[-1])
             run.save()
-        assert arms[0]["transactions_sha256"] == arms[1]["transactions_sha256"], (
-            "request/response cycle, order or payload changed")
+        identical_cycles = arms[0]["transactions_sha256"] == arms[1]["transactions_sha256"]
+        if implementation == "attention-divider":
+            records = []
+            for arm in arms:
+                trace = ROOT / arm["receipt"]
+                trace = trace.parent / (trace.parent.name + ".transactions")
+                records.append([line.split()[:1] + line.split()[2:]
+                                for line in trace.read_bytes().splitlines()])
+            assert records[0] == records[1], "request/response order or payload changed"
+        else:
+            assert identical_cycles, "request/response cycle, order or payload changed"
         outputs = []
+        compared_prefixes = (b"W ", b"E ") if implementation == "attention-divider" else (
+            b"W ", b"E ", b"C ")
         for arm in arms:
             path = ROOT / arm["coverage"]["transcript"]
             outputs.append([line for line in path.read_bytes().splitlines()
-                            if line.startswith((b"W ", b"E ", b"C "))
+                            if line.startswith(compared_prefixes)
                             or line == b"TRANSCRIPT_COMPLETE"])
         assert outputs[0] == outputs[1], "complete scratch/output history changed"
         results.append({"configuration": label, "seed": seed, "mode": 2,
                         "arms": arms, "identical_complete_histories": True,
-                        "identical_request_response_cycles_and_payloads": True})
+                        "identical_request_response_order_and_payloads": True,
+                        "identical_request_response_cycles": identical_cycles})
         run.receipt["paired_comparison"] = results
         run.save()
     before = sum(r["arms"][0]["elapsed_s"] for r in results)
@@ -144,7 +174,7 @@ def paired(run, implementation="matvec", configuration=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
-    parser.add_argument("--implementation", choices=("matvec", "attention"),
+    parser.add_argument("--implementation", choices=("matvec", "attention", "attention-divider"),
                         default="matvec")
     parser.add_argument("--configuration", choices=("B", "C"))
     parser.add_argument("--repair-of")
