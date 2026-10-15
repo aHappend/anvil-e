@@ -1,40 +1,8 @@
 {
-  "family": "Anvil",
-  "series": "Anvil-E",
   "chip": "Anvil-E2",
-  "target_model": "Google EmbeddingGemma-2 (Vision + Text Multimodal Edition)",
+  "target": "Google EmbeddingGemma-2 (Vision + Text Multimodal)",
   "vulcan_version": "0.8.0",
-  "github_repo": "https://github.com/aHappend/anvil-e",
-  "status": "settled",
-  "native_disposition": {
-    "workflow_phase": "verifier",
-    "feedback": "Current RTL still fails bounded execution. Eight unchanged B/C fixtures pass exact embeddings, complete scratch-write histories and both 0.002 mathematical thresholds, but sequential simulation alone totals 115.312259 seconds, exceeding the unchanged 110-second runner before compilation, references or remaining coverage. Receipts: evidence/preparation/q40-nativegroup-b-joint-001/receipt.json, evidence/preparation/q40-nativegroup-b-vision-001/receipt.json, evidence/preparation/q40-nativegroup-b89-joint-001/receipt.json, evidence/preparation/q40-nativegroup-b89-text-001/receipt.json, evidence/preparation/q40-nativegroup-c-joint-001/receipt.json, evidence/preparation/q40-nativegroup-c-text-001/receipt.json, evidence/preparation/q40-nativegroup-c89-joint-001/receipt.json and evidence/preparation/q40-nativegroup-c89-text-001/receipt.json. Actual Yosys A/C probes both time out near 60 seconds during OPT_EXPR before netlist and zero-latch assertions: evidence/preparation/q40-nativegroup-synthesis-a-001/receipt.json and evidence/preparation/q40-nativegroup-synthesis-c-001/receipt.json. Their timestamped logs localize 32.971/30.599 seconds between nonlinear decoder creation and the following process; this identifies substantial PROC_MUX work, not an exclusive whole-check cause.\n\nPython/Icarus/vvp pass 3408 exact divider results, 456 nonlinear results and 33 RMS/L2 vectors: evidence/preparation/q40-nativegroup-divider-001/receipt.json, evidence/preparation/q40-nativegroup-nonlinear-001/receipt.json and evidence/preparation/q40-nativegroup-norm-001/receipt.json. All 42 directed/error/reset/illegal-parameter cases and focused fusion280/patch16/final-column addressing pass: evidence/preparation/q40-nativegroup-directed-001/receipt.json and evidence/preparation/q40-nativegroup-focused-001/receipt.json. All five disposable mutations compile, execute and are functionally rejected; receipts are evidence/preparation/q40-nativegroup-mutation-vision-001/receipt.json, evidence/preparation/q40-nativegroup-mutation-fusion-001/receipt.json, evidence/preparation/q40-nativegroup-mutation-ple-001/receipt.json, evidence/preparation/q40-nativegroup-mutation-schedule-001/receipt.json and evidence/preparation/q40-nativegroup-mutation-normalize-001/receipt.json.\n\nNo source changes or verification repairs were needed. Source hashes remained unchanged throughout these probes; original failures are preserved and linked through repair_of. No tools were installed, acceptance limits changed or runtime metadata edited. Request Designer-owned contract-preserving simulation-cost and synthesis repair. Full admitted suites were not repeated; remaining matrix coverage, bounded aggregate checks and independent acceptance remain outstanding.",
-    "run_status": "ready",
-    "closeout_status": null,
-    "driver_steps": [
-      {
-        "operation": "run",
-        "exit_code": 2
-      }
-    ],
-    "driver_steps_ok": false,
-    "state_error": null,
-    "repairs_used": 21,
-    "designer_attempts": 5,
-    "model_call_count": 12,
-    "all_process_scopes_settled": true,
-    "reviewer_decisions": [],
-    "native_engineering_accepted": false,
-    "candidate_present": false,
-    "candidate_invalid_reason": null,
-    "final_candidate": null,
-    "initial_unrepaired_candidate": null,
-    "initial_candidate_invalid_reason": null,
-    "scientific_acceptance": false
-  },
-  "started_utc": "2026-10-15T11:13:54.006059+00:00",
-  "finished_utc": "2026-10-15T11:13:58.455143+00:00",
-  "started_cst": "2026-10-15 19:13:54 UTC+8",
-  "finished_cst": "2026-10-15 19:13:58 UTC+8",
-  "elapsed_seconds": 2.283498606993817
+  "status": "running",
+  "started_cst": "2026-10-15 19:14:50 UTC+8",
+  "updated_cst": "2026-10-15 19:14:50 UTC+8"
 }
