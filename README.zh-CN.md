@@ -23,11 +23,11 @@
 
 ## 系列路线图
 
-| 代际 | 芯片型号 | 目标模型与范围 | 自主研发总耗时 | 当前状态 |
-| --- | --- | --- | --- | --- |
-| **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（5:1 滑动窗口/全局 GQA 混合注意力、PLE 逐层嵌入、512d → 768d 投影、掩码均值池化与 Matryoshka L2 归一化） | **总计 3 小时 17 分 25 秒**（一阶段 RTL 生成 `2h 17m 48s` + 二阶段 HF 官方权重软硬联调 `59m 37s`） | 已完成并验证 — [产品交付报告 (`REPORT.pdf`)](anvil-e1/REPORT.pdf) 与一键联调 Demo 已发布 |
-| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | 运行中（Step 26 Verifier） | 进行中 — Vulcan 0.8 正在执行多模态 Q40 架构验证 |
-| **第三代** | **Anvil-E3** | Google EmbeddingGemma-2 · 音频 + 视觉 + 文本统一嵌入加速引擎 | — | 规划中 |
+| 代际 | 芯片型号 | 目标模型与范围 | 当前状态 |
+| --- | --- | --- | --- |
+| **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（24 层 5:1 滑动窗口/全局注意力混排、512d → 768d 投影、均值池化与 L2 归一化） | Completed & Verified — Full Pure-Text RTL Delivery Package Published |
+| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | Settled — Vision+Text RTL Package Published |
+| **第三代** | **Anvil-E3** | Google EmbeddingGemma-2 · 音频 + 视觉 + 文本统一嵌入加速引擎 | 规划中 |
 
 ## Anvil-E2 · 第二代（视觉 + 文本多模态版）
 
@@ -41,34 +41,14 @@
 | **空间池化与跨模态投影（`embed_vision`）** | `pooling_kernel_size = 3` 空间池化（每图输出 `280` 个视觉软 Token）+ `embedding_projection [512, 768]` | 3×3 空间软 Token 汇聚、`768 → 512` 维跨模态投影及 `BOI`/`IMAGE`/`EOI` 多模态序列融合 |
 | **多模态混合主干与归一化（`0_Transformer` + `1_Pooling` + `2_Normalize`）** | 24 层 5:1 滑动窗口/全局混合注意力（`512d` + PLE `512d`）、`512 → 768` 投影、掩码均值池化与 Matryoshka L2 归一化（`768 / 512 / 256 / 128`） | 视觉软 Token 与文本 Token 统一注意力调度、掩码池化与倒数平方根归一化 |
 
-- **当前工程状态**：`In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8`（最近更新：`2026-10-15 15:11:43 UTC+8`）
+- **当前工程状态**：`Settled — Vision+Text RTL Package Published`（最近更新：`-`）
 - **官方多模态配置快照**：[`anvil-e2/hf_embeddinggemma2_vision_spec/`](anvil-e2/hf_embeddinggemma2_vision_spec/)
 - **交付包目录**：[`anvil-e2/`](anvil-e2/)（`rtl/`、`design/`、`tests/`）
 
-## Anvil-E1 · 第一代（纯文本版 — HuggingFace 官方权重软硬联调收官）
+## Anvil-E1 · 第一代（纯文本版）
 
-`Anvil-E1` 由 **Vulcan** 分两个阶段全自主完成从零设计、RTL 综合与 HuggingFace 官方权重软硬联调，**总用时 3 小时 17 分 25 秒**：
-
-| 阶段 | 工程范围 | 自主步数 | 实际耗时 | 核心产出与验收指标 |
-| --- | --- | --- | --- | --- |
-| **第一阶段（从零架构设计 + RTL 实现 + 逻辑综合）** | 架构规约、12 个可综合 SystemVerilog 模块（`anvil_e1_*.sv`）、Q8.24 权重打包器、自检 Testbench 与 Yosys 综合（`A.ys` / `B.ys`） | 45 步 | **2 小时 17 分 48 秒**（`8,267.6s`） | `accepted` — Yosys 零 Latch/结构告警，413 张量打包与 9 随机种子多配置仿真全通 |
-| **第二阶段（官方 `google/embeddinggemma-2` 权重接入与软硬对账）** | 接入 HuggingFace 官方 `google/embeddinggemma-2` Safetensors 权重切片（`39` 个 `language_model.*` BF16 张量）、Q48 RMSNorm $\epsilon$ 边界精化（`EPSILON_Q48 = 96'd281474977`）、16 组官方作业软件 FP32 vs 硬件 RTL（`iverilog + vvp`）周期精确协同仿真 | 31 步 | **59 分 37 秒**（`3,576.9s`） | 四项门禁（`architecture`、`functional`、`sensitivity`、`synthesis`）**全部 `passed`**；**定点参考 `0` 比特误差**，**相对官方 FP32 最小余弦相似度 `0.99999999985`**，**最大绝对误差 `1.20e-5`** |
-
-### 一键运行 Gemma-2 软硬同跑联调 Demo
-
-仓库内置 `anvil-e1/demo_gemma2_rtl.py`，直接调用二阶段由 Vulcan 自主编写的验证与仿真模块（`tests/official.py`、`tests/official_fp32.py`、`rtl/anvil_e_top.sv`）：
-
-```bash
-# 现场调用 iverilog 编译 RTL + vvp 周期级硬件仿真并与软件 FP32 对账（约 2.5 秒）
-python3 anvil-e1/demo_gemma2_rtl.py --mode quick
-
-# 展示全部 16 组官方权重联调报告（或使用 --mode full 现场重跑全部 16 组硬件仿真）
-python3 anvil-e1/demo_gemma2_rtl.py --mode from-evidence
-```
-
-- **工程状态**：`Completed & Verified — Phase 1 + Phase 2 Official HuggingFace Weights Parity Published`
-- **官方权重与评测报告**：[`anvil-e1/evidence/verification/functional/official_weights_comparison.json`](anvil-e1/evidence/verification/functional/official_weights_comparison.json)
-- **交付包目录**：[`anvil-e1/`](anvil-e1/)（13 个可综合 SystemVerilog 模块、架构与官方权重评测文档、自检验证套件与一键联调 Demo）
+- **工程状态**：`Completed & Verified — Full Pure-Text RTL Delivery Package Published`
+- **交付包目录**：[`anvil-e1/`](anvil-e1/)（9 个可综合 SystemVerilog 模块、架构文档与自检验证套件）
 
 ## 许可
 

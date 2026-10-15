@@ -40,24 +40,25 @@ module anvil_e2_attention #(
     localparam integer KM=LOCAL_KV_HEADS>FULL_KV_HEADS ? LOCAL_KV_HEADS:FULL_KV_HEADS;
     localparam IDLE=0, QREQ=1, QRSP=2, POSREQ=3, POSRSP=4,
         MASKREQ=5, MASKRSP=6, KPOSREQ=7, KPOSRSP=8, KREQ=9, KRSP=10,
-        DOT=11, SCORE=12, EXPREQ=13, EXPRSP=14, VREQ=15, VRSP=16,
-        PRODUCT=17, WEIGHT=18, NEXTKEY=19, FINISH=20, OUTPUT=21, DONE=22;
+        SCORE=12, EXPREQ=13, EXPRSP=14, VREQ=15, VRSP=16,
+        WEIGHT=18, NEXTKEY=19, FINISH=20, OUTPUT=21, DONE=22,
+        SCORE_WAIT=23, FINISH_WAIT=24;
     reg [4:0] state;
     reg [31:0] tokens, query, head, kv_head, dim, key, component, channel;
     reg [31:0] query_position;
     reg full_mode, found_key;
-    reg [1:0] pass;
+    reg weighted_pass;
     reg [63:0] q_base, k_base, v_base, position_base, mask_base;
     reg signed [47:0] q_values [0:DM-1];
     reg signed [127:0] weighted [0:DM-1];
     reg signed [47:0] values [0:DM-1];
-    reg signed [47:0] operand, score_max, score_value, exponential;
+    reg signed [47:0] score_max, score_value, exponential;
     reg signed [127:0] denominator;
     reg [3:0] error_hold;
     reg signed [47:0] data_hold;
     reg [31:0] index_hold;
     reg last_hold;
-    reg signed [127:0] numerator, divisor, magnitude, quotient, remainder, difference;
+    reg signed [127:0] difference;
     reg signed [47:0] saturated_score;
     reg [32:0] position_difference;
 
@@ -90,15 +91,20 @@ module anvil_e2_attention #(
             else saturate=value[47:0];
         end
     endfunction
-    function automatic signed [127:0] rounded_divide;
-        input signed [127:0] n,d;
-        reg signed [127:0] m,q,r;
-        begin
-            m=n<0 ? -n:n; q=m/d; r=m%d;
-            if (r>d-r || (r==d-r && q[0])) q=q+128'sd1;
-            rounded_divide=n<0 ? -q:q;
-        end
-    endfunction
+    wire divide_in_ready, divide_out_valid, divide_error;
+    wire signed [127:0] divide_result;
+    wire signed [47:0] finished_value=denominator==0 ? 48'sd0:saturate(divide_result);
+    anvil_e2_divide divider (
+        .clk(clk), .rst_n(rst_n),
+        .in_valid(rst_n && (state==SCORE || (state==FINISH && denominator!=0))),
+        .in_ready(divide_in_ready),
+        .in_numerator(state==SCORE ? mac_sum:weighted[channel]),
+        .in_denominator(state==SCORE ?
+            {64'd0,full_mode ? FULL_ROOT:LOCAL_ROOT}:$unsigned(denominator)),
+        .out_valid(divide_out_valid),
+        .out_ready(state==SCORE_WAIT || state==FINISH_WAIT),
+        .out_data(divide_result), .out_error(divide_error)
+    );
     initial begin
         if (NUM_Q_HEADS<=0 || LOCAL_KV_HEADS<=0 || FULL_KV_HEADS<=0 ||
             LOCAL_HEAD_DIM<=0 || FULL_HEAD_DIM<=0 || DM>65535 ||
@@ -120,11 +126,12 @@ module anvil_e2_attention #(
         state==VREQ ? v_base+(64'(key)*KM*DM+64'(kv_head)*dim+channel)*64'd4:64'd0;
     assign result_ready=rst_n && (state==QRSP || state==POSRSP || state==MASKRSP ||
                                   state==KPOSRSP || state==KRSP || state==VRSP);
-    assign mac_clear=rst_n && ((state==DOT && component==0) || state==PRODUCT);
-    assign mac_accumulate=rst_n && (state==DOT || state==PRODUCT);
-    assign mac_a=!rst_n ? 48'sd0 : state==DOT ? q_values[component]:
-                 state==PRODUCT ? exponential:48'sd0;
-    assign mac_b=rst_n ? operand:48'sd0;
+    assign mac_clear=mac_accumulate && (state==VRSP || component==0);
+    assign mac_accumulate=rst_n && (state==KRSP || state==VRSP) &&
+                          result_valid && !result_error;
+    assign mac_a=!mac_accumulate ? 48'sd0 :
+                 state==KRSP ? q_values[component]:exponential;
+    assign mac_b=mac_accumulate ? {result_data,16'd0}:48'sd0;
     assign nonlinear_valid=rst_n && state==EXPREQ;
     assign nonlinear_op=3'd0;
     assign nonlinear_data=rst_n && state==EXPREQ ? score_value:48'sd0;
@@ -140,11 +147,10 @@ module anvil_e2_attention #(
         if (!rst_n) begin
             state<=IDLE; tokens<=0; query<=0; head<=0; kv_head<=0; dim<=0;
             key<=0; component<=0; channel<=0; query_position<=0;
-            full_mode<=0; found_key<=0; pass<=0;
+            full_mode<=0; found_key<=0; weighted_pass<=0;
             q_base<=0; k_base<=0; v_base<=0; position_base<=0; mask_base<=0;
-            operand<=0; score_max<=0; score_value<=0; exponential<=0;
+            score_max<=0; score_value<=0; exponential<=0;
             denominator<=0; error_hold<=0; data_hold<=0; index_hold<=0; last_hold<=0;
-            numerator=0; divisor=0; magnitude=0; quotient=0; remainder=0;
             difference=0; position_difference=0;
             saturated_score=0;
         end else begin
@@ -156,7 +162,7 @@ module anvil_e2_attention #(
                     kv_head<=start_head/(NUM_Q_HEADS/(start_full ? FULL_KV_HEADS:LOCAL_KV_HEADS));
                     q_base<=start_q_base; k_base<=start_k_base; v_base<=start_v_base;
                     position_base<=start_positions_base; mask_base<=start_mask_base;
-                    component<=0; channel<=0; key<=0; pass<=0; found_key<=0;
+                    component<=0; channel<=0; key<=0; weighted_pass<=0; found_key<=0;
                     denominator<=0; error_hold<=0;
                     if (start_tokens==0 || start_query>=start_tokens || start_head>=NUM_Q_HEADS) begin
                         error_hold<=1; state<=DONE;
@@ -203,29 +209,27 @@ module anvil_e2_attention #(
                 KREQ: if (cmd_ready) state<=KRSP;
                 KRSP: if (result_valid) begin
                     if (result_error) begin error_hold<=3; state<=DONE; end
-                    else begin operand<={result_data,16'd0}; state<=DOT; end
-                end
-                DOT: begin
-                    if (component==dim-1) state<=SCORE;
+                    else if (component==dim-1) state<=SCORE;
                     else begin component<=component+1'b1; state<=KREQ; end
                 end
-                SCORE: begin
-                    numerator=mac_sum;
-                    divisor={64'd0,full_mode ? FULL_ROOT:LOCAL_ROOT};
-                    quotient=rounded_divide(numerator,divisor);
-                    saturated_score=saturate(quotient);
-                    score_value<=saturated_score;
-                    if (pass==0) begin
-                        if (!found_key || saturated_score>score_max)
-                            score_max<=saturated_score;
-                        found_key<=1; state<=NEXTKEY;
-                    end else begin
-                        difference={{80{saturated_score[47]}},saturated_score}-
-                                   {{80{score_max[47]}},score_max};
-                        if (difference< -128'sd17592186044416) begin
-                            exponential<=0; state<=NEXTKEY;
+                SCORE: if (divide_in_ready) state<=SCORE_WAIT;
+                SCORE_WAIT: if (divide_out_valid) begin
+                    if (divide_error) begin error_hold<=6; state<=DONE; end
+                    else begin
+                        saturated_score=saturate(divide_result);
+                        score_value<=saturated_score;
+                        if (!weighted_pass) begin
+                            if (!found_key || saturated_score>score_max)
+                                score_max<=saturated_score;
+                            found_key<=1; state<=NEXTKEY;
                         end else begin
-                            score_value<=difference[47:0]; state<=EXPREQ;
+                            difference={{80{saturated_score[47]}},saturated_score}-
+                                       {{80{score_max[47]}},score_max};
+                            if (difference< -128'sd17592186044416) begin
+                                exponential<=0; state<=NEXTKEY;
+                            end else begin
+                                score_value<=difference[47:0]; state<=EXPREQ;
+                            end
                         end
                     end
                 end
@@ -234,18 +238,15 @@ module anvil_e2_attention #(
                     if (nonlinear_out_error) begin error_hold<=1; state<=DONE; end
                     else begin
                         exponential<=nonlinear_out_data;
-                        if (pass==1) begin
-                            denominator<=denominator+{{80{nonlinear_out_data[47]}},nonlinear_out_data};
-                            state<=NEXTKEY;
-                        end else begin channel<=0; state<=VREQ; end
+                        denominator<=denominator+{{80{nonlinear_out_data[47]}},nonlinear_out_data};
+                        channel<=0; state<=VREQ;
                     end
                 end
                 VREQ: if (cmd_ready) state<=VRSP;
                 VRSP: if (result_valid) begin
                     if (result_error) begin error_hold<=3; state<=DONE; end
-                    else begin operand<={result_data,16'd0}; state<=PRODUCT; end
+                    else state<=WEIGHT;
                 end
-                PRODUCT: state<=WEIGHT;
                 WEIGHT: begin
                     weighted[channel]<=weighted[channel]+mac_sum;
                     if (channel==dim-1) begin channel<=0; state<=NEXTKEY; end
@@ -254,10 +255,11 @@ module anvil_e2_attention #(
                 NEXTKEY: begin
                     if (key==tokens-1) begin
                         key<=0;
-                        if (pass==0 && !found_key) begin channel<=0; state<=FINISH; end
-                        else if (pass==2) begin channel<=0; state<=FINISH; end
+                        if (weighted_pass || !found_key) begin
+                            channel<=0; state<=FINISH;
+                        end
                         else begin
-                            pass<=pass+1'b1;
+                            weighted_pass<=1;
                             if (VISION) begin component<=0; state<=KREQ; end
                             else state<=MASKREQ;
                         end
@@ -268,15 +270,18 @@ module anvil_e2_attention #(
                     end
                 end
                 FINISH: begin
-                    if (denominator==0) values[channel]<=0;
-                    else values[channel]<=saturate(rounded_divide(weighted[channel],denominator));
-                    if (channel==dim-1) begin
-                        channel<=0; index_hold<=0; last_hold<=dim==1;
-                        data_hold<=dim==1 ?
-                            (denominator==0 ? 48'sd0:saturate(rounded_divide(weighted[channel],denominator))):
-                            values[0];
-                        state<=OUTPUT;
-                    end else channel<=channel+1'b1;
+                    if (denominator==0 || divide_in_ready) state<=FINISH_WAIT;
+                end
+                FINISH_WAIT: if (denominator==0 || divide_out_valid) begin
+                    if (denominator!=0 && divide_error) begin error_hold<=6; state<=DONE; end
+                    else begin
+                        values[channel]<=finished_value;
+                        if (channel==dim-1) begin
+                            channel<=0; index_hold<=0; last_hold<=dim==1;
+                            data_hold<=dim==1 ? finished_value:values[0];
+                            state<=OUTPUT;
+                        end else begin channel<=channel+1'b1; state<=FINISH; end
+                    end
                 end
                 OUTPUT: if (out_ready) begin
                     if (channel==dim-1) state<=DONE;

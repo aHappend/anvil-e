@@ -126,7 +126,7 @@ module anvil_e2_pool #(
                         divisor={96'd0,valid_tokens};
                         magnitude=sums[channel]<0 ? -sums[channel]:sums[channel];
                         quotient=magnitude/divisor;
-                        remainder=magnitude%divisor;
+                        remainder=magnitude-quotient*divisor;
                         if (remainder>divisor-remainder ||
                             (remainder==divisor-remainder && quotient[0]))
                             quotient=quotient+128'sd1;

@@ -1,6 +1,7 @@
 """Focused public-stage tests derived from memory layouts and tensor arithmetic."""
 import dataclasses
 import math
+import random
 
 from model import (Q, ONE, Integer, materialize, clamp40, rnd,
                    WEIGHTS, VISION, IMAGE, IDS, POSITIONS, MASKS, SCRATCH)
@@ -301,8 +302,28 @@ def guarded_norm(run, diagnostic=False):
         ([0, 0, 0, 0], [0]*4, True),
         ([(-2147483648 << 16), (2147483647 << 16), 1, -1], [0]*4, True),
     ]
+    # Square-root groups consume sixteen radicand bits; cross each reachable
+    # small-bank boundary with exact squares and adjacent nonsquares.
+    for bit in (0, 7, 8, 15, 16, 23, 24, 31, 32, 39, 40, 46):
+        value = 1 << bit
+        cases.append(([value], [0], True))
+        cases.append(([-value, 1, value-1], [0]*3, True))
+    cases.extend([
+        ([0], [0], True),
+        ([0], [0], False),
+        ([1, -1], [ops.decode(-Q), ops.decode(Q)], False),
+        ([(-2147483648 << 16)], [0], True),
+        ([(2147483647 << 16)]*4, [0]*4, True),
+        ([(-2147483648 << 16)]*4, [0]*4, True),
+    ])
+    covered_groups = set()
     for case, (values, weights, l2) in enumerate(cases):
         expected = ops.norm(values, None if l2 else weights)
+        count = len(values)
+        square_sum = sum(v*v for v in values)
+        denominator_square = square_sum if l2 else rnd(square_sum, count)+(17 << 56)
+        root_groups = ((denominator_square.bit_length()+64+15)//16
+                       if denominator_square else 0)
         loads = "\n".join(
             f"values[{i}]=48'h{v & ((1 << 48)-1):012x}; "
             f"weights[{i}]=32'h{(w >> 16) & 0xffffffff:08x}; "
@@ -319,12 +340,12 @@ reg signed [47:0] in_data=0;
 reg signed [31:0] in_weight=0;
 reg signed [47:0] values[0:3],expected[0:3];
 reg signed [31:0] weights[0:3];
-integer cycles=0,loaded=0,beats=0,stalls=0;
+integer cycles=0,loaded=0,beats=0,stalls=0,output_wait=0;
 reg started=0,held=0;
 reg [81:0] payload;
 anvil_e2_norm #(.MAX_WIDTH(4)) dut(
  .clk(clk),.rst_n(rst_n),.start_valid(start_valid),.start_ready(start_ready),
- .start_count(32'd4),.start_l2(1'b{int(l2)}),.in_valid(in_valid),.in_ready(in_ready),
+ .start_count(32'd{count}),.start_l2(1'b{int(l2)}),.in_valid(in_valid),.in_ready(in_ready),
  .in_data(in_data),.in_weight(in_weight),.out_valid(out_valid),.out_ready(out_ready),
  .out_data(out_data),.out_index(out_index),.out_last(out_last),.out_error(out_error));
 task automatic known;
@@ -344,9 +365,10 @@ always @(negedge clk) begin
  if(rst_n) begin
   cycles=cycles+1; if(cycles>1000) $fatal(1,"NORM_TIMEOUT");
   start_valid=!started;
-  in_valid=started && loaded<4;
-  if(loaded<4) begin in_data=values[loaded];in_weight=weights[loaded];end
-  out_ready=cycles%5==0;
+  in_valid=started && loaded<{count};
+  if(loaded<{count}) begin in_data=values[loaded];in_weight=weights[loaded];end
+  if(out_valid && output_wait<4) output_wait=output_wait+1;
+  out_ready=output_wait>=4 && cycles%5==0;
  end
 end
 always @(posedge clk) begin
@@ -360,12 +382,12 @@ always @(posedge clk) begin
   payload={{out_data,out_index,out_last,out_error}};
   if(held) stalls=stalls+1;
   if(out_valid && out_ready) begin
-   if(beats>=4 || out_index!==32'(beats) || out_data!==expected[beats] ||
-      out_last!==(beats==3) || out_error!==0) $fatal(1,"NORM_MISMATCH");
+   if(beats>={count} || out_index!==32'(beats) || out_data!==expected[beats] ||
+      out_last!==(beats=={count-1}) || out_error!==0) $fatal(1,"NORM_MISMATCH");
    $display("N %0d %h",out_index,out_data); beats=beats+1;
-   if(beats==4) begin
-    if(loaded!=4 || stalls==0) $fatal(1,"NORM_COVERAGE");
-    $display("NORM_COMPLETE 4 %0d",stalls);$finish;
+   if(beats=={count}) begin
+    if(loaded!={count} || stalls==0) $fatal(1,"NORM_COVERAGE");
+    $display("NORM_COMPLETE {count} %0d",stalls);$finish;
    end
   end
  end
@@ -392,9 +414,181 @@ endmodule
         assert actual == [v & ((1 << 48)-1) for v in expected]
         run.receipt["coverage"].append({
             "case": name, "input_q40": values, "weights_q24": [w >> 16 for w in weights],
-            "expected_q40": expected, "compared_components": 4, "l2": l2,
+            "expected_q40": expected, "compared_components": count, "l2": l2,
+            "denominator_square": denominator_square, "root_groups": root_groups,
         })
+        covered_groups.add(root_groups)
         run.save()
+    assert covered_groups == {0, 5, 6, 7, 8, 9, 10, 11}, "norm root group coverage"
+    run.receipt["assertions"].append({
+        "guarded_root_groups": sorted(covered_groups),
+        "compared_vectors": len(cases),
+        "root_group_12": "unreachable: legal 65535-term Q40 square sums have at most 110 bits",
+    })
+    run.save()
+
+
+def guarded_nonlinear(run):
+    """Check the six public operators against independent integer equations."""
+    from model import exp40, trig40, PI, TWO_PI, LN2
+    from verify import rtl_files
+    rng = random.Random(170891)
+    low, high = -2147483648 << 16, 2147483647 << 16
+    boundaries = [low, high, -8*ONE-1, -8*ONE, -8*ONE+1,
+                  -ONE, -1, 0, 1, ONE, 8*ONE-1, 8*ONE, 8*ONE+1]
+    cases = []
+    for operation in range(8):
+        values = list(boundaries)
+        if operation == 0:
+            values += [-16*ONE-1, -16*ONE, -16*ONE+1]
+            values += [-i*LN2+j for i in range(1, 24) for j in (-1, 0, 1)]
+        if operation in (1, 2):
+            values += [a+j for a in (-TWO_PI, -PI, PI, TWO_PI)
+                       for j in (-1, 0, 1)]
+        values += [rng.randint(low, high) for _ in range(24)]
+        if operation == 5:
+            values += [rng.randint(-8*ONE+1, 8*ONE-1) for _ in range(64)]
+        for value in dict.fromkeys(values):
+            error = (operation > 5 or operation == 0 and value > 0 or
+                     operation == 3 and value == 0 or operation == 4 and value <= 0)
+            if error:
+                expected = 0
+            elif operation == 0:
+                expected = clamp40(exp40(value))
+            elif operation in (1, 2):
+                expected = trig40(value, cosine=operation == 2)
+            elif operation == 3:
+                expected = clamp40(rnd(1 << 80, value))
+            elif operation == 4:
+                expected = clamp40(rnd(1 << 88, math.isqrt(value << 56)))
+            else:
+                expected = Integer().gelu(value)
+            cases.append((operation, value, expected, int(error)))
+    loads = "\n".join(
+        f"ops[{i}]=3'd{op}; inputs[{i}]=48'h{value & ((1 << 48)-1):012x}; "
+        f"expected[{i}]=48'h{expected & ((1 << 48)-1):012x}; errors[{i}]=1'b{error};"
+        for i, (op, value, expected, error) in enumerate(cases))
+    text = f"""
+module tb;
+reg clk=0,rst_n=0,in_valid=0,out_ready=0;
+always #5 clk=~clk;
+reg [2:0] in_op=0;
+reg signed [47:0] in_data=0;
+wire in_ready,out_valid,out_error;
+wire signed [47:0] out_data;
+anvil_e2_nonlinear dut(.*);
+reg [2:0] ops[0:{len(cases)-1}];
+reg signed [47:0] inputs[0:{len(cases)-1}],expected[0:{len(cases)-1}];
+reg errors[0:{len(cases)-1}];
+integer i,j,waits,compared=0,stalls=0,cancellations=0,cycles=0;
+task automatic known;
+begin
+ if ((^{{in_ready,out_valid,out_data,out_error}})===1'bx)
+  $fatal(1,"NONLINEAR_UNKNOWN");
+ if(!rst_n && {{in_ready,out_valid,out_data,out_error}}!=='0)
+  $fatal(1,"NONLINEAR_RESET");
+end
+endtask
+always @(posedge clk) begin
+ known();
+ cycles=cycles+1;
+ if(cycles>1000000) $fatal(1,"NONLINEAR_TIMEOUT");
+end
+always @(negedge clk) known();
+task automatic launch(input [2:0] op,input signed [47:0] value);
+begin
+ @(negedge clk); in_op=op; in_data=value; in_valid=1;
+ @(posedge clk);
+ if(in_ready!==1 || out_valid!==0) $fatal(1,"NONLINEAR_INPUT_OWNERSHIP");
+ #1; in_valid=0;
+ if(in_ready!==0) $fatal(1,"NONLINEAR_PREMATURE_READY");
+end
+endtask
+task automatic await_result;
+begin
+ waits=0;
+ @(negedge clk);
+ while(!out_valid) begin
+  if(in_ready!==0) $fatal(1,"NONLINEAR_LOST_OWNERSHIP");
+  waits=waits+1; if(waits>1000) $fatal(1,"NONLINEAR_RESULT_TIMEOUT");
+  @(negedge clk);
+ end
+end
+endtask
+task automatic cancel;
+begin
+ #1;rst_n=0; #1;known();
+ #11;rst_n=1;
+ repeat(120) begin
+  @(posedge clk);known();
+  if(out_valid!==0 || in_ready!==1) $fatal(1,"NONLINEAR_CANCELED_WORK");
+ end
+ cancellations=cancellations+1;
+end
+endtask
+initial begin
+ {loads}
+ #0;known(); #1;known(); #11;rst_n=1;
+ for(i=0;i<{len(cases)};i=i+1) begin
+  launch(ops[i],inputs[i]);
+  await_result();
+  for(j=0;j<5;j=j+1) begin
+   @(posedge clk);
+   if(out_valid!==1 || out_data!==expected[i] || out_error!==errors[i] ||
+      in_ready!==0)
+    $fatal(1,"NONLINEAR_MISMATCH case=%0d op=%0d x=%h actual=%h expected=%h error=%b/%b",
+           i,ops[i],inputs[i],out_data,expected[i],out_error,errors[i]);
+   stalls=stalls+1;
+   @(negedge clk);
+  end
+  out_ready=1;
+  @(posedge clk);
+  if(out_valid!==1) $fatal(1,"NONLINEAR_MISSING_TRANSFER");
+  $display("NONLINEAR_RESULT %0d %h %b",i,out_data,out_error);
+  compared=compared+1;
+  #1;
+  if(out_valid!==0 || in_ready!==1) $fatal(1,"NONLINEAR_RETIREMENT");
+  @(negedge clk);out_ready=0;
+ end
+ launch(3'd5,48'sd1429365116109);
+ @(negedge clk);
+ if(out_valid!==0) $fatal(1,"NONLINEAR_PENDING_RESET_PRECONDITION");
+ cancel();
+ launch(3'd3,48'sd1);
+ await_result();
+ if(out_ready!==0) $fatal(1,"NONLINEAR_STALLED_RESET_PRECONDITION");
+ cancel();
+ if(compared!={len(cases)} || stalls!=5*compared || cancellations!=2)
+  $fatal(1,"NONLINEAR_COVERAGE");
+ $display("NONLINEAR_COMPLETE %0d %0d %0d",compared,stalls,cancellations);
+ $finish;
+end
+endmodule
+"""
+    tb = run.directory/"guarded-nonlinear.sv"
+    executable = run.directory/"guarded-nonlinear.vvp"
+    tb.write_text(text)
+    run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable,
+                 *rtl_files(), tb], "guarded-nonlinear-compile", timeout=5)
+    out, _, _ = run.command(["vvp", executable], "guarded-nonlinear-simulate", timeout=10)
+    actual = [line.split() for line in out.splitlines()
+              if line.startswith("NONLINEAR_RESULT ")]
+    assert len(actual) == len(cases)
+    for index, (row, (_, _, expected, error)) in enumerate(zip(actual, cases)):
+        assert row == ["NONLINEAR_RESULT", str(index),
+                       f"{expected & ((1 << 48)-1):012x}", str(error)]
+    assert f"NONLINEAR_COMPLETE {len(cases)} {5*len(cases)} 2" in out
+    run.receipt["coverage"].append({
+        "case": "guarded-nonlinear", "random_seed": 170891,
+        "compared_results": len(cases), "stalled_output_edges": 5*len(cases),
+        "reset_cancellations": 2,
+        "boundaries": "all six operators, invalid opcodes/domains, signed endpoints, "
+                      "zero shortcuts, exp tail/LN2, trig wrapping, GELU +/-8, "
+                      "reciprocal/rsqrt saturation, pending and held-output reset",
+        "operands": [{"op": op, "input_q40": value, "expected_q40": expected,
+                      "expected_error": error} for op, value, expected, error in cases],
+    })
+    run.save()
 
 
 def guarded_division_diagnostic(run):
@@ -429,3 +623,164 @@ endmodule
                 "division-compile", timeout=5)
     out, _, _ = run.command(["vvp", executable], "division-simulate", timeout=5)
     assert out.count("DIVISION_COMPLETE ") == 1
+
+
+def guarded_divider(run):
+    """Exact public-pin signed numerator / unsigned denominator contract."""
+    from verify import rtl_files
+    low, high = -(1 << 127), (1 << 127)-1
+    cases = [(0, 1), (1, 2), (-1, 2), (3, 2), (-3, 2),
+             (5, 2), (-5, 2), (7, 2), (-7, 2),
+             (low, 1), (high, 1), (low, 2), (high, 2),
+             (low, (1 << 128)-1), (high, (1 << 128)-1),
+             (low, 1 << 127), (high, 1 << 127), (0, 0), (high, 0)]
+    values = [Integer().decode(Q//3), Integer().decode(-Q//2),
+              Integer().decode(Q//7), Integer().decode(-Q//11)]
+    root = math.isqrt((rnd(sum(v*v for v in values), 4)+(17 << 56)) << 64)
+    cases.extend((v << 72, root) for v in values)
+    cases.extend(((1 << i)-1, (1 << (i//2))+1) for i in (32, 64, 96, 127))
+    # Exercise exact shortcuts and every quotient-prefix boundary.
+    for shift in (0, 1, 2, 40, 41, 43, 63, 64, 95, 126, 127):
+        divisor = 1 << shift
+        for numerator in (0, 1, divisor//2, divisor//2+1,
+                          divisor-1, divisor, divisor+1, high, -high, low):
+            if low <= numerator <= high:
+                cases.append((numerator, divisor))
+                if numerator != low:
+                    cases.append((-numerator, divisor))
+    for bits in range(1, 129):
+        numerator = (1 << (bits-1)) if bits < 128 else 1 << 127
+        for delta in (-1, 0, 1):
+            magnitude = numerator+delta
+            if 0 <= magnitude <= 1 << 127:
+                for divisor in (3, 5, 17, (1 << min(bits, 127))-1):
+                    if divisor:
+                        if magnitude <= high:
+                            cases.append((magnitude, divisor))
+                        cases.append((-magnitude, divisor))
+    rng = random.Random(17089)
+    for _ in range(128):
+        numerator = rng.randrange(low, high+1)
+        denominator = rng.randrange(1, 1 << rng.randrange(1, 129))
+        cases.append((numerator, denominator))
+    digit_boundaries = []
+    for bits in (48, 49, 64, 80, 111, 127, 128):
+        shift = max(0, bits-48)
+        divisor = ((1 << 47)+1) << shift
+        divisor += (1 << shift)-1
+        for magnitude in (divisor-1, divisor, divisor+1, 1 << 127):
+            if magnitude <= 1 << 127:
+                cases.append((-magnitude, divisor))
+                if magnitude <= high:
+                    cases.append((magnitude, divisor))
+        if bits <= 111:
+            for quotient, residue in ((65535, divisor-1), (65535, 0),
+                                      (65536, 0), (65537, 1)):
+                magnitude = quotient*divisor+residue
+                assert magnitude <= high
+                cases.extend(((magnitude, divisor), (-magnitude, divisor)))
+                digit_boundaries.append({
+                    "divisor_bits": bits, "quotient": quotient,
+                    "residue": residue, "numerator": magnitude,
+                })
+    correction_example = next(
+        item for item in digit_boundaries
+        if item["divisor_bits"] == 80 and item["residue"] > 0)
+    # An analytical adversary for the leading-word estimate, not an oracle:
+    # the exact expected result below still comes exclusively from Python RN.
+    divisor = ((1 << 47)+1)*(1 << 32)+(1 << 32)-1
+    trial = divisor*65536-1
+    estimate = (trial >> 32)//(divisor >> 32)
+    assert estimate == 65536 and trial//divisor == 65535
+    assert correction_example["numerator"] == trial
+    cases = list(dict.fromkeys(cases))
+    assignments = []
+    expected = []
+    for i, (n, d) in enumerate(cases):
+        result = rnd(n, d) if d else 0
+        error = not d or not low <= result <= high
+        result = 0 if error else result
+        expected.append({"numerator": n, "denominator": d,
+                         "expected": result, "error": bool(error)})
+        assignments.append(
+            f"numerators[{i}]=128'h{n & ((1 << 128)-1):032x};"
+            f"denominators[{i}]=128'h{d:032x};"
+            f"expected[{i}]=128'h{result & ((1 << 128)-1):032x};"
+            f"errors[{i}]=1'b{int(error)};")
+    text = f"""
+module tb;
+reg clk=0,rst_n=0,in_valid=0,out_ready=0;
+always #5 clk=~clk;
+reg signed [127:0] in_numerator=0;
+reg [127:0] in_denominator=0;
+wire in_ready,out_valid,out_error;
+wire signed [127:0] out_data;
+anvil_e2_divide dut(.*);
+reg signed [127:0] numerators[0:{len(cases)-1}],expected[0:{len(cases)-1}];
+reg [127:0] denominators[0:{len(cases)-1}];
+reg errors[0:{len(cases)-1}];
+integer sent=0,received=0,cycles=0,stalls=0;
+reg held=0;
+reg [128:0] payload;
+task automatic known;
+begin
+ if ((^{{in_ready,out_valid,out_data,out_error}})===1'bx) $fatal(1,"DIVIDER_UNKNOWN");
+ if (!rst_n && {{in_ready,out_valid,out_data,out_error}}!=='0) $fatal(1,"DIVIDER_RESET");
+end
+endtask
+initial begin
+ {''.join(assignments)}
+ #0;known();#1;known();#11;rst_n=1;
+end
+always @(negedge clk) begin
+ known();
+ if(rst_n) begin
+  cycles=cycles+1;if(cycles>{len(cases)*48}) $fatal(1,"DIVIDER_TIMEOUT");
+  in_valid=sent<{len(cases)};
+  if(in_valid) begin in_numerator=numerators[sent];in_denominator=denominators[sent];end
+  out_ready=cycles%11==0;
+ end
+end
+always @(posedge clk) begin
+ known();
+ if(rst_n) begin
+  if(in_valid && in_ready) sent=sent+1;
+  if(held && (!out_valid || {{out_error,out_data}}!==payload)) $fatal(1,"DIVIDER_STABILITY");
+  held=out_valid && !out_ready;payload={{out_error,out_data}};
+  if(held) stalls=stalls+1;
+  if(out_valid && out_ready) begin
+   if(received>=sent || out_data!==expected[received] || out_error!==errors[received])
+    $fatal(1,"DIVIDER_MISMATCH case=%0d data=%h error=%b",received,out_data,out_error);
+   $display("DIVIDER_RESULT %0d %h %b",received,out_data,out_error);
+   received=received+1;
+   if(received=={len(cases)}) begin
+    if(sent!={len(cases)} || stalls==0) $fatal(1,"DIVIDER_COVERAGE");
+    $display("DIVIDER_COMPLETE %0d %0d",received,stalls);$finish;
+   end
+  end
+ end
+end
+endmodule
+"""
+    tb, executable = run.directory/"guarded-divider.sv", run.directory/"guarded-divider.vvp"
+    tb.write_text(text)
+    run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable,
+                 *rtl_files(), tb], "guarded-divider-compile", timeout=5)
+    out, _, _ = run.command(["vvp", executable], "guarded-divider-simulate", timeout=5)
+    assert out.count("DIVIDER_COMPLETE ") == 1
+    assert out.count("DIVIDER_RESULT ") == len(cases)
+    run.receipt["coverage"].append({
+        "case": "guarded-divider", "compared_results": len(cases), "operands": expected,
+        "boundaries": "signed128 extrema, unsigned128 divisors, signed ties, "
+                      "zero divisor, exact guarded RMS ratios, output stalls, "
+                      "power-of-two shortcuts, all quotient-prefix lengths",
+        "random_seed": 17089,
+        "digit_boundaries": digit_boundaries,
+        "candidate_65536_correction": {
+            "numerator": trial, "denominator": divisor,
+            "leading_estimate": estimate, "exact_floor": trial//divisor,
+        },
+        "divisor_128_bits": "covered via magnitude-smaller/power-of-two paths; "
+                            "nonpower divisors exceed every signed128 magnitude",
+    })
+    run.save()

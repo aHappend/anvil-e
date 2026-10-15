@@ -18,25 +18,60 @@ module anvil_e2_norm #(
     output wire out_last,
     output wire out_error
 );
-    localparam IDLE=3'd0, LOAD=3'd1, SETUP=3'd2,
-               ROOT=3'd3, PREPARE=3'd4, HOLD=3'd5;
-    reg [2:0] state;
+    localparam IDLE=0, LOAD=1, SETUP=2, ROOT=3, PREPARE=4, HOLD=5,
+               MEAN_WAIT=6, ROOT_SETUP=7, RATIO_WAIT=8, APPLY=9;
+    reg [3:0] state;
     reg [31:0] count, index;
     reg l2;
     reg signed [47:0] values [0:MAX_WIDTH-1];
     reg signed [31:0] weights [0:MAX_WIDTH-1];
     reg [127:0] sum_squares;
-    wire signed [95:0] square = in_data * in_data;
+    reg signed [95:0] square;
     reg [191:0] radicand;
-    reg [193:0] remainder;
+    reg [97:0] remainder;
     reg [95:0] root_value;
     reg [6:0] iteration;
     reg signed [47:0] result;
     reg error;
     reg [127:0] denominator_square;
-    reg [193:0] shifted_remainder, trial;
-    reg signed [127:0] numerator, divisor, magnitude, quotient, residue;
+    reg [97:0] shifted_remainder, trial;
+    reg [97:0] root_remainder_work;
+    reg [95:0] root_work;
+    integer root_step, root_groups;
     reg signed [127:0] normalized, unit_weight, product, rounded;
+    wire divide_in_ready, divide_out_valid, divide_error;
+    wire signed [127:0] divide_result;
+    wire signed [127:0] ratio_numerator=
+        $signed({{80{values[index][47]}},values[index]}) <<< 72;
+
+    function automatic integer bit_length;
+        input [127:0] value;
+        reg [127:0] remaining;
+        begin
+            remaining=value;
+            bit_length=0;
+            if (|remaining[127:64]) begin remaining=remaining>>64; bit_length=64; end
+            if (|remaining[63:32]) begin remaining=remaining>>32; bit_length=bit_length+32; end
+            if (|remaining[31:16]) begin remaining=remaining>>16; bit_length=bit_length+16; end
+            if (|remaining[15:8]) begin remaining=remaining>>8; bit_length=bit_length+8; end
+            if (|remaining[7:4]) begin remaining=remaining>>4; bit_length=bit_length+4; end
+            if (|remaining[3:2]) begin remaining=remaining>>2; bit_length=bit_length+2; end
+            if (remaining[1]) begin remaining=remaining>>1; bit_length=bit_length+1; end
+            if (remaining[0]) bit_length=bit_length+1;
+        end
+    endfunction
+
+    anvil_e2_divide divider (
+        .clk(clk), .rst_n(rst_n),
+        .in_valid(rst_n && ((state==SETUP && !l2) ||
+                           (state==PREPARE && root_value!=0))),
+        .in_ready(divide_in_ready),
+        .in_numerator(state==SETUP ? $signed(sum_squares):ratio_numerator),
+        .in_denominator(state==SETUP ? {96'd0,count}:{32'd0,root_value}),
+        .out_valid(divide_out_valid),
+        .out_ready(state==MEAN_WAIT || state==RATIO_WAIT),
+        .out_data(divide_result), .out_error(divide_error)
+    );
 
     initial begin
         if (MAX_WIDTH <= 0 || MAX_WIDTH > 65535)
@@ -57,21 +92,20 @@ module anvil_e2_norm #(
             index <= 0;
             l2 <= 0;
             sum_squares <= 0;
+            square = 0;
             radicand <= 0;
             remainder <= 0;
             root_value <= 0;
             iteration <= 0;
             result <= 0;
             error <= 0;
-            denominator_square = 0;
+            denominator_square <= 0;
             shifted_remainder = 0;
             trial = 0;
-            numerator = 0;
-            divisor = 0;
-            magnitude = 0;
-            quotient = 0;
-            residue = 0;
-            normalized = 0;
+            root_remainder_work = 0;
+            root_work = 0;
+            root_groups = 0;
+            normalized <= 0;
             unit_weight = 0;
             product = 0;
             rounded = 0;
@@ -94,6 +128,7 @@ module anvil_e2_norm #(
                 LOAD: if (in_valid) begin
                     values[index] <= in_data;
                     weights[index] <= in_weight;
+                    square = in_data * in_data;
                     sum_squares <= sum_squares + {32'd0,square};
                     if (index == count-1) begin
                         index <= 0;
@@ -104,59 +139,75 @@ module anvil_e2_norm #(
                 end
                 SETUP: begin
                     if (l2) begin
-                        denominator_square = sum_squares;
-                    end else begin
-                        denominator_square = sum_squares / count;
-                        residue = sum_squares % count;
-                        if (residue > count-residue ||
-                            (residue == count-residue && denominator_square[0]))
-                            denominator_square = denominator_square + 128'd1;
-                        denominator_square = denominator_square + (128'd17 << 56);
+                        denominator_square <= sum_squares;
+                        state <= ROOT_SETUP;
+                    end else if (divide_in_ready) state <= MEAN_WAIT;
+                end
+                MEAN_WAIT: if (divide_out_valid) begin
+                    if (divide_error) begin error<=1; result<=0; state<=HOLD; end
+                    else begin
+                        denominator_square <= $unsigned(divide_result) + (128'd17 << 56);
+                        state <= ROOT_SETUP;
                     end
-                    radicand <= {denominator_square,64'd0};
+                end
+                ROOT_SETUP: begin
                     root_value <= 0;
                     remainder <= 0;
-                    iteration <= 0;
-                    state <= ROOT;
+                    if (denominator_square==0) begin
+                        radicand <= 0;
+                        iteration <= 0;
+                        state <= PREPARE;
+                    end else begin
+                        // A zero leading prefix leaves both root and residue zero.
+                        root_groups=(bit_length(denominator_square)+64+15)/16;
+                        radicand <= {denominator_square,64'd0} <<
+                            (192-16*root_groups);
+                        iteration <= 7'(12-root_groups);
+                        state <= ROOT;
+                    end
                 end
                 ROOT: begin
-                    shifted_remainder = (remainder << 2) | {192'd0,radicand[191:190]};
-                    trial = ({98'd0,root_value} << 2) | 194'd1;
-                    if (shifted_remainder >= trial) begin
-                        remainder <= shifted_remainder-trial;
-                        root_value <= (root_value << 1) | 96'd1;
-                    end else begin
-                        remainder <= shifted_remainder;
-                        root_value <= root_value << 1;
+                    root_remainder_work = remainder;
+                    root_work = root_value;
+                    for (root_step=0;root_step<8;root_step=root_step+1) begin
+                        shifted_remainder = (root_remainder_work << 2) |
+                            {96'd0,radicand[191-2*root_step -: 2]};
+                        trial = ({2'd0,root_work} << 2) | 98'd1;
+                        if (shifted_remainder >= trial) begin
+                            root_remainder_work = shifted_remainder-trial;
+                            root_work = (root_work << 1) | 96'd1;
+                        end else begin
+                            root_remainder_work = shifted_remainder;
+                            root_work = root_work << 1;
+                        end
                     end
-                    radicand <= radicand << 2;
-                    if (iteration == 95) state <= PREPARE;
+                    radicand <= radicand << 16;
+                    remainder <= root_remainder_work;
+                    root_value <= root_work;
+                    if (iteration == 11) state <= PREPARE;
                     else iteration <= iteration + 1'b1;
                 end
                 PREPARE: begin
                     if (root_value == 0) begin
                         result <= 0;
-                    end else begin
-                        numerator = {{80{values[index][47]}},values[index]} <<< 72;
-                        divisor = {32'd0,root_value};
-                        magnitude = numerator < 0 ? -numerator : numerator;
-                        quotient = magnitude / divisor;
-                        residue = magnitude % divisor;
-                        if (residue > divisor-residue ||
-                            (residue == divisor-residue && quotient[0]))
-                            quotient = quotient + 128'sd1;
-                        normalized = numerator < 0 ? -quotient : quotient;
-                        unit_weight = l2 ? 128'sd16777216 :
-                            128'sd16777216 + {{96{weights[index][31]}},weights[index]};
-                        product = normalized * unit_weight;
-                        rounded = product >>> 24;
-                        if (product[23:0] > 24'h800000 ||
-                            (product[23:0] == 24'h800000 && rounded[0]))
-                            rounded = rounded + 128'sd1;
-                        if (rounded > 128'sd140737488289792) result <= 48'sh7fffffff0000;
-                        else if (rounded < -128'sd140737488355328) result <= 48'sh800000000000;
-                        else result <= rounded[47:0];
-                    end
+                        state <= HOLD;
+                    end else if (divide_in_ready) state <= RATIO_WAIT;
+                end
+                RATIO_WAIT: if (divide_out_valid) begin
+                    if (divide_error) begin error<=1; result<=0; state<=HOLD; end
+                    else begin normalized<=divide_result; state<=APPLY; end
+                end
+                APPLY: begin
+                    unit_weight = l2 ? 128'sd16777216 :
+                        128'sd16777216 + {{96{weights[index][31]}},weights[index]};
+                    product = normalized * unit_weight;
+                    rounded = product >>> 24;
+                    if (product[23:0] > 24'h800000 ||
+                        (product[23:0] == 24'h800000 && rounded[0]))
+                        rounded = rounded + 128'sd1;
+                    if (rounded > 128'sd140737488289792) result <= 48'sh7fffffff0000;
+                    else if (rounded < -128'sd140737488355328) result <= 48'sh800000000000;
+                    else result <= rounded[47:0];
                     state <= HOLD;
                 end
                 HOLD: if (out_ready) begin

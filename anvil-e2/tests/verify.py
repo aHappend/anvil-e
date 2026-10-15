@@ -583,9 +583,12 @@ def behavior(run):
                 for dim in dimensions:
                     execute_fixture(run, f"{label}-s{seed}-m{mode}-d{dim}",
                                     Fixture(c, seed, mode, dim))
-    from stages import focused, extremes, guard_boundaries, guarded_norm
+    from stages import (focused, extremes, guard_boundaries, guarded_norm,
+                        guarded_divider, guarded_nonlinear)
     guard_boundaries(run)
+    guarded_divider(run)
     guarded_norm(run)
+    guarded_nonlinear(run)
     focused(run)
     directed(run)
     illegal_parameters(run)
@@ -707,7 +710,7 @@ def synthesis(run, labels=("A", "C"), wrapper=True):
         script.write_text("\n".join(commands)+"\n")
         try:
             run.command(["yosys", "-Q", "-t", "-s", script],
-                        label+"-yosys", timeout=45)
+                        label+"-yosys", timeout=60)
         finally:
             log = (run.directory/(label+"-yosys.stdout")).read_text()
             headers = [line for line in log.splitlines()
@@ -791,10 +794,16 @@ def main():
                                            "mutation-vision", "mutation-fusion",
                                            "mutation-schedule", "b89-text", "guard-boundaries",
                                            "startup", "numerical-matrix", "guarded-norm",
-                                           "guarded-division"))
+                                           "guarded-division", "guarded-divider",
+                                           "guarded-nonlinear"))
     parser.add_argument("--output")
     parser.add_argument("--repair-of")
+    parser.add_argument("--probe-seed", type=int, default=17)
+    parser.add_argument("--probe-mode", type=int, choices=(0, 1, 2), default=2)
+    parser.add_argument("--probe-dimension", type=int)
     args = parser.parse_args()
+    assert args.probe or (args.probe_seed == 17 and args.probe_mode == 2 and
+                          args.probe_dimension is None), "fixture overrides are preparation-only"
     if args.probe:
         assert args.output, "preparation requires an explicit unique output path"
         directory = ROOT/args.output
@@ -829,6 +838,14 @@ def main():
                 run.tools(("python3", "iverilog", "vvp"))
                 from stages import guarded_division_diagnostic
                 guarded_division_diagnostic(run)
+            elif check == "guarded-divider":
+                run.tools(("python3", "iverilog", "vvp"))
+                from stages import guarded_divider
+                guarded_divider(run)
+            elif check == "guarded-nonlinear":
+                run.tools(("python3", "iverilog", "vvp"))
+                from stages import guarded_nonlinear
+                guarded_nonlinear(run)
             elif check == "numerical-matrix":
                 run.tools(("python3",))
                 for label, config in CONFIGS.items():
@@ -890,7 +907,10 @@ def main():
                 operator_coverage(run)
             elif args.probe:
                 run.tools(("python3", "iverilog", "vvp"))
-                execute_fixture(run, check+"-joint", Fixture(CONFIGS[check], 17, 2))
+                fixture = Fixture(CONFIGS[check], args.probe_seed, args.probe_mode,
+                                  args.probe_dimension)
+                execute_fixture(run, f"{check}-s{fixture.seed}-m{fixture.mode}"
+                                f"-d{fixture.dimension}", fixture)
             else:
                 globals()[check](run)
         except Exception as error:

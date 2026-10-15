@@ -50,9 +50,12 @@ def exp40(x):
 
 
 def trig40(x, cosine=False):
-    a = x % TWO_PI
+    # Preserve either signed half-turn endpoint: TWO_PI is 2*PI-1.
+    a = (abs(x) % TWO_PI) * (-1 if x < 0 else 1)
     if a > PI:
         a -= TWO_PI
+    elif a < -PI:
+        a += TWO_PI
     term = total = ONE if cosine else a
     for i in range(1, 19):
         term = rnd(-q40mul(q40mul(term, a), a),

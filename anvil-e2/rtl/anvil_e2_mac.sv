@@ -8,27 +8,29 @@ module anvil_e2_mac (
     output reg signed [127:0] sum,
     output wire signed [47:0] rounded
 );
-    wire signed [95:0] product = a * b;
-    reg signed [127:0] quotient;
-    reg [39:0] remainder;
-    reg signed [127:0] nearest;
-    always @* begin
-        quotient = sum >>> 40;
-        remainder = sum[39:0];
-        nearest = quotient;
-        if ((remainder > 40'h8000000000) ||
-            ((remainder == 40'h8000000000) && quotient[0]))
-            nearest = quotient + 128'sd1;
-    end
-    assign rounded = !rst_n ? 48'sd0 :
-                     nearest > 128'sd140737488289792 ? 48'sh7fffffff0000 :
-                     nearest < -128'sd140737488355328 ? 48'sh800000000000 : nearest[47:0];
+    reg signed [95:0] product;
+    function automatic signed [47:0] round_sum;
+        input signed [127:0] value;
+        reg signed [127:0] nearest;
+        begin
+            nearest = value >>> 40;
+            if ((value[39:0] > 40'h8000000000) ||
+                ((value[39:0] == 40'h8000000000) && nearest[0]))
+                nearest = nearest + 128'sd1;
+            if (nearest > 128'sd140737488289792) round_sum = 48'sh7fffffff0000;
+            else if (nearest < -128'sd140737488355328) round_sum = 48'sh800000000000;
+            else round_sum = nearest[47:0];
+        end
+    endfunction
+    assign rounded = !rst_n ? 48'sd0 : round_sum(sum);
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
+        if (!rst_n) begin
             sum <= 128'sd0;
-        else if (clear)
-            sum <= accumulate ? {{32{product[95]}}, product} : 128'sd0;
-        else if (accumulate)
-            sum <= sum + {{32{product[95]}}, product};
+            product = 0;
+        end else if (accumulate) begin
+            product = a * b;
+            if (clear) sum <= {{32{product[95]}}, product};
+            else sum <= sum + {{32{product[95]}}, product};
+        end else if (clear) sum <= 128'sd0;
     end
 endmodule

@@ -40,7 +40,7 @@ module anvil_e2_vision_pool_proj #(
     function automatic signed [47:0] mean(input signed [127:0] x, input [63:0] n);
         reg signed [127:0] m,q,r;
         begin
-            m=x<0 ? -x:x; q=m/n; r=m%n;
+            m=x<0 ? -x:x; q=m/n; r=m-q*n;
             if (r>n-r || (r==n-r && q[0])) q=q+1;
             mean=sat(x<0 ? -q:q);
         end

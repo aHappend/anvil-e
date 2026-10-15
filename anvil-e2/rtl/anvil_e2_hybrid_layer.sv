@@ -79,30 +79,42 @@ module anvil_e2_hybrid_layer #(
     reg signed [47:0] source_a_data, source_b_data, source_offset_data;
     // Explicit array reads keep bank writes in each operand mux's sensitivity.
     always @* begin
-        case (source_a)
-            0: source_a_data=xvec[index];
-            1: source_a_data=STAGE==0 ? 32'sd0:work[index];
-            2: source_a_data=temporary[index];
-            3: source_a_data=STAGE==1 ? gate[index]:32'sd0;
-            4: source_a_data=STAGE==1 ? auxiliary[index]:32'sd0;
-            default: source_a_data=0;
-        endcase
-        case (source_b)
-            0: source_b_data=xvec[index];
-            1: source_b_data=STAGE==0 ? 32'sd0:work[index];
-            2: source_b_data=temporary[index];
-            3: source_b_data=STAGE==1 ? gate[index]:32'sd0;
-            4: source_b_data=STAGE==1 ? auxiliary[index]:32'sd0;
-            default: source_b_data=0;
-        endcase
-        case (source_a)
-            0: source_offset_data=xvec[source_offset+index];
-            1: source_offset_data=STAGE==0 ? 32'sd0:work[source_offset+index];
-            2: source_offset_data=temporary[source_offset+index];
-            3: source_offset_data=STAGE==1 ? gate[source_offset+index]:32'sd0;
-            4: source_offset_data=STAGE==1 ? auxiliary[source_offset+index]:32'sd0;
-            default: source_offset_data=0;
-        endcase
+        source_a_data=0;
+        source_b_data=0;
+        source_offset_data=0;
+        if (rst_n) begin
+            if (state==MAT_LOAD || state==VECTOR || state==VPRODUCT ||
+                state==VGELU_REQ) begin
+                case (source_a)
+                    0: source_a_data=xvec[index];
+                    1: source_a_data=STAGE==0 ? 48'sd0:work[index];
+                    2: source_a_data=temporary[index];
+                    3: source_a_data=STAGE==1 ? gate[index]:48'sd0;
+                    4: source_a_data=STAGE==1 ? auxiliary[index]:48'sd0;
+                    default: source_a_data=0;
+                endcase
+            end
+            if ((state==VECTOR && vector_mode==2) || state==VPRODUCT) begin
+                case (source_b)
+                    0: source_b_data=xvec[index];
+                    1: source_b_data=STAGE==0 ? 48'sd0:work[index];
+                    2: source_b_data=temporary[index];
+                    3: source_b_data=STAGE==1 ? gate[index]:48'sd0;
+                    4: source_b_data=STAGE==1 ? auxiliary[index]:48'sd0;
+                    default: source_b_data=0;
+                endcase
+            end
+            if (state==WRITE_REQ || state==NORM_FEED) begin
+                case (source_a)
+                    0: source_offset_data=xvec[source_offset+index];
+                    1: source_offset_data=STAGE==0 ? 48'sd0:work[source_offset+index];
+                    2: source_offset_data=temporary[source_offset+index];
+                    3: source_offset_data=STAGE==1 ? gate[source_offset+index]:48'sd0;
+                    4: source_offset_data=STAGE==1 ? auxiliary[source_offset+index]:48'sd0;
+                    default: source_offset_data=0;
+                endcase
+            end
+        end
     end
     function automatic signed [47:0] saturate;
         input signed [127:0] value;
@@ -149,7 +161,7 @@ module anvil_e2_hybrid_layer #(
             numerator={{80{value[47]}},value}<<<40;
             divisor=$signed({64'd0,H_ROOT});
             magnitude=numerator<0 ? -numerator:numerator;
-            quotient=magnitude/divisor; remainder=magnitude%divisor;
+            quotient=magnitude/divisor; remainder=magnitude-quotient*divisor;
             if (remainder>divisor-remainder ||
                 (remainder==divisor-remainder && quotient[0]))
                 quotient=quotient+128'sd1;
@@ -301,16 +313,38 @@ module anvil_e2_hybrid_layer #(
     wire signed [127:0] mac_sum;
     wire signed [47:0] mac_rounded;
     wire nready, nout_valid, nout_error;
+    wire nready_raw;
+    wire mat_clk, mat_active, norm_clk, norm_active;
+    wire att_clk, att_active, rope_clk, rope_active, nonlinear_clk, nonlinear_active;
+    wire mat_start_ready_raw, norm_start_ready_raw;
+    wire att_start_ready_raw, rope_start_ready_raw;
+    wire mat_start_ready, norm_start_ready, att_start_ready, rope_start_ready;
+    wire pool_owns_norm=STAGE==2 && state==POOL_WAIT;
+    anvil_e2_clock_gate mat_clock (
+        .clk(clk), .rst_n(unit_rst_n),
+        .enable(state==MAT_START || state==MAT_LOAD || state==MAT_RUN),
+        .active(mat_active), .gated_clk(mat_clk)
+    );
+    anvil_e2_clock_gate norm_clock (
+        .clk(clk), .rst_n(unit_rst_n),
+        .enable((state>=NORM_START && state<=NORM_OUT) || pool_owns_norm),
+        .active(norm_active), .gated_clk(norm_clk)
+    );
+    assign mat_start_ready=mat_active && mat_start_ready_raw;
+    assign norm_start_ready=norm_active && norm_start_ready_raw;
+    assign att_start_ready=att_active && att_start_ready_raw;
+    assign rope_start_ready=rope_active && rope_start_ready_raw;
+    assign nready=nonlinear_active && nready_raw;
     wire signed [47:0] nout_data;
-    wire mat_start_ready, mat_in_ready, mat_cmd_valid, mat_result_ready;
+    wire mat_in_ready, mat_cmd_valid, mat_result_ready;
     wire [63:0] mat_cmd_addr;
     wire mat_clear, mat_accumulate, mat_out_valid, mat_out_last, mat_done_valid;
     wire signed [47:0] mat_a, mat_b, mat_out_data;
     wire [31:0] mat_out_index;
     wire [3:0] mat_error;
     anvil_e2_matvec #(.MAX_INPUT(WIDTH)) matvec (
-        .clk(clk), .rst_n(unit_rst_n), .start_valid(state==MAT_START),
-        .start_ready(mat_start_ready), .start_rows(count), .start_cols(columns),
+        .clk(mat_clk), .rst_n(unit_rst_n), .start_valid(state==MAT_START && mat_active),
+        .start_ready(mat_start_ready_raw), .start_rows(count), .start_cols(columns),
         .start_weights(op_base), .in_valid(state==MAT_LOAD), .in_ready(mat_in_ready),
         .in_data(source_a_data), .cmd_valid(mat_cmd_valid),
         .cmd_ready(cmd_ready && state==MAT_RUN), .cmd_addr(mat_cmd_addr),
@@ -323,7 +357,7 @@ module anvil_e2_hybrid_layer #(
         .done_valid(mat_done_valid), .done_ready(state==MAT_RUN), .done_error(mat_error)
     );
 
-    wire att_start_ready, att_cmd_valid, att_result_ready;
+    wire att_cmd_valid, att_result_ready;
     wire [63:0] att_cmd_addr;
     wire att_clear, att_accumulate, att_nvalid, att_nout_ready;
     wire [2:0] att_nop;
@@ -332,13 +366,17 @@ module anvil_e2_hybrid_layer #(
     wire [31:0] att_out_index;
     wire [3:0] att_error;
     generate if (STAGE==1) begin : attention_stage
+    anvil_e2_clock_gate attention_clock (
+        .clk(clk), .rst_n(unit_rst_n), .enable(state==ATT_START || state==ATT_RUN),
+        .active(att_active), .gated_clk(att_clk)
+    );
     anvil_e2_attention #(
         .NUM_Q_HEADS(NUM_Q_HEADS), .LOCAL_KV_HEADS(LOCAL_KV_HEADS),
         .FULL_KV_HEADS(FULL_KV_HEADS), .LOCAL_HEAD_DIM(LOCAL_HEAD_DIM),
         .FULL_HEAD_DIM(FULL_HEAD_DIM), .SLIDING_WINDOW(SLIDING_WINDOW), .VISION(VISION)
     ) attention (
-        .clk(clk), .rst_n(unit_rst_n), .start_valid(state==ATT_START),
-        .start_ready(att_start_ready), .start_tokens(tokens), .start_query(token),
+        .clk(att_clk), .rst_n(unit_rst_n), .start_valid(state==ATT_START && att_active),
+        .start_ready(att_start_ready_raw), .start_tokens(tokens), .start_query(token),
         .start_head(head), .start_full(full_mode), .start_q_base(bases[2]),
         .start_k_base(bases[3]), .start_v_base(bases[4]),
         .start_positions_base(positions), .start_mask_base(masks),
@@ -357,7 +395,9 @@ module anvil_e2_hybrid_layer #(
         .done_valid(att_done_valid), .done_ready(state==ATT_RUN), .done_error(att_error)
     );
     end else begin : no_attention
-        assign att_start_ready=0;
+        assign att_start_ready_raw=0;
+        assign att_active=0;
+        assign att_clk=1;
         assign att_cmd_valid=0;
         assign att_result_ready=0;
         assign att_cmd_addr=0;
@@ -377,14 +417,18 @@ module anvil_e2_hybrid_layer #(
         assign att_error=0;
     end endgenerate
 
-    wire rope_start_ready, rope_clear, rope_accumulate, rope_nvalid, rope_nout_ready;
+    wire rope_clear, rope_accumulate, rope_nvalid, rope_nout_ready;
     wire [2:0] rope_nop;
     wire signed [47:0] rope_a, rope_b, rope_ndata, rope_lo, rope_hi;
     wire rope_out_valid, rope_error;
     generate if (STAGE==1) begin : rotary_stage
+    anvil_e2_clock_gate rotary_clock (
+        .clk(clk), .rst_n(unit_rst_n), .enable(state==ROPE_START || state==ROPE_RUN),
+        .active(rope_active), .gated_clk(rope_clk)
+    );
     anvil_e2_rope #(.VISION(VISION)) rope (
-        .clk(clk), .rst_n(unit_rst_n), .start_valid(state==ROPE_START),
-        .start_ready(rope_start_ready), .start_full(full_mode),
+        .clk(rope_clk), .rst_n(unit_rst_n), .start_valid(state==ROPE_START && rope_active),
+        .start_ready(rope_start_ready_raw), .start_full(full_mode),
         .start_position(rotary_position), .start_pair(rotary_pair), .start_dim(rotary_dim),
         .start_lo(temporary[head*dim+rotary_offset+rotary_pair]),
         .start_hi(temporary[head*dim+rotary_offset+rotary_pair+rotary_dim/2]),
@@ -399,7 +443,9 @@ module anvil_e2_hybrid_layer #(
         .out_error(rope_error)
     );
     end else begin : no_rotary
-        assign rope_start_ready=0;
+        assign rope_start_ready_raw=0;
+        assign rope_active=0;
+        assign rope_clk=1;
         assign rope_clear=0;
         assign rope_accumulate=0;
         assign rope_nvalid=0;
@@ -435,13 +481,20 @@ module anvil_e2_hybrid_layer #(
     wire nout_ready=state==ATT_RUN ? att_nout_ready:
         state==ROPE_RUN ? rope_nout_ready:state==VGELU_RSP;
     generate if (STAGE==1) begin : nonlinear_stage
+    anvil_e2_clock_gate nonlinear_clock (
+        .clk(clk), .rst_n(unit_rst_n), .enable(nvalid || !nready_raw),
+        .active(nonlinear_active), .gated_clk(nonlinear_clk)
+    );
     anvil_e2_nonlinear nonlinear (
-        .clk(clk), .rst_n(unit_rst_n), .in_valid(nvalid), .in_ready(nready),
+        .clk(nonlinear_clk), .rst_n(unit_rst_n),
+        .in_valid(nvalid && nonlinear_active), .in_ready(nready_raw),
         .in_op(nop), .in_data(ndata), .out_valid(nout_valid), .out_ready(nout_ready),
         .out_data(nout_data), .out_error(nout_error)
     );
     end else begin : no_nonlinear
-        assign nready=0;
+        assign nready_raw=0;
+        assign nonlinear_active=0;
+        assign nonlinear_clk=1;
         assign nout_valid=0;
         assign nout_error=0;
         assign nout_data=0;
@@ -455,14 +508,13 @@ module anvil_e2_hybrid_layer #(
     wire signed [31:0] pool_out_data;
     wire [15:0] pool_out_index;
     wire [3:0] pool_error;
-    wire norm_start_ready, norm_in_ready, norm_out_valid, norm_out_last, norm_out_error;
+    wire norm_in_ready, norm_out_valid, norm_out_last, norm_out_error;
     wire signed [47:0] norm_out_data;
     wire [31:0] norm_out_index;
-    wire pool_owns_norm=STAGE==2 && state==POOL_WAIT;
     anvil_e2_norm #(.MAX_WIDTH(WIDTH)) norm (
-        .clk(clk), .rst_n(unit_rst_n),
-        .start_valid(pool_owns_norm ? pool_nsvalid:state==NORM_START),
-        .start_ready(norm_start_ready),
+        .clk(norm_clk), .rst_n(unit_rst_n),
+        .start_valid(norm_active && (pool_owns_norm ? pool_nsvalid:state==NORM_START)),
+        .start_ready(norm_start_ready_raw),
         .start_count(pool_owns_norm ? pool_nscount:count),
         .start_l2(pool_owns_norm && pool_nsl2),
         .in_valid(pool_owns_norm ? pool_nivalid:state==NORM_FEED),

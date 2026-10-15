@@ -119,22 +119,37 @@ module anvil_e2_top #(
         wire [6:0] stage_readys, result_valids, result_readys, stage_dones, done_readys;
         wire [63:0] stage_addrs [0:6];
         wire [31:0] stage_data [0:6];
+        wire [31:0] stage_result_data [0:6];
         wire [3:0] stage_errors [0:6];
+        wire [6:0] stage_clocks, stage_clock_active;
         wire bridge_ready, bridge_result_valid, bridge_result_error;
         wire [31:0] bridge_data;
+        wire bridge_wake=bridge_ready || bridge_result_valid ||
+            (mem_rsp_valid && mem_rsp_ready);
         genvar g;
         for (g=0;g<7;g=g+1) begin : stage_channels
-            assign start_valids[g]=rst_n && state==START && owner==g;
-            assign stage_readys[g]=rst_n && state==WAIT && owner==g && bridge_ready;
-            assign result_valids[g]=rst_n && state==WAIT && owner==g && bridge_result_valid;
+            anvil_e2_clock_gate clock_gate (
+                .clk(clk), .rst_n(rst_n),
+                .enable((state==START || (state==WAIT && bridge_wake)) && owner==g),
+                .active(stage_clock_active[g]), .gated_clk(stage_clocks[g])
+            );
+            assign start_valids[g]=rst_n && state==START && owner==g &&
+                                   stage_clock_active[g];
+            assign stage_readys[g]=rst_n && state==WAIT && owner==g &&
+                                   stage_clock_active[g] && bridge_ready;
+            assign result_valids[g]=rst_n && state==WAIT && owner==g &&
+                                    stage_clock_active[g] && bridge_result_valid;
+            assign stage_result_data[g]=rst_n && state==WAIT && owner==g ? bridge_data:32'd0;
             assign done_readys[g]=rst_n && state==WAIT && owner==g;
         end
         anvil_e2_memory memory_bridge (
-            .clk(clk), .rst_n(rst_n), .cmd_valid(state==WAIT && stage_valids[owner]),
+            .clk(clk), .rst_n(rst_n),
+            .cmd_valid(state==WAIT && stage_clock_active[owner] && stage_valids[owner]),
             .cmd_ready(bridge_ready), .cmd_write(stage_writes[owner]),
             .cmd_addr(stage_addrs[owner]), .cmd_wdata(stage_data[owner]),
             .result_valid(bridge_result_valid),
-            .result_ready(state==WAIT && result_readys[owner]), .result_data(bridge_data),
+            .result_ready(state==WAIT && stage_clock_active[owner] && result_readys[owner]),
+            .result_data(bridge_data),
             .result_error(bridge_result_error), .mem_req_valid(mem_req_valid),
             .mem_req_ready(mem_req_ready), .mem_req_write(mem_req_write),
             .mem_req_addr(mem_req_addr), .mem_req_wdata(mem_req_wdata),
@@ -142,10 +157,10 @@ module anvil_e2_top #(
             .mem_rsp_rdata(mem_rsp_rdata), .mem_rsp_error(mem_rsp_error)
         );
 `define E2_MEMORY(I) \
-        .clk(clk), .rst_n(rst_n), .start_valid(start_valids[I]), .start_ready(start_readys[I]), \
+        .clk(stage_clocks[I]), .rst_n(rst_n), .start_valid(start_valids[I]), .start_ready(start_readys[I]), \
         .cmd_valid(stage_valids[I]), .cmd_ready(stage_readys[I]), .cmd_write(stage_writes[I]), \
         .cmd_addr(stage_addrs[I]), .cmd_wdata(stage_data[I]), .result_valid(result_valids[I]), \
-        .result_ready(result_readys[I]), .result_data(bridge_data), .result_error(bridge_result_error), \
+        .result_ready(result_readys[I]), .result_data(stage_result_data[I]), .result_error(bridge_result_error), \
         .done_valid(stage_dones[I]), .done_ready(done_readys[I]), .done_error(stage_errors[I])
         anvil_e2_vision_patch_embed #(
             .VISION_HIDDEN(VISION_HIDDEN), .PATCH_SIZE(PATCH_SIZE),
@@ -241,7 +256,7 @@ module anvil_e2_top #(
                         state<=START;
                     end
                 end
-                START: if (start_readys[owner]) state<=WAIT;
+                START: if (stage_clock_active[owner] && start_readys[owner]) state<=WAIT;
                 WAIT: if (stage_dones[owner]) begin
                     if (stage_errors[owner]!=0) begin error_hold<=stage_errors[owner]; state<=DONE; end
                     else begin

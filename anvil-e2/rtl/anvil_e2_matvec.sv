@@ -29,12 +29,11 @@ module anvil_e2_matvec #(
     output wire [3:0] done_error
 );
     localparam IDLE=0, LOAD=1, REQUEST=2, RESPONSE=3,
-        PRODUCT=4, PREPARE=5, OUTPUT=6, DONE=7;
+        PREPARE=5, OUTPUT=6, DONE=7;
     reg [2:0] state;
     reg [31:0] rows, cols, row, col;
     reg [63:0] base;
     reg signed [47:0] inputs [0:MAX_INPUT-1];
-    reg signed [31:0] weight_hold;
     reg signed [47:0] result_hold;
     reg [3:0] error_hold;
     wire [127:0] byte_size={96'd0,start_rows}*{96'd0,start_cols}*128'd4;
@@ -47,10 +46,10 @@ module anvil_e2_matvec #(
     assign cmd_valid=rst_n && state==REQUEST;
     assign cmd_addr=rst_n ? base+(64'(row)*cols+col)*64'd4:64'd0;
     assign result_ready=rst_n && state==RESPONSE;
-    assign mac_clear=rst_n && state==PRODUCT && col==0;
-    assign mac_accumulate=rst_n && state==PRODUCT;
-    assign mac_a=rst_n && state==PRODUCT ? inputs[col]:48'sd0;
-    assign mac_b=rst_n ? {weight_hold,16'd0}:48'sd0;
+    assign mac_clear=mac_accumulate && col==0;
+    assign mac_accumulate=rst_n && state==RESPONSE && result_valid && !result_error;
+    assign mac_a=mac_accumulate ? inputs[col]:48'sd0;
+    assign mac_b=mac_accumulate ? {result_data,16'd0}:48'sd0;
     assign out_valid=rst_n && state==OUTPUT;
     assign out_data=rst_n ? result_hold:48'sd0;
     assign out_index=rst_n ? row:32'd0;
@@ -60,7 +59,7 @@ module anvil_e2_matvec #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state<=IDLE; rows<=0; cols<=0; row<=0; col<=0; base<=0;
-            weight_hold<=0; result_hold<=0; error_hold<=0;
+            result_hold<=0; error_hold<=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
@@ -81,10 +80,7 @@ module anvil_e2_matvec #(
                 REQUEST: if (cmd_ready) state<=RESPONSE;
                 RESPONSE: if (result_valid) begin
                     if (result_error) begin error_hold<=3; state<=DONE; end
-                    else begin weight_hold<=result_data; state<=PRODUCT; end
-                end
-                PRODUCT: begin
-                    if (col==cols-1) state<=PREPARE;
+                    else if (col==cols-1) state<=PREPARE;
                     else begin col<=col+1'b1; state<=REQUEST; end
                 end
                 PREPARE: begin result_hold<=mac_rounded; state<=OUTPUT; end
