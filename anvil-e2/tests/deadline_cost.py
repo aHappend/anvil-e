@@ -6,6 +6,7 @@ ENTRY_PYTHON_CPU = time.process_time()
 
 import argparse
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -14,8 +15,11 @@ import selectors
 import subprocess
 import sys
 import traceback
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import verify
 from model import CONFIGS, Fixture, Integer
 from scheduler_cost import capacity
 from verify import ROOT, Run, execute_fixture
@@ -334,8 +338,108 @@ endmodule
         return super().command(argv, name, **kwargs)
 
 
+def production_limits(run):
+    signature = inspect.signature(Run)
+    assert signature.parameters["budget"].default == 110, "production default budget"
+    limits = {"constructor": [], "entry_points": [], "fixture_calls": []}
+    for name, kwargs in (("default", {}), ("maximum", {"budget": 110}),
+                         ("inherited", {"deadline": run.deadline})):
+        began = time.monotonic()
+        child = Run(run.directory/("production-"+name), **kwargs)
+        assert child.receipt["timeout_s"] == 110
+        assert began < child.deadline <= time.monotonic()+110
+        if name == "inherited":
+            assert child.deadline == run.deadline, "inherited deadline renewed"
+        child.receipt["assertions"].append("production 110-second constructor/deadline bound")
+        child.finish("passed")
+        limits["constructor"].append({"case": name, "budget_s": 110,
+                                      "deadline": child.deadline})
+    for index, budget in enumerate((0, -1, 110.001, 3600, 86400,
+                                    float("inf"), float("nan"))):
+        directory = run.directory/f"production-invalid-{index}"
+        try:
+            Run(directory, budget=budget)
+        except AssertionError as error:
+            assert str(error) == "runner budget must be bounded by 110 seconds"
+            assert not directory.exists(), "invalid budget created artifacts"
+        else:
+            raise AssertionError(f"production accepted invalid budget: {budget}")
+    limits["constructor_rejected_budgets"] = [
+        "0", "-1", "110.001", "3600", "86400", "inf", "nan"]
+
+    class Observed(BaseException):
+        pass
+
+    for argv, expected in (
+            (["--probe", "A", "--output", str(run.directory/"entry-A")], 100),
+            (["--probe", "startup", "--output", str(run.directory/"entry-startup")], 100),
+            (["--check", "behavior"], 110),
+            (["--check", "sensitivity"], 110),
+            (["--check", "synthesis"], 110),
+            ([], 110)):
+        calls = []
+
+        def capture_constructor(*args, **kwargs):
+            bound = signature.bind(*args, **kwargs)
+            bound.apply_defaults()
+            calls.append(bound.arguments)
+            raise Observed()
+
+        with patch.object(verify, "Run", capture_constructor), \
+                patch.object(sys, "argv", ["tests/verify.py", *argv]):
+            try:
+                verify.main()
+            except Observed:
+                pass
+            else:
+                raise AssertionError(f"entry point did not construct runner: {argv}")
+        assert len(calls) == 1 and calls[0]["budget"] == expected, (
+            f"production entry budget: {argv}: {calls}")
+        assert calls[0]["deadline"] is None
+        limits["entry_points"].append({"argv": argv, "budget_s": expected})
+
+    for startup, expected in ((False, 45), (True, 30)):
+        directory = run.directory/("callsite-startup" if startup else "callsite-normal")
+        directory.mkdir()
+        commands = []
+
+        def capture_command(argv, name, **kwargs):
+            commands.append({"argv": list(map(str, argv)), "name": name, **kwargs})
+            if argv[0] == "vvp":
+                raise Observed()
+            assert argv[0] == "iverilog"
+            return "", "", 0
+
+        fixture = SimpleNamespace(run=lambda arithmetic: ([0], {}),
+                                  dimension=1, mem={}, layout={"end": verify.SCRATCH})
+        observer = SimpleNamespace(directory=directory, timing=lambda *args: None,
+                                   command=capture_command)
+        with patch.object(verify, "bench", return_value="endmodule\n"):
+            try:
+                verify.execute_fixture(observer, "production-limits", fixture,
+                                       startup_diagnostic=startup)
+            except Observed:
+                pass
+            else:
+                raise AssertionError("fixture did not request simulation")
+        assert len(commands) == 2
+        assert commands[0]["name"] == "production-limits-compile"
+        assert commands[0]["timeout"] == 20, "production compilation watchdog"
+        assert commands[1]["name"] == "production-limits-simulate"
+        assert commands[1]["timeout"] == expected, "production simulation watchdog"
+        assert commands[1]["argv"][1:-1] == (["-v"] if startup else [])
+        limits["fixture_calls"].append({"startup": startup, "commands": commands})
+    run.receipt["production_limits"] = limits
+    run.receipt["assertions"].append(
+        "actual production constructor default/maximum and invalid budgets; preparation/normal "
+        "entry-point budgets; execute_fixture compilation/normal/startup watchdog call sites "
+        "executed with intercepted tool launches (no HDL compilation or simulation)")
+    run.save()
+
+
 def watchdog(run):
     run.tools(("python3",))
+    production_limits(run)
     for name, budget, requested in (("child-limit", 4, 0.4),
                                     ("common-limit", 0.4, 4)):
         child = Run(run.directory/name, budget=budget, deadline=run.deadline,
