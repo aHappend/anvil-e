@@ -14,6 +14,7 @@
   · <a href="https://github.com/aHappend/vulcan-showcase">Vulcan 作品集</a>
   · <a href="README.md">English</a>
   · <a href="anvil-e1/">Anvil-E1 交付包</a>
+  · <a href="anvil-e2/">Anvil-E2 交付包</a>
   · <a href="brand/">品牌素材</a>
 </p>
 
@@ -25,40 +26,29 @@
 | 代际 | 芯片型号 | 目标模型与范围 | 当前状态 |
 | --- | --- | --- | --- |
 | **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（24 层 5:1 滑动窗口/全局注意力混排、512d → 768d 投影、均值池化与 L2 归一化） | Completed & Verified — Full Pure-Text RTL Delivery Package Published |
-| **第二代** | **Anvil-E2** | Google EmbeddingGemma-2 · 视觉 + 文本多模态前端扩展 | 规划中 |
+| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8 |
 | **第三代** | **Anvil-E3** | Google EmbeddingGemma-2 · 音频 + 视觉 + 文本统一嵌入加速引擎 | 规划中 |
 
-## Anvil-E1 · 第一代（纯文本版）
+## Anvil-E2 · 第二代（视觉 + 文本多模态版）
 
-`Anvil-E1` 严格对齐 HuggingFace 上的 [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2)
-纯文本嵌入管线（`embedding_gemma2_text` + `1_Pooling` + `2_Normalize`），
-由 Vulcan 0.7 从纯文字需求与官方模型配置出发，自主完成架构拆解、RTL 实现与验证签核：
+`Anvil-E2` 将 `Anvil-E` 系列推进至 HuggingFace [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2)
+的**视觉 + 文本多模态嵌入管线**，由升级后的 **Vulcan 0.8** 自主完成架构设计、模块化 RTL 编写与黑盒独立验证：
 
 | 计算阶段 | 模型权威配置（`google/embeddinggemma-2`） | 硬件工程重点 |
 | --- | --- | --- |
-| **主干网络（`0_Transformer`）** | 24 层，`hidden_size = 512`，`hidden_size_per_layer_input = 512`（PLE 逐层输入注入），`intermediate_size = 2048`（`gelu_pytorch_tanh`），词表 `262,144` | 参数化数据通路、RMSNorm、RoPE、GeGLU/GELU-tanh FFN 及可扩展的多模态 Token 流入口 |
-| **5:1 混合注意力** | 20 层滑动窗口注意力（`window = 512`，4Q:2KV GQA，`head_dim = 256`，`rope_theta = 10,000`）+ 4 层全局注意力（第 5/11/17/23 层，4Q:1KV MQA，`head_dim = 512`，`rope_theta = 1,000,000`） | 局部/全局混合注意力调度与 KV 寻址 |
-| **投影与池化（`1_Pooling`）** | 线性投影 `512 → 768`（`embedding_dim = 768`）及带掩码均值池化（`pooling_mode = "mean"`） | 有效 Token 掩码累加与倒数长度缩放 |
-| **归一化输出（`2_Normalize`）** | L2 单位向量归一化，支持 Matryoshka（`768 / 512 / 256 / 128` 维）截断输出 | 硬件倒数平方根 L2 归一化与可配置维度输出 |
+| **视觉 Patch 与二维位置编码（`vision_tower.patch_embedder`）** | `patch_size = 16`（`input_proj [768, 768]`），`position_embedding_table [2, 10240, 768]`，二维 `axial` RoPE（`rope_theta = 100.0`） | 带截断范围的 Patch 线性投影、二维坐标位置表查表与轴向旋转位置编码 |
+| **16 层视觉编码塔（`vision_tower.encoder`）** | 16 层，`hidden_size = 768`，`intermediate_size = 3072`（`gelu_pytorch_tanh`），12 头注意力（`head_dim = 64`，含 `q_norm`/`k_norm`），每层 4 处 RMSNorm | 参数化视觉 Transformer 数据通路与激活/权重量化钳位支持 |
+| **空间池化与跨模态投影（`embed_vision`）** | `pooling_kernel_size = 3` 空间池化（每图输出 `280` 个视觉软 Token）+ `embedding_projection [512, 768]` | 3×3 空间软 Token 汇聚、`768 → 512` 维跨模态投影及 `BOI`/`IMAGE`/`EOI` 多模态序列融合 |
+| **多模态混合主干与归一化（`0_Transformer` + `1_Pooling` + `2_Normalize`）** | 24 层 5:1 滑动窗口/全局混合注意力（`512d` + PLE `512d`）、`512 → 768` 投影、掩码均值池化与 Matryoshka L2 归一化（`768 / 512 / 256 / 128`） | 视觉软 Token 与文本 Token 统一注意力调度、掩码池化与倒数平方根归一化 |
 
-- **当前工程状态**：`Completed & Verified — Full Pure-Text RTL Delivery Package Published`（最近更新：`-`）
-- **官方模型配置快照**：[`anvil-e1/hf_embeddinggemma2_spec/`](anvil-e1/hf_embeddinggemma2_spec/)
-- **交付包目录**：[`anvil-e1/`](anvil-e1/)（`rtl/`、`tb/`、`docs/`、`reports/`）
+- **当前工程状态**：`In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8`（最近更新：`2026-10-15 15:11:43 UTC+8`）
+- **官方多模态配置快照**：[`anvil-e2/hf_embeddinggemma2_vision_spec/`](anvil-e2/hf_embeddinggemma2_vision_spec/)
+- **交付包目录**：[`anvil-e2/`](anvil-e2/)（`rtl/`、`design/`、`tests/`）
 
-## 交付包标准
+## Anvil-E1 · 第一代（纯文本版）
 
-与 Vulcan 开源硬件系列保持一致，公开交付包包含：
-
-- 已验收的可综合 RTL、接口与架构说明，以及集成指南。
-- 可复现的验证源码、参数配置、工具版本和命令，以及仿真与通用综合证据。
-- 明确的范围边界：所列结果来自仿真及明确注明的通用综合，不代表芯片实测或物理签核。闭源框架代码、提示词、后端会话、凭据、私有经验胶囊和内部操作记录不属于公开交付包。
-
-## 探索更多
-
-- **[Vulcan 官网](https://ahappend.github.io/vulcan/)**：了解产品。
-- **[Vulcan 开源作品集](https://github.com/aHappend/vulcan-showcase)**：浏览 Vulcan 已发布的精选 RTL 设计与工程成果。
-- **[Anvil-E1 交付包](anvil-e1/)**：查看模型配置、RTL 源码、验证测试与进度记录。
-- **[视觉素材](brand/)**：原版 Logo、品牌图标与应用图标。
+- **工程状态**：`Completed & Verified — Full Pure-Text RTL Delivery Package Published`
+- **交付包目录**：[`anvil-e1/`](anvil-e1/)（9 个可综合 SystemVerilog 模块、架构文档与自检验证套件）
 
 ## 许可
 
