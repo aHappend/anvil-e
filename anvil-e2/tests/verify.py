@@ -751,10 +751,15 @@ def behavior(run):
     execute_fixture(run, "six-layer-numerical-regression",
                     Fixture(dataclasses.replace(CONFIGS["C"], VISION_LAYERS=1,
                                                 TEXT_LAYERS=6), 17, 2))
-    covered = {a["operator"] for a in run.receipt["assertions"] if "operator" in a}
+    assert_behavior_coverage(run)
+
+
+def assert_behavior_coverage(run):
+    assertions = [a for a in run.receipt["assertions"] if isinstance(a, dict)]
+    covered = {a["operator"] for a in assertions if "operator" in a}
     assert {"axial_swap", "vision_head_0", "vision_head_1",
             "text_head_0", "text_head_1", "text_head_2", "text_head_3"} <= covered
-    assert any(a.get("integer_extremes") for a in run.receipt["assertions"])
+    assert any(a.get("integer_extremes") for a in assertions)
 
 
 def sensitivity(run, selected=None):
