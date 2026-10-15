@@ -4,7 +4,7 @@
   "safetensors_total_bytes": 1488915288,
   "safetensors_header_bytes": 171296,
   "extracted_safetensors_file": "google_embeddinggemma2_official_slice.safetensors",
-  "extracted_safetensors_sha256": "ccea6d3530a039e7cf9e03763d3f80e238056586a3e4457907ad0d629065c619",
+  "extracted_safetensors_sha256": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
   "tensor_count_extracted": 55,
   "tensors": [
     {
@@ -820,19 +820,19 @@
         768
       ],
       "loaded_shape": [
-        1,
-        10240,
+        2,
+        256,
         768
       ],
       "hf_byte_range": [
         1457458008,
-        1473186647
+        1458244439
       ],
-      "sha256": "e62369e197d6a5d6498da5f4aa15a2a79dccd7f620392add1a3aa0626b513217",
+      "sha256": "8e45dcf46c1ef088dc0a097b6d37e716fdf1bea7e4e3bf2724f5172358822866",
       "min": -0.341796875,
-      "max": 0.3515625,
-      "mean": 0.0002996308577537785,
-      "std": 0.026783517727448546
+      "max": 0.375,
+      "mean": -7.799688914472148e-05,
+      "std": 0.032826472344035414
     },
     {
       "name": "vision_tower.encoder.layers.0.input_layernorm.weight",
