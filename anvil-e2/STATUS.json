@@ -1,13 +1,45 @@
 {
+  "family": "Anvil",
+  "series": "Anvil-E",
   "chip": "Anvil-E2",
-  "target": "Google EmbeddingGemma-2 (Vision + Text Multimodal)",
+  "target_model": "Google EmbeddingGemma-2 (Vision + Text Multimodal Edition)",
   "vulcan_version": "0.8.0",
-  "status": "completed",
-  "started_cst": "2026-10-15 15:11:49 UTC+8",
-  "updated_cst": "2026-10-15 22:35:33 UTC+8",
+  "github_repo": "https://github.com/aHappend/anvil-e",
+  "status": "settled",
+  "native_disposition": {
+    "workflow_phase": "completed",
+    "feedback": "",
+    "run_status": "ready",
+    "closeout_status": "completed",
+    "driver_steps": [
+      {
+        "operation": "resume",
+        "exit_code": 0
+      }
+    ],
+    "driver_steps_ok": false,
+    "state_error": null,
+    "repairs_used": 43,
+    "designer_attempts": 5,
+    "model_call_count": 50,
+    "all_process_scopes_settled": true,
+    "reviewer_decisions": [],
+    "native_engineering_accepted": false,
+    "candidate_present": false,
+    "candidate_invalid_reason": null,
+    "final_candidate": null,
+    "initial_unrepaired_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "scientific_acceptance": false
+  },
+  "started_utc": "2026-10-15T13:57:05.177699+00:00",
+  "finished_utc": "2026-10-15T14:43:26.015608+00:00",
+  "started_cst": "2026-10-15 21:57:05 UTC+8",
+  "finished_cst": "2026-10-15 22:43:26 UTC+8",
+  "elapsed_seconds": 2778.709147324,
   "step": 122,
   "workflow_phase": "completed",
-  "total_elapsed_en": "7h 23m 44s",
+  "total_elapsed_en": "7h 31m 37s",
   "rtl_files": 20,
   "rtl_lines": 3592
 }
