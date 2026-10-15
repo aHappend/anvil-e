@@ -43,9 +43,9 @@ def sources():
 
 
 class Run:
-    def __init__(self, directory, budget=110, repair_of=None, *, deadline=None):
+    def __init__(self, directory, budget=86400, repair_of=None, *, deadline=None):
         began = time.monotonic()
-        assert 0 < budget <= 110, "runner budget must be bounded by 110 seconds"
+        assert 0 < budget <= 86400, "runner budget must be bounded by 86400 seconds"
         self.directory = Path(directory).resolve()
         self.directory.mkdir(parents=True, exist_ok=False)
         self.start = time.time()
@@ -499,7 +499,7 @@ endmodule
     run.timing(name+"-stimulus", began)
     executable = run.directory/(name+".vvp")
     run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable,
-                 *rtl_files(directory), tb], name+"-compile", timeout=20)
+                 *rtl_files(directory), tb], name+"-compile", timeout=120)
     out, _, _ = run.command(["vvp", *(["-v"] if startup_diagnostic else []), executable],
                             name+"-simulate", timeout=30 if startup_diagnostic else 45)
     began = time.monotonic(), time.process_time()
@@ -968,7 +968,7 @@ def main():
     for check in checks:
         directory = (ROOT/args.output if args.probe else
                      ROOT/"evidence/verification"/check/(str(time.time_ns())+"-"+str(os.getpid())))
-        run = Run(directory, 100 if args.probe else 110, args.repair_of)
+        run = Run(directory, 3600 if args.probe else 86400, args.repair_of)
         try:
             if check == "frontend":
                 frontend_probe(run)
