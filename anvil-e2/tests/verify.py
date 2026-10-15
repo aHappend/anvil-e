@@ -46,7 +46,7 @@ def sources():
 
 
 class Run:
-    def __init__(self, directory, budget=120, repair_of=None, *, deadline=None):
+    def __init__(self, directory, budget=86400, repair_of=None, *, deadline=None):
         began = time.monotonic()
         assert 0 < budget <= 86400, "runner budget must be bounded by 86400 seconds"
         self.directory = Path(directory).resolve()
