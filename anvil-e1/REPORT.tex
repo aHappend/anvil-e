@@ -1,0 +1,464 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=22mm]{geometry}
+
+\usepackage{fontspec,xeCJK}
+
+\setmainfont[Ligatures=TeXOff]{Times New Roman}
+
+\setsansfont[Ligatures=TeXOff]{Times New Roman}
+
+\setmonofont[Ligatures=TeXOff,WordSpace={1,1,1}]{Times New Roman}
+
+\setCJKmainfont{Noto Serif CJK SC}
+
+\setCJKsansfont{Noto Serif CJK SC}
+
+\setCJKmonofont{Noto Serif CJK SC}
+
+\XeTeXlinebreaklocale "zh"
+
+\XeTeXlinebreakskip=0pt plus 1pt
+
+\usepackage{longtable,booktabs,hyperref}
+
+\hypersetup{hidelinks}
+
+\setlength{\emergencystretch}{3em}
+
+\title{Engineering Evidence Record}
+
+\author{Vulcan}
+
+\date{2026-10-15T09:20:53+\allowbreak{}00:00}
+
+\begin{document}\maketitle
+
+\noindent\textbf{Status: independently accepted at report generation.}
+
+This model-free evidence record is not an independently reviewed technical product narrative. It was generated after engineering acceptance and retains original administrative records. It describes the admitted scope, not manufacturing or physical signoff. Source line counts measure size, not quality or correctness.
+
+\tableofcontents\newpage
+
+\section{Product objective and admitted specification}
+
+Execute Phase 2 of Anvil-E1 (\allowbreak{}Google EmbeddingGemma-2 Text-Only Edition)\allowbreak{}: Official External Checkpoint Weight Integration and Software-Layer vs Hardware-RTL Verification \& Benchmarking.
+
+1. Authoritative Official Weights Provided in Workspace:
+   - Real official weights extracted directly from HuggingFace \texttt{google/\allowbreak{}embeddinggemma-2/\allowbreak{}resolve/\allowbreak{}main/\allowbreak{}model.safetensors} are now mounted in \texttt{./\allowbreak{}hf\_\allowbreak{}embeddinggemma2\_\allowbreak{}spec/\allowbreak{}official\_\allowbreak{}weights/\allowbreak{}}:
+     *\allowbreak{} \texttt{./\allowbreak{}hf\_\allowbreak{}embeddinggemma2\_\allowbreak{}spec/\allowbreak{}official\_\allowbreak{}weights/\allowbreak{}google\_\allowbreak{}embeddinggemma2\_\allowbreak{}official\_\allowbreak{}slice.safetensors}: Authentic BF16 safetensors file containing official \texttt{language\_\allowbreak{}model.embed\_\allowbreak{}tokens.weight},\allowbreak{} \texttt{language\_\allowbreak{}model.norm.weight},\allowbreak{} \texttt{language\_\allowbreak{}model.embedding\_\allowbreak{}projection.weight},\allowbreak{} \texttt{language\_\allowbreak{}model.ple.*\allowbreak{}},\allowbreak{} \texttt{language\_\allowbreak{}model.layers.0.*\allowbreak{}} (\allowbreak{}sliding attention,\allowbreak{} RoPE,\allowbreak{} GeGLU,\allowbreak{} PLE,\allowbreak{} 4x RMSNorm,\allowbreak{} layer\_\allowbreak{}scalar)\allowbreak{},\allowbreak{} and \texttt{language\_\allowbreak{}model.layers.5.*\allowbreak{}} (\allowbreak{}full attention,\allowbreak{} RoPE,\allowbreak{} GeGLU,\allowbreak{} PLE,\allowbreak{} 4x RMSNorm,\allowbreak{} layer\_\allowbreak{}scalar)\allowbreak{}.
+     *\allowbreak{} \texttt{./\allowbreak{}hf\_\allowbreak{}embeddinggemma2\_\allowbreak{}spec/\allowbreak{}official\_\allowbreak{}weights/\allowbreak{}official\_\allowbreak{}weights\_\allowbreak{}manifest.json}: Exact byte ranges,\allowbreak{} shapes,\allowbreak{} dtypes,\allowbreak{} and SHA-256 digests from HuggingFace \texttt{google/\allowbreak{}embeddinggemma-2}.
+     *\allowbreak{} \texttt{./\allowbreak{}hf\_\allowbreak{}embeddinggemma2\_\allowbreak{}spec/\allowbreak{}official\_\allowbreak{}weights/\allowbreak{}official\_\allowbreak{}hardware\_\allowbreak{}slices\_\allowbreak{}fp32\_\allowbreak{}q824.json}: Pre-extracted FP32 and Q8.24 slices of the official HuggingFace weights for immediate deterministic hardware loading.
+   - Apply autonomous \texttt{no\_\allowbreak{}operator\_\allowbreak{}assumption} resolution for all defaults; NEVER pause or return \texttt{action=\allowbreak{}"clarify"}.
+
+2. Phase 2 Engineering \& Verification Deliverables:
+   - Preserve the accepted modular SystemVerilog RTL (\allowbreak{}\texttt{rtl/\allowbreak{}*\allowbreak{}.sv},\allowbreak{} top module \texttt{rtl/\allowbreak{}anvil\_\allowbreak{}e\_\allowbreak{}top.sv})\allowbreak{},\allowbreak{} refining only if needed for official-weight execution,\allowbreak{} and document the Phase 2 Official Weight Mapping \& Software-vs-RTL Comparison methodology in \texttt{design/\allowbreak{}ARCHITECTURE.md} (\allowbreak{}and/\allowbreak{}or \texttt{design/\allowbreak{}OFFICIAL\_\allowbreak{}WEIGHTS\_\allowbreak{}EVALUATION.md})\allowbreak{}.
+   - Implement a genuine Software-Layer (\allowbreak{}\texttt{FP32}/\allowbreak{}\texttt{BF16})\allowbreak{} vs Hardware-RTL (\allowbreak{}\texttt{Q8.24} SystemVerilog simulated via \texttt{iverilog -g2012} and \texttt{vvp})\allowbreak{} evaluation in \texttt{tests/\allowbreak{}verify.py} (\allowbreak{}using pure Python stdlib \texttt{struct}/\allowbreak{}\texttt{math}/\allowbreak{}\texttt{json} — no \texttt{numpy} dependency)\allowbreak{}:
+     *\allowbreak{} Verify SHA-256 provenance of \texttt{./\allowbreak{}hf\_\allowbreak{}embeddinggemma2\_\allowbreak{}spec/\allowbreak{}official\_\allowbreak{}weights/\allowbreak{}google\_\allowbreak{}embeddinggemma2\_\allowbreak{}official\_\allowbreak{}slice.safetensors} against \texttt{official\_\allowbreak{}weights\_\allowbreak{}manifest.json} and parse the raw BF16 weight tensors directly from the \texttt{.safetensors} file (\allowbreak{}and \texttt{official\_\allowbreak{}hardware\_\allowbreak{}slices\_\allowbreak{}fp32\_\allowbreak{}q824.json})\allowbreak{}.
+     *\allowbreak{} Execute the true floating-point (\allowbreak{}\texttt{FP32}/\allowbreak{}\texttt{BF16})\allowbreak{} software-layer forward pass using the real HuggingFace \texttt{google/\allowbreak{}embeddinggemma-2} weights (\allowbreak{}\texttt{embed\_\allowbreak{}tokens},\allowbreak{} \texttt{ple},\allowbreak{} hybrid \texttt{sliding\_\allowbreak{}attention} and \texttt{full\_\allowbreak{}attention} layers,\allowbreak{} \texttt{norm},\allowbreak{} \texttt{embedding\_\allowbreak{}projection},\allowbreak{} masked mean pooling,\allowbreak{} and Matryoshka L2 normalization across \texttt{output\_\allowbreak{}dim} prefixes)\allowbreak{}.
+     *\allowbreak{} Quantize the same real HuggingFace \texttt{google/\allowbreak{}embeddinggemma2} weights into the hardware's signed \texttt{Q8.24} memory image and drive the actual \texttt{anvil\_\allowbreak{}e\_\allowbreak{}top} SystemVerilog RTL in \texttt{iverilog}/\allowbreak{}\texttt{vvp} across multiple token sequences and Matryoshka output dimensions.
+     *\allowbreak{} Compare *\allowbreak{}*\allowbreak{}Software Layer (\allowbreak{}Official HuggingFace FP32/\allowbreak{}BF16 Weights)\allowbreak{}*\allowbreak{}*\allowbreak{} vs *\allowbreak{}*\allowbreak{}Hardware RTL Output (\allowbreak{}Official HuggingFace Quantized Weights)\allowbreak{}*\allowbreak{}*\allowbreak{}:
+       - Prove 0 bit-mismatches between Hardware RTL output and the Q8.24 integer reference oracle on official weights.
+       - Measure and record Cosine Similarity (\allowbreak{}\texttt{>=\allowbreak{} 0.999})\allowbreak{},\allowbreak{} Max Absolute Error (\allowbreak{}\texttt{<=\allowbreak{} 0.002})\allowbreak{},\allowbreak{} Mean Absolute Error,\allowbreak{} RMSE,\allowbreak{} and L2-norm error between Hardware RTL output and the floating-point \texttt{FP32}/\allowbreak{}\texttt{BF16} official software layer.
+       - Measure and record RTL cycle counts,\allowbreak{} cycles/\allowbreak{}token,\allowbreak{} and throughput metrics into \texttt{evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}official\_\allowbreak{}weights\_\allowbreak{}comparison.json}.
+     *\allowbreak{} Keep all verification checks (\allowbreak{}\texttt{functional},\allowbreak{} \texttt{sensitivity},\allowbreak{} \texttt{synthesis})\allowbreak{} passing end-to-end.
+
+
+\subsection{Architecture and interface contract}
+
+CURRENT ORDER AND RECOVERY ADMISSION
+Complete the original Phase 2 official-weight integration objective using the saved implementation and verification sources. This proposal changes execution limits only: functional inner/\allowbreak{}outer limits become 230/\allowbreak{}250 seconds,\allowbreak{} subject to independent Reviewer admission. It does not authorize a numerical,\allowbreak{} RTL,\allowbreak{} mapping,\allowbreak{} harness,\allowbreak{} acceptance-threshold,\allowbreak{} source-selector or role-limit change. The 600-second role limit remains unchanged. Do not implement or execute this recovery before admission. After admission,\allowbreak{} route directly to Verifier; there is no additional Designer task.
+
+ARCHITECTURE EXPLICITLY EXCLUDED FROM RERUN
+Preserve the passing current-source architecture result at evidence/\allowbreak{}verification/\allowbreak{}architecture/\allowbreak{}attempt-20261015T082922146418Z/\allowbreak{}receipt.json. Architecture is deliberately absent from the pending checks array and must not be rerun under this recovery. No material input change or contradiction has been identified. Its retained obligations include authoritative JSON validation,\allowbreak{} 413 expanded default text tensor names/\allowbreak{}shapes,\allowbreak{} both top defaults and interfaces,\allowbreak{} default Icarus elaboration without model allocation,\allowbreak{} zero-stage wrapper forwarding,\allowbreak{} deterministic packing boundaries,\allowbreak{} BF16 conversion and malformed/\allowbreak{}missing/\allowbreak{}unexpected-input rejection,\allowbreak{} illegal-geometry diagnostics and the revised epsilon contract. If a material input change or contradiction is subsequently identified,\allowbreak{} stop and request independent recovery admission rather than treating this retained result as fresh evidence for changed sources.
+
+OWNERSHIP AND PRESERVATION
+Keep all saved sources. Designer retains ownership of rtl/\allowbreak{}*\allowbreak{}.sv,\allowbreak{} design/\allowbreak{}*\allowbreak{}.md and design/\allowbreak{}*\allowbreak{}.py; Verifier retains tests/\allowbreak{}*\allowbreak{},\allowbreak{} including independent references,\allowbreak{} stimulus,\allowbreak{} scoreboards,\allowbreak{} numerical gates and synthesis assertions. This recovery requires no source changes. Supplied hf\_\allowbreak{}embeddinggemma2\_\allowbreak{}spec files are immutable. repository\_\allowbreak{}intake is null,\allowbreak{} so there is no linked intake source index. The explicit Phase 2 request,\allowbreak{} parent objective and parent specification remain controlling together with the admitted Q48 epsilon correction. Historical parent acceptance does not certify Phase 2. Do not rebuild from an older checkout,\allowbreak{} install tools,\allowbreak{} download weights,\allowbreak{} publish,\allowbreak{} deploy or author a final product report. Do not edit runtime state,\allowbreak{} execution records or retained evidence. .vulcan/\allowbreak{},\allowbreak{} .git/\allowbreak{},\allowbreak{} .tooling/\allowbreak{} and VULCAN/\allowbreak{} are not deliverable inputs or outputs. The shared runtime owns processes,\allowbreak{} timeouts and state transitions.
+
+DIAGNOSIS AND REQUIRED REPAIR LINKAGE
+Retain evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}attempt-20261015T082929570124Z/\allowbreak{}receipt.json and all its outputs. It records a failed 200-second functional attempt: official simulation received 35.00165608798852 seconds,\allowbreak{} timed\_\allowbreak{}out=\allowbreak{}true,\allowbreak{} and settled SIGTERM cleanup. Its eventual child exit\_\allowbreak{}code=\allowbreak{}0 does not override the timeout. The recorded continuation reports all nine inherited runs passing their scoreboards,\allowbreak{} official jobs 0–13 completing and job 14 starting without COMPLETE. This establishes neither complete official comparison nor complete functional acceptance. The recovery addresses an execution-budget failure,\allowbreak{} not an established RTL defect. Fresh functional execution must use --repair-of evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}attempt-20261015T082929570124Z/\allowbreak{}receipt.json,\allowbreak{} preserving its transitive repair link to evidence/\allowbreak{}preparation/\allowbreak{}phase2-official-matrix/\allowbreak{}attempt-20261015T081502322745Z/\allowbreak{}receipt.json. Sensitivity and synthesis keep their existing direct repair links to that preparation matrix.
+
+Preserve all earlier failures,\allowbreak{} diagnostics and outputs,\allowbreak{} particularly evidence/\allowbreak{}preparation/\allowbreak{}phase2-official-first/\allowbreak{}attempt-20261015T081309563163Z/\allowbreak{}receipt.json,\allowbreak{} evidence/\allowbreak{}preparation/\allowbreak{}phase2-official-repair/\allowbreak{}attempt-20261015T081334015178Z/\allowbreak{}receipt.json,\allowbreak{} evidence/\allowbreak{}preparation/\allowbreak{}phase2-official-matrix/\allowbreak{}attempt-20261015T081502322745Z/\allowbreak{}receipt.json,\allowbreak{} evidence/\allowbreak{}preparation/\allowbreak{}phase2-epsilon-isolation/\allowbreak{}attempt-20261015T081805523129Z/\allowbreak{}receipt.json and its diagnosis.json,\allowbreak{} evidence/\allowbreak{}preparation/\allowbreak{}phase2-official-sensitivity/\allowbreak{}attempt-20261015T081805611431Z/\allowbreak{}receipt.json,\allowbreak{} and evidence/\allowbreak{}preparation/\allowbreak{}phase2-q48-norm/\allowbreak{}attempt-20261015T082844348926Z/\allowbreak{}receipt.json. The original official matrix's numerical failures and the later functional timeout remain distinct failures. Advisory preparation evidence and historical successful sensitivity do not certify current pending checks.
+
+PRESERVED ARCHITECTURE AND NUMERICS
+Preserve twelve dedicated anvil\_\allowbreak{}e1\_\allowbreak{}*\allowbreak{}.sv modules plus rtl/\allowbreak{}anvil\_\allowbreak{}e\_\allowbreak{}top.sv; each file defines exactly its matching module. anvil\_\allowbreak{}e\_\allowbreak{}top contains exactly one synthesizable,\allowbreak{} parameter- and port-forwarding anvil\_\allowbreak{}e1\_\allowbreak{}top instance named core,\allowbreak{} with no arithmetic,\allowbreak{} state,\allowbreak{} buffering,\allowbreak{} mode or added latency. Official simulation and synthesis use anvil\_\allowbreak{}e\_\allowbreak{}top; direct anvil\_\allowbreak{}e1\_\allowbreak{}top compatibility remains. Preserve controller,\allowbreak{} memory\_\allowbreak{}bridge and sequencer,\allowbreak{} including live address generation,\allowbreak{} matvec,\allowbreak{} attention,\allowbreak{} rope,\allowbreak{} norm,\allowbreak{} nonlinear,\allowbreak{} one shared mac and pool. No real/\allowbreak{}shortreal,\allowbreak{} DPI,\allowbreak{} external inference callback,\allowbreak{} host-computed hidden state,\allowbreak{} result injection or synthesis-only bypass. Weights and sequence-sized intermediates reside externally; bounded on-chip vector working storage must not become a checkpoint or sequence-squared score array.
+
+Both tops retain actual defaults V=\allowbreak{}262144,\allowbreak{}H=\allowbreak{}512,\allowbreak{}P=\allowbreak{}512,\allowbreak{}I=\allowbreak{}2048,\allowbreak{}E=\allowbreak{}768,\allowbreak{}L=\allowbreak{}24,\allowbreak{}Q=\allowbreak{}4,\allowbreak{}localKV=\allowbreak{}2,\allowbreak{}fullKV=\allowbreak{}1,\allowbreak{}localD=\allowbreak{}256,\allowbreak{}fullD=\allowbreak{}512,\allowbreak{}window=\allowbreak{}512,\allowbreak{}maxSeq=\allowbreak{}262144. Full layers are exactly 5,\allowbreak{}11,\allowbreak{}17,\allowbreak{}23. Preserve local/\allowbreak{}full RoPE bases 10000/\allowbreak{}1000000,\allowbreak{} split-half rotation at arbitrary legal absolute positions,\allowbreak{} contiguous grouped-query mapping,\allowbreak{} bidirectional attention and strict local eligibility abs(\allowbreak{}key\_\allowbreak{}position-query\_\allowbreak{}position)\allowbreak{}<window. Explicit masks select keys and pooling contributions; there is no automatic token insertion,\allowbreak{} PAD masking or prompt exclusion. Preserve bias-free projections,\allowbreak{} zero inference dropout and gelu\_\allowbreak{}pytorch\_\allowbreak{}tanh.
+
+Retain the complete adopted forward sequence: embedding times sqrt(\allowbreak{}H)\allowbreak{}; global PLE projection divided by sqrt(\allowbreak{}H)\allowbreak{},\allowbreak{} reshaped into distinct per-layer P vectors and unit-offset RMS-normalized; input RMSNorm,\allowbreak{} q/\allowbreak{}k/\allowbreak{}v projections,\allowbreak{} per-head q/\allowbreak{}k RMSNorm,\allowbreak{} RoPE,\allowbreak{} hybrid attention,\allowbreak{} o projection,\allowbreak{} post-attention RMSNorm and residual; pre-feedforward RMSNorm,\allowbreak{} GELU(\allowbreak{}gate)\allowbreak{}*\allowbreak{}up,\allowbreak{} down projection,\allowbreak{} post-feedforward RMSNorm and residual; GELU(\allowbreak{}PLE input gate)\allowbreak{},\allowbreak{} multiplication by projected PLE input,\allowbreak{} PLE projection,\allowbreak{} post-PLE RMSNorm and residual; layer\_\allowbreak{}scalar; final RMSNorm and embedding projection; masked mean pooling; requested prefix selection and selected-prefix L2 normalization. Attention width remains Q*\allowbreak{}D until o\_\allowbreak{}proj. Label forward conventions as adopted from the parent contract,\allowbreak{} not demonstrated upstream executable parity.
+
+Preserve the implemented Q48 epsilon correction: EPSILON\_\allowbreak{}Q48=\allowbreak{}round\_\allowbreak{}ties\_\allowbreak{}even(\allowbreak{}10\textasciicircum{}-6*\allowbreak{}2\textasciicircum{}48)\allowbreak{}=\allowbreak{}281474977. Every weighted RMSNorm adds this constant after ties-even rounding of the complete sum of Q24 squares divided by count,\allowbreak{} at the Q48 mean-square denominator boundary. This applies uniformly to global PLE,\allowbreak{} residual-path,\allowbreak{} q/\allowbreak{}k head and final RMSNorm. Preserve denominator precision,\allowbreak{} square-root scaling,\allowbreak{} division,\allowbreak{} unit-offset weighting,\allowbreak{} rounding and saturation. No legacy mode. L2 remains epsilon-free; a nonempty zero pooled vector succeeds with all-zero output and no reciprocal of zero. External weights,\allowbreak{} activations and outputs remain signed Q8.24,\allowbreak{} finite BF16 conversion uses nearest/\allowbreak{}ties-even and saturation to [\allowbreak{}-128,\allowbreak{}128-2\textasciicircum{}-24]\allowbreak{},\allowbreak{} products are signed 64-bit and complete reductions at least 96-bit. Retain operation-boundary rounding/\allowbreak{}saturation,\allowbreak{} Q40 constants and iterative nonlinear semantics. Reject nonfinite coefficients. The independent quantized-input mathematical reference uses 281474977/\allowbreak{}2\textasciicircum{}48; historical 17/\allowbreak{}2\textasciicircum{}24 epsilon-isolation diagnostics retain their historical meaning. Genuine raw-BF16 FP32 uses floating epsilon 1e-6 rounded at its FP32 boundary.
+
+INTERFACE,\allowbreak{} CYCLES AND BOUNDARIES
+Preserve clk,\allowbreak{} asynchronous active-low rst\_\allowbreak{}n,\allowbreak{} descriptor valid/\allowbreak{}ready,\allowbreak{} job\_\allowbreak{}tokens[\allowbreak{}31:0]\allowbreak{},\allowbreak{} job\_\allowbreak{}output\_\allowbreak{}dim[\allowbreak{}15:0]\allowbreak{},\allowbreak{} five base addresses[\allowbreak{}63:0]\allowbreak{},\allowbreak{} one-outstanding-request memory interface,\allowbreak{} signed emb\_\allowbreak{}data[\allowbreak{}31:0]\allowbreak{},\allowbreak{} emb\_\allowbreak{}index[\allowbreak{}15:0]\allowbreak{},\allowbreak{} emb\_\allowbreak{}last and valid/\allowbreak{}ready,\allowbreak{} done\_\allowbreak{}valid/\allowbreak{}done\_\allowbreak{}ready,\allowbreak{} done\_\allowbreak{}error[\allowbreak{}3:0]\allowbreak{} and busy. Preserve byte addressing,\allowbreak{} four-byte alignment,\allowbreak{} descriptor latching,\allowbreak{} exclusive-end overflow rejection and host nonoverlap obligations. Every accepted request,\allowbreak{} including writes,\allowbreak{} receives one ordered response. Errors remain 0 success,\allowbreak{} 1 invalid descriptor,\allowbreak{} 2 invalid token/\allowbreak{}position/\allowbreak{}mask,\allowbreak{} 3 memory error,\allowbreak{} 4 all masked,\allowbreak{} 5 address overflow; errors emit no successful embedding. Reset cancels active work; the fabric must share reset or flush obsolete responses.
+
+Unchanged pre-edge/\allowbreak{}post-edge table: asserted reset makes every public output and payload zero. Released idle presents job\_\allowbreak{}ready. Before an accepting edge job\_\allowbreak{}valid\&\&job\_\allowbreak{}ready identifies the submitted descriptor; afterward it is latched,\allowbreak{} busy is asserted and further acceptance disabled. Internal memory-command capture presents a registered public request after its edge,\allowbreak{} held through stalls until later public acceptance. Responses are not accepted before an outstanding request exists; mem\_\allowbreak{}rsp\_\allowbreak{}ready becomes eligible after request acceptance,\allowbreak{} with no combinational zero-latency shortcut. Response acceptance captures the registered result before consumer retirement. Internal embedding capture presents a registered public word after its edge; data/\allowbreak{}index/\allowbreak{}last remain stable through stalls and retire only on emb\_\allowbreak{}valid\&\&emb\_\allowbreak{}ready. Completion is separately registered and held. busy remains asserted and job\_\allowbreak{}ready low through output/\allowbreak{}completion stalls. A done\_\allowbreak{}valid\&\&done\_\allowbreak{}ready edge retires the job,\allowbreak{} after which idle readiness may return. The wrapper adds zero stages. Preserve documented dispatch,\allowbreak{} PRODUCT/\allowbreak{}capture,\allowbreak{} vector,\allowbreak{} nonlinear,\allowbreak{} norm and pool latencies; total latency varies with geometry and stalls.
+
+Retain one-token and maximum configured length,\allowbreak{} one outstanding transaction,\allowbreak{} single-beat E/\allowbreak{}6=\allowbreak{}1 output with first=\allowbreak{}last,\allowbreak{} non-power-of-two dimensions,\allowbreak{} independent P,\allowbreak{} zero pooled vectors,\allowbreak{} all-zero masks,\allowbreak{} local-window differences window-1/\allowbreak{}window,\allowbreak{} nonzero and maximum valid positions,\allowbreak{} illegal/\allowbreak{}odd head widths,\allowbreak{} zero/\allowbreak{}illegal parameters,\allowbreak{} invalid IDs/\allowbreak{}masks/\allowbreak{}dimensions/\allowbreak{}alignment and exclusive-end overflow. Diagnose illegal geometry rather than clamping. Validate IDs even when masked.
+
+OFFICIAL INPUTS AND MAPPING
+Use tests/\allowbreak{}verify.py and Python stdlib only,\allowbreak{} with no numpy. Before inference stream SHA-256 of the supplied safetensors and require manifest extracted\_\allowbreak{}safetensors\_\allowbreak{}sha256=\allowbreak{}3a310d77\allowbreak{}33a28f53\allowbreak{}3b611eb7\allowbreak{}525f5973\allowbreak{}03980c2a\allowbreak{}b2f89048\allowbreak{}7a9a1fcb\allowbreak{}f0366bfb. Parse unique-key safetensors JSON and raw BF16 directly. Validate every manifest entry,\allowbreak{} tensor count,\allowbreak{} original/\allowbreak{}loaded shape,\allowbreak{} dtype,\allowbreak{} offsets,\allowbreak{} payload size,\allowbreak{} inclusive HuggingFace range length and tensor hash. Reject duplicate keys,\allowbreak{} malformed shapes/\allowbreak{}lengths,\allowbreak{} overlapping/\allowbreak{}out-of-range extents,\allowbreak{} dtype disagreement and nonfinite text coefficients. Independently validate every supplied text FP32/\allowbreak{}Q8.24 coordinate and declared shape in official\_\allowbreak{}hardware\_\allowbreak{}slices\_\allowbreak{}fp32\_\allowbreak{}q824.json against raw BF16 and independently rounded/\allowbreak{}saturated conversion; it is a consistency source,\allowbreak{} not an expected-embedding oracle. Validate excluded tensors' extents and hashes. Local checks establish supplied-provenance consistency,\allowbreak{} not independent remote retrieval.
+
+no\_\allowbreak{}operator\_\allowbreak{}assumption: preserve authentic reduced mapped-slice evaluation,\allowbreak{} not full-checkpoint inference. Of 55 extracted tensors execute the 39 text tensors,\allowbreak{} explicitly listing excluded vision tensors and excluding audio. Configuration A is V=\allowbreak{}16,\allowbreak{}H=\allowbreak{}4,\allowbreak{}P=\allowbreak{}4,\allowbreak{}I=\allowbreak{}8,\allowbreak{}E=\allowbreak{}6,\allowbreak{}L=\allowbreak{}6,\allowbreak{}Q=\allowbreak{}2,\allowbreak{}localKV=\allowbreak{}1,\allowbreak{}fullKV=\allowbreak{}1,\allowbreak{}localD=\allowbreak{}2,\allowbreak{}fullD=\allowbreak{}4,\allowbreak{}window=\allowbreak{}2,\allowbreak{}maxSeq=\allowbreak{}8. Hardware layers 0..4 repeat official layer 0's complete tensor family; hardware layer 5 uses official layer 5. Select leading required rows/\allowbreak{}columns with loaded source row stride,\allowbreak{} never flattened contiguous prefixes. Vectors select leading coordinates and scalars remain unchanged. Global PLE uses source rows 0..23 and columns 0..3,\allowbreak{} with rows l*\allowbreak{}P through (\allowbreak{}l+\allowbreak{}1)\allowbreak{}*\allowbreak{}P-1 assigned to reduced layer l; these are available original PLE rows,\allowbreak{} not absent original layer-5 coordinates. Preserve every saved detailed tensor mapping. No fabricated,\allowbreak{} rescaled,\allowbreak{} neutralized or accuracy-selected coefficients. Record names,\allowbreak{} shapes,\allowbreak{} ranges,\allowbreak{} strides,\allowbreak{} layer mapping and hashes. Pack five globals lexically,\allowbreak{} then ascending destination layer and lexical suffix,\allowbreak{} row-major four-byte elements; hash image,\allowbreak{} independent inventory and mapping. Keep design/\allowbreak{}pack\_\allowbreak{}model.py's complete-default 413-tensor contract and rejection tests; no production partial-slice mode. Host initialization contains only weights,\allowbreak{} IDs,\allowbreak{} positions,\allowbreak{} masks and empty scratch.
+
+FUNCTIONAL ACCEPTANCE
+Freshly compile actual rtl/\allowbreak{}*\allowbreak{}.sv with iverilog -g2012 and execute vvp. Reuse compiled executables across jobs/\allowbreak{}seeds where valid,\allowbreak{} never prior traces as new execution. Preserve all nine inherited runs: seeds 17,\allowbreak{}89,\allowbreak{}203 for A=\allowbreak{}(\allowbreak{}16,\allowbreak{}4,\allowbreak{}4,\allowbreak{}8,\allowbreak{}6,\allowbreak{}6,\allowbreak{}2,\allowbreak{}1,\allowbreak{}1,\allowbreak{}2,\allowbreak{}4,\allowbreak{}2,\allowbreak{}8)\allowbreak{},\allowbreak{} B=\allowbreak{}(\allowbreak{}20,\allowbreak{}6,\allowbreak{}4,\allowbreak{}10,\allowbreak{}12,\allowbreak{}12,\allowbreak{}4,\allowbreak{}2,\allowbreak{}1,\allowbreak{}2,\allowbreak{}4,\allowbreak{}3,\allowbreak{}8)\allowbreak{},\allowbreak{} C=\allowbreak{}(\allowbreak{}16,\allowbreak{}4,\allowbreak{}4,\allowbreak{}8,\allowbreak{}6,\allowbreak{}24,\allowbreak{}4,\allowbreak{}2,\allowbreak{}1,\allowbreak{}2,\allowbreak{}4,\allowbreak{}2,\allowbreak{}4)\allowbreak{},\allowbreak{} in existing Geometry order. Preserve every inherited job class,\allowbreak{} reset cancellation during requests/\allowbreak{}computation/\allowbreak{}output,\allowbreak{} memory faults,\allowbreak{} dimensions,\allowbreak{} masks,\allowbreak{} back-to-back traffic,\allowbreak{} stalls,\allowbreak{} saturation fixtures and coverage assertion. Require actual execution of every tensor/\allowbreak{}operation family,\allowbreak{} both attention geometries and full indices 5,\allowbreak{}11,\allowbreak{}17,\allowbreak{}23. Require exact integer equality; for inherited nonsaturating fixtures retain maximum normalized error <=\allowbreak{}0.02 against independent high-precision quantized-input reference,\allowbreak{} cosine >=\allowbreak{}0.999 for nonzero references with pre-normalization norm >=\allowbreak{}0.01,\allowbreak{} and output norm error <=\allowbreak{}0.002. Keep exact saturation expectations. Do not label a failure pre-existing without retained distinguishing evidence.
+
+Keep independent primitive gates: GELU absolute error <=\allowbreak{}2e-4 for |x|<=\allowbreak{}8; exp absolute error <=\allowbreak{}2e-6 on [\allowbreak{}-16,\allowbreak{}0]\allowbreak{}; sin/\allowbreak{}cos absolute error <=\allowbreak{}2e-5 after range reduction; reciprocal/\allowbreak{}rsqrt relative error <=\allowbreak{}2e-4 wherever mathematical results are representable and nonzero. Preserve endpoints,\allowbreak{} interiors,\allowbreak{} saturation,\allowbreak{} invalid domains,\allowbreak{} directed zero/\allowbreak{}small RMS-denominator cases independently distinguishing Q48 epsilon from 17/\allowbreak{}2\textasciicircum{}24,\allowbreak{} and epsilon-free L2 handling. Expected results must not import Designer arithmetic or DUT internals.
+
+Execute all sixteen official jobs: token sequences [\allowbreak{}2]\allowbreak{},\allowbreak{} [\allowbreak{}2,\allowbreak{}3]\allowbreak{},\allowbreak{} [\allowbreak{}2,\allowbreak{}4,\allowbreak{}7]\allowbreak{},\allowbreak{} [\allowbreak{}2,\allowbreak{}3,\allowbreak{}4,\allowbreak{}5,\allowbreak{}6,\allowbreak{}7,\allowbreak{}8,\allowbreak{}1]\allowbreak{},\allowbreak{} each at output dimensions 6,\allowbreak{}4,\allowbreak{}2,\allowbreak{}1. Preserve saved legal positions/\allowbreak{}masks,\allowbreak{} explicit local boundaries,\allowbreak{} a longer-range key visible only to full attention,\allowbreak{} back-to-back submission and memory/\allowbreak{}output/\allowbreak{}completion stalls. No sequence,\allowbreak{} channel or failing result may be omitted. Independently execute the complete raw-BF16 floating software forward path,\allowbreak{} decoding coefficients exactly to FP32 with struct and rounding at documented scalar arithmetic,\allowbreak{} sequential reduction,\allowbreak{} nonlinear-result and tensor-operation boundaries. Use mathematical floating nonlinearities and floating epsilon 1e-6,\allowbreak{} without Q8.24 clipping,\allowbreak{} saturation or hardware-polynomial emulation. Optional BF16 activations and binary64 diagnostics remain separately labeled. The integer oracle independently implements the preserved Q8.24 operation-boundary contract.
+
+For every official job require complete public trace parsing,\allowbreak{} exact descriptor/\allowbreak{}output/\allowbreak{}completion counts,\allowbreak{} ordered indices,\allowbreak{} correct last markers,\allowbreak{} no active X/\allowbreak{}Z,\allowbreak{} stale response or protocol violation,\allowbreak{} and zero signed-Q8.24 output mismatches against the integer oracle. Compare actual RTL words divided by 2\textasciicircum{}24 against raw-weight FP32: cosine >=\allowbreak{}0.999,\allowbreak{} maximum absolute error <=\allowbreak{}0.002 and nonzero-output norm error <=\allowbreak{}0.002 for every job. Undefined cosine fails. Record MAE,\allowbreak{} RMSE,\allowbreak{} absolute software/\allowbreak{}RTL norm difference,\allowbreak{} both norms,\allowbreak{} mismatch counts,\allowbreak{} saturation and intermediate diagnostics. No clipping,\allowbreak{} inherited 0.02 threshold or conditional-cosine exemption for official jobs.
+
+After successful complete functional verification,\allowbreak{} generate evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}official\_\allowbreak{}weights\_\allowbreak{}comparison.json with producing attempt identity,\allowbreak{} schema,\allowbreak{} exact labels Software Layer (\allowbreak{}Official HuggingFace FP32/\allowbreak{}BF16 Weights)\allowbreak{} and Hardware RTL Output (\allowbreak{}Official HuggingFace Quantized Weights)\allowbreak{},\allowbreak{} source/\allowbreak{}mapping/\allowbreak{}image identities,\allowbreak{} geometry,\allowbreak{} every job's tokens/\allowbreak{}positions/\allowbreak{}masks/\allowbreak{}output\_\allowbreak{}dim,\allowbreak{} actual FP32/\allowbreak{}RTL/\allowbreak{}oracle vectors,\allowbreak{} metrics,\allowbreak{} thresholds,\allowbreak{} cycles and aggregate worst cases. Preserve earlier artifacts. The artifact is generated output,\allowbreak{} never an input prerequisite or Coordinator-authored result. Record accepted-descriptor-to-accepted-completion rising-edge counts and separately first/\allowbreak{}last accepted embedding counts,\allowbreak{} stating inclusive/\allowbreak{}exclusive formula and stall convention. Include tokens,\allowbreak{} valid tokens,\allowbreak{} cycles/\allowbreak{}token,\allowbreak{} cycles/\allowbreak{}valid-token,\allowbreak{} tokens/\allowbreak{}cycle and jobs/\allowbreak{}cycle. no\_\allowbreak{}operator\_\allowbreak{}assumption: cycle-based throughput is primary; a 10 ns testbench period is a simulation convention only. Any tokens/\allowbreak{}second figure explicitly states assumed frequency,\allowbreak{} with no physical-speed claim. Keep simulator wall time separate. Disclose reduced slice scope,\allowbreak{} repeated-layer mapping and absence of full-checkpoint quality or upstream executable parity claims.
+
+BOTH NEGATIVE CONTROLS
+Retain the inherited matrix negative control within functional. Then run fresh standalone sensitivity: compile/\allowbreak{}run a bounded successful official-weight job,\allowbreak{} require its original complete trace to pass the same public parser and exact scoreboard,\allowbreak{} privately copy it and alter exactly one accepted legal signed emb\_\allowbreak{}data word by one Q8.24 LSB. Keep handshakes,\allowbreak{} indices,\allowbreak{} last markers,\allowbreak{} completion and every other transaction unchanged. The identical scoreboard must reject precisely that word with ExactMismatch and expected/\allowbreak{}observed values. Parser failure,\allowbreak{} unrelated exception,\allowbreak{} timeout or fabricated rejection fails sensitivity. Preserve original trace identity,\allowbreak{} altered trace,\allowbreak{} mutation location,\allowbreak{} checking entrypoint and raw diagnostics under evidence/\allowbreak{}behavior/\allowbreak{}negative\_\allowbreak{}control. Corrupted traces are not passing DUT executions or replacements for mandatory jobs.
+
+SYNTHESIS
+Freshly synthesize A and B with actual Yosys read\_\allowbreak{}verilog -sv,\allowbreak{} hierarchy -check,\allowbreak{} proc,\allowbreak{} opt,\allowbreak{} memory,\allowbreak{} opt,\allowbreak{} check -assert,\allowbreak{} stat and write\_\allowbreak{}json,\allowbreak{} rooted at anvil\_\allowbreak{}e\_\allowbreak{}top. Retain netlist JSON and statistics. Assert substantial connected sequential/\allowbreak{}arithmetic datapaths,\allowbreak{} live required anvil\_\allowbreak{}e1\_\allowbreak{}top descendants,\allowbreak{} no latches,\allowbreak{} unresolved/\allowbreak{}blackbox DUT cells or simulation-only bypass. Preserve escaped-hdlname normalization without weakening hierarchy/\allowbreak{}connectivity assertions. Default-size synthesis,\allowbreak{} physical PPA and timing signoff remain outside scope.
+
+BOUNDS,\allowbreak{} RECEIPTS AND HANDOFF
+Pending execution order is complete functional,\allowbreak{} fresh sensitivity,\allowbreak{} then synthesis A/\allowbreak{}B. Proposed inner/\allowbreak{}outer limits are functional 230/\allowbreak{}250 seconds only; sensitivity remains 20/\allowbreak{}40 and synthesis remains 120/\allowbreak{}140. The three pending outer ceilings total 430 seconds. Even counting retained architecture's 70-second ceiling gives 500 seconds within the unchanged 600-second role limit,\allowbreak{} leaving 100 seconds and preserving at least 60 seconds for handoff. These are ceilings,\allowbreak{} not demonstrated execution times. Sufficiency of 230 seconds remains untested. Keep one phase-wide functional monotonic deadline covering prerequisites,\allowbreak{} compilation,\allowbreak{} primitive/\allowbreak{}norm gates,\allowbreak{} all nine inherited runs,\allowbreak{} sixteen official jobs,\allowbreak{} both references,\allowbreak{} comparisons,\allowbreak{} coverage and inherited negative control. Bound every child by remaining phase time; never renew deadlines. Sensitivity's deadline includes fresh compilation/\allowbreak{}run and mutation checking. Synthesis's 120 seconds covers A and B together. Outer headroom is startup,\allowbreak{} cleanup and receipt retention,\allowbreak{} not added functional allowance.
+
+Reuse the existing Execution helper; do not add an execution framework. Every fresh attempt retains exact argv/\allowbreak{}cwd,\allowbreak{} versions,\allowbreak{} relevant source and official-input hashes,\allowbreak{} start/\allowbreak{}end times,\allowbreak{} timeout/\allowbreak{}exit/\allowbreak{}settlement status,\allowbreak{} raw stdout/\allowbreak{}stderr and generated-output hashes,\allowbreak{} with required repair links. Missing python3,\allowbreak{} iverilog,\allowbreak{} vvp,\allowbreak{} yosys or official files fails prerequisites without installation or skipped gates. Timeout fails regardless of child eventual exit; simulator exit zero alone is insufficient. Do not overwrite failed evidence,\allowbreak{} reuse incomplete traces,\allowbreak{} weaken coverage,\allowbreak{} silently extend limits or change source code to fit this budget-only recovery. If insufficient,\allowbreak{} retain the failed/\allowbreak{}incomplete attempt and return precise continuation work for independent admission. No current official,\allowbreak{} standalone sensitivity,\allowbreak{} synthesis or final completion claim precedes complete results and independent review.
+
+\section{Implementation and delivered sources}
+
+\subsection{Production design}
+
+SystemVerilog/\allowbreak{}Verilog: 2550 physical lines; 2510 nonblank,\allowbreak{} non-comment code lines. Testbench lines are not counted as production RTL.
+
+\begin{longtable}{p{0.59\textwidth}rr}\toprule
+
+File & Lines & Code lines\\\midrule\endhead
+
+design/\allowbreak{}ARCHITECTURE.md & -- & --\\
+
+design/\allowbreak{}OFFICIAL\_\allowbreak{}WEIGHTS\_\allowbreak{}EVALUATION.md & -- & --\\
+
+design/\allowbreak{}pack\_\allowbreak{}model.py & -- & --\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}address.sv & 173 & 164\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}attention.sv & 281 & 278\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}controller.sv & 179 & 175\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}mac.sv & 34 & 34\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}matvec.sv & 99 & 99\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}memory.sv & 65 & 65\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}nonlinear.sv & 243 & 237\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}norm.sv & 178 & 176\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}pool.sv & 162 & 161\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}rope.sv & 130 & 130\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}sequencer.sv & 777 & 762\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}top.sv & 158 & 158\\
+
+rtl/\allowbreak{}anvil\_\allowbreak{}e\_\allowbreak{}top.sv & 71 & 71\\
+
+\bottomrule\end{longtable}
+
+\subsection{Verification}
+
+SystemVerilog/\allowbreak{}Verilog: 501 physical lines; 500 nonblank,\allowbreak{} non-comment code lines. Testbench lines are not counted as production RTL.
+
+\begin{longtable}{p{0.59\textwidth}rr}\toprule
+
+File & Lines & Code lines\\\midrule\endhead
+
+tests/\allowbreak{}\_\allowbreak{}\_\allowbreak{}pycache\_\allowbreak{}\_\allowbreak{}/\allowbreak{}architecture.cpython-312.pyc & -- & --\\
+
+tests/\allowbreak{}\_\allowbreak{}\_\allowbreak{}pycache\_\allowbreak{}\_\allowbreak{}/\allowbreak{}behavior.cpython-312.pyc & -- & --\\
+
+tests/\allowbreak{}\_\allowbreak{}\_\allowbreak{}pycache\_\allowbreak{}\_\allowbreak{}/\allowbreak{}model.cpython-312.pyc & -- & --\\
+
+tests/\allowbreak{}\_\allowbreak{}\_\allowbreak{}pycache\_\allowbreak{}\_\allowbreak{}/\allowbreak{}official.cpython-312.pyc & -- & --\\
+
+tests/\allowbreak{}\_\allowbreak{}\_\allowbreak{}pycache\_\allowbreak{}\_\allowbreak{}/\allowbreak{}official\_\allowbreak{}fp32.cpython-312.pyc & -- & --\\
+
+tests/\allowbreak{}\_\allowbreak{}\_\allowbreak{}pycache\_\allowbreak{}\_\allowbreak{}/\allowbreak{}synthesis.cpython-312.pyc & -- & --\\
+
+tests/\allowbreak{}\_\allowbreak{}\_\allowbreak{}pycache\_\allowbreak{}\_\allowbreak{}/\allowbreak{}verify.cpython-312.pyc & -- & --\\
+
+tests/\allowbreak{}addresses.py & -- & --\\
+
+tests/\allowbreak{}addresses.sv & 47 & 47\\
+
+tests/\allowbreak{}architecture.py & -- & --\\
+
+tests/\allowbreak{}behavior.py & -- & --\\
+
+tests/\allowbreak{}forward.sv & 262 & 261\\
+
+tests/\allowbreak{}model.py & -- & --\\
+
+tests/\allowbreak{}norm.sv & 77 & 77\\
+
+tests/\allowbreak{}official.py & -- & --\\
+
+tests/\allowbreak{}official\_\allowbreak{}fp32.py & -- & --\\
+
+tests/\allowbreak{}packing.py & -- & --\\
+
+tests/\allowbreak{}primitives.py & -- & --\\
+
+tests/\allowbreak{}primitives.sv & 62 & 62\\
+
+tests/\allowbreak{}profile\_\allowbreak{}address.sv & 53 & 53\\
+
+tests/\allowbreak{}profiling.py & -- & --\\
+
+tests/\allowbreak{}synthesis.py & -- & --\\
+
+tests/\allowbreak{}verify.py & -- & --\\
+
+\bottomrule\end{longtable}
+
+\appendix\section{Original handoffs and execution records}
+
+\subsection{Designer handoff}
+
+Design handoff complete; this budget-only recovery requires no Designer changes. Read-only view/\allowbreak{}rg inspection confirmed the preserved zero-stage anvil\_\allowbreak{}e\_\allowbreak{}top wrapper,\allowbreak{} Q48 epsilon constant 281474977 and documented official-weight mapping. No sources,\allowbreak{} evidence or runtime state changed; no experiments or checks executed. Retain passing architecture evidence/\allowbreak{}verification/\allowbreak{}architecture/\allowbreak{}attempt-20261015T082922146418Z/\allowbreak{}receipt.json without rerun. Functional evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}attempt-20261015T082929570124Z/\allowbreak{}receipt.json records an official-simulation timeout with 35.001656 seconds remaining,\allowbreak{} not an established RTL defect; no repair or complete functional acceptance is claimed. Hand off to Verifier through the shared runtime,\allowbreak{} subject to independent recovery admission,\allowbreak{} for complete functional execution at 230/\allowbreak{}250-second inner/\allowbreak{}outer limits with the specified repair link,\allowbreak{} then fresh sensitivity and synthesis A/\allowbreak{}B. All pending acceptance remains unproven.
+
+\section{Verification methods and results}
+
+\subsection{functional}
+
+Command: [\allowbreak{}"python3",\allowbreak{} "tests/\allowbreak{}verify.py",\allowbreak{} "--check",\allowbreak{} "functional",\allowbreak{} "--output",\allowbreak{} "evidence/\allowbreak{}verification/\allowbreak{}functional",\allowbreak{} "--timeout-s",\allowbreak{} "230",\allowbreak{} "--configs",\allowbreak{} "A,\allowbreak{}B,\allowbreak{}C",\allowbreak{} "--seeds",\allowbreak{} "17,\allowbreak{}89,\allowbreak{}203",\allowbreak{} "--repair-of",\allowbreak{} "evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}attempt-20261015T082929570124Z/\allowbreak{}receipt.json"]\allowbreak{}
+
+
+
+Declared tools: python3,\allowbreak{} iverilog,\allowbreak{} vvp
+
+\subsection{sensitivity}
+
+Command: [\allowbreak{}"python3",\allowbreak{} "tests/\allowbreak{}verify.py",\allowbreak{} "--check",\allowbreak{} "sensitivity",\allowbreak{} "--output",\allowbreak{} "evidence/\allowbreak{}behavior/\allowbreak{}negative\_\allowbreak{}control",\allowbreak{} "--timeout-s",\allowbreak{} "20",\allowbreak{} "--repair-of",\allowbreak{} "evidence/\allowbreak{}preparation/\allowbreak{}phase2-official-matrix/\allowbreak{}attempt-20261015T081502322745Z/\allowbreak{}receipt.json"]\allowbreak{}
+
+
+
+Declared tools: python3,\allowbreak{} iverilog,\allowbreak{} vvp
+
+\subsection{synthesis}
+
+Command: [\allowbreak{}"python3",\allowbreak{} "tests/\allowbreak{}verify.py",\allowbreak{} "--check",\allowbreak{} "synthesis",\allowbreak{} "--output",\allowbreak{} "evidence/\allowbreak{}verification/\allowbreak{}synthesis",\allowbreak{} "--timeout-s",\allowbreak{} "120",\allowbreak{} "--configs",\allowbreak{} "A,\allowbreak{}B",\allowbreak{} "--repair-of",\allowbreak{} "evidence/\allowbreak{}preparation/\allowbreak{}phase2-official-matrix/\allowbreak{}attempt-20261015T081502322745Z/\allowbreak{}receipt.json"]\allowbreak{}
+
+
+
+Declared tools: python3,\allowbreak{} yosys
+
+\subsection{Verifier handoff}
+
+No sources,\allowbreak{} retained evidence or runtime records changed; no simulation or synthesis rerun in this role call. All source hashes match both retained receipts. Preserve passing architecture evidence/\allowbreak{}verification/\allowbreak{}architecture/\allowbreak{}attempt-20261015T082922146418Z/\allowbreak{}receipt.json without rerunning architecture. The failed functional receipt evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}attempt-20261015T082929570124Z/\allowbreak{}receipt.json confirms official-simulation timed out with 35.001656 seconds remaining and settled cleanup; its trace contains 14 completions,\allowbreak{} job 14 acceptance and no COMPLETE. Eventual child exit 0 does not establish acceptance. Read-only inspection confirms the existing entrypoint preserves the complete inherited matrix,\allowbreak{} sixteen official jobs,\allowbreak{} independent references,\allowbreak{} numerical gates and negative controls under one phase-wide deadline. Required tool paths are available. Ready for shared-runtime execution of the admitted functional 230/\allowbreak{}250-second recovery,\allowbreak{} followed by fresh sensitivity 20/\allowbreak{}40 and synthesis A/\allowbreak{}B 120/\allowbreak{}140,\allowbreak{} with the specified repair links. The increased functional allowance remains untested; no current functional,\allowbreak{} sensitivity,\allowbreak{} synthesis or delivery acceptance is claimed.
+
+\subsection{Recorded check: check:architecture}
+
+Status: passed; exit: 0; wall seconds: 4.025493911001831; original records: .vulcan/\allowbreak{}engineering/\allowbreak{}run-0002/\allowbreak{}attempt-0003.
+
+
+
+The following is a tail excerpt of actual tool output, not a separate correctness claim.
+
+
+
+{\small PASS: all implemented obligations for architecture
+}
+
+\subsection{Recorded check: check:functional}
+
+Status: failed; exit: 1; wall seconds: 200.8370485350024; original records: .vulcan/\allowbreak{}engineering/\allowbreak{}run-0002/\allowbreak{}attempt-0004.
+
+
+
+The following is a tail excerpt of actual tool output, not a separate correctness claim.
+
+
+
+{\small }
+
+\subsection{Recorded check: check:functional}
+
+Status: passed; exit: 0; wall seconds: 225.50777957400715; original records: .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0003.
+
+
+
+The following is a tail excerpt of actual tool output, not a separate correctness claim.
+
+
+
+{\small PASS: all implemented obligations for functional
+}
+
+\subsection{Recorded check: check:sensitivity}
+
+Status: passed; exit: 0; wall seconds: 3.8772370079968823; original records: .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0004.
+
+
+
+The following is a tail excerpt of actual tool output, not a separate correctness claim.
+
+
+
+{\small PASS: all implemented obligations for sensitivity
+}
+
+\subsection{Recorded check: check:synthesis}
+
+Status: passed; exit: 0; wall seconds: 94.38698137100437; original records: .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0005.
+
+
+
+The following is a tail excerpt of actual tool output, not a separate correctness claim.
+
+
+
+{\small PASS: all implemented obligations for synthesis
+}
+
+\section{Independent acceptance and limitations}
+
+Approve the Phase 2 delivery within the admitted reduced-slice scope. The implementation preserves the modular accelerator and zero-stage anvil\_\allowbreak{}e\_\allowbreak{}top wrapper,\allowbreak{} directly decodes supplied BF16 coefficients,\allowbreak{} applies the documented strided mapping,\allowbreak{} and independently evaluates raw-weight FP32 and quantized integer forward paths. I read the entrypoint,\allowbreak{} references,\allowbreak{} public-interface testbench,\allowbreak{} scoreboard,\allowbreak{} numerical gates,\allowbreak{} relevant RTL and recorded results; this conclusion does not rely on printed PASS messages alone. This review made no changes and executed no commands.
+
+The complete functional evidence is retained at evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}attempt-20261015T084416651159Z/\allowbreak{}receipt.json. Raw traces contain completion for all nine inherited configuration/\allowbreak{}seed runs and all sixteen official jobs,\allowbreak{} including 52 accepted official embedding words. The scoreboard checks exact words,\allowbreak{} indices,\allowbreak{} last markers,\allowbreak{} completion counts and memory ownership; the testbench checks active unknowns,\allowbreak{} reset,\allowbreak{} stalls and payload stability. Primitive checks cover 2,\allowbreak{}106 cases; normalization checks cover 28 cases,\allowbreak{} including nine that distinguish the corrected Q48 epsilon. The published evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}official\_\allowbreak{}weights\_\allowbreak{}comparison.json records zero integer mismatches,\allowbreak{} minimum cosine similarity 0.9999999998517652,\allowbreak{} worst absolute error 0.000012040138244628906 and worst software/\allowbreak{}RTL norm difference 0.0000000776098445509632,\allowbreak{} all within the required gates. Per-job cycles and throughput use accepted public edges and include stalls,\allowbreak{} without claiming physical clock speed.
+
+Fresh standalone sensitivity at evidence/\allowbreak{}behavior/\allowbreak{}negative\_\allowbreak{}control/\allowbreak{}attempt-20261015T084806599181Z/\allowbreak{}receipt.json passes the original complete trace and rejects the one-LSB mutation specifically as expected=\allowbreak{}11924784,\allowbreak{} observed=\allowbreak{}11924785. The inherited matrix negative control is also retained. Fresh synthesis at evidence/\allowbreak{}verification/\allowbreak{}synthesis/\allowbreak{}attempt-20261015T084814496925Z/\allowbreak{}receipt.json uses the required Yosys passes for A and B rooted at anvil\_\allowbreak{}e\_\allowbreak{}top. The scripts,\allowbreak{} logs and structural checking retain the required hierarchy,\allowbreak{} substantive sequential/\allowbreak{}arithmetic cells,\allowbreak{} and rejection of latches and unresolved cells; both logs report zero check problems. Preserve the previously accepted architecture result at evidence/\allowbreak{}verification/\allowbreak{}architecture/\allowbreak{}attempt-20261015T082922146418Z/\allowbreak{}receipt.json without rerunning it.
+
+Earlier failures remain distinct and preserved: the initial official compile failure,\allowbreak{} the original official matrix's jobs 12–14 exceeding the FP32 error limit,\allowbreak{} and the later 200-second functional timeout. The retained epsilon diagnosis,\allowbreak{} current Q48 normalizer and independent distinguishing tests support the numerical repair. The failed functional trace stops after fourteen completions; its eventual exit zero does not certify it. The new attempt links directly to that failure and completes under the admitted 230-second inner allowance without weakening coverage or thresholds.
+
+Acceptance does not establish full-checkpoint inference,\allowbreak{} upstream executable parity,\allowbreak{} application embedding quality,\allowbreak{} independent remote weight retrieval or physical timing/\allowbreak{}PPA. The documented repeated-layer and reduced-coordinate mapping,\allowbreak{} local provenance-consistency checks and simulation-based cycle measurements accurately delimit the delivered results.
+
+
+
+The full design-input and verification-input SHA-256 manifest is retained beside this report. The PDF is a historical snapshot: later source changes require explicit revalidation and do not update this PDF. Tool and role durations include waiting; they must not be interpreted as model inference utilization.
+
+\section{Engineering timeline and retained failures}
+
+\begin{longtable}{p{0.35\textwidth}p{0.22\textwidth}rr}\toprule
+
+Role / operation & UTC start & Seconds & Status\\\midrule\endhead
+
+coordinator /\allowbreak{} plan & 08:00:43 & 173.13 & passed\\
+
+reviewer /\allowbreak{} plan & 08:03:36 & 50.38 & passed\\
+
+coordinator /\allowbreak{} plan & 08:04:28 & 83.74 & passed\\
+
+reviewer /\allowbreak{} plan & 08:05:53 & 41.15 & passed\\
+
+designer /\allowbreak{} designer:6 & 08:06:36 & 209.50 & passed\\
+
+verifier /\allowbreak{} verifier:7 & 08:10:08 & 578.51 & passed\\
+
+coordinator /\allowbreak{} route & 08:19:50 & 46.60 & passed\\
+
+reviewer /\allowbreak{} recovery & 08:20:40 & 77.13 & passed\\
+
+coordinator /\allowbreak{} plan & 08:22:02 & 129.27 & passed\\
+
+reviewer /\allowbreak{} plan & 08:24:15 & 69.39 & passed\\
+
+designer /\allowbreak{} designer:13 & 08:25:29 & 64.72 & passed\\
+
+verifier /\allowbreak{} verifier:14 & 08:26:38 & 158.86 & passed\\
+
+tool execution /\allowbreak{} check:architecture & 08:29:21 & 4.03 & passed\\
+
+tool execution /\allowbreak{} check:functional & 08:29:28 & 200.84 & failed\\
+
+verifier /\allowbreak{} verifier:16 & 08:32:54 & 137.27 & passed\\
+
+coordinator /\allowbreak{} route & 08:35:19 & 52.42 & passed\\
+
+reviewer /\allowbreak{} recovery & 08:36:17 & 68.73 & passed\\
+
+coordinator /\allowbreak{} route & 08:37:31 & 43.32 & passed\\
+
+reviewer /\allowbreak{} recovery & 08:38:20 & 59.10 & passed\\
+
+coordinator /\allowbreak{} plan & 08:39:26 & 111.91 & passed\\
+
+reviewer /\allowbreak{} plan & 08:41:25 & 59.17 & passed\\
+
+designer /\allowbreak{} designer:24 & 08:42:31 & 40.71 & passed\\
+
+verifier /\allowbreak{} verifier:25 & 08:43:18 & 52.23 & passed\\
+
+tool execution /\allowbreak{} check:functional & 08:44:15 & 225.51 & passed\\
+
+tool execution /\allowbreak{} check:sensitivity & 08:48:05 & 3.88 & passed\\
+
+tool execution /\allowbreak{} check:synthesis & 08:48:13 & 94.39 & passed\\
+
+reviewer /\allowbreak{} review & 08:49:54 & 135.53 & passed\\
+
+\bottomrule\end{longtable}
+
+\paragraph{run-0002/\allowbreak{}failure-0001}
+
+Superseded contract; original status retained. 
+
+\{"id": "failure-0001",\allowbreak{} "step": "check:functional",\allowbreak{} "status": "open",\allowbreak{} "attempts": [\allowbreak{}4]\allowbreak{},\allowbreak{} "cause": "unknown",\allowbreak{} "detail": "nonzero\_\allowbreak{}exit",\allowbreak{} "diagnoses": [\allowbreak{}]\allowbreak{}\}
+
+\section{Professional knowledge and provenance}
+
+\subsection{coordinator}
+
+Vulcan: 0.8.0; domain: digital\_\allowbreak{}circuit; delivery: explicit\_\allowbreak{}prompt\_\allowbreak{}context. These records prove what context was supplied,\allowbreak{} not that every method was correctly applied.
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}coordinator/\allowbreak{}SKILL.md\par SHA-256 6162ed80\allowbreak{}31c6a486\allowbreak{}d111f5bc\allowbreak{}c70ee9f0\allowbreak{}30fd200e\allowbreak{}63966c0c\allowbreak{}6d6c023a\allowbreak{}412e7720\par}
+
+{\small\raggedright argus\_\allowbreak{}verticals/\allowbreak{}digital\_\allowbreak{}circuit/\allowbreak{}skills/\allowbreak{}engineer/\allowbreak{}digital-knowledge-map.md\par SHA-256 6a7ad544\allowbreak{}f79398b8\allowbreak{}0b87922a\allowbreak{}9121e0ec\allowbreak{}b0351af2\allowbreak{}78d0776e\allowbreak{}9bf03c40\allowbreak{}4564eb9c\par}
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}repository-context/\allowbreak{}SKILL.md\par SHA-256 0b720ce9\allowbreak{}79d68c67\allowbreak{}a54d96e2\allowbreak{}5661613b\allowbreak{}8b009a6c\allowbreak{}0a8332ee\allowbreak{}e09fe474\allowbreak{}212ca793\par}
+
+\subsection{reviewer}
+
+Vulcan: 0.8.0; domain: digital\_\allowbreak{}circuit; delivery: explicit\_\allowbreak{}prompt\_\allowbreak{}context. These records prove what context was supplied,\allowbreak{} not that every method was correctly applied.
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}reviewer/\allowbreak{}SKILL.md\par SHA-256 f24bb070\allowbreak{}6b048bef\allowbreak{}37a60f5f\allowbreak{}416c7988\allowbreak{}0a3c71c3\allowbreak{}f4c905ef\allowbreak{}68009e0a\allowbreak{}68c0516f\par}
+
+{\small\raggedright argus\_\allowbreak{}verticals/\allowbreak{}digital\_\allowbreak{}circuit/\allowbreak{}skills/\allowbreak{}reviewer/\allowbreak{}digital-circuit-signoff-review.md\par SHA-256 e74b8c8d\allowbreak{}7acdc24a\allowbreak{}de024f7b\allowbreak{}fcc8fecc\allowbreak{}4763e032\allowbreak{}1ba9e9e5\allowbreak{}d3c505d1\allowbreak{}3ce5bc6a\par}
+
+{\small\raggedright argus\_\allowbreak{}verticals/\allowbreak{}digital\_\allowbreak{}circuit/\allowbreak{}verification/\allowbreak{}skills/\allowbreak{}reviewer/\allowbreak{}verification-acceptance.md\par SHA-256 6dffec44\allowbreak{}9aaec0d0\allowbreak{}1762b3f1\allowbreak{}d64ed9e1\allowbreak{}1869369f\allowbreak{}069245e4\allowbreak{}4a0a672b\allowbreak{}76c324e2\par}
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}repository-context/\allowbreak{}SKILL.md\par SHA-256 0b720ce9\allowbreak{}79d68c67\allowbreak{}a54d96e2\allowbreak{}5661613b\allowbreak{}8b009a6c\allowbreak{}0a8332ee\allowbreak{}e09fe474\allowbreak{}212ca793\par}
+
+\subsection{designer}
+
+Vulcan: 0.8.0; domain: digital\_\allowbreak{}circuit; delivery: explicit\_\allowbreak{}prompt\_\allowbreak{}context. These records prove what context was supplied,\allowbreak{} not that every method was correctly applied.
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}designer/\allowbreak{}SKILL.md\par SHA-256 5527da99\allowbreak{}ad335d51\allowbreak{}0d010b78\allowbreak{}82e169f9\allowbreak{}4a9030fb\allowbreak{}5d368663\allowbreak{}dcdcd125\allowbreak{}6a4d6353\par}
+
+{\small\raggedright argus\_\allowbreak{}verticals/\allowbreak{}digital\_\allowbreak{}circuit/\allowbreak{}skills/\allowbreak{}engineer/\allowbreak{}digital-knowledge-map.md\par SHA-256 6a7ad544\allowbreak{}f79398b8\allowbreak{}0b87922a\allowbreak{}9121e0ec\allowbreak{}b0351af2\allowbreak{}78d0776e\allowbreak{}9bf03c40\allowbreak{}4564eb9c\par}
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}repository-context/\allowbreak{}SKILL.md\par SHA-256 0b720ce9\allowbreak{}79d68c67\allowbreak{}a54d96e2\allowbreak{}5661613b\allowbreak{}8b009a6c\allowbreak{}0a8332ee\allowbreak{}e09fe474\allowbreak{}212ca793\par}
+
+\subsection{verifier}
+
+Vulcan: 0.8.0; domain: digital\_\allowbreak{}circuit; delivery: explicit\_\allowbreak{}prompt\_\allowbreak{}context. These records prove what context was supplied,\allowbreak{} not that every method was correctly applied.
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}verifier/\allowbreak{}SKILL.md\par SHA-256 121c375f\allowbreak{}bed16aae\allowbreak{}911e9deb\allowbreak{}e1d7d8a8\allowbreak{}2958c882\allowbreak{}67b119fe\allowbreak{}a8e60f2b\allowbreak{}7e359d17\par}
+
+{\small\raggedright argus\_\allowbreak{}verticals/\allowbreak{}digital\_\allowbreak{}circuit/\allowbreak{}verification/\allowbreak{}skills/\allowbreak{}engineer/\allowbreak{}verification-matrix.md\par SHA-256 32f7f6b2\allowbreak{}5d834cec\allowbreak{}897239e6\allowbreak{}01a1417c\allowbreak{}17d034eb\allowbreak{}27d9a117\allowbreak{}321c8d77\allowbreak{}82ec28bf\par}
+
+{\small\raggedright argus\_\allowbreak{}verticals/\allowbreak{}digital\_\allowbreak{}circuit/\allowbreak{}verification/\allowbreak{}skills/\allowbreak{}engineer/\allowbreak{}protocol-verification.md\par SHA-256 5b1ed825\allowbreak{}43ff1847\allowbreak{}2b403c4b\allowbreak{}44fdfd07\allowbreak{}86f4e7a6\allowbreak{}ec0f65c1\allowbreak{}79376429\allowbreak{}92062244\par}
+
+{\small\raggedright assets/\allowbreak{}skills/\allowbreak{}repository-context/\allowbreak{}SKILL.md\par SHA-256 0b720ce9\allowbreak{}79d68c67\allowbreak{}a54d96e2\allowbreak{}5661613b\allowbreak{}8b009a6c\allowbreak{}0a8332ee\allowbreak{}e09fe474\allowbreak{}212ca793\par}
+
+
+
+argus: 1d5ee00a\allowbreak{}02e2d400\allowbreak{}443eed92\allowbreak{}5e607990\allowbreak{}9f8f4e25
+
+
+
+argus-verticals: 73eecd72\allowbreak{}e1d6a4c5\allowbreak{}30fca0a3\allowbreak{}79576b55\allowbreak{}54fb5eec
+
+\end{document}

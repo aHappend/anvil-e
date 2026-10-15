@@ -27,7 +27,7 @@ verification suites and reproducible delivery packages.
 
 | Generation | Design | Target model & scope | Autonomous Build Time | Status |
 | --- | --- | --- | --- | --- |
-| **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (5:1 hybrid sliding/full GQA attention, PLE per-layer embeddings, `512d → 768d` projection, masked mean pooling and Matryoshka L2 normalization) | **3h 17m 25s total** (`2h 17m 48s` Phase 1 RTL + `59m 37s` Phase 2 Official HF Weights Co-Sim) | Completed & Verified — Official HuggingFace Weights Software-vs-RTL Parity Published |
+| **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (5:1 hybrid sliding/full GQA attention, PLE per-layer embeddings, `512d → 768d` projection, masked mean pooling and Matryoshka L2 normalization) | **3h 17m 25s total** (`2h 17m 48s` Phase 1 RTL + `59m 37s` Phase 2 Official HF Weights Co-Sim) | Completed & Verified — [Official Report (`REPORT.pdf`)](anvil-e1/REPORT.pdf) & Live Demo Published |
 | **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | Running (Step 26 Verifier) | In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8 |
 | **Gen-3** | **Anvil-E3** | Google EmbeddingGemma-2 · Audio + Vision + Text unified embedding engine | — | Planned |
 

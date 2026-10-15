@@ -2,6 +2,9 @@
 
 **Anvil-E1** is a synthesizable SystemVerilog hardware accelerator for [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2), autonomously architected, implemented, synthesized, and co-verified against official HuggingFace weights by **Vulcan 0.8**.
 
+- **📄 Official Product Delivery Report (Phase 2 Co-Simulation)**: [`REPORT.pdf`](REPORT.pdf) · [`REPORT.tex`](REPORT.tex) · [`REPORT.md`](REPORT.md)
+- **📄 Phase 1 Initial RTL & Synthesis Report**: [`REPORT_phase1.pdf`](REPORT_phase1.pdf) · [`REPORT_phase1.md`](REPORT_phase1.md)
+
 ## Autonomous Engineering Timeline & Metrics
 
 | Metric | Phase 1 (Zero-to-RTL & Synthesis) | Phase 2 (Official HF Weights & Co-Sim) | Combined Total |
