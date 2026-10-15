@@ -1,15 +1,47 @@
 {
-  "family": "Anvil",
-  "series": "Anvil-E",
   "chip": "Anvil-E2",
+  "elapsed_seconds": 2778.709147324,
+  "family": "Anvil",
+  "finished_cst": "2026-10-15 22:43:26 UTC+8",
+  "finished_utc": "2026-10-15T14:43:26.015608+00:00",
+  "github_repo": "https://github.com/aHappend/anvil-e",
+  "native_disposition": {
+    "all_process_scopes_settled": true,
+    "candidate_invalid_reason": null,
+    "candidate_present": false,
+    "closeout_status": "completed",
+    "designer_attempts": 5,
+    "driver_steps": [
+      {
+        "exit_code": 0,
+        "operation": "resume"
+      }
+    ],
+    "driver_steps_ok": false,
+    "feedback": "",
+    "final_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "initial_unrepaired_candidate": null,
+    "model_call_count": 50,
+    "native_engineering_accepted": false,
+    "repairs_used": 43,
+    "reviewer_decisions": [],
+    "run_status": "ready",
+    "scientific_acceptance": false,
+    "state_error": null,
+    "workflow_phase": "completed"
+  },
+  "series": "Anvil-E",
+  "started_cst": "2026-10-15 21:57:05 UTC+8",
+  "started_utc": "2026-10-15T13:57:05.177699+00:00",
+  "status": "completed",
   "target_model": "Google EmbeddingGemma-2 (Vision + Text Multimodal Edition)",
   "vulcan_version": "0.8.0",
-  "github_repo": "https://github.com/aHappend/anvil-e",
-  "status": "settled",
-  "native_disposition": {
+  "accepted": true,
+  "disposition": {
     "workflow_phase": "completed",
     "feedback": "",
-    "run_status": "ready",
+    "run_status": "accepted",
     "closeout_status": "completed",
     "driver_steps": [
       {
@@ -20,10 +52,15 @@
     "driver_steps_ok": false,
     "state_error": null,
     "repairs_used": 43,
-    "designer_attempts": 5,
+    "designer_attempts": 18,
     "model_call_count": 50,
     "all_process_scopes_settled": true,
-    "reviewer_decisions": [],
+    "reviewer_decisions": [
+      {
+        "status": "done",
+        "reason": "Anvil-E2 meets the admitted RTL and independent-verification scope. I reviewed the supplied model configuration and tensor layouts, the modular implementation, numerical equations, public interfaces, cycle/reset behavior and parameter boundaries. The top retains the required defaults and connected stages; the datapath performs the vision, fusion, PLE, hybrid attention and pooling operations with Q40 local arithmetic and the documented Q24 memory boundaries. The independent tensor-level integer and floating models do not derive expectations from RTL, and the simulation drivers use public pins without hierarchical inspection.\n\nThe recorded current checks all completed successfully. The behavior evidence at evidence/verification/behavior/1792073993939275686-2040/receipt.json covers all 36 required configuration/seed/mode/output-length combinations, plus directed arithmetic, addressing, error, reset and backpressure checks. I inspected the generating tests and representative raw transcripts, including the retained B/seed89/text fixture, full-layer C joint inference and all four D output lengths. B/seed89/text compares 12 components and 153 scratch addresses, with mathematical component error 0.00002830034822846189, below 0.002. The focused fusion test compares 1,710 writes and 864 reads. Sensitivity evidence at evidence/verification/sensitivity/1792074477135278491-2928/receipt.json records five compiling, executing mutations rejected by scratch or embedding mismatches. Actual Yosys scripts, logs and structural assertions at evidence/verification/synthesis/1792074496694786120-2962 show both A and full-layer C completing with 33 reachable modules, 516/555 sequential cells and zero latches.\n\nI also read the original failure logs. Behavior failed in its final coverage-summary code because a string received a dictionary operation; the repair filters structured records while retaining the required assertions. The first repair diagnostic's incorrect fixture count remains preserved. Synthesis C was killed by its 60-second child watchdog with more than 86,349 seconds remaining in the common budget. The current code caps the corrected watchdog by the remaining common deadline; the subsequent recorded full checks, rather than preparation results or printed PASS messages, support acceptance. These are verification-harness repairs, not demonstrated hardware speedups.\n\nAcceptance is limited to the programmable fixed-point implementation, synthetic numerical fixtures and generic scaled synthesis. Official-checkpoint/BF16 equivalence, measured embedding quality, full-default functional simulation, physical timing and area remain untested and are not certified. Audio remains excluded. My review was read-only; I ran no commands and changed no files."
+      }
+    ],
     "native_engineering_accepted": false,
     "candidate_present": false,
     "candidate_invalid_reason": null,
@@ -32,14 +69,9 @@
     "initial_candidate_invalid_reason": null,
     "scientific_acceptance": false
   },
-  "started_utc": "2026-10-15T13:57:05.177699+00:00",
-  "finished_utc": "2026-10-15T14:43:26.015608+00:00",
-  "started_cst": "2026-10-15 21:57:05 UTC+8",
-  "finished_cst": "2026-10-15 22:43:26 UTC+8",
-  "elapsed_seconds": 2778.709147324,
   "step": 122,
   "workflow_phase": "completed",
-  "total_elapsed_en": "7h 31m 37s",
+  "total_elapsed_en": "7h 52m 05s",
   "rtl_files": 20,
   "rtl_lines": 3592
 }
