@@ -1,0 +1,66 @@
+{
+  "status": "failed",
+  "parser_self_tests": {
+    "known_bf16_vector": true,
+    "signed_quantization_ties_and_endpoints": true,
+    "rejected_malformed_cases": [
+      {
+        "case": "header-dtype-F32",
+        "rejection": "test.weight: dtype is not BF16"
+      },
+      {
+        "case": "header-shape-[4]",
+        "rejection": "test.weight: manifest/header shape disagreement"
+      },
+      {
+        "case": "header-data_offsets-[2, 10]",
+        "rejection": "test.weight: payload bounds/alignment"
+      },
+      {
+        "case": "header-data_offsets-[0, 6]",
+        "rejection": "test.weight: shape/byte length disagreement"
+      },
+      {
+        "case": "header-data_offsets-[-2, 6]",
+        "rejection": "test.weight: payload bounds/alignment"
+      },
+      {
+        "case": "tensor-hash",
+        "rejection": "test.weight: tensor SHA-256 mismatch"
+      },
+      {
+        "case": "file-hash",
+        "rejection": "complete extracted safetensors SHA-256 mismatch"
+      },
+      {
+        "case": "range",
+        "rejection": "test.weight: original-file inclusive range length/alignment"
+      },
+      {
+        "case": "original-shape",
+        "rejection": "test.weight: authoritative original shape disagreement"
+      },
+      {
+        "case": "count",
+        "rejection": "manifest tensor count"
+      },
+      {
+        "case": "trailing-payload",
+        "rejection": "unindexed trailing payload bytes"
+      },
+      {
+        "case": "payload-gap",
+        "rejection": "test.weight: overlapping or noncontiguous payload interval"
+      },
+      {
+        "case": "nonfinite",
+        "rejection": "test.weight: nonfinite BF16 payload"
+      },
+      {
+        "case": "duplicate-json-key",
+        "rejection": "duplicate JSON key: test.weight"
+      }
+    ]
+  },
+  "error": "CheckpointError: vision_tower.patch_embedder.position_embedding_table: pre-extracted slice exceeds loaded tensor"
+}

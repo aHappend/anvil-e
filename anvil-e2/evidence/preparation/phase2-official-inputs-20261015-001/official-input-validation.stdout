@@ -1,0 +1,1 @@
+CheckpointError: vision_tower.patch_embedder.position_embedding_table: pre-extracted slice exceeds loaded tensor

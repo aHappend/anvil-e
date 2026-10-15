@@ -36,14 +36,17 @@ def sources():
         paths.extend(found)
     paths.extend(ROOT/"hf_embeddinggemma2_vision_spec"/p for p in (
         "config.json", "vision_model_tensors.json", "language_model_tensors.json",
-        "modules.json", "1_Pooling/config.json", "sentence_bert_config.json"))
+        "modules.json", "1_Pooling/config.json", "sentence_bert_config.json",
+        "official_weights/google_embeddinggemma2_official_slice.safetensors",
+        "official_weights/official_weights_manifest.json",
+        "official_weights/official_hardware_slices_fp32_q824.json"))
     assert all(p.is_file() for p in paths), "missing authoritative input"
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in paths}
 
 
 class Run:
-    def __init__(self, directory, budget=86400, repair_of=None, *, deadline=None):
+    def __init__(self, directory, budget=120, repair_of=None, *, deadline=None):
         began = time.monotonic()
         assert 0 < budget <= 86400, "runner budget must be bounded by 86400 seconds"
         self.directory = Path(directory).resolve()
@@ -65,7 +68,7 @@ class Run:
         # never reopened by another invocation.
         (self.directory/"receipt.json").write_text(json.dumps(self.receipt, indent=2))
 
-    def command(self, argv, name, timeout=20, expected=0):
+    def command(self, argv, name, timeout=3600, expected=0):
         assert timeout > 0, "child watchdog must be positive"
         stdout, stderr = self.directory/(name+".stdout"), self.directory/(name+".stderr")
         record = {"argv": [str(a) for a in argv], "cwd": str(ROOT),
@@ -501,7 +504,7 @@ endmodule
     run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable,
                  *rtl_files(directory), tb], name+"-compile", timeout=120)
     out, _, _ = run.command(["vvp", *(["-v"] if startup_diagnostic else []), executable],
-                            name+"-simulate", timeout=30 if startup_diagnostic else 45)
+                            name+"-simulate", timeout=3600)
     began = time.monotonic(), time.process_time()
     if reset_phase:
         assert f"RESET_OBSERVED {reset_phase}" in out and "RESET_COMPLETE" in out
@@ -762,6 +765,33 @@ def assert_behavior_coverage(run):
     assert any(a.get("integer_extremes") for a in assertions)
 
 
+def official_inputs(run):
+    output = run.directory/"official_input_validation.json"
+    out, err, code = run.command(
+        [sys.executable, ROOT/"tests/official_weights.py", "--output", output],
+        "official-input-validation", timeout=3600, expected=None)
+    assert output.is_file(), f"official parser produced no diagnosis: {out}{err}"
+    result = json.loads(output.read_text())
+    run.receipt["official_input_validation"] = str(output.relative_to(ROOT))
+    run.save()
+    assert code in (0, 2) and result["status"] == "input_validation_only", (
+        f"official checkpoint binary validation failed: {result.get('error', out+err)}")
+    gate = result["coverage_gate"]
+    assert code == 0 and gate["passed"], (
+        "missing official checkpoint coordinates: "
+        f"{len(gate['missing_tensors'])} absent tensors, "
+        f"{len(gate['partial_tensors'])} partial tensors; "
+        "BOI/EOI original embedding rows and factorized position mapping are not established; "
+        f"see {output.relative_to(ROOT)}")
+    return result
+
+
+def functional(run):
+    official_inputs(run)
+    behavior(run)
+    raise AssertionError("official forward-pass/RTL benchmark is not implemented; no acceptance claim")
+
+
 def sensitivity(run, selected=None):
     run.tools(("python3", "iverilog", "vvp"))
     mutations = [
@@ -943,7 +973,7 @@ def synthesis(run, labels=("A", "C"), wrapper=True):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--check", choices=("behavior", "sensitivity", "synthesis"))
+    parser.add_argument("--check", choices=("functional", "behavior", "sensitivity", "synthesis"))
     parser.add_argument("--probe", choices=("A", "B", "C", "D", "frontend",
                                            "focused", "directed", "synthesis-A",
                                            "mutation-ple", "mutation-normalize",
@@ -954,7 +984,7 @@ def main():
                                            "startup", "numerical-matrix", "guarded-norm",
                                            "guarded-division", "guarded-divider",
                                            "guarded-nonlinear", "six-layer-regression",
-                                           "attention-errors"))
+                                           "attention-errors", "official-inputs"))
     parser.add_argument("--output")
     parser.add_argument("--repair-of")
     parser.add_argument("--probe-seed", type=int, default=17)
@@ -969,13 +999,17 @@ def main():
         assert directory.is_relative_to(ROOT/"evidence/preparation"), "probe must be project-local"
         checks = [args.probe]
     else:
-        checks = [args.check] if args.check else ["behavior", "sensitivity", "synthesis"]
+        checks = [("functional" if args.check == "behavior" else args.check)] if args.check else [
+            "functional", "sensitivity", "synthesis"]
     for check in checks:
         directory = (ROOT/args.output if args.probe else
                      ROOT/"evidence/verification"/check/(str(time.time_ns())+"-"+str(os.getpid())))
-        run = Run(directory, 3600 if args.probe else 86400, args.repair_of)
+        run = Run(directory, 120, args.repair_of)
         try:
-            if check == "frontend":
+            if check == "official-inputs":
+                run.tools(("python3",))
+                official_inputs(run)
+            elif check == "frontend":
                 frontend_probe(run)
             elif check == "b89-text":
                 run.tools(("python3", "iverilog", "vvp"))

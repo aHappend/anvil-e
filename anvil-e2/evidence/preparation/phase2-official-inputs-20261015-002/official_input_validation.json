@@ -1,0 +1,6279 @@
+{
+  "status": "input_validation_only",
+  "parser_self_tests": {
+    "known_bf16_vector": true,
+    "signed_quantization_ties_and_endpoints": true,
+    "rejected_malformed_cases": [
+      {
+        "case": "header-dtype-F32",
+        "rejection": "test.weight: dtype is not BF16"
+      },
+      {
+        "case": "header-shape-[4]",
+        "rejection": "test.weight: manifest/header shape disagreement"
+      },
+      {
+        "case": "header-data_offsets-[2, 10]",
+        "rejection": "test.weight: payload bounds/alignment"
+      },
+      {
+        "case": "header-data_offsets-[0, 6]",
+        "rejection": "test.weight: shape/byte length disagreement"
+      },
+      {
+        "case": "header-data_offsets-[-2, 6]",
+        "rejection": "test.weight: payload bounds/alignment"
+      },
+      {
+        "case": "tensor-hash",
+        "rejection": "test.weight: tensor SHA-256 mismatch"
+      },
+      {
+        "case": "file-hash",
+        "rejection": "complete extracted safetensors SHA-256 mismatch"
+      },
+      {
+        "case": "range",
+        "rejection": "test.weight: original-file inclusive range length/alignment"
+      },
+      {
+        "case": "original-shape",
+        "rejection": "test.weight: authoritative original shape disagreement"
+      },
+      {
+        "case": "count",
+        "rejection": "manifest tensor count"
+      },
+      {
+        "case": "trailing-payload",
+        "rejection": "unindexed trailing payload bytes"
+      },
+      {
+        "case": "payload-gap",
+        "rejection": "test.weight: overlapping or noncontiguous payload interval"
+      },
+      {
+        "case": "nonfinite",
+        "rejection": "test.weight: nonfinite BF16 payload"
+      },
+      {
+        "case": "duplicate-json-key",
+        "rejection": "duplicate JSON key: test.weight"
+      }
+    ]
+  },
+  "direct_parser": {
+    "complete_file_sha256": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "header_bytes": 6576,
+    "payload_bytes": 5133572,
+    "tensor_count": 55,
+    "decoded_finite_elements": 2566786,
+    "metadata": {},
+    "tensors": [
+      {
+        "name": "embed_vision.embedding_projection.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          5035268,
+          5133572
+        ],
+        "extracted_file_offsets_half_open": [
+          5041852,
+          5140156
+        ],
+        "original_hf_byte_range_inclusive": [
+          611394344,
+          611492647
+        ],
+        "sha256": "70e0f3280e07fcb9782107cf0db266e381741c209adeecce75c66594c7a709c0",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.embed_tokens.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          262144,
+          512
+        ],
+        "loaded_shape": [
+          256,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          0,
+          262144
+        ],
+        "extracted_file_offsets_half_open": [
+          6584,
+          268728
+        ],
+        "original_hf_byte_range_inclusive": [
+          612180776,
+          612442919
+        ],
+        "sha256": "22a114b399eb8026bf996969b8f4dbd13e01185900f8ebd7470be39bc8acfe1f",
+        "decoded_finite_elements": 131072,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.embedding_projection.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768,
+          512
+        ],
+        "loaded_shape": [
+          768,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          263168,
+          1049600
+        ],
+        "extracted_file_offsets_half_open": [
+          269752,
+          1056184
+        ],
+        "original_hf_byte_range_inclusive": [
+          880616232,
+          881402663
+        ],
+        "sha256": "8bf40642666dd27ce49c627e2c4398945e1c5957852b5210f1c1be6324dd9b63",
+        "decoded_finite_elements": 393216,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.input_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1312768,
+          1313792
+        ],
+        "extracted_file_offsets_half_open": [
+          1319352,
+          1320376
+        ],
+        "original_hf_byte_range_inclusive": [
+          881402664,
+          881403687
+        ],
+        "sha256": "4ce4304b85bdd11572b10fc28a610452d95962328153fde6f8e7f328699a8286",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.layer_scalar",
+        "dtype": "BF16",
+        "original_shape": [
+          1
+        ],
+        "loaded_shape": [
+          1
+        ],
+        "extracted_data_offsets_half_open": [
+          1313792,
+          1313794
+        ],
+        "extracted_file_offsets_half_open": [
+          1320376,
+          1320378
+        ],
+        "original_hf_byte_range_inclusive": [
+          881403688,
+          881403689
+        ],
+        "sha256": "8487a75c0de4c73162af36a68bd4a6cea9a15b41d7f4ce6f34260565406c9728",
+        "decoded_finite_elements": 1,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.mlp.down_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          2048
+        ],
+        "loaded_shape": [
+          64,
+          2048
+        ],
+        "extracted_data_offsets_half_open": [
+          1775618,
+          2037762
+        ],
+        "extracted_file_offsets_half_open": [
+          1782202,
+          2044346
+        ],
+        "original_hf_byte_range_inclusive": [
+          881403690,
+          881665833
+        ],
+        "sha256": "5247158546fb7baeeeefda7acfe16c7265f9d3174865b96803d83771f348a734",
+        "decoded_finite_elements": 131072,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.mlp.gate_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1644546,
+          1710082
+        ],
+        "extracted_file_offsets_half_open": [
+          1651130,
+          1716666
+        ],
+        "original_hf_byte_range_inclusive": [
+          883500842,
+          883566377
+        ],
+        "sha256": "602ee6efed0a6270c385c47396f25c68d3669361ea5d3a97e6f0e6245feafed0",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.mlp.up_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1710082,
+          1775618
+        ],
+        "extracted_file_offsets_half_open": [
+          1716666,
+          1782202
+        ],
+        "original_hf_byte_range_inclusive": [
+          885597994,
+          885663529
+        ],
+        "sha256": "c4c9783930b4386eca04e71b7e491efc2bed23f8959b3b58c2fa98a7f829d962",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.ple_block.per_layer_input_gate.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2038786,
+          2104322
+        ],
+        "extracted_file_offsets_half_open": [
+          2045370,
+          2110906
+        ],
+        "original_hf_byte_range_inclusive": [
+          887695146,
+          887760681
+        ],
+        "sha256": "3e2bf6c735be9b369f5a3a3d1479947be65608ba3c035d0fac39a21d3c3a4f34",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.ple_block.per_layer_projection.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2104322,
+          2169858
+        ],
+        "extracted_file_offsets_half_open": [
+          2110906,
+          2176442
+        ],
+        "original_hf_byte_range_inclusive": [
+          888219434,
+          888284969
+        ],
+        "sha256": "30e1b926c3857632bbe8e26da90f394b088f9a479b40423bd6af23bc0d8ed750",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.ple_block.post_per_layer_input_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2169858,
+          2170882
+        ],
+        "extracted_file_offsets_half_open": [
+          2176442,
+          2177466
+        ],
+        "original_hf_byte_range_inclusive": [
+          888743722,
+          888744745
+        ],
+        "sha256": "ad8518c09d63a039b4576e8356b610c0d4a2bd3ed340b959fad26292c8df9a54",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.post_attention_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1642498,
+          1643522
+        ],
+        "extracted_file_offsets_half_open": [
+          1649082,
+          1650106
+        ],
+        "original_hf_byte_range_inclusive": [
+          888744746,
+          888745769
+        ],
+        "sha256": "202c730ccb1df794bfa5bfca5b824d471b72e276c13e652f802b6f114f1ab93a",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.post_feedforward_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2037762,
+          2038786
+        ],
+        "extracted_file_offsets_half_open": [
+          2044346,
+          2045370
+        ],
+        "original_hf_byte_range_inclusive": [
+          888745770,
+          888746793
+        ],
+        "sha256": "330e8aad26a0947e5533da0448510374c2c0c3ed74233a92f91b5dab847c1472",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.pre_feedforward_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1643522,
+          1644546
+        ],
+        "extracted_file_offsets_half_open": [
+          1650106,
+          1651130
+        ],
+        "original_hf_byte_range_inclusive": [
+          888746794,
+          888747817
+        ],
+        "sha256": "c4b2d8f7ac49da11dd20035dec398f256da0c7e7563654c1e5978e21c6f6688d",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.self_attn.k_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          256
+        ],
+        "loaded_shape": [
+          256
+        ],
+        "extracted_data_offsets_half_open": [
+          1641986,
+          1642498
+        ],
+        "extracted_file_offsets_half_open": [
+          1648570,
+          1649082
+        ],
+        "original_hf_byte_range_inclusive": [
+          888747818,
+          888748329
+        ],
+        "sha256": "82dbd230fa6158cdafdf769a7ed09db864b9b957b379d356408db8c75496b1b4",
+        "decoded_finite_elements": 256,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.self_attn.k_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1379330,
+          1444866
+        ],
+        "extracted_file_offsets_half_open": [
+          1385914,
+          1451450
+        ],
+        "original_hf_byte_range_inclusive": [
+          888748330,
+          888813865
+        ],
+        "sha256": "b01f049c380ab8aec77c4e2dd5966f7d9ab74fed9903d27c32741903d70b6b1e",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.self_attn.o_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          1024
+        ],
+        "loaded_shape": [
+          64,
+          1024
+        ],
+        "extracted_data_offsets_half_open": [
+          1510402,
+          1641474
+        ],
+        "extracted_file_offsets_half_open": [
+          1516986,
+          1648058
+        ],
+        "original_hf_byte_range_inclusive": [
+          889272618,
+          889403689
+        ],
+        "sha256": "a79285c351399cd8fe6dc3018c9c18cf07fc6add6a5dd06a15d0b9e592c0dc63",
+        "decoded_finite_elements": 65536,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.self_attn.q_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          256
+        ],
+        "loaded_shape": [
+          256
+        ],
+        "extracted_data_offsets_half_open": [
+          1641474,
+          1641986
+        ],
+        "extracted_file_offsets_half_open": [
+          1648058,
+          1648570
+        ],
+        "original_hf_byte_range_inclusive": [
+          890321194,
+          890321705
+        ],
+        "sha256": "a80f3176d8c4e9c8d113aee90863711847acaf9bc112dc49f85690fd355c7866",
+        "decoded_finite_elements": 256,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.0.self_attn.q_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          1024,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1313794,
+          1379330
+        ],
+        "extracted_file_offsets_half_open": [
+          1320378,
+          1385914
+        ],
+        "original_hf_byte_range_inclusive": [
+          890321706,
+          890387241
+        ],
+        "sha256": "e50f6403faf3bc9b22d1ef02d59d80162f208ac1e44a16b4a6c419817a40cf4f",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.0.self_attn.v_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1444866,
+          1510402
+        ],
+        "extracted_file_offsets_half_open": [
+          1451450,
+          1516986
+        ],
+        "original_hf_byte_range_inclusive": [
+          891370282,
+          891435817
+        ],
+        "sha256": "ce3d9a47d78f454650bb80640399d640cb2bdd97d2e872a5bcce6e8d930635d3",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.input_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2170882,
+          2171906
+        ],
+        "extracted_file_offsets_half_open": [
+          2177466,
+          2178490
+        ],
+        "original_hf_byte_range_inclusive": [
+          1087043406,
+          1087044429
+        ],
+        "sha256": "fe027298cc1c6df3a3a1e7f673103291f0f787f446fe15cf4290dacfbdd3f5eb",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.layer_scalar",
+        "dtype": "BF16",
+        "original_shape": [
+          1
+        ],
+        "loaded_shape": [
+          1
+        ],
+        "extracted_data_offsets_half_open": [
+          2171906,
+          2171908
+        ],
+        "extracted_file_offsets_half_open": [
+          2178490,
+          2178492
+        ],
+        "original_hf_byte_range_inclusive": [
+          1087044430,
+          1087044431
+        ],
+        "sha256": "7edc4115323582c30760a3e66cda505c56c6948ca3a8245bf12e76f9f0bb4be9",
+        "decoded_finite_elements": 1,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.mlp.down_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          2048
+        ],
+        "loaded_shape": [
+          64,
+          2048
+        ],
+        "extracted_data_offsets_half_open": [
+          2765828,
+          3027972
+        ],
+        "extracted_file_offsets_half_open": [
+          2772412,
+          3034556
+        ],
+        "original_hf_byte_range_inclusive": [
+          1087044432,
+          1087306575
+        ],
+        "sha256": "67b94a15e654a6bdfe3e44a77a740d857af24493637ffb60165e44313a4cb4d7",
+        "decoded_finite_elements": 131072,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.mlp.gate_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2634756,
+          2700292
+        ],
+        "extracted_file_offsets_half_open": [
+          2641340,
+          2706876
+        ],
+        "original_hf_byte_range_inclusive": [
+          1089141584,
+          1089207119
+        ],
+        "sha256": "b3f482d0b3a750355d7f670a9633e501364d967c744a9477eaed45edc7538be3",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.mlp.up_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2700292,
+          2765828
+        ],
+        "extracted_file_offsets_half_open": [
+          2706876,
+          2772412
+        ],
+        "original_hf_byte_range_inclusive": [
+          1091238736,
+          1091304271
+        ],
+        "sha256": "a40b20b5d00b61eed8dd8fd68ab851a5ec5f6b1bf8f7a3a5ccbc2cac49582ce2",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.ple_block.per_layer_input_gate.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          3028996,
+          3094532
+        ],
+        "extracted_file_offsets_half_open": [
+          3035580,
+          3101116
+        ],
+        "original_hf_byte_range_inclusive": [
+          1093335888,
+          1093401423
+        ],
+        "sha256": "80d0657280a3011ac26ab161f50b4bab38bdeac69c7b1a45a9eee9d4200db757",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.ple_block.per_layer_projection.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          3094532,
+          3160068
+        ],
+        "extracted_file_offsets_half_open": [
+          3101116,
+          3166652
+        ],
+        "original_hf_byte_range_inclusive": [
+          1093860176,
+          1093925711
+        ],
+        "sha256": "e3316f74c1b2482cec0b3a2865746d026573979b966d14187fee197094cb585d",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.ple_block.post_per_layer_input_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          3160068,
+          3161092
+        ],
+        "extracted_file_offsets_half_open": [
+          3166652,
+          3167676
+        ],
+        "original_hf_byte_range_inclusive": [
+          1094384464,
+          1094385487
+        ],
+        "sha256": "91f3447bd156a1d9bf056264ec49f753b22282c2d7eb671e3e3c437c8b3256f0",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.post_attention_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2632708,
+          2633732
+        ],
+        "extracted_file_offsets_half_open": [
+          2639292,
+          2640316
+        ],
+        "original_hf_byte_range_inclusive": [
+          1094385488,
+          1094386511
+        ],
+        "sha256": "a1db244c820178e77bbb8aa5b22a4bb77b78b66c3cf07778e3666906448373e8",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.post_feedforward_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          3027972,
+          3028996
+        ],
+        "extracted_file_offsets_half_open": [
+          3034556,
+          3035580
+        ],
+        "original_hf_byte_range_inclusive": [
+          1094386512,
+          1094387535
+        ],
+        "sha256": "5f41c5d9c69456831f0b00370e50a416866a72a2990505fae32f5150e33d1712",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.pre_feedforward_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2633732,
+          2634756
+        ],
+        "extracted_file_offsets_half_open": [
+          2640316,
+          2641340
+        ],
+        "original_hf_byte_range_inclusive": [
+          1094387536,
+          1094388559
+        ],
+        "sha256": "c71652eeaea1f697763286187e5272ffc3a22c9e34dd4ee8b2855055522171de",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.self_attn.k_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2631684,
+          2632708
+        ],
+        "extracted_file_offsets_half_open": [
+          2638268,
+          2639292
+        ],
+        "original_hf_byte_range_inclusive": [
+          1094388560,
+          1094389583
+        ],
+        "sha256": "af3b5037dc9efd6b449d3e2a5e5a82789c947c5e0d83c59b52f4feb1a84e9236",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.self_attn.k_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2237444,
+          2302980
+        ],
+        "extracted_file_offsets_half_open": [
+          2244028,
+          2309564
+        ],
+        "original_hf_byte_range_inclusive": [
+          1094389584,
+          1094455119
+        ],
+        "sha256": "8c2dccf0f4de5d4c09f2035a48aa63c2ddaddeb3e70356bd5dccc96eb00665b7",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.self_attn.o_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          2048
+        ],
+        "loaded_shape": [
+          64,
+          2048
+        ],
+        "extracted_data_offsets_half_open": [
+          2368516,
+          2630660
+        ],
+        "extracted_file_offsets_half_open": [
+          2375100,
+          2637244
+        ],
+        "original_hf_byte_range_inclusive": [
+          1094913872,
+          1095176015
+        ],
+        "sha256": "1d2099589c1ce0d1c5962f4befed30ff2754e80fadbb5258bc38ca4db0682862",
+        "decoded_finite_elements": 131072,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.self_attn.q_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2630660,
+          2631684
+        ],
+        "extracted_file_offsets_half_open": [
+          2637244,
+          2638268
+        ],
+        "original_hf_byte_range_inclusive": [
+          1097011024,
+          1097012047
+        ],
+        "sha256": "dedec5aca61118d9dfeaf8c5b8be161726b81beacc6fbcbed9dbc4a7d663c8ed",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.layers.5.self_attn.q_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2171908,
+          2237444
+        ],
+        "extracted_file_offsets_half_open": [
+          2178492,
+          2244028
+        ],
+        "original_hf_byte_range_inclusive": [
+          1097012048,
+          1097077583
+        ],
+        "sha256": "18c8b2cd77703bc0179c8a13b3fa1874cf57d84288e1c3d545700dd0b0473f77",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.layers.5.self_attn.v_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          2302980,
+          2368516
+        ],
+        "extracted_file_offsets_half_open": [
+          2309564,
+          2375100
+        ],
+        "original_hf_byte_range_inclusive": [
+          1099109200,
+          1099174735
+        ],
+        "sha256": "ac63e2994bb0edd5218dc90dda905cf5d15ec4b45da87d28f4658f55a9160de7",
+        "decoded_finite_elements": 32768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          262144,
+          263168
+        ],
+        "extracted_file_offsets_half_open": [
+          268728,
+          269752
+        ],
+        "original_hf_byte_range_inclusive": [
+          1141601112,
+          1141602135
+        ],
+        "sha256": "05b4ed217245085eead25a8de1d100a176273b01fff0953f3612722bd0730bc6",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "language_model.ple.per_layer_model_projection.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          12288,
+          512
+        ],
+        "loaded_shape": [
+          256,
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1049600,
+          1311744
+        ],
+        "extracted_file_offsets_half_open": [
+          1056184,
+          1318328
+        ],
+        "original_hf_byte_range_inclusive": [
+          1141602136,
+          1141864279
+        ],
+        "sha256": "ee3a3e84475818c53ad801444043a01d5abf5ff6d6a8a492c91fbab7820e7894",
+        "decoded_finite_elements": 131072,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "language_model.ple.per_layer_projection_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          512
+        ],
+        "loaded_shape": [
+          512
+        ],
+        "extracted_data_offsets_half_open": [
+          1311744,
+          1312768
+        ],
+        "extracted_file_offsets_half_open": [
+          1318328,
+          1319352
+        ],
+        "original_hf_byte_range_inclusive": [
+          1154185048,
+          1154186071
+        ],
+        "sha256": "e51aad2375f2639291649c94319209878b3f18b55dc94b415256f665ff4c1cc6",
+        "decoded_finite_elements": 512,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.input_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768
+        ],
+        "loaded_shape": [
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4045828,
+          4047364
+        ],
+        "extracted_file_offsets_half_open": [
+          4052412,
+          4053948
+        ],
+        "original_hf_byte_range_inclusive": [
+          1154186072,
+          1154187607
+        ],
+        "sha256": "e3e24803512541af1ede99c5351d972f64d0796b860169622a23695736ce6ca2",
+        "decoded_finite_elements": 768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.mlp.down_proj.linear.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768,
+          3072
+        ],
+        "loaded_shape": [
+          64,
+          3072
+        ],
+        "extracted_data_offsets_half_open": [
+          4640516,
+          5033732
+        ],
+        "extracted_file_offsets_half_open": [
+          4647100,
+          5040316
+        ],
+        "original_hf_byte_range_inclusive": [
+          1154187608,
+          1154580823
+        ],
+        "sha256": "63808c7238e8692e0270e2c9886db02e32f44f949536ebb7c5aab28fa109d9a7",
+        "decoded_finite_elements": 196608,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.mlp.gate_proj.linear.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          3072,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4443908,
+          4542212
+        ],
+        "extracted_file_offsets_half_open": [
+          4450492,
+          4548796
+        ],
+        "original_hf_byte_range_inclusive": [
+          1158906200,
+          1159004503
+        ],
+        "sha256": "ac953bbfd143af22e6b8e57c8c7c987f4c67d90a468e75ff1fb5b8cee85a5553",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.mlp.up_proj.linear.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          3072,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4542212,
+          4640516
+        ],
+        "extracted_file_offsets_half_open": [
+          4548796,
+          4647100
+        ],
+        "original_hf_byte_range_inclusive": [
+          1163624792,
+          1163723095
+        ],
+        "sha256": "d2eb2688bfde7c0ca1397c9c9098c36fb15f3aac4d6438fdef85ad764bb11c1a",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.post_attention_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768
+        ],
+        "loaded_shape": [
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4440836,
+          4442372
+        ],
+        "extracted_file_offsets_half_open": [
+          4447420,
+          4448956
+        ],
+        "original_hf_byte_range_inclusive": [
+          1168343384,
+          1168344919
+        ],
+        "sha256": "ab619204e6ebc8b14f47511a55dfabe850b65d3eed5a945e364f31ca155ce4ec",
+        "decoded_finite_elements": 768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.post_feedforward_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768
+        ],
+        "loaded_shape": [
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          5033732,
+          5035268
+        ],
+        "extracted_file_offsets_half_open": [
+          5040316,
+          5041852
+        ],
+        "original_hf_byte_range_inclusive": [
+          1168344920,
+          1168346455
+        ],
+        "sha256": "6dd8dc6294c4dbcd545f58457f46ebb7d2379cbeb4bc58be4ef0266e24860138",
+        "decoded_finite_elements": 768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.pre_feedforward_layernorm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768
+        ],
+        "loaded_shape": [
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4442372,
+          4443908
+        ],
+        "extracted_file_offsets_half_open": [
+          4448956,
+          4450492
+        ],
+        "original_hf_byte_range_inclusive": [
+          1168346456,
+          1168347991
+        ],
+        "sha256": "cf97954580d3eb73838ee84aada1efc556124a1c7911a6ae4e8fb055a48d3c05",
+        "decoded_finite_elements": 768,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.k_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          64
+        ],
+        "loaded_shape": [
+          64
+        ],
+        "extracted_data_offsets_half_open": [
+          4440708,
+          4440836
+        ],
+        "extracted_file_offsets_half_open": [
+          4447292,
+          4447420
+        ],
+        "original_hf_byte_range_inclusive": [
+          1168347992,
+          1168348119
+        ],
+        "sha256": "e54de08a79307cf977cdf6cbc3baa3517074f32db5abc20909938fac3aeb5c86",
+        "decoded_finite_elements": 64,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.k_proj.linear.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4145668,
+          4243972
+        ],
+        "extracted_file_offsets_half_open": [
+          4152252,
+          4250556
+        ],
+        "original_hf_byte_range_inclusive": [
+          1168348120,
+          1168446423
+        ],
+        "sha256": "91c5234206baacd887948e4e6d9c63b7a4533a142470c95f1732c35d516ce569",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.o_proj.linear.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4342276,
+          4440580
+        ],
+        "extracted_file_offsets_half_open": [
+          4348860,
+          4447164
+        ],
+        "original_hf_byte_range_inclusive": [
+          1169527768,
+          1169626071
+        ],
+        "sha256": "8948096a1b475b270207aa50f130eda3db667716e97882d969940797a9da5059",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.q_norm.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          64
+        ],
+        "loaded_shape": [
+          64
+        ],
+        "extracted_data_offsets_half_open": [
+          4440580,
+          4440708
+        ],
+        "extracted_file_offsets_half_open": [
+          4447164,
+          4447292
+        ],
+        "original_hf_byte_range_inclusive": [
+          1170707416,
+          1170707543
+        ],
+        "sha256": "ac6e9705df32919796b33300a07d838cf17b62ff61956e0f443dfe2afdfa5525",
+        "decoded_finite_elements": 64,
+        "q824_saturations": 0,
+        "original_coordinates_verified": true
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.q_proj.linear.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4047364,
+          4145668
+        ],
+        "extracted_file_offsets_half_open": [
+          4053948,
+          4152252
+        ],
+        "original_hf_byte_range_inclusive": [
+          1170707544,
+          1170805847
+        ],
+        "sha256": "9c4b5f6a21a8d40cb3831c4bb17ab53b61d387265ccbddb54f5c40ff49dc099e",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.v_proj.linear.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          4243972,
+          4342276
+        ],
+        "extracted_file_offsets_half_open": [
+          4250556,
+          4348860
+        ],
+        "original_hf_byte_range_inclusive": [
+          1171887192,
+          1171985495
+        ],
+        "sha256": "71be7859f600d0e8dca11b831a9ef0bdca78741fc19872c25a70f5dd5fc07680",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.patch_embedder.input_proj.weight",
+        "dtype": "BF16",
+        "original_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          3161092,
+          3259396
+        ],
+        "extracted_file_offsets_half_open": [
+          3167676,
+          3265980
+        ],
+        "original_hf_byte_range_inclusive": [
+          1456278360,
+          1456376663
+        ],
+        "sha256": "b039150f96530595ab907e38e5dae752100e0462323ef04ae785cd28fec8b4f5",
+        "decoded_finite_elements": 49152,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      },
+      {
+        "name": "vision_tower.patch_embedder.position_embedding_table",
+        "dtype": "BF16",
+        "original_shape": [
+          2,
+          10240,
+          768
+        ],
+        "loaded_shape": [
+          2,
+          256,
+          768
+        ],
+        "extracted_data_offsets_half_open": [
+          3259396,
+          4045828
+        ],
+        "extracted_file_offsets_half_open": [
+          3265980,
+          4052412
+        ],
+        "original_hf_byte_range_inclusive": [
+          1457458008,
+          1458244439
+        ],
+        "sha256": "8e45dcf46c1ef088dc0a097b6d37e716fdf1bea7e4e3bf2724f5172358822866",
+        "decoded_finite_elements": 393216,
+        "q824_saturations": 0,
+        "original_coordinates_verified": false
+      }
+    ],
+    "provenance_limit": "Consistency with supplied manifest, not independent remote authentication",
+    "decode": "little-endian BF16 bits shifted left 16 into struct IEEE754 binary32",
+    "quantization": "nearest-even round(value*2^24), signed32 saturation; no memory image emitted",
+    "manifest_sha256": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad",
+    "preextracted_json_sha256": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c",
+    "preextracted_crosscheck": {
+      "compared_loaded_coordinate_slices": [
+        {
+          "name": "language_model.embed_tokens.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.embedding_projection.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.ple.per_layer_model_projection.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.ple.per_layer_projection_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.input_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.layer_scalar",
+          "shape": [
+            1
+          ],
+          "elements": 1,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.self_attn.q_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.self_attn.k_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.self_attn.v_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.self_attn.o_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.self_attn.q_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.self_attn.k_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.post_attention_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.pre_feedforward_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.mlp.gate_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.mlp.up_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.mlp.down_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.post_feedforward_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.ple_block.per_layer_input_gate.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.ple_block.per_layer_projection.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.0.ple_block.post_per_layer_input_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.input_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.layer_scalar",
+          "shape": [
+            1
+          ],
+          "elements": 1,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.self_attn.q_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.self_attn.k_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.self_attn.v_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.self_attn.o_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.self_attn.q_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.self_attn.k_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.post_attention_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.pre_feedforward_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.mlp.gate_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.mlp.up_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.mlp.down_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.post_feedforward_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.ple_block.per_layer_input_gate.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.ple_block.per_layer_projection.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "language_model.layers.5.ple_block.post_per_layer_input_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.patch_embedder.input_proj.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.input_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.self_attn.q_proj.linear.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.self_attn.k_proj.linear.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.self_attn.v_proj.linear.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.self_attn.o_proj.linear.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.self_attn.q_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.self_attn.k_norm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.post_attention_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.pre_feedforward_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.mlp.gate_proj.linear.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.mlp.up_proj.linear.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.mlp.down_proj.linear.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "vision_tower.encoder.layers.0.post_feedforward_layernorm.weight",
+          "shape": [
+            32
+          ],
+          "elements": 32,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        },
+        {
+          "name": "embed_vision.embedding_projection.weight",
+          "shape": [
+            32,
+            16
+          ],
+          "elements": 512,
+          "coordinates": "leading indices of loaded tensor; not proof of original coordinates"
+        }
+      ],
+      "unresolved_mappings": [
+        {
+          "name": "vision_tower.patch_embedder.position_embedding_table",
+          "json_shape": [
+            16,
+            16
+          ],
+          "loaded_shape": [
+            2,
+            256,
+            768
+          ],
+          "reason": "JSON rank differs from BF16 tensor; no extraction coordinate map supplied"
+        }
+      ],
+      "passed": false
+    }
+  },
+  "coverage_gate": {
+    "passed": false,
+    "missing_tensors": [
+      {
+        "name": "language_model.layers.1.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.1.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.1.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.1.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.1.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.1.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.1.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.10.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.10.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.10.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.10.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.10.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.10.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.11.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.11.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.self_attn.k_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.11.self_attn.q_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.self_attn.q_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.11.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.12.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.12.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.12.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.12.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.12.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.12.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.13.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.13.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.13.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.13.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.13.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.13.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.14.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.14.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.14.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.14.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.14.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.14.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.15.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.15.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.15.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.15.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.15.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.15.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.16.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.16.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.16.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.16.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.16.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.16.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.17.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.17.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.self_attn.k_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.17.self_attn.q_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.self_attn.q_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.17.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.18.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.18.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.18.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.18.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.18.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.18.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.19.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.19.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.19.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.19.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.19.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.19.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.2.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.2.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.2.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.2.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.2.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.2.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.20.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.20.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.20.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.20.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.20.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.20.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.21.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.21.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.21.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.21.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.21.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.21.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.22.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.22.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.22.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.22.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.22.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.22.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.23.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.23.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.self_attn.k_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.23.self_attn.q_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.self_attn.q_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.23.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.3.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.3.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.3.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.3.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.3.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.3.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.4.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.4.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.4.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.4.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.4.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.4.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.6.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.6.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.6.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.6.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.6.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.6.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.7.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.7.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.7.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.7.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.7.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.7.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.8.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.8.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.8.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.8.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.8.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.8.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.input_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.layer_scalar",
+        "required_shape": [
+          1
+        ]
+      },
+      {
+        "name": "language_model.layers.9.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ]
+      },
+      {
+        "name": "language_model.layers.9.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.ple_block.post_per_layer_input_norm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.post_attention_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.post_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.self_attn.k_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.9.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ]
+      },
+      {
+        "name": "language_model.layers.9.self_attn.q_norm.weight",
+        "required_shape": [
+          256
+        ]
+      },
+      {
+        "name": "language_model.layers.9.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ]
+      },
+      {
+        "name": "language_model.layers.9.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.1.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.10.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.11.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.12.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.13.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.14.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.15.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.2.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.3.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.4.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.5.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.6.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.7.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.8.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.input_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.post_attention_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.post_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.pre_feedforward_layernorm.weight",
+        "required_shape": [
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.self_attn.k_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.self_attn.q_norm.weight",
+        "required_shape": [
+          64
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      },
+      {
+        "name": "vision_tower.encoder.layers.9.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ]
+      }
+    ],
+    "partial_tensors": [
+      {
+        "name": "embed_vision.embedding_projection.weight",
+        "required_shape": [
+          512,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 344064
+      },
+      {
+        "name": "language_model.embed_tokens.weight",
+        "required_shape": [
+          262144,
+          512
+        ],
+        "loaded_shape": [
+          256,
+          512
+        ],
+        "missing_elements_at_least": 134086656
+      },
+      {
+        "name": "language_model.layers.0.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ],
+        "loaded_shape": [
+          64,
+          2048
+        ],
+        "missing_elements_at_least": 917504
+      },
+      {
+        "name": "language_model.layers.0.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 1015808
+      },
+      {
+        "name": "language_model.layers.0.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 1015808
+      },
+      {
+        "name": "language_model.layers.0.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.layers.0.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.layers.0.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.layers.0.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          1024
+        ],
+        "loaded_shape": [
+          64,
+          1024
+        ],
+        "missing_elements_at_least": 458752
+      },
+      {
+        "name": "language_model.layers.0.self_attn.q_proj.weight",
+        "required_shape": [
+          1024,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 491520
+      },
+      {
+        "name": "language_model.layers.0.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.layers.5.mlp.down_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ],
+        "loaded_shape": [
+          64,
+          2048
+        ],
+        "missing_elements_at_least": 917504
+      },
+      {
+        "name": "language_model.layers.5.mlp.gate_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 1015808
+      },
+      {
+        "name": "language_model.layers.5.mlp.up_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 1015808
+      },
+      {
+        "name": "language_model.layers.5.ple_block.per_layer_input_gate.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.layers.5.ple_block.per_layer_projection.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.layers.5.self_attn.k_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.layers.5.self_attn.o_proj.weight",
+        "required_shape": [
+          512,
+          2048
+        ],
+        "loaded_shape": [
+          64,
+          2048
+        ],
+        "missing_elements_at_least": 917504
+      },
+      {
+        "name": "language_model.layers.5.self_attn.q_proj.weight",
+        "required_shape": [
+          2048,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 1015808
+      },
+      {
+        "name": "language_model.layers.5.self_attn.v_proj.weight",
+        "required_shape": [
+          512,
+          512
+        ],
+        "loaded_shape": [
+          64,
+          512
+        ],
+        "missing_elements_at_least": 229376
+      },
+      {
+        "name": "language_model.ple.per_layer_model_projection.weight",
+        "required_shape": [
+          12288,
+          512
+        ],
+        "loaded_shape": [
+          256,
+          512
+        ],
+        "missing_elements_at_least": 6160384
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.mlp.down_proj.linear.weight",
+        "required_shape": [
+          768,
+          3072
+        ],
+        "loaded_shape": [
+          64,
+          3072
+        ],
+        "missing_elements_at_least": 2162688
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.mlp.gate_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 2310144
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.mlp.up_proj.linear.weight",
+        "required_shape": [
+          3072,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 2310144
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.k_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 540672
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.o_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 540672
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.q_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 540672
+      },
+      {
+        "name": "vision_tower.encoder.layers.0.self_attn.v_proj.linear.weight",
+        "required_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 540672
+      },
+      {
+        "name": "vision_tower.patch_embedder.input_proj.weight",
+        "required_shape": [
+          768,
+          768
+        ],
+        "loaded_shape": [
+          64,
+          768
+        ],
+        "missing_elements_at_least": 540672
+      },
+      {
+        "name": "vision_tower.patch_embedder.position_embedding_table",
+        "required_shape": [
+          2,
+          10240,
+          768
+        ],
+        "loaded_shape": [
+          2,
+          256,
+          768
+        ],
+        "missing_elements_at_least": 15335424
+      }
+    ],
+    "required_framing_rows": [
+      {
+        "token": "boi_token_id",
+        "original_row": 255999,
+        "required_columns": [
+          0,
+          512
+        ],
+        "loaded_embedding_shape": [
+          256,
+          512
+        ],
+        "available_in_declared_leading_rows": false,
+        "coordinate_map_supplied": false
+      },
+      {
+        "token": "eoi_token_id",
+        "original_row": 258882,
+        "required_columns": [
+          0,
+          512
+        ],
+        "loaded_embedding_shape": [
+          256,
+          512
+        ],
+        "available_in_declared_leading_rows": false,
+        "coordinate_map_supplied": false
+      }
+    ],
+    "position_mapping_ambiguity": {
+      "name": "vision_tower.patch_embedder.position_embedding_table",
+      "original_axis_stride_bytes": 15728640,
+      "loaded_axis_stride_bytes": 393216,
+      "reason": "One contiguous original byte range cannot establish leading positions of both axes",
+      "required": "authoritative original tensor base offset and per-axis extraction ranges/coordinates"
+    },
+    "partial_mapping_limit": "No original tensor base offsets or multidimensional extraction map supplied",
+    "mandatory_cases": [
+      {
+        "mode": 0,
+        "output_dimension": 768,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 0,
+        "output_dimension": 512,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 0,
+        "output_dimension": 256,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 0,
+        "output_dimension": 128,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 1,
+        "output_dimension": 768,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 1,
+        "output_dimension": 512,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 1,
+        "output_dimension": 256,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 1,
+        "output_dimension": 128,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 2,
+        "output_dimension": 768,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 2,
+        "output_dimension": 512,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 2,
+        "output_dimension": 256,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      },
+      {
+        "mode": 2,
+        "output_dimension": 128,
+        "status": "blocked",
+        "reason": "mandatory official tensor coverage/mapping unavailable"
+      }
+    ],
+    "forbidden_substitutions": [
+      "token aliases",
+      "repeated or relabeled layers",
+      "synthetic/zero fallback weights",
+      "reinterpretation of loaded axis1 as original axis1",
+      "omitted stages"
+    ],
+    "preextracted_unresolved_mappings": [
+      {
+        "name": "vision_tower.patch_embedder.position_embedding_table",
+        "json_shape": [
+          16,
+          16
+        ],
+        "loaded_shape": [
+          2,
+          256,
+          768
+        ],
+        "reason": "JSON rank differs from BF16 tensor; no extraction coordinate map supplied"
+      }
+    ]
+  },
+  "official_forward_pass_executed": false,
+  "rtl_executed": false,
+  "official_comparison_artifact_emitted": false
+}

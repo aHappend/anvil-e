@@ -1,10 +1,38 @@
 {
-  "status_label": "In Progress — Phase 2 Official Weights & Software-vs-RTL Verification",
+  "status_label": "Settled — Phase 2 Official Weights Package Published",
   "chip": "Anvil-E2",
   "phase": "Phase 2 — Official Weights & Software-vs-RTL Comparison",
   "vulcan_version": "0.8.0",
+  "status": "settled",
+  "native_disposition": {
+    "workflow_phase": "blocked",
+    "feedback": "INDEPENDENT REVIEWER RECOVERY ADMISSION GRANTED (call-0004, status=done):\nThe proposed pause is justified: missing authoritative weight data and extraction coordinates prevent the required official multimodal comparison. This accepts the recovery diagnosis, not the hardware or Phase 2 delivery. Newly available simulation and report tools do not resolve that input gap.\n\nI read tests/official_weights.py, the official-input gate in tests/verify.py, the supplied manifest shapes and configuration, and both retained diagnostics. evidence/preparation/phase2-official-inputs-20261015-001/receipt.json records exit 1 without timeout; its stdout identifies the position-slice validation failure. The successor receipt at evidence/preparation/phase2-official-inputs-20261015-002/receipt.json records exit 2 without timeout. Its stdout and official_input_validation.json report 55 decoded tensors, 2,566,786 finite BF16 values, 569 absent tensors and 30 partial tensors. The supplied embedding shape is [256,512], while configuration requires BOI/EOI rows 255999 and 258882; their original-coordinate mapping is not established. The position table also lacks authoritative per-axis extraction coordinates. The parser explicitly diagnoses these limitations rather than substituting values. These observations support an unavailable-input diagnosis, not a simulator failure or a numerical rejection.\n\nPreserve current RTL, tests/official_weights.py, tests/verify.py and both diagnostic directories. The required repair is an authorized input handoff supplying the missing official tensor data and original-coordinate extraction metadata identified in evidence/preparation/phase2-official-inputs-20261015-002/official_input_validation.json. After that material input change, Verifier should validate the new inputs, implement the still-missing independent floating forward pass and public-pin RTL benchmark, and execute the admitted functional, sensitivity and synthesis checks. Do not repeat unchanged diagnostics, alias special tokens, repeat layers, weaken coverage or publish a successful comparison. Official numerical metrics, cycle measurements and end-to-end engineering acceptance remain outstanding; tests/verify.py explicitly fails because the official benchmark is not implemented. I ran no commands and changed no files.\n\nAdmitted Coordinator Recovery Proposal:\nUnavailable authoritative checkpoint coordinates, not a tool failure. Reviewed the supplied execution ledger: both role processes settled with exit 0; no recorded runtime failures or interruptions. The retained Python diagnostic in evidence/preparation/phase2-official-inputs-20261015-001/receipt.json exited 1 without timeout on position-slice validation; its repaired successor, evidence/preparation/phase2-official-inputs-20261015-002/receipt.json, exited 2 without timeout, with empty stderr and an explicit coverage failure. Direct parsing validated the supplied file digest, 55 tensor hashes and 2,566,786 finite BF16 values, but diagnosed 569 absent tensors, 30 partial tensors, unavailable BOI/EOI rows 255999/258882 and unresolved factorized-position extraction coordinates. The actual official_weights directory contains only the three declared inputs; newly available simulation/report tools do not supply missing weights. Preserve tests/official_weights.py, tests/verify.py, RTL and both diagnostic receipts. An authorized input handoff must supply the missing official tensor data and authoritative original-coordinate extraction metadata identified in evidence/preparation/phase2-official-inputs-20261015-002/official_input_validation.json. Then route to Verifier for fresh direct-parser and coordinate validation followed by implementation of the still-missing official forward-pass/RTL benchmark and all admitted checks. No Coordinator experiment or source edit was performed. Numerical metrics, cycle measurements and engineering acceptance remain outstanding; do not substitute synthetic weights, reduce mandatory coverage or issue a successful comparison/report.",
+    "run_status": "ready",
+    "closeout_status": null,
+    "driver_steps": [
+      {
+        "operation": "run",
+        "exit_code": 2
+      }
+    ],
+    "driver_steps_ok": false,
+    "state_error": null,
+    "repairs_used": 0,
+    "designer_attempts": 1,
+    "model_call_count": 4,
+    "all_process_scopes_settled": true,
+    "reviewer_decisions": [],
+    "native_engineering_accepted": false,
+    "candidate_present": false,
+    "candidate_invalid_reason": null,
+    "final_candidate": null,
+    "initial_unrepaired_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "scientific_acceptance": false
+  },
   "started_utc": "2026-10-15T15:19:56.335960+00:00",
+  "finished_utc": "2026-10-15T15:26:23.929432+00:00",
   "started_cst": "2026-10-15 23:19:56 UTC+8",
-  "status": "running",
-  "reason": "Execute Roadmap Phase 2 for Anvil-E2: integrate real official HuggingFace google/embeddinggemma-2 multimodal (vision_tower + embed_vision + language_model) weights from model.safetensors and conduct end-to-end Software-Layer (FP32/BF16) vs Hardware-RTL (SystemVerilog Q8.24) evaluation across vision-only, text-only, and joint vision+text modes."
+  "finished_cst": "2026-10-15 23:26:23 UTC+8",
+  "elapsed_seconds": 385.5
 }

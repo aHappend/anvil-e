@@ -7,9 +7,13 @@ configuration and sentence_bert_config.json are the architectural inputs.
 The Gen-1 RTL is arithmetic and sequencing prior art, not a passing E2 baseline.
 Audio is excluded. Q8.24 provisioning, Q8.40 local arithmetic, offset-scale RMS weights, image grid
 pooling and rotary pairing below are autonomous implementation assumptions,
-not independently established HuggingFace executable behavior. Pretrained
-weights and modeling source are not supplied. No pretrained accuracy, BF16
-equivalence, timing, area or physical-signoff claim is made.
+not independently established HuggingFace executable behavior. Phase 2 supplies
+an extracted official BF16 checkpoint slice in
+`hf_embeddinggemma2_vision_spec/official_weights/`, not a complete checkpoint
+or executable HuggingFace modeling source. The Phase 2 provenance, mapping and
+comparison contract below supersedes the former no-weights assumption.
+No pretrained accuracy, native BF16 arithmetic equivalence, timing, area or
+physical-signoff claim follows from the presence of these files.
 
 ## Ownership and interfaces frozen before implementation
 
@@ -1701,6 +1705,186 @@ patch input_proj.weight does not use that suffix.
 The objective's descriptive clipping-scalar list differs from actual inputs:
 use_clipped_linears=false and no scalar entries exist in the manifest, so the
 implementation does not invent or fetch clipping operands.
+
+## Phase 2 official weight integration and software-versus-RTL comparison
+
+### Inputs, provenance and available-coordinate gate
+
+Required inputs, relative to `hf_embeddinggemma2_vision_spec/official_weights/`,
+are `google_embeddinggemma2_official_slice.safetensors`,
+`official_weights_manifest.json` and
+`official_hardware_slices_fp32_q824.json`. The latter is an optional numerical
+cross-check of represented coordinates, never the source of weights for either
+forward pass or a source of missing coordinates. The supplied manifest names
+`google/embeddinggemma-2` and its `resolve/main/model.safetensors` URL, describes
+55 extracted tensors, and declares extracted-file SHA-256
+`3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb`.
+This is a manifest assertion, not a Designer-computed digest or binary validation.
+Matching it establishes consistency with supplied provenance, not independent
+remote authentication or a pinned upstream revision.
+
+The following coverage findings come from manifest inspection only. Verifier
+must confirm the binary header, payload and exact original coordinates before
+any official numerical execution:
+
+| Source family | Declared available coverage | Mandatory coverage not established |
+|---|---|---|
+| language_model.embed_tokens.weight | [256,512] of [262144,512] | BOI row255999 and EOI row258882; ordinary IDs must also be represented |
+| language_model.layers | Layers0 and5 only; many projection outputs limited to64 rows | Layers1..4,6..23 and complete projections; layer5 cannot stand in for another index |
+| language_model.ple.per_layer_model_projection.weight | [256,512] of [12288,512] | Complete layer0 PLE and original layer-specific slices for all later layers |
+| language_model.norm / embedding_projection / PLE projection norm | [512], [768,512], [512] respectively | Complete tensors do not repair absent upstream stages |
+| vision_tower.patch_embedder.input_proj.weight | [64,768] of [768,768] | Output channels64..767 for the default patch projection |
+| vision_tower.patch_embedder.position_embedding_table | Loaded [2,256,768], original [2,10240,768], one declared contiguous byte range | Mapping of both axes; reshaping cannot establish original axis coordinates |
+| vision_tower.encoder.layers | Layer0 only; many projections limited to64 output rows | Layers1..15 and complete default projections |
+| embed_vision.embedding_projection.weight | [64,768] of [512,768] | Bridge output rows64..511 |
+
+In particular the position-table declared inclusive range
+1457458008..1458244439 has 786432 bytes, matching the loaded element count.
+One original axis occupies 10240*768*2=15728640 bytes, whereas one loaded
+axis occupies 256*768*2=393216 bytes. Consequently a contiguous prefix
+cannot also be the leading256 positions of each original axis. Verifier must
+resolve this against authoritative extraction metadata and original tensor
+offsets; no assumption that loaded axis1 is the original column axis is allowed.
+Header validity and a matching digest alone do not resolve this mapping.
+
+Missing official coordinates block the affected benchmark and overall Phase 2
+acceptance. Do not alias framing IDs to ordinary rows, fabricate embeddings,
+repeat layer0, relabel layer5, zero-fill missing numerical reads, bypass fusion
+or omit required stages. IMAGE row258880 is not required as a numerical
+embedding lookup: image vectors come from the bridge. This does not remove
+the BOI/EOI requirement. Scaled available-tensor diagnostics are explicitly
+partial, not substitutes for the required multimodal result. Additional data
+must arrive through an authorized input handoff; this design does not fetch it.
+
+### Direct parsing and exact destination mapping
+
+Verifier owns a standard-library parser using `struct`, `json`, `hashlib`
+and `math`, without numpy, torch or the safetensors package. It must first
+hash the complete extracted file, parse the8-byte little-endian header length,
+and check header bounds, dtype BF16, shapes, element counts, payload lengths,
+permitted nonoverlapping interval layout, manifest agreement, per-tensor
+digests and finite decoded values. Safetensors `data_offsets` are half-open
+offsets relative to the extracted payload at byte8+header_length.
+Manifest `hf_byte_range` values are inclusive original-file byte coordinates,
+not offsets into the extracted file. Original tensor offsets and row/axis
+strides must reconcile every extraction; unresolved coordinates fail explicitly.
+Decode each little-endian BF16 word by placing its16 bits in the high half of
+an IEEE754 binary32 word, using `struct` rather than decimal reconstruction.
+
+No official weight is consumed by a new RTL path. The existing weight mapping
+and tensor-prefix sums above remain the hardware ABI. For an admitted mapping
+of destination element `(r,c)` to original coordinates `(r_src,c_src)`,
+read the original row-major source using its original column stride, then write
+the decoded value quantized as
+`q = clamp(round_nearest_even(value * 2^24), -2147483648, 2147483647)`
+to `base + 4*(tensor_word_offset + r*C_destination + c)`.
+Record every saturation. For vectors use the corresponding single index.
+Do not flatten an original tensor and reinterpret its leading words with a
+new column stride. Hardware storage is four-byte signed Q24; original BF16
+storage is two-byte, and these offsets must not be interchanged.
+
+| Destination | Required original-coordinate selection |
+|---|---|
+| Text globals, IDs0..4 above | Preserve token IDs and output-row identity; PLE row is original_layer*512+original_PLE_channel, not destination_layer*scaled_E |
+| Text layer tensors, IDs5..21 | Preserve original layer index and each selected input/output channel; source head rows use original_head*original_head_dim+component |
+| Text attention O projection | Select input columns with the same genuine per-query-head coordinates used by Q and attention; grouped K/V selection must agree |
+| Patch input projection | Select output channels and original RGB patch columns c*16*16+dy*16+dx; a smaller patch's CHW flattening is not an original flattened prefix across all channels |
+| Factorized positions | Source coordinate (axis,position,channel) uses original strides10240*768 and768; destination uses POSITION_EMBEDDING_SIZE and V |
+| Vision encoder | Preserve original layer/head/channel identities, including matching O input columns and Q/K norm components |
+| Bridge | Select original language output rows and original vision input columns consistently with both adjacent stages |
+
+These are mapping rules, not a claim that the supplied slice satisfies them.
+For every consumed tensor the generated mapping must publish its source name,
+original/loaded/destination shapes, original layer/head/row/column coordinates
+(or explicit index lists), extracted payload interval, original byte ranges,
+destination base/word offset, quantization rule and source digest. Preserve
+genuine rotary pairing and per-head identity; contiguous reduced rows are not
+automatically multiple genuine heads. Repacking changes destination strides,
+not source coordinates. Sparse host images are allowed, but an unprovisioned
+numerical read is an asserted failure, never an implicit zero.
+
+### Independent floating software semantics
+
+The official floating path consumes directly decoded checkpoint values,
+independently of Q24 memory images, integer scratch and RTL output. BF16
+checkpoint storage is exactly representable in FP32; it does not establish
+a native BF16 arithmetic run. Use `struct` binary32 conversion on operator
+outputs: dense projection, RMS, rotary rotation, attention, nonlinear,
+elementwise product, residual addition, dimension scaling, spatial mean,
+bridge, masked mean and final L2 normalization. Operands are those independent
+floating outputs; reductions use Python binary64 accumulation and `math`
+functions before the completed operator is rounded to binary32. State this
+FP32-boundary/binary64-reduction convention in the artifact rather than
+claiming native framework executable equivalence. Checkpoint values and
+floating intermediates are never snapped to Q24 scratch boundaries.
+Use the supplied configured RMS epsilon1e-6 and the retained1+weight norm
+convention, explicitly recording both; hardware retains its accepted
+17/2^24 epsilon and Q40 integer approximations. Do not tune either epsilon or
+operator semantics to improve measured agreement. Existing synthetic floating
+regression definitions remain unchanged.
+
+Both paths execute the complete operator order below, including genuine patch
+projection/positions, vision attention/MLP, actual-window mean, bridge,
+BOI/IMAGE/EOI fusion, initial-vector PLE, scheduled local/full grouped attention,
+text MLP/PLE, final norm/projection, masked mean, prefix truncation and L2.
+The integer path continues to use the exact Q24-external/Q40-local equations
+and materialization ledger above, not floating approximations of them.
+Freeze IDs, masks, positions, image values and parameter selections before
+measuring errors. Preserve nontrivial multiple positions, mixed signs,
+pooling and softmax. Default output dimensions768/512/256/128 require
+normalization after truncation; any scaled-subnetwork cases are additional
+and labeled, not full-checkpoint inference.
+
+### Comparison, timing and artifact contract
+
+Verifier implements `python3 tests/verify.py --check functional`; `--check
+behavior` remains an alias for that same complete existing matrix plus the
+official benchmark. The other entries remain `--check sensitivity` and
+`--check synthesis`; no arguments runs all three. These are Phase 2 required
+entry points, not a statement that the current verification implementation
+already provides them. Keep the declared120-second per-check execution budget
+and1048576-byte output limit; the inspected runner's86400-second default is a
+Verifier-owned discrepancy, not authorization to change check acceptance.
+
+Compile actual `anvil_e2_top` from `rtl/*.sv` with `iverilog -g2012 -Wall`
+and run `vvp` through public pins only. For each required mode0/1/2 and
+Matryoshka dimension, compare every emitted word and all documented scratch
+writes/addresses to the independent integer oracle: require zero bit mismatches.
+Compare RTL words divided by2^24 against the independent floating output:
+cosine>=0.999, maximum absolute component error<=0.002 and nonzero-vector
+absolute L2-norm error<=0.002. Also record mean absolute error, RMSE,
+vector L2-distance, both vector norms and their absolute difference.
+Zero-vector cosine is undefined; assert exact zero agreement separately.
+Required nonzero fixtures cannot be replaced by zero or easier fixtures.
+
+Use a10ns simulated clock and measure from descriptor acceptance to first
+embedding, final embedding and completion handshake separately.
+Report each interval in cycles and cycles*10ns, labeled simulated latency,
+not physical timing. Separate unstalled benchmarks from backpressure stress;
+retain the single-outstanding request/response and held-payload policy.
+No cycle counts, similarity, throughput or numerical pass is inferred from
+source inspection.
+
+Only a completed current execution may produce
+`evidence/verification/functional/official_weights_comparison.json`.
+Its required contents are source/input hashes; file/manifest/tensor digests;
+direct-parser and coordinate-validation outcomes; exact mappings; software
+precision semantics; every parameter override and fixed fixture hash; per-case
+mode/output dimension, exact mismatch counts, floating metrics, thresholds
+and assertion outcomes; simulator transcript/receipt links; request/response
+and backpressure policy; and all three measured cycle/latency intervals.
+Missing mandatory cases are failures, not skipped success rows. Retain failed
+executions separately; do not populate success-shaped numerical defaults or
+invent a completed comparison artifact when the coordinate gate fails.
+
+Designer preserves the current RTL: inspection identifies no official-weight
+interface change that can repair missing source data. This documentation
+introduces no new port, scratch region, precision sidecar or bypass.
+Binary provenance validation, model execution, threshold measurements,
+regressions, sensitivity and synthesis remain independent Verifier work.
+The shared runtime creates and independently reviews the configured product
+report only after engineering acceptance; that final report is not a check
+input or prerequisite.
 
 ## Image, fusion and operator ordering
 
