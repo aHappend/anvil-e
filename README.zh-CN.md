@@ -26,7 +26,7 @@
 | 代际 | 芯片型号 | 目标模型与范围 | 自主研发总耗时 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | **第一代** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 纯文本版（5:1 滑动窗口/全局 GQA 混合注意力、PLE 逐层嵌入、512d → 768d 投影、掩码均值池化与 Matryoshka L2 归一化） | **总计 3 小时 17 分 25 秒**（一阶段 RTL 生成 `2h 17m 48s` + 二阶段 HF 官方权重软硬联调 `59m 37s`） | 已完成并验证 — [产品交付报告 (`REPORT.pdf`)](anvil-e1/REPORT.pdf) 与一键联调 Demo 已发布 |
-| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | **6 小时 42 分 22 秒**（`Step 114 · interrupted`，`20` 个 RTL 模块 / `3592` 行） | In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8 |
+| **第二代** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · 视觉 + 文本多模态版（16 层 `gemma4_vision` 视觉编码塔、3×3 空间池化 280 软 Token、768d → 512d 跨模态投影及 24 层 5:1 混合主干） | **6 小时 45 分 16 秒**（`Step 114 · interrupted`，`20` 个 RTL 模块 / `3592` 行） | In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8 |
 | **第三代** | **Anvil-E3** | Google EmbeddingGemma-2 · 音频 + 视觉 + 文本统一嵌入加速引擎 | — | 规划中 |
 
 ## Anvil-E2 · 第二代（视觉 + 文本多模态版）
@@ -41,7 +41,7 @@
 | **空间池化与跨模态投影（`embed_vision`）** | `pooling_kernel_size = 3` 空间池化（每图输出 `280` 个视觉软 Token）+ `embedding_projection [512, 768]` | 3×3 空间软 Token 汇聚、`768 → 512` 维跨模态投影及 `BOI`/`IMAGE`/`EOI` 多模态序列融合 |
 | **多模态混合主干与归一化（`0_Transformer` + `1_Pooling` + `2_Normalize`）** | 24 层 5:1 滑动窗口/全局混合注意力（`512d` + PLE `512d`）、`512 → 768` 投影、掩码均值池化与 Matryoshka L2 归一化（`768 / 512 / 256 / 128`） | 视觉软 Token 与文本 Token 统一注意力调度、掩码池化与倒数平方根归一化 |
 
-- **当前工程状态**：`In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8`（`Step 114 · interrupted`，`20` 个 RTL 模块 / `3592` 行，最近更新：`2026-10-15 21:54:11 UTC+8`）
+- **当前工程状态**：`In Progress — Autonomous Vision+Text Architecture & RTL Generation by Vulcan 0.8`（`Step 114 · interrupted`，`20` 个 RTL 模块 / `3592` 行，最近更新：`2026-10-15 21:57:05 UTC+8`）
 - **官方多模态配置快照**：[`anvil-e2/hf_embeddinggemma2_vision_spec/`](anvil-e2/hf_embeddinggemma2_vision_spec/)
 - **交付包目录**：[`anvil-e2/`](anvil-e2/)（`rtl/`、`design/`、`tests/`）
 
