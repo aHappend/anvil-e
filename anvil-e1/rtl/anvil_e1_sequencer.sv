@@ -259,6 +259,11 @@ module anvil_e1_sequencer #(
         .tensor_error(tensor_error), .scratch_error(scratch_error)
     );
 
+    wire signed [95:0] mac_sum;
+    wire signed [31:0] mac_rounded;
+    wire nready, nout_valid, nout_error;
+    wire signed [31:0] nout_data;
+
     wire mat_start_ready, mat_in_ready, mat_cmd_valid, mat_result_ready;
     wire [63:0] mat_cmd_addr;
     wire mat_clear, mat_accumulate, mat_out_valid, mat_out_last, mat_done_valid;
@@ -334,8 +339,6 @@ module anvil_e1_sequencer #(
         .out_error(rope_error)
     );
 
-    wire signed [95:0] mac_sum;
-    wire signed [31:0] mac_rounded;
     wire mac_clear=state==MAT_RUN ? mat_clear:
         state==ATT_RUN ? att_clear:state==ROPE_RUN ? rope_clear:state==VPRODUCT;
     wire mac_accumulate=state==MAT_RUN ? mat_accumulate:
@@ -349,8 +352,6 @@ module anvil_e1_sequencer #(
         .clk(clk), .rst_n(unit_rst_n), .clear(mac_clear), .accumulate(mac_accumulate),
         .a(mac_a), .b(mac_b), .sum(mac_sum), .rounded(mac_rounded)
     );
-    wire nready, nout_valid, nout_error;
-    wire signed [31:0] nout_data;
     wire nvalid=state==ATT_RUN ? att_nvalid:
         state==ROPE_RUN ? rope_nvalid:state==VGELU_REQ;
     wire [2:0] nop=state==ATT_RUN ? att_nop:state==ROPE_RUN ? rope_nop:3'd5;
