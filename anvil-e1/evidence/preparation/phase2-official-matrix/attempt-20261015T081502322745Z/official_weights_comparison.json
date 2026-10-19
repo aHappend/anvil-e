@@ -13,7 +13,7 @@
     "rtl/anvil_e1_norm.sv": "a8196aec50e8507fc0743c05f9eb86104a9ce877400f719d3b8d6452778e624e",
     "rtl/anvil_e1_pool.sv": "ad2bbe0adf36417a23270a94cde7c13a0de500878f94e065683513acb41d46c7",
     "rtl/anvil_e1_rope.sv": "4b60664d10f9093a92d4b852df089c40fa30651ea631a20f65188e35d60d25c8",
-    "rtl/anvil_e1_sequencer.sv": "3551dc381e308d67ae3948dca69cadf9f748e25bcfef33b84076655277625592",
+    "rtl/anvil_e1_sequencer.sv": "aa92e417a9a58bd24047ad543dd5cd2431a5dc730dd522c60689093daabacff4",
     "rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
     "rtl/anvil_e_top.sv": "7f5816242ea538f598807d9104386ba04db6f9bbc2977c9ca75d6ccfdcbd2fbd",
     "design/ARCHITECTURE.md": "fff9cb3baf1a1ac05239cbc4630ecae05dd5c439407e92ab6ab973bc4d2b6f39",
