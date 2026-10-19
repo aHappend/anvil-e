@@ -18,6 +18,8 @@
 
 \setCJKmonofont{Noto Serif CJK SC}
 
+\newfontfamily\vulcanmathsymbols{Noto Serif CJK SC}
+
 \XeTeXgenerateactualtext=1
 
 \definecolor{vulcan}{HTML}{BB3E23}
@@ -38,67 +40,70 @@
 
 \begin{document}
 
-{\sffamily\huge\raggedright\textbf{Anvil-E2: Programmable Vision and Text Embedding RTL}\par}
+{\sffamily\huge\raggedright\textbf{Anvil-E2 Phase 2: Official-Weight Multimodal RTL Evaluation}\par}
 
 {\large Technical Design and Verification Report}\par
 
-15 October 2026 (\allowbreak{}UTC+\allowbreak{}8)\allowbreak{}\par\textcolor{vulcan}{\rule{\textwidth}{0.5pt}}
+16 October 2026 (\allowbreak{}UTC+\allowbreak{}8)\allowbreak{}\par\textcolor{vulcan}{\rule{\textwidth}{0.5pt}}
 
 \begin{abstract}
 
-Anvil-E2 is a modular,\allowbreak{} synthesizable SystemVerilog inference datapath implementing the supplied EmbeddingGemma-2 vision-and-text architecture. It integrates patch embedding,\allowbreak{} a reusable vision transformer,\allowbreak{} spatial pooling and projection,\allowbreak{} multimodal framing,\allowbreak{} per-layer input injection,\allowbreak{} a hybrid text transformer,\allowbreak{} masked mean pooling and prefix-selectable L2 normalization.
+Anvil-E2 is a parameterized SystemVerilog embedding accelerator supporting text-only,\allowbreak{} vision-only and joint vision-plus-text execution through a shared external-memory interface. Phase 2 integrates directly decoded official BF16 checkpoint slices into independent floating-point software and signed Q8.24 hardware evaluation paths.
 
 
-The implementation combines signed Q8.24 external words with Q8.40 stage-local arithmetic. Independent public-pin verification passed 36 mandatory configuration,\allowbreak{} seed,\allowbreak{} mode and output-length combinations. Maximum normalized-component error was 2.830035e-5 and maximum nonzero-vector L2-norm error was 4.471436e-8,\allowbreak{} both below 0.002. Five executable defect mutations were rejected,\allowbreak{} and generic synthesis of two scaled configurations found zero latches. These results establish synthetic-workload RTL behavior,\allowbreak{} not pretrained-model quality or physical chip performance.
+All 29 predetermined official-weight cases passed public-interface RTL simulation with zero output-word mismatches against the integer oracle and exact scratch-write histories. Across these cases,\allowbreak{} minimum cosine similarity was 0.9999999950454138 and maximum absolute component error was 0.000047340989112854,\allowbreak{} exceeding the required 0.999 similarity and meeting the 0.002 error limit. Functional regression,\allowbreak{} mutation sensitivity and generic synthesis also passed.
+
+
+These measurements establish agreement for explicitly remapped,\allowbreak{} scaled checkpoint subnetworks. They do not establish native HuggingFace full-model equivalence,\allowbreak{} pretrained application accuracy or physical implementation performance.
 
 
 \end{abstract}
 
 \section{Architecture and design rationale}
 
-Anvil-E2 trades parallel throughput for bounded local storage and reusable arithmetic. A registered controller sequences seven literal processing stages through a single-outstanding memory bridge. One vision-layer engine serves all configured vision layers,\allowbreak{} and one text-layer engine serves all text layers. Intermediate tensors reside in external scratch; local banks hold bounded vectors rather than complete frames or model tables. Specialized frontend,\allowbreak{} layer and output instances retain their required operators without elaborating irrelevant helpers. Registered clock ownership isolates inactive stages and selected arithmetic helpers; the controller and memory bridge remain clocked. Blocks are arranged row-major for a three-column diagram. Links identify control relationships or scratch-mediated tensor dependencies,\allowbreak{} not direct streaming connections between processing stages.
+The design trades parallel throughput for reusable arithmetic and explicit external-memory materialization. A descriptor controller sequences seven connected processing stages,\allowbreak{} reusing the vision and text engines across layer iterations. A single-outstanding bridge serializes reads and acknowledged writes. Intermediate tensors reside in a documented scratch arena rather than a model-sized internal frame cache. The diagram separates control and memory service from logical tensor dependencies: stage-to-stage arrows represent scratch-mediated dataflow,\allowbreak{} not direct streaming wires. Text-only execution enters fusion without the vision stages; vision-only execution still uses framing and the language-side embedding pipeline. Registered clock ownership isolates inactive stages and arithmetic helpers without altering public handshakes. The implementation and memory contract are defined by E001 and E019.
 
 \begin{center}\begin{tikzpicture}[every node/.style={font=\small\sffamily},>=latex]
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b0) at (0.0,0.0) {B1: Job controller};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b0) at (0.0,0.0) {B1: Descriptor control};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b1) at (5.4,0.0) {B2: Patch embedding};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b1) at (5.4,0.0) {B2: Memory bridge};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b2) at (10.8,0.0) {B3: Vision encoder};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b2) at (10.8,0.0) {B3: External memory};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b3) at (0.0,-4.6) {B4: Memory bridge};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b3) at (0.0,-4.6) {B4: Patch embedding};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b4) at (5.4,-4.6) {B5: Spatial bridge};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b4) at (5.4,-4.6) {B5: Vision encoder};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b5) at (10.8,-4.6) {B6: Multimodal fusion};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b5) at (10.8,-4.6) {B6: Spatial bridge};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b6) at (0.0,-9.2) {B7: PLE frontend};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b6) at (0.0,-9.2) {B7: Multimodal fusion};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b7) at (5.4,-9.2) {B8: Hybrid backbone};
+\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b7) at (5.4,-9.2) {B8: PLE and text layers};
 
 \node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b8) at (10.8,-9.2) {B9: Embedding output};
 
 \begin{pgfonlayer}{connections}
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b0.east) -- (2.340,0.000) -- (2.340,-3.470) -- coordinate[midway] (e0) (0.000,-3.470) -- ([xshift=0.000cm]b3.north);
+\draw[->,black!65] ([yshift=-0.107cm]b0.east) -- coordinate[pos=0.25] (e0) ([yshift=0.000cm]b1.west);
 
 \draw[->,black!65] ([yshift=0.000cm]b1.east) -- coordinate[pos=0.25] (e1) ([yshift=0.000cm]b2.west);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b2.east) -- (13.300,0.000) -- (13.300,-2.950) -- coordinate[midway] (e2) (5.400,-2.950) -- ([xshift=0.000cm]b4.north);
+\draw[->,black!65] ([xshift=-0.533cm]b0.south) -- coordinate[pos=0.25] (e2) ([xshift=-0.267cm]b3.north);
 
-\draw[->,black!65] ([yshift=0.000cm]b4.east) -- coordinate[pos=0.25] (e3) ([yshift=0.000cm]b5.west);
+\draw[->,black!65] ([yshift=0.000cm]b3.east) -- coordinate[pos=0.25] (e3) ([yshift=0.000cm]b4.west);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=-0.107cm]b5.east) -- (13.460,-4.707) -- (13.460,-7.030) -- coordinate[midway] (e4) (0.000,-7.030) -- ([xshift=0.000cm]b6.north);
+\draw[->,black!65] ([yshift=0.000cm]b4.east) -- coordinate[pos=0.25] (e4) ([yshift=0.000cm]b5.west);
 
-\draw[->,black!65] ([yshift=0.000cm]b6.east) -- coordinate[pos=0.25] (e5) ([yshift=0.000cm]b7.west);
+\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b5.east) -- (13.540,-4.600) -- (13.540,-6.770) -- coordinate[midway] (e5) (0.000,-6.770) -- ([xshift=0.000cm]b6.north);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.107cm]b5.east) -- (13.620,-4.493) -- (13.620,-6.510) -- coordinate[midway] (e6) (5.400,-6.510) -- ([xshift=0.000cm]b7.north);
+\draw[->,black!65,rounded corners=2pt] ([yshift=0.107cm]b0.east) -- (2.820,0.107) -- (2.820,-6.510) -- coordinate[midway] (e6) (0.267,-6.510) -- ([xshift=0.267cm]b6.north);
 
-\draw[->,black!65] ([yshift=0.000cm]b7.east) -- coordinate[pos=0.25] (e7) ([yshift=0.000cm]b8.west);
+\draw[->,black!65] ([yshift=0.000cm]b6.east) -- coordinate[pos=0.25] (e7) ([yshift=0.000cm]b7.west);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b3.east) -- (2.980,-4.600) -- (2.980,-1.390) -- coordinate[midway] (e8) (-0.107,-1.390) -- ([xshift=-0.107cm]b0.south);
+\draw[->,black!65] ([yshift=0.000cm]b7.east) -- coordinate[pos=0.25] (e8) ([yshift=0.000cm]b8.west);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b8.east) -- (13.860,-9.200) -- (13.860,-1.130) -- coordinate[midway] (e9) (0.107,-1.130) -- ([xshift=0.107cm]b0.south);
+\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b8.east) -- (13.860,-9.200) -- (13.860,-1.130) -- coordinate[midway] (e9) (0.533,-1.130) -- ([xshift=0.533cm]b0.south);
 
 \end{pgfonlayer}
 
@@ -132,51 +137,51 @@ Anvil-E2 trades parallel throughput for bounded local storage and reusable arith
 
 {\small\begin{longtable}{@{}L{0.24\textwidth}L{0.7\textwidth}@{}}\toprule
 
-\textbf{Block} & \textbf{Responsibility}\\\midrule\endhead
+\textbf{Block} & \textbf{Responsi\allowbreak{}bility}\\\midrule\endhead
 
-B1: Job controller & anvil\_\allowbreak{}e2\_\allowbreak{}top captures descriptors,\allowbreak{} validates geometry and extents,\allowbreak{} registers stage ownership,\allowbreak{} iterates layers and holds completion.\\[3pt]
+B1: Descript\allowbreak{}or control & anvil\_\allowbreak{}e2\_\allowbreak{}top captures and validate\allowbreak{}s one job,\allowbreak{} register\allowbreak{}s stage ownershi\allowbreak{}p,\allowbreak{} iterates configur\allowbreak{}ed layers and holds completi\allowbreak{}on status.\\[3pt]
 
-B2: Patch embedding & anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}patch\_\allowbreak{}embed reads RGB patches,\allowbreak{} performs dense projection and adds separate row and column position factors.\\[3pt]
+B2: Memory bridge & anvil\_\allowbreak{}e2\_\allowbreak{}memory serves the selected owner with one outstand\allowbreak{}ing aligned transact\allowbreak{}ion and a separate\allowbreak{}ly retired result.\\[3pt]
 
-B3: Vision encoder & anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}encoder\_\allowbreak{}layer executes reusable bidirectional attention and gated-feedforward layers with axial rotary encoding.\\[3pt]
+B3: External memory & Host-provisio\allowbreak{}ned language and vision weights,\allowbreak{} CHW image data,\allowbreak{} token metadata and scratch tensors; no unrounde\allowbreak{}d private tensor sidecar.\\[3pt]
 
-B4: Memory bridge & anvil\_\allowbreak{}e2\_\allowbreak{}memory converts selected-stage commands into stable external requests and registered responses,\allowbreak{} including write acknowledgments.\\[3pt]
+B4: Patch embeddin\allowbreak{}g & anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}patch\_\allowbreak{}embed projects RGB patches and adds the configur\allowbreak{}ed factoriz\allowbreak{}ed position coordina\allowbreak{}tes.\\[3pt]
 
-B5: Spatial bridge & anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}pool\_\allowbreak{}proj averages spatial-window participants and projects vision vectors into text hidden space.\\[3pt]
+B5: Vision encoder & anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}encoder\_\allowbreak{}layer performs reusable RMS,\allowbreak{} attentio\allowbreak{}n,\allowbreak{} axial rotary and gated feed-forward computat\allowbreak{}ion.\\[3pt]
 
-B6: Multimodal fusion & anvil\_\allowbreak{}e2\_\allowbreak{}multimodal\_\allowbreak{}fusion constructs framed IDs,\allowbreak{} positions,\allowbreak{} masks and initial hidden vectors for image and text modes.\\[3pt]
+B6: Spatial bridge & anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}pool\_\allowbreak{}proj averages actual pooling particip\allowbreak{}ants and projects vision channels into language-width soft tokens.\\[3pt]
 
-B7: PLE frontend & anvil\_\allowbreak{}e2\_\allowbreak{}text\_\allowbreak{}frontend\_\allowbreak{}ple computes and materializes each token's per-layer input vectors from its initial fused hidden state.\\[3pt]
+B7: Multimod\allowbreak{}al fusion & anvil\_\allowbreak{}e2\_\allowbreak{}multimod\allowbreak{}al\_\allowbreak{}fusion material\allowbreak{}izes text-only inputs or BOI,\allowbreak{} computed IMAGE vectors,\allowbreak{} EOI and appended prompt metadata.\\[3pt]
 
-B8: Hybrid backbone & anvil\_\allowbreak{}e2\_\allowbreak{}hybrid\_\allowbreak{}layer performs sliding or full grouped attention,\allowbreak{} gated MLP,\allowbreak{} cached per-layer input injection and scalar multiplication.\\[3pt]
+B8: PLE and text layers & anvil\_\allowbreak{}e2\_\allowbreak{}text\_\allowbreak{}frontend\_\allowbreak{}ple caches initial-vector per-layer inputs; anvil\_\allowbreak{}e2\_\allowbreak{}hybrid\_\allowbreak{}layer executes schedule\allowbreak{}d grouped attentio\allowbreak{}n,\allowbreak{} MLP and PLE injectio\allowbreak{}n.\\[3pt]
 
-B9: Embedding output & anvil\_\allowbreak{}e2\_\allowbreak{}pool\_\allowbreak{}norm performs final language normalization,\allowbreak{} embedding projection,\allowbreak{} masked mean,\allowbreak{} prefix selection and L2 normalization.\\[3pt]
+B9: Embeddin\allowbreak{}g output & anvil\_\allowbreak{}e2\_\allowbreak{}pool\_\allowbreak{}norm applies final language normaliz\allowbreak{}ation and projecti\allowbreak{}on,\allowbreak{} masked mean,\allowbreak{} prefix selectio\allowbreak{}n and epsilon-free L2 normaliz\allowbreak{}ation.\\[3pt]
 
 \bottomrule\end{longtable}}
 
 {\small\begin{longtable}{@{}L{0.24\textwidth}L{0.7\textwidth}@{}}\toprule
 
-\textbf{Directed relationship} & \textbf{Meaning}\\\midrule\endhead
+\textbf{Directed relation\allowbreak{}ship} & \textbf{Meaning}\\\midrule\endhead
 
-E1: B1 to B4 & Selected-owner command routing\\[3pt]
+E1: B1 to B2 & Register\allowbreak{}ed memory-owner selectio\allowbreak{}n\\[3pt]
 
-E2: B2 to B3 & Projected patches through scratch\\[3pt]
+E2: B2 to B3 & Read/\allowbreak{}write requests and acknowle\allowbreak{}dged response\allowbreak{}s\\[3pt]
 
-E3: B3 to B5 & Final vision tensor through scratch\\[3pt]
+E3: B1 to B4 & Image-mode stage start\\[3pt]
 
-E4: B5 to B6 & Projected soft tokens through scratch\\[3pt]
+E4: B4 to B5 & Material\allowbreak{}ized patch vectors\\[3pt]
 
-E5: B6 to B7 & Initial fused hidden tensor\\[3pt]
+E5: B5 to B6 & Final vision-layer vectors\\[3pt]
 
-E6: B7 to B8 & Materialized per-layer input cache\\[3pt]
+E6: B6 to B7 & Projecte\allowbreak{}d soft tokens\\[3pt]
 
-E7: B6 to B8 & Hidden state and fused metadata\\[3pt]
+E7: B1 to B7 & Mode and text descript\allowbreak{}or\\[3pt]
 
-E8: B8 to B9 & Final hidden tensor and pooling masks\\[3pt]
+E8: B7 to B8 & Fused vectors,\allowbreak{} IDs,\allowbreak{} position\allowbreak{}s and masks\\[3pt]
 
-E9: B4 to B1 & Bridge readiness and response ownership\\[3pt]
+E9: B8 to B9 & Final language vectors\\[3pt]
 
-E10: B9 to B1 & Held stage completion and error\\[3pt]
+E10: B9 to B1 & Held stage completi\allowbreak{}on or error\\[3pt]
 
 \bottomrule\end{longtable}}
 
@@ -184,175 +189,191 @@ E10: B9 to B1 & Held stage completion and error\\[3pt]
 
 {\small\begin{longtable}{@{}L{0.2\textwidth}L{0.12\textwidth}L{0.1\textwidth}L{0.48\textwidth}@{}}\toprule
 
-\textbf{Signal /\allowbreak{} group} & \textbf{Direction} & \textbf{Width} & \textbf{Contract}\\\midrule\endhead
+\textbf{Signal /\allowbreak{} group} & \textbf{Directio\allowbreak{}n} & \textbf{Width} & \textbf{Contract}\\\midrule\endhead
 
-clk,\allowbreak{} rst\_\allowbreak{}n & Input & 1 bit each & Rising-edge operation with asynchronous active-low reset. Asserted reset forces every public output to zero and cancels the active job and transaction.\\[3pt]
+clk,\allowbreak{} rst\_\allowbreak{}n & Input & 1 bit each & Clock and asynchro\allowbreak{}nous active-low reset. Asserted reset forces every public output to zero and cancels active work; the environm\allowbreak{}ent must discard canceled response\allowbreak{}s.\\[3pt]
 
-job\_\allowbreak{}valid /\allowbreak{} job\_\allowbreak{}ready & Input /\allowbreak{} output & 1 bit each & Captures the complete descriptor only when both signals are asserted at a rising edge. Only one job is outstanding.\\[3pt]
+job\_\allowbreak{}valid,\allowbreak{} job\_\allowbreak{}ready,\allowbreak{} busy & Input /\allowbreak{} output /\allowbreak{} output & 1 bit each & Capture exactly one descript\allowbreak{}or on job\_\allowbreak{}valid \&\& job\_\allowbreak{}ready. Idle after reset release has job\_\allowbreak{}ready=\allowbreak{}1 and busy=\allowbreak{}0. No descript\allowbreak{}or is accepted while executin\allowbreak{}g or holding completi\allowbreak{}on.\\[3pt]
 
-job\_\allowbreak{}mode,\allowbreak{} job\_\allowbreak{}tokens,\allowbreak{} job\_\allowbreak{}patch\_\allowbreak{}rows,\allowbreak{} job\_\allowbreak{}patch\_\allowbreak{}cols,\allowbreak{} job\_\allowbreak{}output\_\allowbreak{}dim & Input & 2,\allowbreak{} 32,\allowbreak{} 32,\allowbreak{} 32 and 16 bits & Modes 0,\allowbreak{} 1 and 2 select text-only,\allowbreak{} vision-only and joint execution; mode 3 is invalid. Vision-only requires zero supplied text tokens; joint requires a positive count.\\[3pt]
+job\_\allowbreak{}mode,\allowbreak{} job\_\allowbreak{}tokens,\allowbreak{} job\_\allowbreak{}patch\_\allowbreak{}rows,\allowbreak{} job\_\allowbreak{}patch\_\allowbreak{}cols,\allowbreak{} job\_\allowbreak{}output\_\allowbreak{}dim & Input & 2,\allowbreak{} 32,\allowbreak{} 32,\allowbreak{} 32,\allowbreak{} 16 bits & Modes 0/\allowbreak{}1/\allowbreak{}2 select text/\allowbreak{}vision/\allowbreak{}joint; mode 3 is invalid. Vision-only requires zero supplied text; joint requires positive text count. Output dimensio\allowbreak{}n is EMBED\_\allowbreak{}DIM,\allowbreak{} 2*\allowbreak{}EMBED\_\allowbreak{}DIM/\allowbreak{}3,\allowbreak{} EMBED\_\allowbreak{}DIM/\allowbreak{}3 or EMBED\_\allowbreak{}DIM/\allowbreak{}6.\\[3pt]
 
-weights\_\allowbreak{}base,\allowbreak{} vision\_\allowbreak{}weights\_\allowbreak{}base,\allowbreak{} image\_\allowbreak{}base,\allowbreak{} tokens\_\allowbreak{}base,\allowbreak{} positions\_\allowbreak{}base,\allowbreak{} mask\_\allowbreak{}base,\allowbreak{} scratch\_\allowbreak{}base & Input & 64 bits each & Aligned byte addresses for weights,\allowbreak{} operands and scratch. Active host regions must be nonoverlapping and remain valid throughout execution.\\[3pt]
+weights\_\allowbreak{}base,\allowbreak{} vision\_\allowbreak{}weights\_\allowbreak{}base,\allowbreak{} image\_\allowbreak{}base,\allowbreak{} tokens\_\allowbreak{}base,\allowbreak{} position\allowbreak{}s\_\allowbreak{}base,\allowbreak{} mask\_\allowbreak{}base,\allowbreak{} scratch\_\allowbreak{}base & Input & 64 bits each & Byte-addresse\allowbreak{}d region bases captured with the descript\allowbreak{}or. Active regions must be aligned and nonoverl\allowbreak{}apping; the host provisio\allowbreak{}ns all consumed data and sufficie\allowbreak{}nt scratch extent.\\[3pt]
 
-mem\_\allowbreak{}req\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}write,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}addr,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}wdata /\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}ready & Output /\allowbreak{} input & 1,\allowbreak{} 1,\allowbreak{} 64,\allowbreak{} 32 /\allowbreak{} 1 bits & Little-endian,\allowbreak{} byte-addressed 32-bit memory requests. Payload remains stable while stalled. At most one accepted request awaits a response.\\[3pt]
+mem\_\allowbreak{}req\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}write,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}addr,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}wdata; mem\_\allowbreak{}req\_\allowbreak{}ready & Output; input & 1,\allowbreak{} 1,\allowbreak{} 64,\allowbreak{} 32; 1 bit & Aligned little-endian 32-bit memory requests. Request payload remains stable under backpres\allowbreak{}sure. At most one accepted transact\allowbreak{}ion is outstand\allowbreak{}ing.\\[3pt]
 
-mem\_\allowbreak{}rsp\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}rdata,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}error /\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}ready & Input /\allowbreak{} output & 1,\allowbreak{} 32,\allowbreak{} 1 /\allowbreak{} 1 bits & Exactly one response is required for each accepted read or write. A response cannot retire on the edge that accepts its request.\\[3pt]
+mem\_\allowbreak{}rsp\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}rdata,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}error; mem\_\allowbreak{}rsp\_\allowbreak{}ready & Input; output & 1,\allowbreak{} 32,\allowbreak{} 1; 1 bit & Exactly one response is required for every accepted read or write. A response cannot be accepted on its request-acceptan\allowbreak{}ce edge.\\[3pt]
 
-emb\_\allowbreak{}valid,\allowbreak{} emb\_\allowbreak{}data,\allowbreak{} emb\_\allowbreak{}index,\allowbreak{} emb\_\allowbreak{}last /\allowbreak{} emb\_\allowbreak{}ready & Output /\allowbreak{} input & 1,\allowbreak{} signed 32,\allowbreak{} 16,\allowbreak{} 1 /\allowbreak{} 1 bits & Ordered Q8.24 embedding beats with zero-based indices. Data,\allowbreak{} index and last remain stable under backpressure. Output begins only after complete normalization.\\[3pt]
+emb\_\allowbreak{}valid,\allowbreak{} emb\_\allowbreak{}data,\allowbreak{} emb\_\allowbreak{}index,\allowbreak{} emb\_\allowbreak{}last; emb\_\allowbreak{}ready & Output; input & 1,\allowbreak{} signed 32,\allowbreak{} 16,\allowbreak{} 1; 1 bit & Ordered signed Q8.24 embeddin\allowbreak{}g words with zero-based indices. Data,\allowbreak{} index and last remain stable while stalled; a one-element prefix has first index and last on the same beat.\\[3pt]
 
-done\_\allowbreak{}valid,\allowbreak{} done\_\allowbreak{}error,\allowbreak{} busy /\allowbreak{} done\_\allowbreak{}ready & Output /\allowbreak{} input & 1,\allowbreak{} 4,\allowbreak{} 1 /\allowbreak{} 1 bits & Held completion and status. Final embedding acceptance precedes a separate completion phase. A new descriptor cannot be accepted on the completion-retirement edge.\\[3pt]
+done\_\allowbreak{}valid,\allowbreak{} done\_\allowbreak{}error; done\_\allowbreak{}ready & Output; input & 1,\allowbreak{} 4; 1 bit & Held completi\allowbreak{}on handshak\allowbreak{}e. Error codes are 0 success,\allowbreak{} 1 descript\allowbreak{}or,\allowbreak{} 2 fetched metadata,\allowbreak{} 3 memory response,\allowbreak{} 4 all-masked pooling,\allowbreak{} 5 address/\allowbreak{}extent overflow and 6 arithmet\allowbreak{}ic/\allowbreak{}internal protocol.\\[3pt]
 
 \bottomrule\end{longtable}}
 
 {\small\begin{longtable}{@{}L{0.23\textwidth}L{0.12\textwidth}L{0.57\textwidth}@{}}\toprule
 
-\textbf{Parameter} & \textbf{Default} & \textbf{Meaning /\allowbreak{} supported values}\\\midrule\endhead
+\textbf{Paramete\allowbreak{}r} & \textbf{Default} & \textbf{Meaning /\allowbreak{} supporte\allowbreak{}d values}\\\midrule\endhead
 
-VISION\_\allowbreak{}LAYERS,\allowbreak{} VISION\_\allowbreak{}HIDDEN,\allowbreak{} VISION\_\allowbreak{}FFN & 16,\allowbreak{} 768,\allowbreak{} 3072 & Positive and at most 65535; overrides change actual computation and bounded storage.\\[3pt]
+VISION\_\allowbreak{}LAYERS,\allowbreak{} VISION\_\allowbreak{}HIDDEN,\allowbreak{} VISION\_\allowbreak{}FFN & 16,\allowbreak{} 768,\allowbreak{} 3072 & Positive values,\allowbreak{} each at most 65535; layer count controls actual engine reuse.\\[3pt]
 
-VISION\_\allowbreak{}HEADS,\allowbreak{} VISION\_\allowbreak{}HEAD\_\allowbreak{}DIM & 12,\allowbreak{} 64 & Positive; VISION\_\allowbreak{}HIDDEN equals their product. Head dimension is divisible by four for row and column rotary partitions.\\[3pt]
+VISION\_\allowbreak{}HEADS,\allowbreak{} VISION\_\allowbreak{}HEAD\_\allowbreak{}DIM,\allowbreak{} PATCH\_\allowbreak{}SIZE & 12,\allowbreak{} 64,\allowbreak{} 16 & Positive; VISION\_\allowbreak{}HIDDEN=\allowbreak{}VISION\_\allowbreak{}HEADS*\allowbreak{}VISION\_\allowbreak{}HEAD\_\allowbreak{}DIM; head dimensio\allowbreak{}n divisibl\allowbreak{}e by four; 3*\allowbreak{}PATCH\_\allowbreak{}SIZE*\allowbreak{}PATCH\_\allowbreak{}SIZE<=\allowbreak{}65535.\\[3pt]
 
-PATCH\_\allowbreak{}SIZE,\allowbreak{} POOL\_\allowbreak{}KERNEL,\allowbreak{} VISION\_\allowbreak{}SOFT\_\allowbreak{}TOKENS & 16,\allowbreak{} 3,\allowbreak{} 280 & Positive; 3*\allowbreak{}PATCH\_\allowbreak{}SIZE*\allowbreak{}PATCH\_\allowbreak{}SIZE fits 65535. The ceiling-divided spatial-window count must equal VISION\_\allowbreak{}SOFT\_\allowbreak{}TOKENS.\\[3pt]
+POOL\_\allowbreak{}KERNEL,\allowbreak{} VISION\_\allowbreak{}SOFT\_\allowbreak{}TOKENS & 3,\allowbreak{} 280 & Positive; descript\allowbreak{}or geometry must produce the configur\allowbreak{}ed soft-token count,\allowbreak{} includin\allowbreak{}g partial edge windows.\\[3pt]
 
-TEXT\_\allowbreak{}LAYERS,\allowbreak{} TEXT\_\allowbreak{}HIDDEN,\allowbreak{} PLE\_\allowbreak{}DIM,\allowbreak{} TEXT\_\allowbreak{}FFN & 24,\allowbreak{} 512,\allowbreak{} 512,\allowbreak{} 2048 & Positive and at most 65535. Singleton hidden,\allowbreak{} per-layer input and feedforward widths are supported.\\[3pt]
+TEXT\_\allowbreak{}LAYERS,\allowbreak{} TEXT\_\allowbreak{}HIDDEN,\allowbreak{} PLE\_\allowbreak{}DIM,\allowbreak{} TEXT\_\allowbreak{}FFN & 24,\allowbreak{} 512,\allowbreak{} 512,\allowbreak{} 2048 & Positive and at most 65535; singleto\allowbreak{}n hidden,\allowbreak{} PLE and FFN dimensio\allowbreak{}ns are supporte\allowbreak{}d.\\[3pt]
 
-EMBED\_\allowbreak{}DIM & 768 & At least six,\allowbreak{} divisible by six and at most 65535. Allowed output lengths are B,\allowbreak{} 2B/\allowbreak{}3,\allowbreak{} B/\allowbreak{}3 and B/\allowbreak{}6.\\[3pt]
+EMBED\_\allowbreak{}DIM & 768 & 6..65535,\allowbreak{} divisibl\allowbreak{}e by six; controls projecti\allowbreak{}on rows and the four supporte\allowbreak{}d output prefixes.\\[3pt]
 
-VOCAB\_\allowbreak{}SIZE,\allowbreak{} POSITION\_\allowbreak{}EMBEDDING\_\allowbreak{}SIZE & 262144,\allowbreak{} 10240 & Positive. Image jobs require vocabulary coverage through special ID 258882; patch-grid dimensions cannot exceed the position-table extent.\\[3pt]
+VOCAB\_\allowbreak{}SIZE,\allowbreak{} POSITION\_\allowbreak{}EMBEDDIN\allowbreak{}G\_\allowbreak{}SIZE & 262144,\allowbreak{} 10240 & Positive; determin\allowbreak{}e embeddin\allowbreak{}g and position address geometry and metadata validati\allowbreak{}on.\\[3pt]
 
-TEXT\_\allowbreak{}Q\_\allowbreak{}HEADS,\allowbreak{} LOCAL\_\allowbreak{}KV\_\allowbreak{}HEADS,\allowbreak{} FULL\_\allowbreak{}KV\_\allowbreak{}HEADS & 4,\allowbreak{} 2,\allowbreak{} 1 & Positive; each KV count divides the query-head count. Contiguous query-head groups share KV heads.\\[3pt]
+TEXT\_\allowbreak{}Q\_\allowbreak{}HEADS,\allowbreak{} LOCAL\_\allowbreak{}KV\_\allowbreak{}HEADS,\allowbreak{} FULL\_\allowbreak{}KV\_\allowbreak{}HEADS & 4,\allowbreak{} 2,\allowbreak{} 1 & Positive; each KV-head count divides the query-head count.\\[3pt]
 
-LOCAL\_\allowbreak{}HEAD\_\allowbreak{}DIM,\allowbreak{} FULL\_\allowbreak{}HEAD\_\allowbreak{}DIM & 256,\allowbreak{} 512 & Positive even dimensions; each query-head-count product fits 65535.\\[3pt]
+LOCAL\_\allowbreak{}HEAD\_\allowbreak{}DIM,\allowbreak{} FULL\_\allowbreak{}HEAD\_\allowbreak{}DIM & 256,\allowbreak{} 512 & Positive and even; each query-head count times head dimensio\allowbreak{}n must fit 65535.\\[3pt]
 
-SLIDING\_\allowbreak{}WINDOW,\allowbreak{} MAX\_\allowbreak{}SEQ\_\allowbreak{}LEN & 512,\allowbreak{} 262144 & Positive. Sequence and patch counts fit unsigned 32-bit counters; fused sequence length and positions obey MAX\_\allowbreak{}SEQ\_\allowbreak{}LEN.\\[3pt]
+SLIDING\_\allowbreak{}WINDOW,\allowbreak{} MAX\_\allowbreak{}SEQ\_\allowbreak{}LEN & 512,\allowbreak{} 262144 & Positive; bound local eligibil\allowbreak{}ity and accepted sequence/\allowbreak{}position values respecti\allowbreak{}vely.\\[3pt]
+
+RMS\_\allowbreak{}EPSILON\_\allowbreak{}Q80 & Unsigned 128-bit (\allowbreak{}128'd17 << 56)\allowbreak{},\allowbreak{} equal to 12249790\allowbreak{}98644774\allowbreak{}912 & Official evaluati\allowbreak{}on selects 128'd1208925\allowbreak{}81961462\allowbreak{}9175 before executio\allowbreak{}n,\allowbreak{} the nearest-even conversi\allowbreak{}on of 2\textasciicircum{}80/\allowbreak{}1000000. The identica\allowbreak{}l value propagat\allowbreak{}es through every RMS wrapper; L2 ignores it.\\[3pt]
 
 \bottomrule\end{longtable}}
 
 \section{Behavior and corner cases}
 
-\subsection{Vision processing and fusion}
+\subsection{Multimodal computation}
 
-The input image is externally preprocessed RGB CHW,\allowbreak{} without additional standardization. Patch flattening orders channel,\allowbreak{} row and column. Dense input projection is followed by separate factors from the two-axis position table. Each vision layer applies offset-scale RMS normalization,\allowbreak{} Q/\allowbreak{}K/\allowbreak{}V projection,\allowbreak{} per-head Q/\allowbreak{}K RMS,\allowbreak{} axial RoPE with theta 100,\allowbreak{} bidirectional softmax attention,\allowbreak{} output projection and normalized residual/\allowbreak{}feedforward operations. Spatial pooling uses nonoverlapping windows and averages actual participants in partial edge windows. Image sequences contain boi 255999,\allowbreak{} exactly S image slots tagged 258880,\allowbreak{} eoi 258882,\allowbreak{} then supplied text. Image vectors come from the dense bridge,\allowbreak{} not the image-token embedding row. Frame and text embeddings receive sqrt(\allowbreak{}TEXT\_\allowbreak{}HIDDEN)\allowbreak{} scaling; image vectors do not. Generated masks are one,\allowbreak{} and appended text positions shift by S+\allowbreak{}2.
-
-\subsection{Hybrid text backbone}
-
-Per-layer input embeddings,\allowbreak{} abbreviated PLE,\allowbreak{} are projected from initial fused hidden states,\allowbreak{} dimension-scaled,\allowbreak{} normalized and cached for every layer. Each text layer executes attention,\allowbreak{} normalized residuals,\allowbreak{} GELU-tanh gated MLP,\allowbreak{} gated cached-PLE projection,\allowbreak{} post-injection normalization/\allowbreak{}residual and layer-scalar multiplication. At defaults,\allowbreak{} zero-based layers 5,\allowbreak{} 11,\allowbreak{} 17 and 23 use full attention; other layers use sliding attention. Keys require mask one; local attention additionally requires absolute position difference strictly below SLIDING\_\allowbreak{}WINDOW. Attention is bidirectional,\allowbreak{} and masked queries still execute. Rotary theta is 10000 locally and 1000000 in full-attention layers.
+Vision executes patch projection,\allowbreak{} position addition,\allowbreak{} RMS-normalized Q/\allowbreak{}K/\allowbreak{}V,\allowbreak{} per-head normalization,\allowbreak{} axial RoPE,\allowbreak{} bidirectional scaled softmax attention,\allowbreak{} output residual and gated MLP. Actual-participant spatial means feed the bridge. Fusion scales frame/\allowbreak{}text embeddings by sqrt(\allowbreak{}TEXT\_\allowbreak{}HIDDEN)\allowbreak{},\allowbreak{} leaves image vectors unscaled and shifts appended positions. Text layers use full attention at zero-based layers 5/\allowbreak{}11/\allowbreak{}17/\allowbreak{}23 and local attention otherwise,\allowbreak{} with abs(\allowbreak{}position difference)\allowbreak{}<SLIDING\_\allowbreak{}WINDOW. RoPE uses the documented vision/\allowbreak{}local/\allowbreak{}full theta values 100/\allowbreak{}10000/\allowbreak{}1000000.
 
 \subsection{Fixed-point arithmetic}
 
-External numerical words are signed Q8.24; metadata is unscaled. Local values are signed 48-bit Q8.40,\allowbreak{} with exact promotion q<<16. Let W=\allowbreak{}2\textasciicircum{}24,\allowbreak{} G=\allowbreak{}2\textasciicircum{}40 and RN denote signed nearest-even division. Local saturation limits are (\allowbreak{}-2147483648)\allowbreak{}<<16 and 2147483647<<16. Dense projections use exact products and signed 128-bit reductions,\allowbreak{} returning clamp(\allowbreak{}RN(\allowbreak{}sum,\allowbreak{}W)\allowbreak{})\allowbreak{} for Q24 weights. Residuals clamp their sums; guarded elementwise products return clamp(\allowbreak{}RN(\allowbreak{}a*\allowbreak{}b,\allowbreak{}G)\allowbreak{})\allowbreak{}. Materialization applies signed-32 saturation after RN(\allowbreak{}a,\allowbreak{}2\textasciicircum{}16)\allowbreak{},\allowbreak{} preserving the original external dynamic range.
+External numerical words have 24 fractional bits; signed 48-bit local activations have 40. Let W=\allowbreak{}2\textasciicircum{}24,\allowbreak{} G=\allowbreak{}2\textasciicircum{}40,\allowbreak{} RN denote signed nearest-even division and C clamp to [\allowbreak{}(\allowbreak{}-2147483648)\allowbreak{}<<16,\allowbreak{}2147483647<<16]\allowbreak{}. Promotion is q<<16; materialization is signed32-saturating RN(\allowbreak{}x,\allowbreak{}2\textasciicircum{}16)\allowbreak{}. Dense projections use exact 128-bit reductions followed by C(\allowbreak{}RN(\allowbreak{}sum,\allowbreak{}W)\allowbreak{})\allowbreak{} for Q40-by-Q24 products. Residuals use C(\allowbreak{}a+\allowbreak{}b)\allowbreak{},\allowbreak{} and guarded products use C(\allowbreak{}RN(\allowbreak{}a*\allowbreak{}b,\allowbreak{}G)\allowbreak{})\allowbreak{}.
 
-\subsection{Normalization and nonlinear operators}
+\subsection{Normalization and output}
 
-RMS accumulates exact Q80 squares and forms D=\allowbreak{}RN(\allowbreak{}sum,\allowbreak{}count)\allowbreak{}+\allowbreak{}(\allowbreak{}17<<56)\allowbreak{},\allowbreak{} preserving epsilon 17/\allowbreak{}2\textasciicircum{}24. L2 uses D=\allowbreak{}sum without epsilon. With R=\allowbreak{}floor(\allowbreak{}sqrt(\allowbreak{}D<<64)\allowbreak{})\allowbreak{},\allowbreak{} the widened ratio is t=\allowbreak{}RN(\allowbreak{}a<<72,\allowbreak{}R)\allowbreak{}. RMS returns clamp(\allowbreak{}RN(\allowbreak{}t*\allowbreak{}(\allowbreak{}W+\allowbreak{}w)\allowbreak{},\allowbreak{}W)\allowbreak{})\allowbreak{}; L2 returns clamp(\allowbreak{}t)\allowbreak{}. A zero L2 denominator returns zero. Root radicands are 192 bits. GELU,\allowbreak{} exponential and trigonometric operators retain documented Q40 constants and 18-term recurrences. Attention scales and clamps scores before maximum selection,\allowbreak{} zeros differences strictly below -16*\allowbreak{}G,\allowbreak{} and divides exact weighted-value reductions by exponent-weight sums.
+RMS computes D=\allowbreak{}RN(\allowbreak{}sum(\allowbreak{}a*\allowbreak{}a)\allowbreak{},\allowbreak{}count)\allowbreak{}+\allowbreak{}RMS\_\allowbreak{}EPSILON\_\allowbreak{}Q80,\allowbreak{} R=\allowbreak{}floor(\allowbreak{}sqrt(\allowbreak{}D<<64)\allowbreak{})\allowbreak{},\allowbreak{} t=\allowbreak{}RN(\allowbreak{}a<<72,\allowbreak{}R)\allowbreak{},\allowbreak{} and C(\allowbreak{}RN(\allowbreak{}t*\allowbreak{}(\allowbreak{}W+\allowbreak{}w)\allowbreak{},\allowbreak{}W)\allowbreak{})\allowbreak{}; normalization weights therefore multiply by 1+\allowbreak{}weight. L2 instead uses D=\allowbreak{}sum(\allowbreak{}a*\allowbreak{}a)\allowbreak{},\allowbreak{} without epsilon,\allowbreak{} and returns exact zero for zero denominator. Final projected vectors undergo masked mean,\allowbreak{} prefix truncation and only then L2 normalization. Unmasked framing,\allowbreak{} image and prompt tokens participate in pooling.
 
-\subsection{Tensor boundaries and output}
+\subsection{Memory materialization}
 
-Patch results,\allowbreak{} vision/\allowbreak{}text Q/\allowbreak{}K/\allowbreak{}V,\allowbreak{} layer results,\allowbreak{} bridge soft tokens and cached PLE materialize as Q24 at their published scratch addresses and re-promote on read. No precision sidecars or private unrounded tensor bypasses are used. Final language normalization,\allowbreak{} embedding projection and masked mean remain Q40. The selected prefix is then L2-normalized before Q24 output capture. Default lengths are 768,\allowbreak{} 512,\allowbreak{} 256 and 128. Unmasked frame,\allowbreak{} image and prompt tokens all participate in pooling. Zero pooled vectors produce exact zero.
+Q24 boundaries include patch outputs,\allowbreak{} vision/\allowbreak{}text Q/\allowbreak{}K/\allowbreak{}V,\allowbreak{} layer outputs,\allowbreak{} cached PLE,\allowbreak{} projected soft tokens,\allowbreak{} fused X0 and normalized embeddings. Scratch regions are prefix-summed in order: V0,\allowbreak{}V1; vision Q,\allowbreak{}K,\allowbreak{}V; soft vectors; fused IDs,\allowbreak{}positions,\allowbreak{}masks; X0,\allowbreak{}X1; PLE; text Q,\allowbreak{}K,\allowbreak{}V. Shapes and row-major weight offsets follow E001; unrounded local copies cannot bypass these boundaries.
 
-\subsection{Cycle boundaries and errors}
+\subsection{Sequencing and faults}
 
-Descriptor acceptance enters a separate registered validation phase without memory requests. Stage START/\allowbreak{}WAIT ownership and bridge command,\allowbreak{} request,\allowbreak{} response and result phases prevent combinational handoff. Responses affect computation only after their accepting edge. Completion remains held until acknowledged; the following edge is the earliest new-job acceptance. Reset cancels work,\allowbreak{} and the environment discards canceled responses. Error codes are 0 success,\allowbreak{} 1 descriptor/\allowbreak{}mode/\allowbreak{}dimension/\allowbreak{}geometry/\allowbreak{}alignment,\allowbreak{} 2 fetched ID/\allowbreak{}position/\allowbreak{}mask,\allowbreak{} 3 memory response,\allowbreak{} 4 no unmasked pooling tokens,\allowbreak{} 5 address overflow and 6 arithmetic/\allowbreak{}internal protocol. Descriptor error 1 precedes overflow error 5; subsequent errors use first detection. Accepted transactions retire before abort completion,\allowbreak{} and errors emit no embeddings.
+Descriptor acceptance enters VALIDATE without a memory request. Valid jobs proceed through separate stage wake,\allowbreak{} START and WAIT phases. Commands,\allowbreak{} requests,\allowbreak{} responses and internal results retire on distinct registered boundaries. Final embedding acceptance precedes a separate completion phase; after completion handshake,\allowbreak{} the earliest next descriptor is the following edge. Descriptor error 1 precedes extent error 5; subsequently the first detected error wins. Accepted transactions retire before abort completion,\allowbreak{} and errors produce no embeddings.
 
 \section{Verification methods and measured results}
 
-\subsection{End-to-end execution and exact tensor behavior}
+\subsection{Direct official-weight provenance and independent precision paths}
 
-\textbf{Method.} Icarus Verilog 12.0 public-pin simulation with independent integer and floating mathematical oracles. The mandatory matrix contains A: 12 combinations,\allowbreak{} B: 6,\allowbreak{} C: 6 and D: 12. A/\allowbreak{}D use seed 17; B/\allowbreak{}C use seeds 17 and 89. Every configuration exercises all three modes.
+\textbf{Method.} Standard-library parsing validated complete-file and per-tensor SHA-256,\allowbreak{} BF16 headers,\allowbreak{} shapes,\allowbreak{} bounds,\allowbreak{} interval layout,\allowbreak{} manifest ranges and finite values; supplied JSON coordinates were cross-checked rather than used as forward weights.
 
-\textbf{Result.} All 36 mandatory combinations passed exact embedding and scratch comparisons. A covers singleton arithmetic and 1/\allowbreak{}2/\allowbreak{}4/\allowbreak{}6 outputs. B covers a 4x5 grid,\allowbreak{} partial kernel-3 windows,\allowbreak{} two vision heads and six text layers. C retains all 16 vision and 24 text layers with scaled widths. D covers 768/\allowbreak{}512/\allowbreak{}256/\allowbreak{}128 outputs. Per-combination results are retained in evidence/\allowbreak{}verification/\allowbreak{}behavior/\allowbreak{}1792073993939275686-2040/\allowbreak{}receipt.json.
+\textbf{Result.} Decoded 55 tensors containing 2,\allowbreak{}566,\allowbreak{}786 finite BF16 elements. Software used decoded values with struct-based binary32 operator boundaries and binary64 reductions/\allowbreak{}math; hardware used nearest-even,\allowbreak{} signed32-saturating Q8.24 images.
 
-{\small Evidence: E028,\allowbreak{} E036,\allowbreak{} E152}
+{\small Evidence: E034,\allowbreak{} E040,\allowbreak{} E066}
 
-\subsection{Component and nonzero-vector norm errors no greater than 0.002}
+\subsection{Complete official matrix and exact RTL agreement}
 
-\textbf{Method.} Compare Q24 embeddings with the mathematical oracle without intermediate scratch snapping,\allowbreak{} and independently measure deviation from unit L2 norm.
+\textbf{Method.} Icarus Verilog 12.0 compiled actual RTL with -g2012 -Wall; vvp drove public pins. Seed 17 covered A: three modes at dimensions 6/\allowbreak{}4/\allowbreak{}2/\allowbreak{}1; C: three modes at dimension 12 with 16 vision/\allowbreak{}24 text iterations; D: three modes at 768/\allowbreak{}512/\allowbreak{}256/\allowbreak{}128; B: vision and joint at dimension 12.
 
-\textbf{Result.} Maximum component error was 2.830034822846189e-5; maximum norm error was 4.471435732789075e-8. Both occurred in B/\allowbreak{}seed89/\allowbreak{}text-only. The earlier Q24-local contract exceeded the component threshold at approximately 0.0023715 despite agreement between RTL and the integer oracle. The numerical-contract amendment retained sixteen local guard bits and widened reductions while preserving Q24 tensor boundaries. The retained fixture subsequently passed without changing its seed,\allowbreak{} magnitude or tolerance. This is a precision repair,\allowbreak{} not evidence that the original mathematical comparison was defective.
+\textbf{Result.} All 29 cases passed with zero output-word mismatches and exact scratch addresses and per-address write histories. B exercised 20 distinct patches on a 4x5 grid,\allowbreak{} nonzero positions on both axes,\allowbreak{} multiple vision keys and pooling participant counts 9/\allowbreak{}6/\allowbreak{}3/\allowbreak{}2.
 
-{\small Evidence: E028,\allowbreak{} E055,\allowbreak{} E056,\allowbreak{} E152}
+{\small Evidence: E040,\allowbreak{} E066}
 
-\subsection{Protocol,\allowbreak{} addressing and arithmetic boundaries}
+\subsection{Floating-point similarity and error limits}
 
-\textbf{Method.} Directed public-interface checks supplement the matrix with reset,\allowbreak{} backpressure,\allowbreak{} invalid traffic,\allowbreak{} parameter diagnostics,\allowbreak{} focused stages and exact arithmetic comparisons.
+\textbf{Method.} Compared RTL words divided by 2\textasciicircum{}24 against independently evaluated software vectors. Required finite nonzero outputs,\allowbreak{} cosine>=\allowbreak{}0.999,\allowbreak{} maximum component error<=\allowbreak{}0.002,\allowbreak{} absolute unit-norm error<=\allowbreak{}0.002 and software/\allowbreak{}RTL norm difference<=\allowbreak{}0.002.
 
-\textbf{Result.} Passed independent request/\allowbreak{}response delays,\allowbreak{} embedding/\allowbreak{}completion stalls,\allowbreak{} reset cancellation,\allowbreak{} malformed descriptors and fetched values,\allowbreak{} memory errors and overflow cases. Focused tests cover all 282 frame/\allowbreak{}image slots for S=\allowbreak{}280,\allowbreak{} PATCH\_\allowbreak{}SIZE=\allowbreak{}16 addressing and near-last position-table access. Arithmetic evidence includes 3408 divider comparisons,\allowbreak{} 33 norm vectors,\allowbreak{} signed ties,\allowbreak{} saturation and zero-denominator cases.
+\textbf{Result.} All cases passed. B vision was the minimum-cosine and maximum-component-error case: cosine 0.9999999950454138,\allowbreak{} maximum error 4.7340989112854004e-5,\allowbreak{} MAE 2.4860103925069172e-5,\allowbreak{} RMSE 2.8736116710771375e-5 and vector L2-distance 9.954482831057014e-5. Its RTL/\allowbreak{}software norms were 1.0000000229083967/\allowbreak{}1.0000000086127838. B joint maximum error was 3.948807716369629e-6. Maximum RTL unit-norm error across the matrix was 4.218036320224883e-8.
 
-{\small Evidence: E022,\allowbreak{} E024,\allowbreak{} E034,\allowbreak{} E036,\allowbreak{} E152}
+{\small Evidence: E066}
 
-\subsection{Detection of material functional defects}
+\subsection{Measured per-mode simulated latency}
 
-\textbf{Method.} Compile and execute disposable RTL mutations against independently expected targeted fixtures.
+\textbf{Method.} Measured descriptor acceptance to first embedding,\allowbreak{} final embedding and completion at a 10 ns clock,\allowbreak{} with always-ready requests/\allowbreak{}outputs and responses one cycle after request acceptance.
 
-\textbf{Result.} All five mutations executed and were rejected: vision-position omission,\allowbreak{} soft-token fusion corruption,\allowbreak{} PLE bypass,\allowbreak{} full/\allowbreak{}local schedule corruption and normalization before truncation. Four produced scratch mismatches; normalization before truncation produced an exact output mismatch. Compilation failure was not counted as detection.
+\textbf{Result.} C text first/\allowbreak{}final/\allowbreak{}completion: 122580/\allowbreak{}122591/\allowbreak{}122594 cycles; vision: 165122/\allowbreak{}165133/\allowbreak{}165136; joint: 327389/\allowbreak{}327400/\allowbreak{}327403. B vision: 225083/\allowbreak{}225094/\allowbreak{}225097; joint: 284579/\allowbreak{}284590/\allowbreak{}284593. Completion latencies are respectively 1.22594,\allowbreak{} 1.65136,\allowbreak{} 3.27403,\allowbreak{} 2.25097 and 2.84593 ms. The complete 29-row ledger retains all cycle and nanosecond measurements.
 
-{\small Evidence: E036,\allowbreak{} E153}
+{\small Evidence: E066}
 
-\subsection{Connected synthesizable hierarchy with zero latches}
+\subsection{RMS numerical-contract repair without legacy regression}
 
-\textbf{Method.} Yosys 0.33 generic synthesis for A and scaled C,\allowbreak{} including hierarchy checking,\allowbreak{} process lowering,\allowbreak{} optimization,\allowbreak{} memory collection,\allowbreak{} consistency assertions and JSON-netlist inspection.
+\textbf{Method.} Parameter-aware expectations checked exact epsilon conversion,\allowbreak{} legacy default,\allowbreak{} wrapper propagation and L2 independence,\allowbreak{} followed by the complete functional regression.
 
-\textbf{Result.} Both configurations passed with zero latches,\allowbreak{} required connected stages and no unresolved black boxes. Each contained 33 reachable module definitions,\allowbreak{} including the synthesis fixture. Original Yosys hierarchy statistics report 634 instantiated generic sequential cells for A: 507 \$adff plus 127 \$dff; C reports 673: 507 \$adff plus 166 \$dff. These are generic multi-bit cell counts,\allowbreak{} not register-bit counts or technology area. C retains all 16 vision and 24 text iterations.
+\textbf{Result.} The previous multi-patch failure had exact integer agreement but cosine 0.9913286747181946 and maximum error 0.06919039785861969: the legacy epsilon differed from official 1e-6. Selecting the admitted Q80 epsilon resolved the measured discrepancy without changing software epsilon or fixtures. Thirty L2 vectors were identical across epsilon selections; the legacy default and synthetic regression passed.
 
-{\small Evidence: E017,\allowbreak{} E036,\allowbreak{} E154}
+{\small Evidence: E001,\allowbreak{} E002,\allowbreak{} E013,\allowbreak{} E040,\allowbreak{} E066}
+
+\subsection{Retained functional and protocol behavior}
+
+\textbf{Method.} Executed the complete synthetic matrix and focused arithmetic,\allowbreak{} parameter,\allowbreak{} metadata,\allowbreak{} reset,\allowbreak{} backpressure,\allowbreak{} memory-error,\allowbreak{} scratch-history,\allowbreak{} PATCH\_\allowbreak{}SIZE=\allowbreak{}16 and 280-soft-token fusion checks.
+
+\textbf{Result.} Functional check passed,\allowbreak{} including legacy numerical behavior and independent protocol-stress coverage. Official benchmark readiness was not substituted for stalled-transaction testing.
+
+{\small Evidence: E030,\allowbreak{} E038,\allowbreak{} E040,\allowbreak{} E066}
+
+\subsection{Sensitivity to material datapath defects}
+
+\textbf{Method.} Compiled and simulated five disposable-source mutations affecting vision positions,\allowbreak{} soft-token fusion,\allowbreak{} PLE,\allowbreak{} full/\allowbreak{}local scheduling and normalization-before-truncation.
+
+\textbf{Result.} All five mutations were rejected by scratch-history or exact-output assertions; compilation failure or timeout was not counted as detection.
+
+{\small Evidence: E040,\allowbreak{} E067}
+
+\subsection{Connected synthesizable structure}
+
+\textbf{Method.} Yosys 0.33 processed A and scaled C using hierarchy checking,\allowbreak{} proc,\allowbreak{} opt,\allowbreak{} memory\_\allowbreak{}collect,\allowbreak{} check -assert,\allowbreak{} stat and JSON export; inspected reachable modules and epsilon propagation.
+
+\textbf{Result.} Both configurations passed with 33 reachable modules each,\allowbreak{} 516/\allowbreak{}555 generic sequential cells and zero latches. Required stages remained connected,\allowbreak{} with no unresolved black boxes or empty-top substitution. C retained 16/\allowbreak{}24 layer iterations and the official epsilon override.
+
+{\small Evidence: E040,\allowbreak{} E068}
 
 \section{Integration and use}
 
-Compile rtl/\allowbreak{}*\allowbreak{}.sv with top module anvil\_\allowbreak{}e2\_\allowbreak{}top. design/\allowbreak{}ARCHITECTURE.md defines cycle boundaries,\allowbreak{} tensor offsets,\allowbreak{} arithmetic and scratch allocation. The supplied HuggingFace specification files are architectural inputs; Gen-1 RTL is reference material,\allowbreak{} not an E2 implementation dependency.
+Use \texttt{rtl/\allowbreak{}*\allowbreak{}.sv} with top module \texttt{anvil\_\allowbreak{}e2\_\allowbreak{}top}. Read \texttt{design/\allowbreak{}ARCHITECTURE.md} for the complete tensor-offset,\allowbreak{} scratch-extent,\allowbreak{} arithmetic and cycle ledgers; \texttt{design/\allowbreak{}OFFICIAL\_\allowbreak{}WEIGHTS\_\allowbreak{}EVALUATION.md} explains bounded checkpoint remapping. Its implementation-time pending statements are superseded for measured outcomes by the current functional evidence E066.
 
 
-Provision row-major,\allowbreak{} tightly concatenated four-byte Q24 weights using documented prefix-sum offsets. Text globals precede ascending layers; vision patch and factorized position tensors precede encoder layers and bridge projection. Preserve manifest .linear.weight names. The actual configuration disables clipped linears and the manifest contains no clipping scalars; do not fabricate them.
+Select geometry and \texttt{RMS\_\allowbreak{}EPSILON\_\allowbreak{}Q80} at elaboration. Provision distinct aligned language-weight,\allowbreak{} vision-weight,\allowbreak{} input and scratch regions. Official mappings retain source strides: patch columns channel*\allowbreak{}256+\allowbreak{}dy*\allowbreak{}16+\allowbreak{}dx,\allowbreak{} vision layer 0 reused across iterations,\allowbreak{} and language layer 0 or 5 selected by the destination schedule. Quantize directly decoded BF16 values with signed32-saturating nearest-even round(\allowbreak{}value*\allowbreak{}2\textasciicircum{}24)\allowbreak{}.
 
 
-Allocate scratch in order: V0,\allowbreak{} V1,\allowbreak{} vision Q/\allowbreak{}K/\allowbreak{}V,\allowbreak{} soft tokens,\allowbreak{} fused IDs/\allowbreak{}positions/\allowbreak{}masks,\allowbreak{} X0,\allowbreak{} X1,\allowbreak{} PLE and text Q/\allowbreak{}K/\allowbreak{}V. Image modes use P=\allowbreak{}rows*\allowbreak{}cols and N=\allowbreak{}S+\allowbreak{}2+\allowbreak{}job\_\allowbreak{}tokens; text-only uses P=\allowbreak{}S=\allowbreak{}0 and N=\allowbreak{}job\_\allowbreak{}tokens. PLE token stride is TEXT\_\allowbreak{}LAYERS*\allowbreak{}PLE\_\allowbreak{}DIM. Text Q stride is TEXT\_\allowbreak{}Q\_\allowbreak{}HEADS*\allowbreak{}D; K/\allowbreak{}V stride is K*\allowbreak{}D,\allowbreak{} with D and K the maximum configured head dimension and KV count. Include documented padding.
+Assert reset,\allowbreak{} discard canceled transactions,\allowbreak{} then submit a descriptor only through \texttt{job\_\allowbreak{}valid/\allowbreak{}job\_\allowbreak{}ready}. Keep stalled memory and output handshakes stable,\allowbreak{} acknowledge writes as well as reads,\allowbreak{} consume all embedding beats and accept completion before submitting another job.
 
 
-Assert reset low and discard canceled responses. After release,\allowbreak{} submit the descriptor when job\_\allowbreak{}ready is high. Return one acknowledged response per accepted request,\allowbreak{} including writes. Consume ordered embeddings with emb\_\allowbreak{}ready and held completion with done\_\allowbreak{}ready.
+Reproduction entry points are \texttt{python3 tests/\allowbreak{}verify.py --check functional},\allowbreak{} \texttt{python3 tests/\allowbreak{}verify.py --check sensitivity} and \texttt{python3 tests/\allowbreak{}verify.py --check synthesis}. No arguments execute all three; \texttt{--check behavior} aliases the complete functional check. Dependencies are Python 3 standard library,\allowbreak{} iverilog,\allowbreak{} vvp and yosys; NumPy is not required.
 
 
-Reproduction entry points are \texttt{python3 tests/\allowbreak{}verify.py --check behavior},\allowbreak{} \texttt{python3 tests/\allowbreak{}verify.py --check sensitivity} and \texttt{python3 tests/\allowbreak{}verify.py --check synthesis}; no arguments runs all three. Dependencies are Python 3,\allowbreak{} Icarus Verilog/\allowbreak{}vvp and Yosys. Exact-default elaboration uses \texttt{iverilog -g2012 -Wall -t null -s anvil\_\allowbreak{}e2\_\allowbreak{}top rtl/\allowbreak{}*\allowbreak{}.sv}. Accepted receipts retain source hashes,\allowbreak{} tool versions,\allowbreak{} commands and raw results.
+The current comparison is \texttt{evidence/\allowbreak{}verification/\allowbreak{}functional/\allowbreak{}1792082720920298364-239674/\allowbreak{}official\_\allowbreak{}weights\_\allowbreak{}comparison.json},\allowbreak{} identified by its adjacent \texttt{receipt.json}. It contains source/\allowbreak{}input hashes,\allowbreak{} mappings,\allowbreak{} parameter overrides,\allowbreak{} vectors,\allowbreak{} metrics,\allowbreak{} geometry and transcript links. Historical fixed-path comparison files are not the current result. Workspace execution was completed; clean-directory portable reproduction was not demonstrated.
 
 
 \section{Limitations and acceptance boundary}
 
-No pretrained checkpoint weights or executable HuggingFace modeling source were supplied. Official-checkpoint equivalence,\allowbreak{} BF16 equivalence,\allowbreak{} retrieval quality and downstream embedding accuracy remain unmeasured.
+Official results use authorized bounded remapping,\allowbreak{} not native full-checkpoint inference. BOI/\allowbreak{}EOI public IDs 255999/\allowbreak{}258882 use available embedding rows 0/\allowbreak{}1,\allowbreak{} ordinary tokens use rows 7/\allowbreak{}19/\allowbreak{}31,\allowbreak{} scaled heads pack available coordinates,\allowbreak{} and PLE rows use the documented scaled selection.
 
 
-Full architectural defaults were elaborated,\allowbreak{} but full-width default inference was not simulated or synthesized. Functional and synthesis conclusions apply to recorded scaled configurations and focused boundaries,\allowbreak{} not every legal parameter combination.
+Loaded position shape [\allowbreak{}2,\allowbreak{}256,\allowbreak{}768]\allowbreak{} derives from a contiguous prefix of original [\allowbreak{}2,\allowbreak{}10240,\allowbreak{}768]\allowbreak{}. Loaded [\allowbreak{}1,\allowbreak{}p,\allowbreak{}c]\allowbreak{} therefore maps to original [\allowbreak{}0,\allowbreak{}256+\allowbreak{}p,\allowbreak{}c]\allowbreak{},\allowbreak{} not the native column-axis coordinate [\allowbreak{}1,\allowbreak{}p,\allowbreak{}c]\allowbreak{}.
 
 
-Scalar single-outstanding memory access,\allowbreak{} repeated tensor reads and serialized arithmetic favor bounded implementation over throughput. No operating frequency,\allowbreak{} inference throughput,\allowbreak{} bandwidth target,\allowbreak{} power,\allowbreak{} technology area or physical sign-off is established.
+Matching supplied hashes establishes consistency with mounted provenance,\allowbreak{} not independent remote checkpoint authentication. BF16 describes weight storage; software is not native BF16 arithmetic or an executable HuggingFace reference implementation.
 
 
-RTL clock isolation is implemented,\allowbreak{} but technology-specific clock-gating mapping,\allowbreak{} clock-tree integration and timing closure require target implementation work.
+Parameter defaults describe supported architecture,\allowbreak{} not a measured full-size workload. Generic synthesis covered A and scaled C only. Simulated latency is not timing closure,\allowbreak{} default-model throughput,\allowbreak{} silicon area,\allowbreak{} power,\allowbreak{} FPGA deployment or physical sign-off.
 
 
-Synthetic numerical agreement is not a universal error bound for arbitrary weights or near-canceling vectors. Q24 materialization still discards guard precision,\allowbreak{} and saturation remains part of the contract.
-
-
-Image preprocessing,\allowbreak{} tokenization,\allowbreak{} checkpoint conversion and host memory management remain external responsibilities. Audio is excluded and reserved for Anvil-E3.
-
-
-Recorded checks establish execution in the retained environment. No separate clean-directory portable-delivery reproduction or formal proof is established.
+Finite regression and five mutation detections do not constitute exhaustive formal proof. No downstream retrieval-quality,\allowbreak{} semantic-accuracy or application-level benchmark was performed.
 
 
 \appendix\section{Source inventory}
 
-Production inventory: 20 Verilog/\allowbreak{}SystemVerilog files; 3542 nonblank,\allowbreak{} non-comment lines. Source size is not a correctness or quality metric.
+Production inventory: 20 Verilog/\allowbreak{}SystemVerilog files; 3555 nonblank,\allowbreak{} non-comment lines. Source size is not a correctness or quality metric.
 
 {\small\begin{longtable}{@{}L{0.61\textwidth}L{0.15\textwidth}L{0.15\textwidth}@{}}\toprule
 
-\textbf{Production file} & \textbf{Physical lines} & \textbf{Code lines}\\\midrule\endhead
+\textbf{Producti\allowbreak{}on file} & \textbf{Physical lines} & \textbf{Code lines}\\\midrule\endhead
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}address.sv & 173 & 164\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}attention.sv & 347 & 344\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}attentio\allowbreak{}n.sv & 347 & 344\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}clock\_\allowbreak{}gate.sv & 13 & 12\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}divide.sv & 136 & 133\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}hybrid\_\allowbreak{}layer.sv & 962 & 944\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}hybrid\_\allowbreak{}layer.sv & 965 & 947\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}mac.sv & 35 & 35\\[3pt]
 
@@ -360,25 +381,25 @@ rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}matvec.sv & 102 & 102\\[3p
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}memory.sv & 65 & 65\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}multimodal\_\allowbreak{}fusion.sv & 149 & 149\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}multimod\allowbreak{}al\_\allowbreak{}fusion.sv & 149 & 149\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}nonlinear.sv & 286 & 279\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}nonlinea\allowbreak{}r.sv & 286 & 279\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}norm.sv & 228 & 223\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}norm.sv & 229 & 224\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}pool.sv & 175 & 174\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}pool\_\allowbreak{}norm.sv & 39 & 39\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}pool\_\allowbreak{}norm.sv & 41 & 41\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}rope.sv & 178 & 178\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}series.sv & 73 & 70\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}text\_\allowbreak{}frontend\_\allowbreak{}ple.sv & 39 & 39\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}text\_\allowbreak{}frontend\_\allowbreak{}ple.sv & 41 & 41\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}top.sv & 295 & 295\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}top.sv & 298 & 298\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}encoder\_\allowbreak{}layer.sv & 45 & 45\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}encoder\_\allowbreak{}layer.sv & 47 & 47\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}patch\_\allowbreak{}embed.sv & 124 & 124\\[3pt]
 
@@ -390,13 +411,13 @@ rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}vision\_\allowbreak{}pool\
 
 {\small\begin{longtable}{@{}L{0.57\textwidth}L{0.16\textwidth}L{0.17\textwidth}@{}}\toprule
 
-\textbf{Recorded check} & \textbf{Outcome} & \textbf{Execution time (\allowbreak{}s)\allowbreak{}}\\\midrule\endhead
+\textbf{Recorded check} & \textbf{Outcome} & \textbf{Executio\allowbreak{}n time (\allowbreak{}s)\allowbreak{}}\\\midrule\endhead
 
-behavior & passed & 469.677\\[3pt]
+function\allowbreak{}al & passed & 412.975\\[3pt]
 
-sensitivity & passed & 12.400\\[3pt]
+sensitiv\allowbreak{}ity & passed & 8.900\\[3pt]
 
-synthesis & passed & 120.350\\[3pt]
+synthesi\allowbreak{}s & passed & 66.373\\[3pt]
 
 \bottomrule\end{longtable}}
 
@@ -404,29 +425,27 @@ Execution times include tool and provider waiting; they are not hardware latency
 
 {\small\begin{longtable}{@{}L{0.12\textwidth}L{0.82\textwidth}@{}}\toprule
 
-\textbf{Reference} & \textbf{Original project-relative record}\\\midrule\endhead
+\textbf{Referenc\allowbreak{}e} & \textbf{Original project-relative record}\\\midrule\endhead
 
-E017 & rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}top.sv\\[3pt]
+E001 & design/\allowbreak{}ARCHITEC\allowbreak{}TURE.md\\[3pt]
 
-E022 & tests/\allowbreak{}attention\_\allowbreak{}boundaries.py\\[3pt]
+E002 & design/\allowbreak{}OFFICIAL\_\allowbreak{}WEIGHTS\_\allowbreak{}EVALUATI\allowbreak{}ON.md\\[3pt]
 
-E024 & tests/\allowbreak{}cursor\_\allowbreak{}boundaries.py\\[3pt]
+E013 & rtl/\allowbreak{}anvil\_\allowbreak{}e2\_\allowbreak{}norm.sv\\[3pt]
 
-E028 & tests/\allowbreak{}model.py\\[3pt]
+E030 & tests/\allowbreak{}model.py\\[3pt]
 
-E034 & tests/\allowbreak{}stages.py\\[3pt]
+E034 & tests/\allowbreak{}official\_\allowbreak{}weights.py\\[3pt]
 
-E036 & tests/\allowbreak{}verify.py\\[3pt]
+E038 & tests/\allowbreak{}stages.py\\[3pt]
 
-E055 & .vulcan/\allowbreak{}engineering/\allowbreak{}call-0009/\allowbreak{}response.json\\[3pt]
+E040 & tests/\allowbreak{}verify.py\\[3pt]
 
-E056 & .vulcan/\allowbreak{}engineering/\allowbreak{}call-0010/\allowbreak{}response.json\\[3pt]
+E066 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0002/\allowbreak{}attempt-0003/\allowbreak{}stdout.log\\[3pt]
 
-E152 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0002/\allowbreak{}attempt-0057/\allowbreak{}stdout.log\\[3pt]
+E067 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0002/\allowbreak{}attempt-0004/\allowbreak{}stdout.log\\[3pt]
 
-E153 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0002/\allowbreak{}attempt-0058/\allowbreak{}stdout.log\\[3pt]
-
-E154 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0002/\allowbreak{}attempt-0059/\allowbreak{}stdout.log\\[3pt]
+E068 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0002/\allowbreak{}attempt-0005/\allowbreak{}stdout.log\\[3pt]
 
 \bottomrule\end{longtable}}
 
