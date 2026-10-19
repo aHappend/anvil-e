@@ -19,7 +19,7 @@ module addresses;
         .LOCAL_HEAD_DIM(LOCAL_HEAD_DIM), .FULL_HEAD_DIM(FULL_HEAD_DIM)
     ) dut(.*);
     integer fd, scanned, tag, count=0;
-    reg [1023:0] path;
+    string path;
     initial begin
         if (!$value$plusargs("input=%s",path)) $fatal(1,"MISSING_INPUT");
         fd=$fopen(path,"r");

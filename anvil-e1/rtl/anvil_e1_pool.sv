@@ -32,7 +32,7 @@ module anvil_e1_pool #(
     output wire [3:0] done_error
 );
     localparam IDLE=0, CLEAR=1, LOAD=2, MEAN=3, NSTART=4,
-               NLOAD=5, NOUTPUT=6, OUTPUT=7, DONE=8;
+               NLOAD=5, NOUTPUT=6, OUTPUT=7, DONE=8, DIVIDE=9, MEAN_SAVE=10;
     reg [3:0] state;
     reg [31:0] tokens, valid_tokens, token_index, channel;
     reg [15:0] dimension;
@@ -42,10 +42,44 @@ module anvil_e1_pool #(
     reg signed [31:0] pooled [0:EMBEDDING_DIM-1];
     reg signed [31:0] normalized [0:EMBEDDING_DIM-1];
     reg [3:0] error_hold;
-    reg signed [95:0] magnitude, quotient, remainder, divisor;
     reg signed [31:0] data_hold;
     reg [15:0] index_hold;
     reg last_hold;
+    reg [95:0] div_quotient, div_divisor;
+    reg [96:0] div_remainder;
+    reg div_negative;
+    reg [4:0] div_iteration;
+    reg [95:0] div_next_quotient;
+    reg [96:0] div_next_remainder;
+    integer div_bit;
+    always @* begin
+        div_next_quotient=div_quotient;
+        div_next_remainder=div_remainder;
+        if (state==DIVIDE) begin
+            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+                div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
+                div_next_quotient=div_next_quotient<<1;
+                if (div_next_remainder>={1'b0,div_divisor}) begin
+                    div_next_remainder=div_next_remainder-{1'b0,div_divisor};
+                    div_next_quotient[0]=1'b1;
+                end
+            end
+        end
+    end
+    wire [95:0] div_rounded_magnitude=div_quotient+
+        ((div_remainder>{1'b0,div_divisor}-div_remainder ||
+          (div_remainder=={1'b0,div_divisor}-div_remainder && div_quotient[0]))
+         ? 96'd1:96'd0);
+    wire signed [95:0] div_result=div_negative ?
+        -$signed(div_rounded_magnitude):$signed(div_rounded_magnitude);
+    function automatic signed [31:0] saturate;
+        input signed [95:0] value;
+        begin
+            if (value>96'sd2147483647) saturate=32'sh7fffffff;
+            else if (value< -96'sd2147483648) saturate=32'sh80000000;
+            else saturate=value[31:0];
+        end
+    endfunction
     initial begin
         if (EMBEDDING_DIM<6 || EMBEDDING_DIM>65535 || EMBEDDING_DIM%6!=0)
             $fatal(1,"PARAMETER ERROR: pool E must be divisible by six and <=65535");
@@ -71,7 +105,8 @@ module anvil_e1_pool #(
             state<=IDLE; tokens<=0; valid_tokens<=0; token_index<=0;
             channel<=0; dimension<=0; seen_valid<=0; mask_hold<=0;
             error_hold<=0; data_hold<=0; index_hold<=0; last_hold<=0;
-            magnitude=0; quotient=0; remainder=0; divisor=0;
+            div_quotient<=0; div_divisor<=0; div_remainder<=0;
+            div_negative<=0; div_iteration<=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
@@ -110,20 +145,21 @@ module anvil_e1_pool #(
                     if (seen_valid!=valid_tokens) begin
                         error_hold<=2; state<=DONE;
                     end else begin
-                        divisor={64'd0,valid_tokens};
-                        magnitude=sums[channel]<0 ? -sums[channel]:sums[channel];
-                        quotient=magnitude/divisor;
-                        remainder=magnitude%divisor;
-                        if (remainder>divisor-remainder ||
-                            (remainder==divisor-remainder && quotient[0]))
-                            quotient=quotient+96'sd1;
-                        if (sums[channel]<0) quotient=-quotient;
-                        if (quotient>96'sd2147483647) pooled[channel]<=32'sh7fffffff;
-                        else if (quotient< -96'sd2147483648) pooled[channel]<=32'sh80000000;
-                        else pooled[channel]<=quotient[31:0];
-                        if (channel==dimension-1) begin channel<=0; state<=NSTART; end
-                        else channel<=channel+1'b1;
+                        div_quotient<=sums[channel]<0 ? -sums[channel]:sums[channel];
+                        div_divisor<={64'd0,valid_tokens};
+                        div_negative<=sums[channel]<0;
+                        div_remainder<=0; div_iteration<=0; state<=DIVIDE;
                     end
+                end
+                DIVIDE: begin
+                    div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
+                    if (div_iteration==23) state<=MEAN_SAVE;
+                    else div_iteration<=div_iteration+1'b1;
+                end
+                MEAN_SAVE: begin
+                    pooled[channel]<=saturate(div_result);
+                    if (channel==dimension-1) begin channel<=0; state<=NSTART; end
+                    else begin channel<=channel+1'b1; state<=MEAN; end
                 end
                 NSTART: if (norm_start_ready) state<=NLOAD;
                 NLOAD: if (norm_in_ready) begin

@@ -12,6 +12,21 @@ forward equations in [ARCHITECTURE.md](ARCHITECTURE.md).
 The narrow RMS-epsilon revision below changes only the denominator constant
 in the shared `rtl/anvil_e1_norm.sv`; it adds no interface, mode or latency.
 
+The subsequent timing-hazard repair changes seven existing RTL files:
+address, attention, nonlinear, norm, pool, RoPE and sequencer. Runtime
+division/remainder now uses local multi-cycle restoring state machines;
+layer classification/addressing uses a wrap counter or exact constant
+reciprocal multiplication, and head grouping uses constant-boundary
+comparisons. Clocked state updates are exclusively nonblocking.
+The thirteen-module structure, ports, registered public handshake boundaries,
+official coefficient mapping, forward equations, Q48 epsilon and
+rounding/saturation contracts remain unchanged. Internal operation latency
+increases as specified in ARCHITECTURE.md. Prior numerical, cycle and
+synthesis results are historical, not current-source acceptance. Fresh
+independent verification and timing-lint/synthesis inspection (including
+absence of runtime `$div`/`$mod` cells) are required; the Designer runs only
+static elaboration and does not claim physical timing closure.
+
 The explicit revision and parent contract require the complete adopted
 transformer equation sequence, including every tensor family. Supplied shape
 manifests are not executable evidence of the upstream forward implementation.

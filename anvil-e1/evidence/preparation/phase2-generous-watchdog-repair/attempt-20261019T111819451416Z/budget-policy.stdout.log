@@ -1,0 +1,1 @@
+Budget policy: all delivery checks >=82800s; preparation unchanged; invalid timeouts rejected; one nonrenewing phase deadline preserved. All tests/*.py parse.

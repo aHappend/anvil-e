@@ -1,0 +1,13 @@
+{
+  "original_trace": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/behavior/negative_control/attempt-20261019T115429164853Z/official-simulation.stdout.log",
+  "original_sha256": "edb0209e47d31152a2f2765f2bedab3ef086ff696130066be109c413813bb2e4",
+  "altered_trace": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/behavior/negative_control/attempt-20261019T115429164853Z/negative_control/altered.trace",
+  "line": 3676,
+  "job": 0,
+  "index": 0,
+  "before": 11924784,
+  "after": 11924785,
+  "entrypoint": "behavior.compare_trace(path, jobs, geometry)",
+  "unchanged_status": "passed",
+  "status": "specific-exact-mismatch-rejected"
+}

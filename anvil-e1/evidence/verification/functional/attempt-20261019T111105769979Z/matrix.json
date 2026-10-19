@@ -1,0 +1,512 @@
+[
+  {
+    "config": "A",
+    "seed": 17,
+    "jobs": [
+      {
+        "job": 0,
+        "status": "passed",
+        "output_words": 6,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 0.9999999978974792,
+        "max_absolute_error": 2.2717650657658184e-06,
+        "cosine_similarity": 0.9999999999947484
+      },
+      {
+        "job": 1,
+        "status": "passed",
+        "output_words": 4,
+        "error": 0,
+        "request_count": 19176,
+        "output_norm": 1.000000033993753,
+        "max_absolute_error": 4.172889330555929e-05,
+        "cosine_similarity": 0.9999999980598707
+      },
+      {
+        "job": 2,
+        "status": "passed",
+        "output_words": 2,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.000000024931795,
+        "max_absolute_error": 2.4360560261504904e-06,
+        "cosine_similarity": 0.9999999999968634
+      },
+      {
+        "job": 3,
+        "status": "passed",
+        "output_words": 1,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0,
+        "max_absolute_error": 0.0,
+        "cosine_similarity": 1.0
+      },
+      {
+        "job": 4,
+        "status": "passed",
+        "output_words": 0,
+        "error": 4,
+        "request_count": 24
+      },
+      {
+        "job": 5,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 6,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 7,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 8,
+        "status": "passed",
+        "output_words": 0,
+        "error": 5,
+        "request_count": 0
+      },
+      {
+        "job": 9,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 1
+      },
+      {
+        "job": 10,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 2
+      },
+      {
+        "job": 11,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 3
+      },
+      {
+        "job": 12,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 4
+      },
+      {
+        "job": 13,
+        "status": "passed",
+        "output_words": 0,
+        "error": 3,
+        "request_count": 1
+      },
+      {
+        "job": 14,
+        "status": "passed",
+        "output_words": 0,
+        "error": 3,
+        "request_count": 4
+      }
+    ],
+    "tensor_families_observed": 107,
+    "operation_evidence": "Complete non-embedding coefficient reads in successful jobs plus independent full-equation output comparisons; nonzero-position RoPE and sliding/full layers included",
+    "full_layers_observed": [
+      5
+    ],
+    "public_protocol_coverage": [
+      4220,
+      40502,
+      13,
+      13,
+      15,
+      23538,
+      1188,
+      24724,
+      2,
+      13,
+      4,
+      4,
+      11,
+      0,
+      0,
+      0
+    ],
+    "trace": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/functional/attempt-20261019T111105769979Z/A-17-simulation.stdout.log",
+    "status": "passed",
+    "fixture_reference_s": 0.06262939603766426,
+    "simulation_s": 40.747057494008914,
+    "simulation_cpu_user_s": 38.295924,
+    "simulation_cpu_system_s": 0.03,
+    "simulation_cycles": 1364802,
+    "public_transaction_events": 49497,
+    "trace_bytes": 1144405,
+    "scoreboard_coverage_s": 0.12459782900987193
+  },
+  {
+    "config": "A",
+    "seed": 89,
+    "jobs": [
+      {
+        "job": 0,
+        "status": "passed",
+        "output_words": 6,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 0.9999999835754617,
+        "max_absolute_error": 6.8298707291414296e-06,
+        "cosine_similarity": 0.9999999999434462
+      },
+      {
+        "job": 1,
+        "status": "passed",
+        "output_words": 4,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 0.9999999802101323,
+        "max_absolute_error": 9.613894141169421e-06,
+        "cosine_similarity": 0.9999999999223069
+      },
+      {
+        "job": 2,
+        "status": "passed",
+        "output_words": 2,
+        "error": 0,
+        "request_count": 3746,
+        "output_norm": 0.9999999791185858,
+        "max_absolute_error": 9.525199610616042e-06,
+        "cosine_similarity": 0.9999999999518352
+      },
+      {
+        "job": 3,
+        "status": "passed",
+        "output_words": 1,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0,
+        "max_absolute_error": 0.0,
+        "cosine_similarity": 1.0
+      },
+      {
+        "job": 4,
+        "status": "passed",
+        "output_words": 6,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 0.0,
+        "max_absolute_error": 0.0
+      },
+      {
+        "job": 5,
+        "status": "passed",
+        "output_words": 6,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0000000363917672
+      },
+      {
+        "job": 6,
+        "status": "passed",
+        "output_words": 0,
+        "error": 4,
+        "request_count": 24
+      },
+      {
+        "job": 7,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 8,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 9,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 10,
+        "status": "passed",
+        "output_words": 0,
+        "error": 5,
+        "request_count": 0
+      },
+      {
+        "job": 11,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 1
+      },
+      {
+        "job": 12,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 2
+      },
+      {
+        "job": 13,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 3
+      },
+      {
+        "job": 14,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 4
+      },
+      {
+        "job": 15,
+        "status": "passed",
+        "output_words": 0,
+        "error": 3,
+        "request_count": 1
+      },
+      {
+        "job": 16,
+        "status": "passed",
+        "output_words": 0,
+        "error": 3,
+        "request_count": 4
+      }
+    ],
+    "tensor_families_observed": 107,
+    "operation_evidence": "Complete non-embedding coefficient reads in successful jobs plus independent full-equation output comparisons; nonzero-position RoPE and sliding/full layers included",
+    "full_layers_observed": [
+      5
+    ],
+    "public_protocol_coverage": [
+      2222,
+      21178,
+      27,
+      19,
+      17,
+      12214,
+      756,
+      12968,
+      2,
+      25,
+      6,
+      6,
+      11,
+      0,
+      0,
+      0
+    ],
+    "trace": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/functional/attempt-20261019T111105769979Z/A-89-simulation.stdout.log",
+    "status": "passed",
+    "fixture_reference_s": 0.0369311380200088,
+    "simulation_s": 22.49191548099043,
+    "simulation_cpu_user_s": 20.025587,
+    "simulation_cpu_system_s": 0.026999999999999996,
+    "simulation_cycles": 731418,
+    "public_transaction_events": 26001,
+    "trace_bytes": 594605,
+    "scoreboard_coverage_s": 0.06968133896589279
+  },
+  {
+    "config": "A",
+    "seed": 203,
+    "jobs": [
+      {
+        "job": 0,
+        "status": "passed",
+        "output_words": 6,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0000000009173888,
+        "max_absolute_error": 7.72237997176406e-06,
+        "cosine_similarity": 0.9999999999600568
+      },
+      {
+        "job": 1,
+        "status": "passed",
+        "output_words": 4,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0000000271992842,
+        "max_absolute_error": 8.04231193057836e-06,
+        "cosine_similarity": 0.9999999999595737
+      },
+      {
+        "job": 2,
+        "status": "passed",
+        "output_words": 2,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0000000230514166,
+        "max_absolute_error": 2.0351872838195867e-06,
+        "cosine_similarity": 0.9999999999979283
+      },
+      {
+        "job": 3,
+        "status": "passed",
+        "output_words": 1,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0,
+        "max_absolute_error": 0.0,
+        "cosine_similarity": 1.0
+      },
+      {
+        "job": 4,
+        "status": "passed",
+        "output_words": 0,
+        "error": 4,
+        "request_count": 24
+      },
+      {
+        "job": 5,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 6,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 7,
+        "status": "passed",
+        "output_words": 0,
+        "error": 1,
+        "request_count": 0
+      },
+      {
+        "job": 8,
+        "status": "passed",
+        "output_words": 0,
+        "error": 5,
+        "request_count": 0
+      },
+      {
+        "job": 9,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 1
+      },
+      {
+        "job": 10,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 2
+      },
+      {
+        "job": 11,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 3
+      },
+      {
+        "job": 12,
+        "status": "passed",
+        "output_words": 0,
+        "error": 2,
+        "request_count": 4
+      },
+      {
+        "job": 13,
+        "status": "passed",
+        "output_words": 0,
+        "error": 3,
+        "request_count": 1
+      },
+      {
+        "job": 14,
+        "status": "passed",
+        "output_words": 0,
+        "error": 3,
+        "request_count": 4
+      },
+      {
+        "job": 15,
+        "status": "reset-aborted",
+        "retired_embeddings": 0
+      },
+      {
+        "job": 16,
+        "status": "reset-aborted",
+        "retired_embeddings": 0
+      },
+      {
+        "job": 17,
+        "status": "reset-aborted",
+        "retired_embeddings": 0
+      },
+      {
+        "job": 18,
+        "status": "passed",
+        "output_words": 6,
+        "error": 0,
+        "request_count": 1837,
+        "output_norm": 1.0000000009173888,
+        "max_absolute_error": 7.72237997176406e-06,
+        "cosine_similarity": 0.9999999999600568
+      }
+    ],
+    "tensor_families_observed": 107,
+    "operation_evidence": "Complete non-embedding coefficient reads in successful jobs plus independent full-equation output comparisons; nonzero-position RoPE and sliding/full layers included",
+    "full_layers_observed": [
+      5
+    ],
+    "public_protocol_coverage": [
+      1957,
+      18015,
+      23,
+      13,
+      19,
+      10427,
+      652,
+      11077,
+      2,
+      19,
+      5,
+      5,
+      11,
+      1,
+      1,
+      1
+    ],
+    "trace": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/functional/attempt-20261019T111105769979Z/A-203-simulation.stdout.log",
+    "status": "passed",
+    "fixture_reference_s": 0.030808719049673527,
+    "simulation_s": 23.225320960977115,
+    "simulation_cpu_user_s": 20.763959999999997,
+    "simulation_cpu_system_s": 0.030999,
+    "simulation_cycles": 657324,
+    "public_transaction_events": 22217,
+    "trace_bytes": 519395,
+    "scoreboard_coverage_s": 0.0641411860124208
+  }
+]

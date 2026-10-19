@@ -1,0 +1,22 @@
+{
+  "scope": "No combinational div/mod cells or blocking sequential assignments; not Quartus synthesis, TimeQuest closure or physical PPA",
+  "synthesis_receipt": "evidence/verification/synthesis/attempt-20261019T115448026092Z/receipt.json",
+  "synthesis_receipt_sha256": "d83a1cc29f04ade33139575aeeaf669ad1d8f00a470a74c644b8134ebbf233da",
+  "configurations": [
+    {
+      "config": "A",
+      "netlist": "evidence/verification/synthesis/attempt-20261019T115448026092Z/A-netlist.json",
+      "sha256": "4e58f4a434b93ed3bdbcd3535151bf2c11dd196e178d2cbf93215c87c8fcb11b",
+      "modules_inspected": 13,
+      "combinational_divmod_cells": 0
+    },
+    {
+      "config": "B",
+      "netlist": "evidence/verification/synthesis/attempt-20261019T115448026092Z/B-netlist.json",
+      "sha256": "ed55e3019bf44b208a1de350e11beb9c2ac0c343f08d9edcc20b976ebe7b5a8d",
+      "modules_inspected": 13,
+      "combinational_divmod_cells": 0
+    }
+  ],
+  "status": "passed"
+}

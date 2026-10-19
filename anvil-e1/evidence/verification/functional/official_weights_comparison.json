@@ -1,23 +1,23 @@
 {
   "schema": 1,
-  "producing_attempt": "/work/project/evidence/verification/functional/attempt-20261015T084416651159Z",
-  "receipt": "/work/project/evidence/verification/functional/attempt-20261015T084416651159Z/receipt.json",
+  "producing_attempt": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/functional/attempt-20261019T113822942795Z",
+  "receipt": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/functional/attempt-20261019T113822942795Z/receipt.json",
   "source_sha256": {
-    "rtl/anvil_e1_address.sv": "c44d79b3f948a9eb9871a29af71b3fcbcde92b49549386442aedae2003f615b2",
-    "rtl/anvil_e1_attention.sv": "67676847b1d5a086432abe31c879e40ca992669fe1822900832a3aebe15f2dcd",
+    "rtl/anvil_e1_address.sv": "704fe9be837cc611651aff494209b2d60c67f7136a9354ca39780417d34880f7",
+    "rtl/anvil_e1_attention.sv": "843a1185b3aefba86d447bebb462fe082d272489dcb4ebd4c6c74328671acf18",
     "rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
     "rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
     "rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
     "rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
-    "rtl/anvil_e1_nonlinear.sv": "210e635714707f5f4a950cfbc59bae876f119ddbf071a751211d043908c48cce",
-    "rtl/anvil_e1_norm.sv": "0b57a7235074bdbc2f14049f897eac6900875c76f7ae2dd065ef1915ca694eaf",
-    "rtl/anvil_e1_pool.sv": "ad2bbe0adf36417a23270a94cde7c13a0de500878f94e065683513acb41d46c7",
-    "rtl/anvil_e1_rope.sv": "4b60664d10f9093a92d4b852df089c40fa30651ea631a20f65188e35d60d25c8",
-    "rtl/anvil_e1_sequencer.sv": "3551dc381e308d67ae3948dca69cadf9f748e25bcfef33b84076655277625592",
+    "rtl/anvil_e1_nonlinear.sv": "bf36e4103daf94c3d995998f7edda2d7a911c9f6c1df1599d0bdfa89e5b18ce5",
+    "rtl/anvil_e1_norm.sv": "8f6792d2b964bbb45bda4e3bc85eab91f76a3615612a3c9efa6755c4bd7cd9e4",
+    "rtl/anvil_e1_pool.sv": "f7caac41f2fc007c53a28df4d18e5b3573494d600ab1022e8443686ac103b118",
+    "rtl/anvil_e1_rope.sv": "42b98b951ca4d3958b8c98c482d13c3cdb4ba2cc3bfc87ba2aa4e2e8c493008a",
+    "rtl/anvil_e1_sequencer.sv": "9a087cbce99923d80f31140235327c4a579510e20b94de72c6efe43f74012325",
     "rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
     "rtl/anvil_e_top.sv": "7f5816242ea538f598807d9104386ba04db6f9bbc2977c9ca75d6ccfdcbd2fbd",
-    "design/ARCHITECTURE.md": "1f735807d3045c52ffa7912b5236b3e4c43130bfedd080834809883885aacc9b",
-    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "66a355ae26228a35341c95de41757babcac6d592169f61ae74e65b67d80b8db1",
+    "design/ARCHITECTURE.md": "5a5364c660dac737e92596267a53b998009cbbcc0fd5e8b1f0b55078188f0805",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "9681612c56ef73fa5f30149f9024d255366a70197a6876c1e27830048557e481",
     "design/pack_model.py": "9c1140e476002c7f5d98fc87eefbf064208ee64c9eff30b2998b3e4c3c630981",
     "tests/addresses.py": "3d5dcf892c76efcf51cc361825605534d09728d0be90345ec72d78860a2eed51",
     "tests/architecture.py": "e2f1ca0b387536ed552d27e07cc5c1fe66abb4735e2a6d540f0b039f9803edc3",
@@ -28,13 +28,14 @@
     "tests/packing.py": "7de5f2f76aaec9faeb3df77730fce53913d1927ddb28c52f9dae5177dce5c676",
     "tests/primitives.py": "ecf2d0ac33580bccd367d26ac3a5ecc9c85a80cce694ae89170c5a2837c12ce2",
     "tests/profiling.py": "40cab62685d9c7720bb4042a936c47d1e3be561f76464a2ed29bef7cd9bf030d",
-    "tests/synthesis.py": "6a2f37cf9cd6935a50c99d22a6c0e7e4bfd56296d8e4aa99d0a653979a76f928",
-    "tests/verify.py": "93d2bf0e972346798b6c7d782cc73d439bf34ee7247016c552cc314eafdce9ac",
-    "tests/addresses.sv": "6fcdccde87922f3c7aff66161c0c2cf7a499df738ed23b2c0f7c464d391a8c58",
-    "tests/forward.sv": "bdbb80830daae835be6afbcff97f811df075ec44983f1c40e09b17eab4066fdb",
-    "tests/norm.sv": "b5ccb19393d877e4cb1f780e1b533356437ac540d2e91f36bf306e608dc4d2f5",
-    "tests/primitives.sv": "e8edbc0eb1dac5b5ec506d8cf8dc029f704dbd55c676250d3836465cc72701d8",
-    "tests/profile_address.sv": "84b816828b4f7f4e04c19d5ee81e501f5fe84480fc25b719bca656814f9397e6",
+    "tests/synthesis.py": "b836a37787e977ce562518f1d473d3801b67cd42f2f3f6e31a7840dad808c1df",
+    "tests/timing.py": "83ab9f5579de272ebbf8754f077d2ee5161004657170426dcaeb8e4e0eea476b",
+    "tests/verify.py": "e1355f8bbd4f3d39b29208e98f214ed58fe29052d2113fed96a49e8ead00e970",
+    "tests/addresses.sv": "0f8829774755d524a0b5d4b419928b14fb002a4df0c05d5f76484d3de09e83ac",
+    "tests/forward.sv": "23b84abcb50c549631055e6111ab3b485c5d1fd869ff53f015878b90b020a765",
+    "tests/norm.sv": "a579387f64a4f45c85d09f2430ea82231a43713a128531a04d3d8fb986bc8271",
+    "tests/primitives.sv": "ba7eef084d2142af828ee84f1eabe9b88517616335013df4b111dca0f049936c",
+    "tests/profile_address.sv": "bbb6809eafa29cc4dc3ede901958abe98f1e983b92216dd302750b9c87706e1c",
     "hf_embeddinggemma2_spec/config.json": "90135c44282752b2b9d9160c69682645fef5b084934f057fa756db9848b1095b",
     "hf_embeddinggemma2_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
     "hf_embeddinggemma2_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
@@ -2973,7 +2974,7 @@
   "cycle_formula": "destination accepted rising edge minus descriptor accepted edge",
   "stalls": "All memory, embedding and completion stalls included",
   "clock": "10 ns simulation convention only; no silicon frequency claim",
-  "simulator_wall_seconds": 45.57941218599444,
+  "simulator_wall_seconds": 206.40228607400786,
   "jobs": [
     {
       "job": 0,
@@ -3183,16 +3184,16 @@
       },
       "cycles": {
         "descriptor_edge": 5,
-        "completion_edge": 22659,
-        "completion_latency": 22654,
-        "first_embedding_latency": 22634,
-        "last_embedding_latency": 22650,
+        "completion_edge": 109611,
+        "completion_latency": 109606,
+        "first_embedding_latency": 109588,
+        "last_embedding_latency": 109604,
         "token_count": 1,
         "valid_token_count": 1,
-        "cycles_per_token": 22654.0,
-        "cycles_per_valid_token": 22654.0,
-        "tokens_per_cycle": 4.414231482298932e-05,
-        "jobs_per_cycle": 4.414231482298932e-05
+        "cycles_per_token": 109606.0,
+        "cycles_per_valid_token": 109606.0,
+        "tokens_per_cycle": 9.123588124737696e-06,
+        "jobs_per_cycle": 9.123588124737696e-06
       }
     },
     {
@@ -3392,17 +3393,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 22660,
-        "completion_edge": 45285,
-        "completion_latency": 22625,
-        "first_embedding_latency": 22610,
-        "last_embedding_latency": 22619,
+        "descriptor_edge": 109612,
+        "completion_edge": 219096,
+        "completion_latency": 109484,
+        "first_embedding_latency": 109470,
+        "last_embedding_latency": 109482,
         "token_count": 1,
         "valid_token_count": 1,
-        "cycles_per_token": 22625.0,
-        "cycles_per_valid_token": 22625.0,
-        "tokens_per_cycle": 4.419889502762431e-05,
-        "jobs_per_cycle": 4.419889502762431e-05
+        "cycles_per_token": 109484.0,
+        "cycles_per_valid_token": 109484.0,
+        "tokens_per_cycle": 9.133754703883672e-06,
+        "jobs_per_cycle": 9.133754703883672e-06
       }
     },
     {
@@ -3592,17 +3593,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 45286,
-        "completion_edge": 67906,
-        "completion_latency": 22620,
-        "first_embedding_latency": 22616,
-        "last_embedding_latency": 22618,
+        "descriptor_edge": 219097,
+        "completion_edge": 328461,
+        "completion_latency": 109364,
+        "first_embedding_latency": 109358,
+        "last_embedding_latency": 109360,
         "token_count": 1,
         "valid_token_count": 1,
-        "cycles_per_token": 22620.0,
-        "cycles_per_valid_token": 22620.0,
-        "tokens_per_cycle": 4.420866489832007e-05,
-        "jobs_per_cycle": 4.420866489832007e-05
+        "cycles_per_token": 109364.0,
+        "cycles_per_valid_token": 109364.0,
+        "tokens_per_cycle": 9.14377674554698e-06,
+        "jobs_per_cycle": 9.14377674554698e-06
       }
     },
     {
@@ -3787,17 +3788,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 67907,
-        "completion_edge": 90520,
-        "completion_latency": 22613,
-        "first_embedding_latency": 22611,
-        "last_embedding_latency": 22611,
+        "descriptor_edge": 328462,
+        "completion_edge": 437766,
+        "completion_latency": 109304,
+        "first_embedding_latency": 109298,
+        "last_embedding_latency": 109298,
         "token_count": 1,
         "valid_token_count": 1,
-        "cycles_per_token": 22613.0,
-        "cycles_per_valid_token": 22613.0,
-        "tokens_per_cycle": 4.422234997567771e-05,
-        "jobs_per_cycle": 4.422234997567771e-05
+        "cycles_per_token": 109304.0,
+        "cycles_per_valid_token": 109304.0,
+        "tokens_per_cycle": 9.148796018443973e-06,
+        "jobs_per_cycle": 9.148796018443973e-06
       }
     },
     {
@@ -4082,17 +4083,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 90521,
-        "completion_edge": 138921,
-        "completion_latency": 48400,
-        "first_embedding_latency": 48377,
-        "last_embedding_latency": 48395,
+        "descriptor_edge": 437767,
+        "completion_edge": 684438,
+        "completion_latency": 246671,
+        "first_embedding_latency": 246652,
+        "last_embedding_latency": 246668,
         "token_count": 2,
         "valid_token_count": 2,
-        "cycles_per_token": 24200.0,
-        "cycles_per_valid_token": 24200.0,
-        "tokens_per_cycle": 4.132231404958678e-05,
-        "jobs_per_cycle": 2.066115702479339e-05
+        "cycles_per_token": 123335.5,
+        "cycles_per_valid_token": 123335.5,
+        "tokens_per_cycle": 8.107965670873349e-06,
+        "jobs_per_cycle": 4.0539828354366744e-06
       }
     },
     {
@@ -4367,17 +4368,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 138922,
-        "completion_edge": 187305,
-        "completion_latency": 48383,
-        "first_embedding_latency": 48371,
-        "last_embedding_latency": 48380,
+        "descriptor_edge": 684439,
+        "completion_edge": 931003,
+        "completion_latency": 246564,
+        "first_embedding_latency": 246551,
+        "last_embedding_latency": 246562,
         "token_count": 2,
         "valid_token_count": 2,
-        "cycles_per_token": 24191.5,
-        "cycles_per_valid_token": 24191.5,
-        "tokens_per_cycle": 4.133683318520968e-05,
-        "jobs_per_cycle": 2.066841659260484e-05
+        "cycles_per_token": 123282.0,
+        "cycles_per_valid_token": 123282.0,
+        "tokens_per_cycle": 8.111484239386124e-06,
+        "jobs_per_cycle": 4.055742119693062e-06
       }
     },
     {
@@ -4642,17 +4643,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 187306,
-        "completion_edge": 235671,
-        "completion_latency": 48365,
-        "first_embedding_latency": 48357,
-        "last_embedding_latency": 48359,
+        "descriptor_edge": 931004,
+        "completion_edge": 1177449,
+        "completion_latency": 246445,
+        "first_embedding_latency": 246439,
+        "last_embedding_latency": 246441,
         "token_count": 2,
         "valid_token_count": 2,
-        "cycles_per_token": 24182.5,
-        "cycles_per_valid_token": 24182.5,
-        "tokens_per_cycle": 4.1352217512664116e-05,
-        "jobs_per_cycle": 2.0676108756332058e-05
+        "cycles_per_token": 123222.5,
+        "cycles_per_valid_token": 123222.5,
+        "tokens_per_cycle": 8.115401002252023e-06,
+        "jobs_per_cycle": 4.0577005011260115e-06
       }
     },
     {
@@ -4912,17 +4913,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 235672,
-        "completion_edge": 284046,
-        "completion_latency": 48374,
-        "first_embedding_latency": 48368,
-        "last_embedding_latency": 48368,
+        "descriptor_edge": 1177450,
+        "completion_edge": 1423833,
+        "completion_latency": 246383,
+        "first_embedding_latency": 246379,
+        "last_embedding_latency": 246379,
         "token_count": 2,
         "valid_token_count": 2,
-        "cycles_per_token": 24187.0,
-        "cycles_per_valid_token": 24187.0,
-        "tokens_per_cycle": 4.134452391780708e-05,
-        "jobs_per_cycle": 2.067226195890354e-05
+        "cycles_per_token": 123191.5,
+        "cycles_per_valid_token": 123191.5,
+        "tokens_per_cycle": 8.117443167751022e-06,
+        "jobs_per_cycle": 4.058721583875511e-06
       }
     },
     {
@@ -5282,17 +5283,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 284047,
-        "completion_edge": 354716,
-        "completion_latency": 70669,
-        "first_embedding_latency": 70651,
-        "last_embedding_latency": 70667,
+        "descriptor_edge": 1423834,
+        "completion_edge": 1760930,
+        "completion_latency": 337096,
+        "first_embedding_latency": 337076,
+        "last_embedding_latency": 337094,
         "token_count": 3,
         "valid_token_count": 2,
-        "cycles_per_token": 23556.333333333332,
-        "cycles_per_valid_token": 35334.5,
-        "tokens_per_cycle": 4.245142849056871e-05,
-        "jobs_per_cycle": 1.4150476163522903e-05
+        "cycles_per_token": 112365.33333333333,
+        "cycles_per_valid_token": 168548.0,
+        "tokens_per_cycle": 8.899541970239931e-06,
+        "jobs_per_cycle": 2.9665139900799773e-06
       }
     },
     {
@@ -5642,17 +5643,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 354717,
-        "completion_edge": 425382,
-        "completion_latency": 70665,
-        "first_embedding_latency": 70653,
-        "last_embedding_latency": 70662,
+        "descriptor_edge": 1760931,
+        "completion_edge": 2097915,
+        "completion_latency": 336984,
+        "first_embedding_latency": 336971,
+        "last_embedding_latency": 336979,
         "token_count": 3,
         "valid_token_count": 2,
-        "cycles_per_token": 23555.0,
-        "cycles_per_valid_token": 35332.5,
-        "tokens_per_cycle": 4.245383145828911e-05,
-        "jobs_per_cycle": 1.4151277152763037e-05
+        "cycles_per_token": 112328.0,
+        "cycles_per_valid_token": 168492.0,
+        "tokens_per_cycle": 8.902499821950003e-06,
+        "jobs_per_cycle": 2.9674999406500014e-06
       }
     },
     {
@@ -5992,17 +5993,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 425383,
-        "completion_edge": 496026,
-        "completion_latency": 70643,
-        "first_embedding_latency": 70639,
-        "last_embedding_latency": 70641,
+        "descriptor_edge": 2097916,
+        "completion_edge": 2434803,
+        "completion_latency": 336887,
+        "first_embedding_latency": 336881,
+        "last_embedding_latency": 336883,
         "token_count": 3,
         "valid_token_count": 2,
-        "cycles_per_token": 23547.666666666668,
-        "cycles_per_valid_token": 35321.5,
-        "tokens_per_cycle": 4.2467052644989596e-05,
-        "jobs_per_cycle": 1.4155684214996532e-05
+        "cycles_per_token": 112295.66666666667,
+        "cycles_per_valid_token": 168443.5,
+        "tokens_per_cycle": 8.905063122055763e-06,
+        "jobs_per_cycle": 2.968354374018588e-06
       }
     },
     {
@@ -6337,17 +6338,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 496027,
-        "completion_edge": 566664,
-        "completion_latency": 70637,
-        "first_embedding_latency": 70631,
-        "last_embedding_latency": 70631,
+        "descriptor_edge": 2434804,
+        "completion_edge": 2771628,
+        "completion_latency": 336824,
+        "first_embedding_latency": 336819,
+        "last_embedding_latency": 336819,
         "token_count": 3,
         "valid_token_count": 2,
-        "cycles_per_token": 23545.666666666668,
-        "cycles_per_valid_token": 35318.5,
-        "tokens_per_cycle": 4.247065985248524e-05,
-        "jobs_per_cycle": 1.415688661749508e-05
+        "cycles_per_token": 112274.66666666667,
+        "cycles_per_valid_token": 168412.0,
+        "tokens_per_cycle": 8.906728736669596e-06,
+        "jobs_per_cycle": 2.968909578889865e-06
       }
     },
     {
@@ -7082,17 +7083,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 566665,
-        "completion_edge": 786939,
-        "completion_latency": 220274,
-        "first_embedding_latency": 220255,
-        "last_embedding_latency": 220271,
+        "descriptor_edge": 2771629,
+        "completion_edge": 3858981,
+        "completion_latency": 1087352,
+        "first_embedding_latency": 1087332,
+        "last_embedding_latency": 1087348,
         "token_count": 8,
         "valid_token_count": 6,
-        "cycles_per_token": 27534.25,
-        "cycles_per_valid_token": 36712.333333333336,
-        "tokens_per_cycle": 3.631840344298465e-05,
-        "jobs_per_cycle": 4.539800430373081e-06
+        "cycles_per_token": 135919.0,
+        "cycles_per_valid_token": 181225.33333333334,
+        "tokens_per_cycle": 7.35732311155909e-06,
+        "jobs_per_cycle": 9.196653889448863e-07
       }
     },
     {
@@ -7817,17 +7818,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 786940,
-        "completion_edge": 1007187,
-        "completion_latency": 220247,
-        "first_embedding_latency": 220230,
-        "last_embedding_latency": 220242,
+        "descriptor_edge": 3858982,
+        "completion_edge": 4946203,
+        "completion_latency": 1087221,
+        "first_embedding_latency": 1087208,
+        "last_embedding_latency": 1087219,
         "token_count": 8,
         "valid_token_count": 6,
-        "cycles_per_token": 27530.875,
-        "cycles_per_valid_token": 36707.833333333336,
-        "tokens_per_cycle": 3.632285570291536e-05,
-        "jobs_per_cycle": 4.54035696286442e-06
+        "cycles_per_token": 135902.625,
+        "cycles_per_valid_token": 181203.5,
+        "tokens_per_cycle": 7.358209600440021e-06,
+        "jobs_per_cycle": 9.197762000550026e-07
       }
     },
     {
@@ -8542,17 +8543,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 1007188,
-        "completion_edge": 1227427,
-        "completion_latency": 220239,
-        "first_embedding_latency": 220235,
-        "last_embedding_latency": 220237,
+        "descriptor_edge": 4946204,
+        "completion_edge": 6033309,
+        "completion_latency": 1087105,
+        "first_embedding_latency": 1087098,
+        "last_embedding_latency": 1087100,
         "token_count": 8,
         "valid_token_count": 6,
-        "cycles_per_token": 27529.875,
-        "cycles_per_valid_token": 36706.5,
-        "tokens_per_cycle": 3.632417510068607e-05,
-        "jobs_per_cycle": 4.540521887585759e-06
+        "cycles_per_token": 135888.125,
+        "cycles_per_valid_token": 181184.16666666666,
+        "tokens_per_cycle": 7.358994761315605e-06,
+        "jobs_per_cycle": 9.198743451644506e-07
       }
     },
     {
@@ -9262,17 +9263,17 @@
         ]
       },
       "cycles": {
-        "descriptor_edge": 1227428,
-        "completion_edge": 1447660,
-        "completion_latency": 220232,
-        "first_embedding_latency": 220230,
-        "last_embedding_latency": 220230,
+        "descriptor_edge": 6033310,
+        "completion_edge": 7120374,
+        "completion_latency": 1087064,
+        "first_embedding_latency": 1087058,
+        "last_embedding_latency": 1087058,
         "token_count": 8,
         "valid_token_count": 6,
-        "cycles_per_token": 27529.0,
-        "cycles_per_valid_token": 36705.333333333336,
-        "tokens_per_cycle": 3.63253296523666e-05,
-        "jobs_per_cycle": 4.540666206545825e-06
+        "cycles_per_token": 135883.0,
+        "cycles_per_valid_token": 181177.33333333334,
+        "tokens_per_cycle": 7.359272315153478e-06,
+        "jobs_per_cycle": 9.199090393941847e-07
       }
     }
   ],

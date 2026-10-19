@@ -23,12 +23,26 @@ module anvil_e1_address #(
     reg [127:0] scratch_address_value, region_offset, region_count;
     reg [127:0] h_words, ple_words, q_words, kv_words;
 
+    function automatic [31:0] layer_groups;
+        input [31:0] layer;
+        reg [63:0] product;
+        begin
+            // Exact unsigned floor(layer/6) over the entire 32-bit input range.
+            product={32'd0,layer}*64'd2863311531;
+            layer_groups={2'd0,product[63:34]};
+        end
+    endfunction
+    function automatic full_layer;
+        input [31:0] layer;
+        begin full_layer=layer-layer_groups(layer)*32'd6==32'd5; end
+    endfunction
+
     function automatic [127:0] rows;
         input integer id, layer;
         integer d, kv;
         begin
-            d=(layer%6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
-            kv=(layer%6==5) ? FULL_KV_HEADS:LOCAL_KV_HEADS;
+            d=full_layer(layer) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            kv=full_layer(layer) ? FULL_KV_HEADS:LOCAL_KV_HEADS;
             case (id)
                 0: rows=VOCAB_SIZE;
                 1: rows=EMBEDDING_DIM;
@@ -51,7 +65,7 @@ module anvil_e1_address #(
         input integer id, layer;
         integer d;
         begin
-            d=(layer%6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            d=full_layer(layer) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
             case (id)
                 0,1,3,8,9,10,17,20,21: cols=HIDDEN_SIZE;
                 7: cols=INTERMEDIATE_SIZE;
@@ -120,7 +134,7 @@ module anvil_e1_address #(
         end
     endfunction
 
-    wire [127:0] preceding_full_layers={96'd0,layer_index}/128'd6;
+    wire [127:0] preceding_full_layers={96'd0,layer_groups(layer_index)};
     assign weights_bytes=TOTAL_WEIGHTS_BYTES;
 
     always @* begin
@@ -136,7 +150,7 @@ module anvil_e1_address #(
                     offset=GLOBAL_BYTES+
                         ({96'd0,layer_index}-preceding_full_layers)*LOCAL_LAYER_BYTES+
                         preceding_full_layers*FULL_LAYER_BYTES+
-                        suffix_prefix(tensor_id,layer_index%6==5);
+                        suffix_prefix(tensor_id,full_layer(layer_index));
             end
         endcase
         tensor_rows=rows(tensor_id,layer_index);

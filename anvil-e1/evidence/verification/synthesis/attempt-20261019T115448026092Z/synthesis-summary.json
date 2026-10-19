@@ -1,0 +1,50 @@
+[
+  {
+    "config": "A",
+    "status": "passed",
+    "modules": [
+      "anvil_e1_address",
+      "anvil_e1_attention",
+      "anvil_e1_controller",
+      "anvil_e1_mac",
+      "anvil_e1_matvec",
+      "anvil_e1_memory",
+      "anvil_e1_nonlinear",
+      "anvil_e1_norm",
+      "anvil_e1_pool",
+      "anvil_e1_rope",
+      "anvil_e1_sequencer",
+      "anvil_e1_top",
+      "anvil_e_top"
+    ],
+    "sequential_cells": 272,
+    "arithmetic_cells": 204,
+    "combinational_divmod_cells": 0,
+    "netlist": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/synthesis/attempt-20261019T115448026092Z/A-netlist.json",
+    "statistics_log": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/synthesis/attempt-20261019T115448026092Z/yosys-A.stdout.log"
+  },
+  {
+    "config": "B",
+    "status": "passed",
+    "modules": [
+      "anvil_e1_address",
+      "anvil_e1_attention",
+      "anvil_e1_controller",
+      "anvil_e1_mac",
+      "anvil_e1_matvec",
+      "anvil_e1_memory",
+      "anvil_e1_nonlinear",
+      "anvil_e1_norm",
+      "anvil_e1_pool",
+      "anvil_e1_rope",
+      "anvil_e1_sequencer",
+      "anvil_e1_top",
+      "anvil_e_top"
+    ],
+    "sequential_cells": 355,
+    "arithmetic_cells": 215,
+    "combinational_divmod_cells": 0,
+    "netlist": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/synthesis/attempt-20261019T115448026092Z/B-netlist.json",
+    "statistics_log": "/data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/synthesis/attempt-20261019T115448026092Z/yosys-B.stdout.log"
+  }
+]

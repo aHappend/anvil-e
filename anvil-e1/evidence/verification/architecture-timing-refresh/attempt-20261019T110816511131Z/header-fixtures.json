@@ -1,0 +1,68 @@
+{
+  "format": "safetensors header prefix followed by sparse zero payload",
+  "reconstruction": "write header bytes, then truncate to logical_file_size",
+  "fixtures": [
+    {
+      "header": "default-header.header.bin",
+      "header_sha256": "007d7e8afa30f21c9233a873a9a4cb217fadf7825c1aa3c1dd49830f263aa4df",
+      "logical_file_size": 542056416,
+      "payload_bytes": 542005296,
+      "payload_fill_byte": 0,
+      "expected_rejection": false
+    },
+    {
+      "header": "invalid-missing.header.bin",
+      "header_sha256": "e2d8549e548f7a08a868bb7ad464f935d3cdd2cb6ad787288cafeb9abd81ca8e",
+      "logical_file_size": 542056312,
+      "payload_bytes": 542005296,
+      "payload_fill_byte": 0,
+      "expected_rejection": true,
+      "observed_rejection": "pure-text tensor mismatch; missing=['language_model.embed_tokens.weight']; unexpected=[]"
+    },
+    {
+      "header": "invalid-extra.header.bin",
+      "header_sha256": "89a239cb060d7302368618edcd9526a9cf2f4a5fa1a2e4f21e656ae95880cf3b",
+      "logical_file_size": 542056511,
+      "payload_bytes": 542005296,
+      "payload_fill_byte": 0,
+      "expected_rejection": true,
+      "observed_rejection": "pure-text tensor mismatch; missing=[]; unexpected=['language_model.unexpected']"
+    },
+    {
+      "header": "invalid-dtype.header.bin",
+      "header_sha256": "d70b19e0fd46436ec01a488abb99de8f47750db4953bc7885333065aa4bea442",
+      "logical_file_size": 542056415,
+      "payload_bytes": 542005296,
+      "payload_fill_byte": 0,
+      "expected_rejection": true,
+      "observed_rejection": "BF16 dtype/authoritative shape mismatch: language_model.embed_tokens.weight"
+    },
+    {
+      "header": "invalid-shape.header.bin",
+      "header_sha256": "00d1ac9ea1b5e76b2526819e27f7e57b5766bebde6097607642dda9426a3120a",
+      "logical_file_size": 542056407,
+      "payload_bytes": 542005296,
+      "payload_fill_byte": 0,
+      "expected_rejection": true,
+      "observed_rejection": "tensor byte count mismatch: language_model.embed_tokens.weight"
+    },
+    {
+      "header": "invalid-overlap.header.bin",
+      "header_sha256": "d2121a63a4d7d7b4b1641b9c73969913dff489ed5848a7f3ccfd6084aad99ec4",
+      "logical_file_size": 542056408,
+      "payload_bytes": 542005296,
+      "payload_fill_byte": 0,
+      "expected_rejection": true,
+      "observed_rejection": "tensor byte count mismatch: language_model.embedding_projection.weight"
+    },
+    {
+      "header": "invalid-outside.header.bin",
+      "header_sha256": "827fbf43f95b3acd027a9bb742d447799a0d19437e0d8ec8375a0053acf4bc58",
+      "logical_file_size": 542056416,
+      "payload_bytes": 542005296,
+      "payload_fill_byte": 0,
+      "expected_rejection": true,
+      "observed_rejection": "tensor byte count mismatch: language_model.embed_tokens.weight"
+    }
+  ]
+}

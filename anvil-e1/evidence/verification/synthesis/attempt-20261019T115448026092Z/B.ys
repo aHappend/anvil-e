@@ -1,0 +1,9 @@
+read_verilog -sv -defer rtl/anvil_e1_address.sv rtl/anvil_e1_attention.sv rtl/anvil_e1_controller.sv rtl/anvil_e1_mac.sv rtl/anvil_e1_matvec.sv rtl/anvil_e1_memory.sv rtl/anvil_e1_nonlinear.sv rtl/anvil_e1_norm.sv rtl/anvil_e1_pool.sv rtl/anvil_e1_rope.sv rtl/anvil_e1_sequencer.sv rtl/anvil_e1_top.sv rtl/anvil_e_top.sv
+hierarchy -check -top anvil_e_top -chparam VOCAB_SIZE 20 -chparam HIDDEN_SIZE 6 -chparam PER_LAYER_INPUT_SIZE 4 -chparam INTERMEDIATE_SIZE 10 -chparam EMBEDDING_DIM 12 -chparam NUM_LAYERS 12 -chparam NUM_Q_HEADS 4 -chparam LOCAL_KV_HEADS 2 -chparam FULL_KV_HEADS 1 -chparam LOCAL_HEAD_DIM 2 -chparam FULL_HEAD_DIM 4 -chparam SLIDING_WINDOW 3 -chparam MAX_SEQ_LEN 8
+proc
+opt
+memory
+opt
+check -assert
+stat
+write_json /data/sufeng/anvil-e-line4/workspace_phase2/project/evidence/verification/synthesis/attempt-20261019T115448026092Z/B-netlist.json

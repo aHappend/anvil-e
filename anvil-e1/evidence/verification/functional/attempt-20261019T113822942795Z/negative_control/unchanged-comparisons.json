@@ -1,0 +1,119 @@
+[
+  {
+    "job": 0,
+    "status": "passed",
+    "output_words": 6,
+    "error": 0,
+    "request_count": 1837,
+    "output_norm": 0.9999999978974792,
+    "max_absolute_error": 2.2717650657658184e-06,
+    "cosine_similarity": 0.9999999999947484
+  },
+  {
+    "job": 1,
+    "status": "passed",
+    "output_words": 4,
+    "error": 0,
+    "request_count": 19176,
+    "output_norm": 1.000000033993753,
+    "max_absolute_error": 4.172889330555929e-05,
+    "cosine_similarity": 0.9999999980598707
+  },
+  {
+    "job": 2,
+    "status": "passed",
+    "output_words": 2,
+    "error": 0,
+    "request_count": 1837,
+    "output_norm": 1.000000024931795,
+    "max_absolute_error": 2.4360560261504904e-06,
+    "cosine_similarity": 0.9999999999968634
+  },
+  {
+    "job": 3,
+    "status": "passed",
+    "output_words": 1,
+    "error": 0,
+    "request_count": 1837,
+    "output_norm": 1.0,
+    "max_absolute_error": 0.0,
+    "cosine_similarity": 1.0
+  },
+  {
+    "job": 4,
+    "status": "passed",
+    "output_words": 0,
+    "error": 4,
+    "request_count": 24
+  },
+  {
+    "job": 5,
+    "status": "passed",
+    "output_words": 0,
+    "error": 1,
+    "request_count": 0
+  },
+  {
+    "job": 6,
+    "status": "passed",
+    "output_words": 0,
+    "error": 1,
+    "request_count": 0
+  },
+  {
+    "job": 7,
+    "status": "passed",
+    "output_words": 0,
+    "error": 1,
+    "request_count": 0
+  },
+  {
+    "job": 8,
+    "status": "passed",
+    "output_words": 0,
+    "error": 5,
+    "request_count": 0
+  },
+  {
+    "job": 9,
+    "status": "passed",
+    "output_words": 0,
+    "error": 2,
+    "request_count": 1
+  },
+  {
+    "job": 10,
+    "status": "passed",
+    "output_words": 0,
+    "error": 2,
+    "request_count": 2
+  },
+  {
+    "job": 11,
+    "status": "passed",
+    "output_words": 0,
+    "error": 2,
+    "request_count": 3
+  },
+  {
+    "job": 12,
+    "status": "passed",
+    "output_words": 0,
+    "error": 2,
+    "request_count": 4
+  },
+  {
+    "job": 13,
+    "status": "passed",
+    "output_words": 0,
+    "error": 3,
+    "request_count": 1
+  },
+  {
+    "job": 14,
+    "status": "passed",
+    "output_words": 0,
+    "error": 3,
+    "request_count": 4
+  }
+]

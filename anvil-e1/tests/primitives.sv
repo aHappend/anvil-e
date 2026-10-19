@@ -10,7 +10,7 @@ module primitives;
     anvil_e1_nonlinear dut(.*);
     integer input_file, scan, op, value, tag, count=0, cycles=0;
     integer expected_error;
-    reg [1023:0] input_path;
+    string input_path;
     reg signed [31:0] held;
     reg held_error;
     always @(posedge clk or negedge clk) begin

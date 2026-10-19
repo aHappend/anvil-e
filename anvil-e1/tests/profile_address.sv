@@ -30,7 +30,7 @@ module profile_address;
         assign tensor_error=0;
         assign scratch_error=0;
     end endgenerate
-    reg [1023:0] input_path;
+    string input_path;
     integer fd, count=0, scanned;
     initial begin
         if (!$value$plusargs("input=%s",input_path)) $fatal(1,"MISSING_INPUT");

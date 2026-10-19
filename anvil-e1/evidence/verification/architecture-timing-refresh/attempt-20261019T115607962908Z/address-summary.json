@@ -1,0 +1,30 @@
+[
+  {
+    "config": "default",
+    "tensors": 413,
+    "compared": 1679,
+    "weights_bytes": 1084010592,
+    "scratch_bytes": 18253611008
+  },
+  {
+    "config": "A",
+    "tensors": 107,
+    "compared": 455,
+    "weights_bytes": 5800,
+    "scratch_bytes": 1536
+  },
+  {
+    "config": "B",
+    "tensors": 209,
+    "compared": 863,
+    "weights_bytes": 22296,
+    "scratch_bytes": 2944
+  },
+  {
+    "config": "C",
+    "tensors": 413,
+    "compared": 1679,
+    "weights_bytes": 26912,
+    "scratch_bytes": 2176
+  }
+]

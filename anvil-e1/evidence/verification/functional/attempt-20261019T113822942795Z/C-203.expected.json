@@ -1,0 +1,411 @@
+[
+  {
+    "id": 0,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      131072,
+      147456,
+      163840
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [
+      2743645,
+      -7856348,
+      -7774797,
+      10592118,
+      1874255,
+      6005990
+    ],
+    "float": [
+      0.16353242326413947,
+      -0.46827517207849917,
+      -0.4634132875843828,
+      0.6313394918381874,
+      0.11171497786278742,
+      0.3579858159383702
+    ],
+    "pre_norm": 0.4356784451639441,
+    "saturation": false
+  },
+  {
+    "id": 1,
+    "n": 1,
+    "dim": 4,
+    "wb": 4096,
+    "bases": [
+      131200,
+      147584,
+      163968
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [
+      2959638,
+      -8474839,
+      -8386868,
+      11425982
+    ],
+    "float": [
+      0.17640659165020917,
+      -0.5051403593974494,
+      -0.4998957207167227,
+      0.6810419958705045
+    ],
+    "pre_norm": 0.40388259438109164,
+    "saturation": false
+  },
+  {
+    "id": 2,
+    "n": 1,
+    "dim": 2,
+    "wb": 4096,
+    "bases": [
+      131328,
+      147712,
+      164096
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [
+      5531444,
+      -15839132
+    ],
+    "float": [
+      0.329696777234329,
+      -0.9440868789901157
+    ],
+    "pre_norm": 0.2161002376161346,
+    "saturation": false
+  },
+  {
+    "id": 3,
+    "n": 1,
+    "dim": 1,
+    "wb": 4096,
+    "bases": [
+      131456,
+      147840,
+      164224
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [
+      16777216
+    ],
+    "float": [
+      1.0
+    ],
+    "pre_norm": 0.07124755190161229,
+    "saturation": false
+  },
+  {
+    "id": 4,
+    "n": 4,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      131584,
+      147968,
+      164352
+    ],
+    "scratch": 524288,
+    "error": 4,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 5,
+    "n": 0,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      131712,
+      148096,
+      164480
+    ],
+    "scratch": 524288,
+    "error": 1,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 6,
+    "n": 1,
+    "dim": 18,
+    "wb": 4096,
+    "bases": [
+      131840,
+      148224,
+      164608
+    ],
+    "scratch": 524288,
+    "error": 1,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 7,
+    "n": 1,
+    "dim": 6,
+    "wb": 4097,
+    "bases": [
+      131968,
+      148352,
+      164736
+    ],
+    "scratch": 524288,
+    "error": 1,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 8,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132096,
+      148480,
+      164864
+    ],
+    "scratch": 18446744073709551612,
+    "error": 5,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 9,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132224,
+      148608,
+      164992
+    ],
+    "scratch": 524288,
+    "error": 2,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 10,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132352,
+      148736,
+      165120
+    ],
+    "scratch": 524288,
+    "error": 2,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 11,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132480,
+      148864,
+      165248
+    ],
+    "scratch": 524288,
+    "error": 2,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 12,
+    "n": 2,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132608,
+      148992,
+      165376
+    ],
+    "scratch": 524288,
+    "error": 2,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 13,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132736,
+      149120,
+      165504
+    ],
+    "scratch": 524288,
+    "error": 3,
+    "fault": 0,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 14,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132864,
+      149248,
+      165632
+    ],
+    "scratch": 524288,
+    "error": 3,
+    "fault": 3,
+    "reset": 0,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 15,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      132992,
+      149376,
+      165760
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 1,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 16,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      133120,
+      149504,
+      165888
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 2,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 17,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      133248,
+      149632,
+      166016
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 3,
+    "fixed": [],
+    "float": [],
+    "pre_norm": 0,
+    "saturation": false
+  },
+  {
+    "id": 18,
+    "n": 1,
+    "dim": 6,
+    "wb": 4096,
+    "bases": [
+      133376,
+      149760,
+      166144
+    ],
+    "scratch": 524288,
+    "error": 0,
+    "fault": -1,
+    "reset": 0,
+    "fixed": [
+      2743645,
+      -7856348,
+      -7774797,
+      10592118,
+      1874255,
+      6005990
+    ],
+    "float": [
+      0.16353242326413947,
+      -0.46827517207849917,
+      -0.4634132875843828,
+      0.6313394918381874,
+      0.11171497786278742,
+      0.3579858159383702
+    ],
+    "pre_norm": 0.4356784451639441,
+    "saturation": false
+  }
+]

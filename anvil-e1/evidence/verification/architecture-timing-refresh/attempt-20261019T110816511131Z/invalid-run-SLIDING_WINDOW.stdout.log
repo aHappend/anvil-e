@@ -1,0 +1,2 @@
+FATAL: rtl/anvil_e1_top.sv:143: PARAMETER ERROR: unsupported Anvil-E1 geometry
+       Time: 0  Scope: anvil_e1_top.invalid_parameters

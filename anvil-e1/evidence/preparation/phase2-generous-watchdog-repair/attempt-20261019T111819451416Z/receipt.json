@@ -1,0 +1,122 @@
+{
+  "argv": [
+    "-"
+  ],
+  "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+  "start": "2026-10-19T11:18:19.451750+00:00",
+  "end": "2026-10-19T11:18:23.836386+00:00",
+  "phase_timeout_s": 60,
+  "requested_phase_timeout_s": 60,
+  "source_sha256": {
+    "rtl/anvil_e1_address.sv": "704fe9be837cc611651aff494209b2d60c67f7136a9354ca39780417d34880f7",
+    "rtl/anvil_e1_attention.sv": "843a1185b3aefba86d447bebb462fe082d272489dcb4ebd4c6c74328671acf18",
+    "rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
+    "rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
+    "rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
+    "rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
+    "rtl/anvil_e1_nonlinear.sv": "bf36e4103daf94c3d995998f7edda2d7a911c9f6c1df1599d0bdfa89e5b18ce5",
+    "rtl/anvil_e1_norm.sv": "8f6792d2b964bbb45bda4e3bc85eab91f76a3615612a3c9efa6755c4bd7cd9e4",
+    "rtl/anvil_e1_pool.sv": "f7caac41f2fc007c53a28df4d18e5b3573494d600ab1022e8443686ac103b118",
+    "rtl/anvil_e1_rope.sv": "42b98b951ca4d3958b8c98c482d13c3cdb4ba2cc3bfc87ba2aa4e2e8c493008a",
+    "rtl/anvil_e1_sequencer.sv": "9a087cbce99923d80f31140235327c4a579510e20b94de72c6efe43f74012325",
+    "rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
+    "rtl/anvil_e_top.sv": "7f5816242ea538f598807d9104386ba04db6f9bbc2977c9ca75d6ccfdcbd2fbd",
+    "design/ARCHITECTURE.md": "5a5364c660dac737e92596267a53b998009cbbcc0fd5e8b1f0b55078188f0805",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "9681612c56ef73fa5f30149f9024d255366a70197a6876c1e27830048557e481",
+    "design/pack_model.py": "9c1140e476002c7f5d98fc87eefbf064208ee64c9eff30b2998b3e4c3c630981",
+    "tests/addresses.py": "3d5dcf892c76efcf51cc361825605534d09728d0be90345ec72d78860a2eed51",
+    "tests/architecture.py": "e2f1ca0b387536ed552d27e07cc5c1fe66abb4735e2a6d540f0b039f9803edc3",
+    "tests/behavior.py": "f3e8bd0d0c610c90946b49401493c861ba4b5c7c800542ea3f1df3da26606979",
+    "tests/model.py": "57aa034faed14b47e81bf38308c351febde1ba68c117983ca3740bb7a39df29a",
+    "tests/official.py": "a71b5174bcb02349e68fc546bcc3ad5d7d4c710ea6386b45471cb662d615173a",
+    "tests/official_fp32.py": "c6041d25a81f18a6a5a8089b0b3ad64873f09a6ebe0b9814df02175479492780",
+    "tests/packing.py": "7de5f2f76aaec9faeb3df77730fce53913d1927ddb28c52f9dae5177dce5c676",
+    "tests/primitives.py": "ecf2d0ac33580bccd367d26ac3a5ecc9c85a80cce694ae89170c5a2837c12ce2",
+    "tests/profiling.py": "40cab62685d9c7720bb4042a936c47d1e3be561f76464a2ed29bef7cd9bf030d",
+    "tests/synthesis.py": "b836a37787e977ce562518f1d473d3801b67cd42f2f3f6e31a7840dad808c1df",
+    "tests/timing.py": "83ab9f5579de272ebbf8754f077d2ee5161004657170426dcaeb8e4e0eea476b",
+    "tests/verify.py": "5653cb79814e61cba4cb1d20520fd54ed4f82ba1bbe759762ea3e3bedecb790f",
+    "tests/addresses.sv": "0f8829774755d524a0b5d4b419928b14fb002a4df0c05d5f76484d3de09e83ac",
+    "tests/forward.sv": "23b84abcb50c549631055e6111ab3b485c5d1fd869ff53f015878b90b020a765",
+    "tests/norm.sv": "a579387f64a4f45c85d09f2430ea82231a43713a128531a04d3d8fb986bc8271",
+    "tests/primitives.sv": "ba7eef084d2142af828ee84f1eabe9b88517616335013df4b111dca0f049936c",
+    "tests/profile_address.sv": "bbb6809eafa29cc4dc3ede901958abe98f1e983b92216dd302750b9c87706e1c",
+    "hf_embeddinggemma2_spec/config.json": "90135c44282752b2b9d9160c69682645fef5b084934f057fa756db9848b1095b",
+    "hf_embeddinggemma2_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
+    "hf_embeddinggemma2_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
+    "hf_embeddinggemma2_spec/sentence_bert_config.json": "53cddcdff8b19a51e5ace646be5c2b64ed818f01b78aea137c7c1334d36a5b5a",
+    "hf_embeddinggemma2_spec/1_Pooling/config.json": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9",
+    "hf_embeddinggemma2_spec/official_weights/google_embeddinggemma2_official_slice.safetensors": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "hf_embeddinggemma2_spec/official_weights/official_hardware_slices_fp32_q824.json": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c",
+    "hf_embeddinggemma2_spec/official_weights/official_weights_manifest.json": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad"
+  },
+  "tool_versions": {
+    "python3": {
+      "path": "/usr/bin/python3",
+      "stdout": "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/version-python3.stdout.log"
+    }
+  },
+  "children": [
+    {
+      "argv": [
+        "/usr/bin/python3",
+        "--version"
+      ],
+      "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+      "start": "2026-10-19T11:18:19.476332+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/version-python3.stdout.log",
+      "stderr": "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/version-python3.stderr.log",
+      "timed_out": false,
+      "pid": 1579678,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 2.32145142898662
+      },
+      "duration_s": 2.3269801149726845,
+      "cpu_user_s": 0.000909,
+      "cpu_system_s": 0.0036379999999999997,
+      "end": "2026-10-19T11:18:21.803620+00:00"
+    },
+    {
+      "argv": [
+        "python3",
+        "-B",
+        "-c",
+        "\nimport ast\nimport math\nimport sys\nfrom pathlib import Path\nfrom unittest.mock import patch\nsys.path.insert(0, str(Path('tests').resolve()))\nfrom verify import DELIVERY_CHECKS, DELIVERY_PHASE_MINIMUM_S, Execution, phase_allowance\nfor path in sorted(Path('tests').glob('*.py')):\n    ast.parse(path.read_text(), filename=str(path))\nfor check in DELIVERY_CHECKS:\n    for requested in (20, 50, 120, 200, 230, 3600):\n        assert phase_allowance(check, requested) == 82800\n    assert phase_allowance(check, 84000) == 84000\nfor check in ('prepare-primitives', 'prepare-official', 'prepare-synthesis'):\n    assert phase_allowance(check, 60) == 60\nfor requested in (0, -1, math.nan, math.inf, -math.inf):\n    try:\n        phase_allowance('functional', requested)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError('invalid phase timeout accepted')\nexecution = Execution.__new__(Execution)\nexecution.deadline = 100.0\nwith patch('verify.time.monotonic', return_value=90.0):\n    assert execution.remaining() == 10.0\nwith patch('verify.time.monotonic', return_value=99.0):\n    assert execution.remaining() == 1.0\nwith patch('verify.time.monotonic', return_value=100.0):\n    try:\n        execution.remaining()\n    except TimeoutError:\n        pass\n    else:\n        raise AssertionError('expired phase deadline accepted')\nassert execution.deadline == 100.0\nprint('Budget policy: all delivery checks >=82800s; preparation unchanged; invalid timeouts rejected; one nonrenewing phase deadline preserved. All tests/*.py parse.')\n"
+      ],
+      "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+      "start": "2026-10-19T11:18:21.804127+00:00",
+      "timeout_s": 57.64763015502831,
+      "stdout": "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/budget-policy.stdout.log",
+      "stderr": "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/budget-policy.stderr.log",
+      "timed_out": false,
+      "pid": 1579905,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 1.765096150978934
+      },
+      "duration_s": 2.0315194209688343,
+      "cpu_user_s": 0.172323,
+      "cpu_system_s": 0.046086999999999996,
+      "end": "2026-10-19T11:18:23.835800+00:00"
+    }
+  ],
+  "status": "passed",
+  "detail": null,
+  "repair_of": "evidence/verification/functional/attempt-20261019T111105769979Z/receipt.json",
+  "prior_failed_attempt": null,
+  "acceptance_evidence": false,
+  "generated_output_sha256": {
+    "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/version-python3.stdout.log": "5b3e43dc38ca01e3f5a7854ba50d4330864b0c1e0f646650b2c78cf072acc366",
+    "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/budget-policy.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/version-python3.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/preparation/phase2-generous-watchdog-repair/attempt-20261019T111819451416Z/budget-policy.stdout.log": "f0e93efd665306c4e02b256ee2220a07eda1f58ecc6e36d03722adbf153110ee"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "scope": "Clocked blocks and register-update tasks; not physical STA",
+  "checker_fixtures": 12,
+  "sources": [
+    {
+      "source": "rtl/anvil_e1_address.sv",
+      "clocked_blocks_and_tasks": 0,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_attention.sv",
+      "clocked_blocks_and_tasks": 3,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_controller.sv",
+      "clocked_blocks_and_tasks": 1,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_mac.sv",
+      "clocked_blocks_and_tasks": 1,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_matvec.sv",
+      "clocked_blocks_and_tasks": 1,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_memory.sv",
+      "clocked_blocks_and_tasks": 1,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_nonlinear.sv",
+      "clocked_blocks_and_tasks": 2,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_norm.sv",
+      "clocked_blocks_and_tasks": 2,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_pool.sv",
+      "clocked_blocks_and_tasks": 1,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_rope.sv",
+      "clocked_blocks_and_tasks": 2,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_sequencer.sv",
+      "clocked_blocks_and_tasks": 14,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e1_top.sv",
+      "clocked_blocks_and_tasks": 1,
+      "blocking_assignment_lines": []
+    },
+    {
+      "source": "rtl/anvil_e_top.sv",
+      "clocked_blocks_and_tasks": 0,
+      "blocking_assignment_lines": []
+    }
+  ]
+}

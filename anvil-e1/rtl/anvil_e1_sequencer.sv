@@ -40,10 +40,12 @@ module anvil_e1_sequencer #(
         NORM_START=10, NORM_REQ=11, NORM_RSP=12, NORM_FEED=13, NORM_OUT=14,
         VECTOR=15, VPRODUCT=16, VSAVE=17, VGELU_REQ=18, VGELU_RSP=19,
         ROPE_START=20, ROPE_RUN=21, ATT_START=22, ATT_RUN=23,
-        POOL_START=24, POOL_FEED=25, POOL_WAIT=26, FLUSH=27, DONE=28;
+        POOL_START=24, POOL_FEED=25, POOL_WAIT=26, FLUSH=27, DONE=28,
+        DIVIDE=29, PROJECTION_SAVE=30;
     reg [4:0] state;
     reg [7:0] pc, return_pc;
     reg [31:0] token, layer, head, pair_index, index, count, columns;
+    reg [2:0] layer_phase;
     reg [31:0] token_id, position, token_mask;
     reg signed [31:0] scalar, norm_weight;
     reg [2:0] base_index, read_target, source_a, source_b, destination, vector_mode;
@@ -57,7 +59,7 @@ module anvil_e1_sequencer #(
     reg signed [31:0] temporary [0:WIDTH-1];
     reg signed [31:0] gate [0:WIDTH-1];
     reg signed [31:0] auxiliary [0:WIDTH-1];
-    wire full_mode=layer%6==5;
+    wire full_mode=layer_phase==3'd5;
     wire [31:0] dim=full_mode ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
     wire [31:0] kv_heads=full_mode ? FULL_KV_HEADS:LOCAL_KV_HEADS;
     wire [63:0] x_base=current_x ? bases[5]:bases[0];
@@ -117,20 +119,36 @@ module anvil_e1_sequencer #(
             embedding_scale=saturate(quotient);
         end
     endfunction
-    function automatic signed [31:0] projection_scale;
-        input signed [31:0] value;
-        reg signed [95:0] numerator, magnitude, divisor, quotient, remainder;
-        begin
-            numerator={{64{value[31]}},value}<<<40;
-            divisor=$signed({32'd0,H_ROOT});
-            magnitude=numerator<0 ? -numerator:numerator;
-            quotient=magnitude/divisor; remainder=magnitude%divisor;
-            if (remainder>divisor-remainder ||
-                (remainder==divisor-remainder && quotient[0]))
-                quotient=quotient+96'sd1;
-            projection_scale=saturate(numerator<0 ? -quotient:quotient);
+    reg [95:0] div_quotient;
+    reg [96:0] div_remainder;
+    reg div_negative;
+    reg [4:0] div_iteration;
+    reg [95:0] div_next_quotient;
+    reg [96:0] div_next_remainder;
+    integer div_bit;
+    always @* begin
+        div_next_quotient=div_quotient;
+        div_next_remainder=div_remainder;
+        if (state==DIVIDE) begin
+            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+                div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
+                div_next_quotient=div_next_quotient<<1;
+                if (div_next_remainder>={33'd0,H_ROOT}) begin
+                    div_next_remainder=div_next_remainder-{33'd0,H_ROOT};
+                    div_next_quotient[0]=1'b1;
+                end
+            end
         end
-    endfunction
+    end
+    wire [95:0] div_rounded_magnitude=div_quotient+
+        ((div_remainder>{33'd0,H_ROOT}-div_remainder ||
+          (div_remainder=={33'd0,H_ROOT}-div_remainder && div_quotient[0]))
+         ? 96'd1:96'd0);
+    wire signed [95:0] div_result=div_negative ?
+        -$signed(div_rounded_magnitude):$signed(div_rounded_magnitude);
+    wire signed [31:0] projection_input=bank_read(source_a,index);
+    wire signed [95:0] projection_numerator=
+        $signed({{64{projection_input[31]}},projection_input})<<<40;
     function automatic signed [31:0] add_values;
         input signed [31:0] a,b;
         begin
@@ -327,7 +345,7 @@ module anvil_e1_sequencer #(
         .start_ready(rope_start_ready), .start_full(full_mode),
         .start_position(position), .start_pair(pair_index), .start_dim(dim),
         .start_lo(temporary[head*dim+pair_index]),
-        .start_hi(temporary[head*dim+pair_index+dim/2]),
+        .start_hi(temporary[head*dim+pair_index+(dim>>1)]),
         .nonlinear_valid(rope_nvalid), .nonlinear_ready(nready && state==ROPE_RUN),
         .nonlinear_op(rope_nop), .nonlinear_data(rope_ndata),
         .nonlinear_out_valid(nout_valid && state==ROPE_RUN),
@@ -481,10 +499,6 @@ module anvil_e1_sequencer #(
                             bank_write_valid=1;
                             bank_write_data=embedding_scale(bank_read(source_a,index));
                         end
-                        1: begin
-                            bank_write_valid=1;
-                            bank_write_data=projection_scale(bank_read(source_a,index));
-                        end
                         2: begin
                             bank_write_valid=1;
                             bank_write_data=add_values(bank_read(source_a,index),
@@ -495,6 +509,9 @@ module anvil_e1_sequencer #(
                 VSAVE: begin
                     bank_write_valid=1; bank_write_data=mac_rounded;
                 end
+                PROJECTION_SAVE: begin
+                    bank_write_valid=1; bank_write_data=saturate(div_result);
+                end
                 VGELU_RSP: if (nout_valid && !nout_error) begin
                     bank_write_valid=1; bank_write_data=nout_data;
                 end
@@ -503,7 +520,7 @@ module anvil_e1_sequencer #(
                     bank_write_index=head*dim+pair_index;
                     bank_write_data=rope_lo;
                     temporary_hi_valid=1;
-                    temporary_hi_index=head*dim+pair_index+dim/2;
+                    temporary_hi_index=head*dim+pair_index+(dim>>1);
                     temporary_hi_data=rope_hi;
                 end
                 ATT_RUN: if (att_out_valid && att_out_index==index &&
@@ -538,6 +555,8 @@ module anvil_e1_sequencer #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state<=IDLE; pc<=0; return_pc<=0; token<=0; layer<=0; head<=0;
+            layer_phase<=0;
+            div_quotient<=0; div_remainder<=0; div_negative<=0; div_iteration<=0;
             pair_index<=0; index<=0; count<=0; columns<=0; token_id<=0;
             position<=0; token_mask<=0; scalar<=0; norm_weight<=0;
             base_index<=0; read_target<=0; source_a<=0; source_b<=0;
@@ -548,7 +567,7 @@ module anvil_e1_sequencer #(
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
-                    token<=0; layer<=0; head<=0; base_index<=0; current_x<=0;
+                    token<=0; layer<=0; layer_phase<=0; head<=0; base_index<=0; current_x<=0;
                     error_hold<=0; pc<=0; state<=BASES;
                 end
                 BASES: begin
@@ -577,10 +596,14 @@ module anvil_e1_sequencer #(
                             PER_LAYER_INPUT_SIZE,2,8);
                         8: begin
                             if (layer==NUM_LAYERS-1) begin
-                                layer<=0;
+                                layer<=0; layer_phase<=0;
                                 if (token==tokens-1) begin token<=0; pc<=9; end
                                 else begin token<=token+1'b1; pc<=0; end
-                            end else begin layer<=layer+1'b1; pc<=4; end
+                            end else begin
+                                layer<=layer+1'b1;
+                                layer_phase<=layer_phase==3'd5 ? 3'd0:layer_phase+1'b1;
+                                pc<=4;
+                            end
                         end
                         9: read_scalar(positions+64'(token)*4,2,10);
                         10: load_vector(x_base+64'(token)*HIDDEN_SIZE*4,HIDDEN_SIZE,0,11);
@@ -650,8 +673,12 @@ module anvil_e1_sequencer #(
                         54: begin
                             if (token==tokens-1) begin
                                 token<=0; current_x<=!current_x;
-                                if (layer==NUM_LAYERS-1) begin layer<=0; pc<=58; end
-                                else begin layer<=layer+1'b1; pc<=9; end
+                                if (layer==NUM_LAYERS-1) begin layer<=0; layer_phase<=0; pc<=58; end
+                                else begin
+                                    layer<=layer+1'b1;
+                                    layer_phase<=layer_phase==3'd5 ? 3'd0:layer_phase+1'b1;
+                                    pc<=9;
+                                end
                             end else begin token<=token+1'b1; pc<=30; end
                         end
                         58: state<=POOL_START;
@@ -726,12 +753,24 @@ module anvil_e1_sequencer #(
                 end
                 VECTOR: begin
                     case (vector_mode)
-                        0,1,2: finish_element;
+                        0,2: finish_element;
+                        1: begin
+                            div_quotient<=projection_numerator<0 ?
+                                -projection_numerator:projection_numerator;
+                            div_negative<=projection_numerator<0;
+                            div_remainder<=0; div_iteration<=0; state<=DIVIDE;
+                        end
                         3,5: state<=VPRODUCT;
                         4: state<=VGELU_REQ;
                         default: abort_job(1);
                     endcase
                 end
+                DIVIDE: begin
+                    div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
+                    if (div_iteration==23) state<=PROJECTION_SAVE;
+                    else div_iteration<=div_iteration+1'b1;
+                end
+                PROJECTION_SAVE: finish_element;
                 VPRODUCT: state<=VSAVE;
                 VSAVE: finish_element;
                 VGELU_REQ: if (nready) state<=VGELU_RSP;
@@ -743,7 +782,7 @@ module anvil_e1_sequencer #(
                 ROPE_RUN: if (rope_out_valid) begin
                     if (rope_error) abort_job(1);
                     else begin
-                        if (pair_index==dim/2-1) begin pc<=return_pc; state<=DISPATCH; end
+                        if (pair_index==(dim>>1)-1) begin pc<=return_pc; state<=DISPATCH; end
                         else begin pair_index<=pair_index+1'b1; state<=ROPE_START; end
                     end
                 end

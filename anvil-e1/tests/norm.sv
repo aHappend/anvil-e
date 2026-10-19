@@ -11,7 +11,7 @@ module norm;
     anvil_e1_norm #(.MAX_WIDTH(16)) dut(.*);
     integer input_file, scan, tag, mode, count, value, weight;
     integer i, jobs=0, cycles=0;
-    reg [1023:0] input_path;
+    string input_path;
     reg [66:0] held;
     always @(posedge clk or negedge clk) begin
         if (!rst_n &&

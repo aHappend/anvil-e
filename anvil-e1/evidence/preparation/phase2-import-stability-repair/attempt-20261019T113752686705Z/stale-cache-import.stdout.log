@@ -1,0 +1,11 @@
+{
+  "dont_write_bytecode": true,
+  "before": {
+    "cache_stability_fixture.py": "448aec8573972d790122bcee6177ac384e0915162ae8cad2598f232f95a0152b",
+    "__pycache__/cache_stability_fixture.cpython-312.pyc": "e467cef38a660b253b11ba48d5baec96a65e50281b614b908b63e402c2bc4628"
+  },
+  "after": {
+    "cache_stability_fixture.py": "448aec8573972d790122bcee6177ac384e0915162ae8cad2598f232f95a0152b",
+    "__pycache__/cache_stability_fixture.cpython-312.pyc": "e467cef38a660b253b11ba48d5baec96a65e50281b614b908b63e402c2bc4628"
+  }
+}

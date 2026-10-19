@@ -188,6 +188,15 @@ selection retains the zero offset before element/base addition. All prefix,
 extent, layer-count and address calculations retain unsigned 128-bit
 intermediates and the existing high-half overflow checks.
 
+The runtime unsigned 32-bit layer quotient uses the exact constant-reciprocal
+identity `floor(l/6) = (uint64(l)*2863311531) >> 34`. The product fits 64 bits
+for every 32-bit input; the remainder is `l-6*floor(l/6)`. This replaces both
+runtime division and modulo in shape/prefix selection without adding address
+latency. The sequencer instead tracks a three-bit phase counter 0..5 alongside
+the layer index, resetting both together and wrapping phase after five.
+Grouped-query head selection uses comparisons against elaboration-constant
+group boundaries, supporting non-power-of-two legal head group sizes.
+
 Tensor and scratch address calculations are separate combinational processes
 with separate temporaries; scratch input changes do not cause tensor decoding
 to reevaluate. The weight extent is a constant continuous output. This adds no
@@ -224,6 +233,59 @@ reads trade bandwidth for bounded on-chip storage. No measured traffic,
 throughput, timing or physical PPA is claimed.
 
 ## Implemented primitive boundaries
+
+### Iterative division and cycle/degenerate boundaries
+
+The timing-hazard repair replaces runtime RTL division/remainder operators
+with local, stateful unsigned-magnitude restoring dividers in nonlinear,
+norm, RoPE, attention, pool and sequencer. These are contained in the existing
+modules, retaining all thirteen RTL files and independently compilable
+primitive modules; there is no new include-file or module dependency.
+Each divider holds a 96-bit quotient/dividend, 96-bit divisor and 97-bit
+remainder. Four radix-two compare/subtract steps execute per DIVIDE edge,
+over 24 edges, rather than a combinational 96-stage division. Quotient and
+remainder are registered between groups of four steps. A following state
+consumes the completed result. All clocked assignments, including task-expanded
+register updates and resets, are nonblocking; arithmetic temporaries are
+combinational wires, combinational processes or automatic function locals.
+
+The invariant after all 96 steps is `abs(n)=q*abs(d)+r`, with
+`0<=r<abs(d)`. Nearest/ties-even increment uses
+`r>d-r || (r==d-r && q[0])`, then restores the quotient sign.
+Signed remainders restore the dividend's sign. Negative floor quotients
+subtract one from the truncated signed quotient only when the remainder is
+nonzero; exp/RoPE reduction then adds ln(2) to a negative signed remainder.
+No numerical boundary, Q40 constant, saturation rule or Q48 epsilon changes.
+GELU's final division by two is an arithmetic shift with ties-even correction.
+Divisors are positive/nonzero at their operation entry, except reciprocal's
+validated signed nonzero input. Zero L2 and empty attention bypass division.
+Remaining RTL `/` and `%` expressions have only elaboration-time parameter
+operands (geometry diagnostics, fixed dimensions, constant group sizes and
+total layer count); they are not runtime datapaths.
+
+| Boundary | Pre-edge condition | Post-edge state or payload |
+|---|---|---|
+| Reset | `rst_n=0`, including during DIVIDE | Public outputs/payloads zero; state and divider registers reset; no obsolete result survives |
+| First released idle edge | No accepted start | Ready is asserted; no output or memory transaction is created |
+| Divider launch E0 | Owning operation/start accepts valid operands | Magnitudes/signs captured, remainder/count zero, state DIVIDE |
+| Divider E1..E24 | No new operand acceptance | Four restoring steps commit per edge; E24 enters the result-consumption state |
+| Divider E25 | Completed quotient/remainder, same operation owner | Rounded result is captured, or next division launched; public output holds until its normal ready/valid retirement |
+| Root step | Registered radicand/root/remainder | Combinational trial is consumed once; new root/remainder use only nonblocking updates |
+| One element / E/6=1 | Final vector element or single selected channel | First output is also last; no stale vector-memory read replaces the just-computed scalar |
+| Non-power-of-two dimensions/groups | Legal H/P/I/D/count and Q/KV | Counts use equality/wrap; no power-of-two mask or rounded reciprocal approximation |
+| Zero/empty/invalid | Zero L2 or empty eligible attention; all masked or illegal geometry | Zero vectors bypass division; existing explicit errors/parameter diagnostics are preserved |
+| Reset versus completion/stall | Reset while request, arithmetic or output is active | Reset wins; fabric must share reset/flush old responses; no success completion is fabricated |
+
+One division occupies 26 operation edges including launch and result
+consumption; an input-acceptance launch at E0 produces a held result after
+E25 (25-edge difference). Chained divisions can consume one result and
+launch the next on the same edge. The public memory, embedding, completion
+and wrapper register stages are unchanged. Internal arithmetic latency and
+therefore measured job cycles do change. Historical performance artifacts do
+not describe these sources. Independent functional, sensitivity, architecture,
+synthesis and timing-lint checks must assess the changed RTL. No FPGA timing
+closure, physical frequency, current numerical pass or budget sufficiency
+is inferred from removing the operators.
 
 `anvil_e1_mac` multiplies signed Q8.24 inputs into signed 64-bit Q16.48
 products, sign-extends and accumulates in 96 bits without per-product rounding.
@@ -300,13 +362,19 @@ saturates. Rsqrt restores an integer square root of `(input_integer<<56)`
 in 48 radix-four cycles, yielding Q40; nearest-dividing 2^64 by that root
 yields Q24 with saturation.
 
-Reciprocal/domain rejection is visible immediately after its acceptance edge.
-Sin/cos/exp/interior GELU perform 18 series update edges plus one finishing
-edge. Rsqrt performs 48 root update edges plus one finishing edge.
+Domain rejection and GELU's |x|>=8 shortcuts remain visible immediately
+after the acceptance edge. A valid reciprocal is held after E25.
+Sin/cos/exp use one initial range-reduction division, then 18 series
+iterations of launch, 24 divider edges and save, then one finishing edge:
+the result is held 494 edges after input acceptance. Interior GELU adds
+a finishing tanh-ratio division, giving 519 edges. Its final halving retains
+ties-even Q40 rounding before Q24 conversion. Rsqrt uses 48 root edges,
+one division-launch finishing edge, 24 divider edges and one save edge:
+74 edges after input acceptance.
 Output stalls add arbitrary cycles; no new input is accepted until retirement
-and return to idle. Arithmetic division/multiplication is synthesizable integer
-logic, not real arithmetic or host inference. Area and synthesis runtime remain
-unmeasured; the wide operators may require serial implementation refinement.
+and return to idle. These counts specify the FSM, not measured physical
+throughput. Multiplication remains synthesizable integer logic, and division
+is the iterative circuit above, not real arithmetic or host inference.
 
 ### Vector normalization
 
@@ -333,8 +401,10 @@ premature saturation, rounds Q48 to Q24, and saturates only the final output.
 L2 uses a unit multiplier. A zero L2 denominator emits all zeros without
 division. Invalid counts produce a held error output and no vector loading.
 
-Latency is count input-acceptance edges, one denominator setup edge, 80 root
-edges, and one result-preparation edge per output element, plus arbitrary
+Latency is count input-acceptance edges, one denominator setup edge for L2
+or 26 setup/division/save edges for RMS, then 80 root edges.
+Each nonzero-root output requires 26 preparation/division/weight-save edges;
+a zero-root output needs one preparation edge. Add arbitrary
 input/output stalls. Result, index and last are held registered/stable while
 stalled. Vector memories are not reset because every selected element must
 be loaded before reading; reset discards all previous state.
@@ -376,7 +446,10 @@ sin/cos engine. This preserves phase precision for large valid positions.
 The final two rotations use two full two-product MAC reductions, each rounded
 and saturated once: lo*cos-hi*sin, lo*sin+hi*cos.
 
-Frequency generation has 18 SERIES edges and one ANGLE edge; each sin/cos
+Frequency generation starts with two chained divisions (rounded exponent,
+then floor ln(2) reduction), followed by 18 series iterations of 26 edges
+each and a 26-edge angle-remainder/rounding operation. The angle is
+registered 544 edges after pair acceptance. Each sin/cos
 transaction follows the nonlinear handshake/latency above. Each rotation
 uses two product edges and a separate capture edge. Pair outputs/error remain
 registered until accepted. Frequency right-shift is a truncation at Q40,
@@ -416,8 +489,10 @@ For K eligible keys and head width D, three passes request 3*K*D K words,
 the final pass requests K*D V words, and all three passes request N masks.
 Local layers additionally request one key position per valid key per pass.
 Initial Q reads cost D words plus one query-position word. There is no N*N
-score buffer. Each dot product has one PRODUCT edge per component and one
-SCORE edge after the last product. Each weighted-V component has a PRODUCT
+score buffer. Each dot product has one PRODUCT edge per component followed
+by a 26-edge SCORE/division/save operation after the last product.
+Each nonzero-denominator FINISH channel likewise takes 26 edges, while a
+zero-denominator channel takes one edge. Each weighted-V component has a PRODUCT
 edge and a distinct WEIGHT accumulation edge. Registered memory bridge
 latencies and nonlinear handshakes dominate these variable-duration loops.
 
@@ -437,7 +512,8 @@ The norm unit's zero-denominator behavior implements successful zero pooling.
 Legal reduced dimensions include E/6=1; the single-element result is captured
 directly from the norm output on its acceptance edge. OUTPUT holds a separate
 registered data/index/last word until accepted; DONE holds a completion.
-E-word clearing, N*E input transfers, selected-dimension mean/load/capture
+E-word clearing, N*E input transfers, 26 mean/division/save edges per selected
+channel, selected-dimension norm load/capture
 loops and the norm latency above precede output. Invalid descriptors report
 1, zero valid count reports 4, and an inconsistent mask count reports 2.
 
@@ -543,8 +619,9 @@ Bank writes use one shared combinational address/data/destination intent,
 decoded into five per-bank enables and consumed by dedicated positive-edge
 storage processes. State-specific operations no longer expand bank-storage
 assignments inside the clocked controller. Read functions remain combinational;
-writes remain nonblocking at the original operation-retirement edge, with no
-extra holding stage or FSM cycle. RoPE additionally drives a second temporary
+writes remain nonblocking at their operation-retirement edge with no extra
+bank holding stage. Projection scaling now retires in PROJECTION_SAVE after
+its iterative divider, rather than in VECTOR. RoPE additionally drives a second temporary
 bank write intent: both split-half results commit on the same edge, retaining
 second-write priority if the addresses coincide. Reset suppresses all write
 intents without clearing bank contents. Arithmetic, error checks, operation
@@ -569,8 +646,10 @@ Each dispatch consumes one edge to latch an operation descriptor. Scalar
 memory transfers have separate REQUEST and RESPONSE states, in addition to
 the bridge's registered request/result stages. Norm feeds each value only
 after its weight read retires. Matrix input loading has one accepted element
-per edge, then its documented weight/product/output loop. Pointwise scaling,
-division or residual addition takes one VECTOR edge per element; pointwise
+per edge, then its documented weight/product/output loop. Embedding scaling
+and residual addition take one VECTOR edge per element. PLE projection
+division takes VECTOR launch, 24 DIVIDE edges and PROJECTION_SAVE, 26 edges
+per element. Pointwise
 multiply takes VECTOR selection, PRODUCT, then SAVE, three edges per element.
 GELU takes a VECTOR selection edge plus its request/response handshake and
 documented series latency. RoPE pairs and attention heads start on separate

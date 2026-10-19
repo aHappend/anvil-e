@@ -1,0 +1,200 @@
+{
+  "argv": [
+    "tests/verify.py",
+    "--check",
+    "prepare-elaboration",
+    "--output",
+    "evidence/preparation/phase2-timing-static",
+    "--timeout-s",
+    "30"
+  ],
+  "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+  "start": "2026-10-19T11:02:36.722374+00:00",
+  "end": "2026-10-19T11:02:44.988376+00:00",
+  "phase_timeout_s": 30.0,
+  "source_sha256": {
+    "rtl/anvil_e1_address.sv": "704fe9be837cc611651aff494209b2d60c67f7136a9354ca39780417d34880f7",
+    "rtl/anvil_e1_attention.sv": "843a1185b3aefba86d447bebb462fe082d272489dcb4ebd4c6c74328671acf18",
+    "rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
+    "rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
+    "rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
+    "rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
+    "rtl/anvil_e1_nonlinear.sv": "bf36e4103daf94c3d995998f7edda2d7a911c9f6c1df1599d0bdfa89e5b18ce5",
+    "rtl/anvil_e1_norm.sv": "8f6792d2b964bbb45bda4e3bc85eab91f76a3615612a3c9efa6755c4bd7cd9e4",
+    "rtl/anvil_e1_pool.sv": "f7caac41f2fc007c53a28df4d18e5b3573494d600ab1022e8443686ac103b118",
+    "rtl/anvil_e1_rope.sv": "42b98b951ca4d3958b8c98c482d13c3cdb4ba2cc3bfc87ba2aa4e2e8c493008a",
+    "rtl/anvil_e1_sequencer.sv": "9a087cbce99923d80f31140235327c4a579510e20b94de72c6efe43f74012325",
+    "rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
+    "rtl/anvil_e_top.sv": "7f5816242ea538f598807d9104386ba04db6f9bbc2977c9ca75d6ccfdcbd2fbd",
+    "design/ARCHITECTURE.md": "5a5364c660dac737e92596267a53b998009cbbcc0fd5e8b1f0b55078188f0805",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "9681612c56ef73fa5f30149f9024d255366a70197a6876c1e27830048557e481",
+    "design/pack_model.py": "9c1140e476002c7f5d98fc87eefbf064208ee64c9eff30b2998b3e4c3c630981",
+    "tests/addresses.py": "3d5dcf892c76efcf51cc361825605534d09728d0be90345ec72d78860a2eed51",
+    "tests/architecture.py": "e2f1ca0b387536ed552d27e07cc5c1fe66abb4735e2a6d540f0b039f9803edc3",
+    "tests/behavior.py": "f3e8bd0d0c610c90946b49401493c861ba4b5c7c800542ea3f1df3da26606979",
+    "tests/model.py": "57aa034faed14b47e81bf38308c351febde1ba68c117983ca3740bb7a39df29a",
+    "tests/official.py": "a71b5174bcb02349e68fc546bcc3ad5d7d4c710ea6386b45471cb662d615173a",
+    "tests/official_fp32.py": "c6041d25a81f18a6a5a8089b0b3ad64873f09a6ebe0b9814df02175479492780",
+    "tests/packing.py": "7de5f2f76aaec9faeb3df77730fce53913d1927ddb28c52f9dae5177dce5c676",
+    "tests/primitives.py": "ecf2d0ac33580bccd367d26ac3a5ecc9c85a80cce694ae89170c5a2837c12ce2",
+    "tests/profiling.py": "40cab62685d9c7720bb4042a936c47d1e3be561f76464a2ed29bef7cd9bf030d",
+    "tests/synthesis.py": "6a2f37cf9cd6935a50c99d22a6c0e7e4bfd56296d8e4aa99d0a653979a76f928",
+    "tests/verify.py": "93d2bf0e972346798b6c7d782cc73d439bf34ee7247016c552cc314eafdce9ac",
+    "tests/addresses.sv": "6fcdccde87922f3c7aff66161c0c2cf7a499df738ed23b2c0f7c464d391a8c58",
+    "tests/forward.sv": "bdbb80830daae835be6afbcff97f811df075ec44983f1c40e09b17eab4066fdb",
+    "tests/norm.sv": "b5ccb19393d877e4cb1f780e1b533356437ac540d2e91f36bf306e608dc4d2f5",
+    "tests/primitives.sv": "e8edbc0eb1dac5b5ec506d8cf8dc029f704dbd55c676250d3836465cc72701d8",
+    "tests/profile_address.sv": "84b816828b4f7f4e04c19d5ee81e501f5fe84480fc25b719bca656814f9397e6",
+    "hf_embeddinggemma2_spec/config.json": "90135c44282752b2b9d9160c69682645fef5b084934f057fa756db9848b1095b",
+    "hf_embeddinggemma2_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
+    "hf_embeddinggemma2_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
+    "hf_embeddinggemma2_spec/sentence_bert_config.json": "53cddcdff8b19a51e5ace646be5c2b64ed818f01b78aea137c7c1334d36a5b5a",
+    "hf_embeddinggemma2_spec/1_Pooling/config.json": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9",
+    "hf_embeddinggemma2_spec/official_weights/google_embeddinggemma2_official_slice.safetensors": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "hf_embeddinggemma2_spec/official_weights/official_hardware_slices_fp32_q824.json": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c",
+    "hf_embeddinggemma2_spec/official_weights/official_weights_manifest.json": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad"
+  },
+  "tool_versions": {
+    "python3": {
+      "path": "/usr/bin/python3",
+      "stdout": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-python3.stdout.log"
+    },
+    "iverilog": {
+      "path": "/usr/bin/iverilog",
+      "stdout": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-iverilog.stdout.log"
+    },
+    "vvp": {
+      "path": "/usr/bin/vvp",
+      "stdout": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-vvp.stdout.log"
+    }
+  },
+  "children": [
+    {
+      "argv": [
+        "/usr/bin/python3",
+        "--version"
+      ],
+      "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+      "start": "2026-10-19T11:02:36.746298+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-python3.stdout.log",
+      "stderr": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-python3.stderr.log",
+      "timed_out": false,
+      "pid": 1523472,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 2.340509761008434
+      },
+      "duration_s": 2.3457576790242456,
+      "cpu_user_s": 0.0,
+      "cpu_system_s": 0.003965,
+      "end": "2026-10-19T11:02:39.092359+00:00"
+    },
+    {
+      "argv": [
+        "/usr/bin/iverilog",
+        "-V"
+      ],
+      "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+      "start": "2026-10-19T11:02:39.093027+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-iverilog.stdout.log",
+      "stderr": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-iverilog.stderr.log",
+      "timed_out": false,
+      "pid": 1523517,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 1.6854932800051756
+      },
+      "duration_s": 1.719067388039548,
+      "cpu_user_s": 0.00413,
+      "cpu_system_s": 0.013013999999999998,
+      "end": "2026-10-19T11:02:40.812252+00:00"
+    },
+    {
+      "argv": [
+        "/usr/bin/vvp",
+        "-V"
+      ],
+      "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+      "start": "2026-10-19T11:02:40.813089+00:00",
+      "timeout_s": 5,
+      "stdout": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-vvp.stdout.log",
+      "stderr": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-vvp.stderr.log",
+      "timed_out": false,
+      "pid": 1523639,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 1.6969088499899954
+      },
+      "duration_s": 1.7059641989762895,
+      "cpu_user_s": 0.0010739999999999994,
+      "cpu_system_s": 0.005368000000000001,
+      "end": "2026-10-19T11:02:42.519209+00:00"
+    },
+    {
+      "argv": [
+        "iverilog",
+        "-g2012",
+        "-t",
+        "null",
+        "-s",
+        "anvil_e1_top",
+        "rtl/anvil_e1_address.sv",
+        "rtl/anvil_e1_attention.sv",
+        "rtl/anvil_e1_controller.sv",
+        "rtl/anvil_e1_mac.sv",
+        "rtl/anvil_e1_matvec.sv",
+        "rtl/anvil_e1_memory.sv",
+        "rtl/anvil_e1_nonlinear.sv",
+        "rtl/anvil_e1_norm.sv",
+        "rtl/anvil_e1_pool.sv",
+        "rtl/anvil_e1_rope.sv",
+        "rtl/anvil_e1_sequencer.sv",
+        "rtl/anvil_e1_top.sv",
+        "rtl/anvil_e_top.sv"
+      ],
+      "cwd": "/data/sufeng/anvil-e-line4/workspace_phase2/project",
+      "start": "2026-10-19T11:02:42.520664+00:00",
+      "timeout_s": 20,
+      "stdout": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/default-elaboration.stdout.log",
+      "stderr": "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/default-elaboration.stderr.log",
+      "timed_out": false,
+      "pid": 1523777,
+      "exit_code": 0,
+      "settlement": {
+        "settled": true,
+        "terminated": [],
+        "remaining": [],
+        "cleanup_s": 2.35137902200222
+      },
+      "duration_s": 2.4669043219764717,
+      "cpu_user_s": 0.06157399999999999,
+      "cpu_system_s": 0.029708,
+      "end": "2026-10-19T11:02:44.987718+00:00"
+    }
+  ],
+  "status": "passed",
+  "detail": null,
+  "repair_of": null,
+  "acceptance_evidence": false,
+  "generated_output_sha256": {
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/default-elaboration.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-vvp.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-python3.stdout.log": "5b3e43dc38ca01e3f5a7854ba50d4330864b0c1e0f646650b2c78cf072acc366",
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-iverilog.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-vvp.stderr.log": "c9010a85df9399c2adb11b59115cdc285ea6f0a399802944367c3813c6772a42",
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/default-elaboration.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-python3.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evidence/preparation/phase2-timing-static/attempt-20261019T110236722054Z/version-iverilog.stdout.log": "f9199cc8658f4afcec3edeb93f29f23bb2aebf66d3eeb217cdc728aaa692f946"
+  }
+}

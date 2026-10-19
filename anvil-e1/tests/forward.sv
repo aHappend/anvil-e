@@ -37,7 +37,7 @@ module forward;
     integer fault_request=-1, reset_mode=0, job_start=0, random_seed=17;
     integer fd, scanned, jn, jd, fault, reset, n;
     reg [63:0] wb, tb, pb, mb, sb;
-    reg [1023:0] image_path, jobs_path;
+    string image_path, jobs_path;
     reg req_held=0, emb_held=0, done_held=0;
     reg [96:0] held_request;
     reg [48:0] held_embedding;
@@ -49,7 +49,7 @@ module forward;
     integer profile_state_changes=0, profile_address_changes=0;
     reg [4:0] profile_last_state;
     reg [199:0] profile_last_address;
-    reg [1023:0] profile_path;
+    string profile_path;
     wire [155:0] outputs={job_ready,mem_req_valid,mem_req_write,mem_req_addr,
         mem_req_wdata,mem_rsp_ready,emb_valid,emb_data,emb_index,emb_last,
         done_valid,done_error,busy};

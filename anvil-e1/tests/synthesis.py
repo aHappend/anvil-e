@@ -3,11 +3,13 @@ import json
 from pathlib import Path
 
 from model import CONFIGS
+from timing import assert_no_divmod, verify_source_style
 
 
 def verify_synthesis(execution, configs, probe=False):
     if configs != ["A","B"] and not (probe and configs == ["A"]):
         raise ValueError("synthesis requires configurations A and B")
+    verify_source_style(execution)
     ledger = []
     for config in configs:
         execution.remaining()
@@ -23,6 +25,7 @@ def verify_synthesis(execution, configs, probe=False):
             "check -assert\nstat\n"+f"write_json {netlist}\n")
         log = execution.run("yosys-"+config,["yosys","-s",str(script)])
         modules = json.loads(netlist.read_text())["modules"]
+        divmod_cells = assert_no_divmod(modules)
         assert "anvil_e_top" in modules
         wrapper = modules["anvil_e_top"]
         assert set(wrapper["cells"]) == {"core"}, "wrapper added or lost logic"
@@ -48,7 +51,7 @@ def verify_synthesis(execution, configs, probe=False):
                 elif kind.startswith("$"):
                     assert not kind.startswith("$tribuf")
                     sequential += "dff" in kind.lower()
-                    arithmetic += kind in ("$mul","$div","$mod","$add","$sub","$shift","$sshr")
+                    arithmetic += kind in ("$mul","$add","$sub","$shift","$sshr")
                 else:
                     raise AssertionError(f"unresolved/blackbox DUT cell {kind}")
         visit("anvil_e_top")
@@ -60,5 +63,6 @@ def verify_synthesis(execution, configs, probe=False):
         assert sequential >= 20 and arithmetic >= 20, (sequential,arithmetic)
         ledger.append({"config":config,"status":"passed","modules":sorted(names),
             "sequential_cells":sequential,"arithmetic_cells":arithmetic,
+            "combinational_divmod_cells":divmod_cells,
             "netlist":str(netlist),"statistics_log":str(log)})
         (output/"synthesis-summary.json").write_text(json.dumps(ledger,indent=2)+"\n")

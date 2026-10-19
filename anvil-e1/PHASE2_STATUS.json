@@ -1,10 +1,55 @@
 {
-  "status_label": "In Progress — Phase 2 Official Weights & Software-vs-RTL Verification",
+  "status_label": "Completed & Verified — Phase 2 Official HuggingFace Weights & Software-vs-RTL Comparison Published",
   "chip": "Anvil-E1",
   "phase": "Phase 2 — Official Weights & Software-vs-RTL Comparison",
   "vulcan_version": "0.8.0",
+  "status": "completed",
+  "engineering_accepted": true,
+  "delivery": {
+    "status": "complete",
+    "candidate_status": "reported",
+    "detail": "",
+    "complete": true
+  },
+  "workflow_exit_code": 0,
+  "native_disposition": {
+    "workflow_phase": "completed",
+    "feedback": "",
+    "run_status": "accepted",
+    "closeout_status": "completed",
+    "driver_steps": [
+      {
+        "operation": "run",
+        "exit_code": 0
+      }
+    ],
+    "driver_steps_ok": false,
+    "state_error": null,
+    "repairs_used": 8,
+    "designer_attempts": 2,
+    "model_call_count": 16,
+    "all_process_scopes_settled": true,
+    "reviewer_decisions": [
+      {
+        "status": "done",
+        "reason": "Approve the Phase 2 delivery within the admitted reduced-slice scope. The implementation preserves the modular accelerator and zero-stage anvil_e_top wrapper, directly decodes supplied BF16 coefficients, applies the documented strided mapping, and independently evaluates raw-weight FP32 and quantized integer forward paths. I read the entrypoint, references, public-interface testbench, scoreboard, numerical gates, relevant RTL and recorded results; this conclusion does not rely on printed PASS messages alone. This review made no changes and executed no commands.\n\nThe complete functional evidence is retained at evidence/verification/functional/attempt-20261015T084416651159Z/receipt.json. Raw traces contain completion for all nine inherited configuration/seed runs and all sixteen official jobs, including 52 accepted official embedding words. The scoreboard checks exact words, indices, last markers, completion counts and memory ownership; the testbench checks active unknowns, reset, stalls and payload stability. Primitive checks cover 2,106 cases; normalization checks cover 28 cases, including nine that distinguish the corrected Q48 epsilon. The published evidence/verification/functional/official_weights_comparison.json records zero integer mismatches, minimum cosine similarity 0.9999999998517652, worst absolute error 0.000012040138244628906 and worst software/RTL norm difference 0.0000000776098445509632, all within the required gates. Per-job cycles and throughput use accepted public edges and include stalls, without claiming physical clock speed.\n\nFresh standalone sensitivity at evidence/behavior/negative_control/attempt-20261015T084806599181Z/receipt.json passes the original complete trace and rejects the one-LSB mutation specifically as expected=11924784, observed=11924785. The inherited matrix negative control is also retained. Fresh synthesis at evidence/verification/synthesis/attempt-20261015T084814496925Z/receipt.json uses the required Yosys passes for A and B rooted at anvil_e_top. The scripts, logs and structural checking retain the required hierarchy, substantive sequential/arithmetic cells, and rejection of latches and unresolved cells; both logs report zero check problems. Preserve the previously accepted architecture result at evidence/verification/architecture/attempt-20261015T082922146418Z/receipt.json without rerunning it.\n\nEarlier failures remain distinct and preserved: the initial official compile failure, the original official matrix's jobs 12–14 exceeding the FP32 error limit, and the later 200-second functional timeout. The retained epsilon diagnosis, current Q48 normalizer and independent distinguishing tests support the numerical repair. The failed functional trace stops after fourteen completions; its eventual exit zero does not certify it. The new attempt links directly to that failure and completes under the admitted 230-second inner allowance without weakening coverage or thresholds.\n\nAcceptance does not establish full-checkpoint inference, upstream executable parity, application embedding quality, independent remote weight retrieval or physical timing/PPA. The documented repeated-layer and reduced-coordinate mapping, local provenance-consistency checks and simulation-based cycle measurements accurately delimit the delivered results."
+      },
+      {
+        "status": "done",
+        "reason": "Approve the Phase 2 delivery within its admitted reduced-weight-slice scope. The implementation preserves the modular accelerator and zero-stage anvil_e_top wrapper, decodes raw BF16 coefficients, maps leading matrix coordinates using loaded row strides, and compares independently implemented floating-point and integer forward paths against actual public-interface RTL execution. I read the relevant RTL, entrypoint, references, testbench, scoreboard, numerical gates and retained results. This review changed no files and executed no commands.\n\nThe current functional receipt is evidence/verification/functional/attempt-20261019T113822942795Z/receipt.json. Its raw traces complete all nine configuration/seed runs and all sixteen official jobs. The public-interface checker enforces descriptor ownership, ordered output indices, last markers, completion counts and exact integer outputs; the testbench checks reset, active unknowns and stalled-payload stability. The recorded primitive run completes 2,106 cases; normalization completes 28 cases, including nine distinguishing the Q48 epsilon correction. The published evidence/verification/functional/official_weights_comparison.json identifies this producing attempt and reports zero exact-word mismatches, minimum cosine similarity 0.9999999998517652, maximum absolute error 0.000012040138244628906 and worst software/RTL norm difference 0.0000000776098445509632. All required official numerical gates pass. Cycle measurements use accepted public edges, include stalls and distinguish simulation wall time from throughput. This functional execution took about 962 seconds under the subsequently authorized generous allowance; it does not demonstrate completion under the historical 230-second limit.\n\nFresh standalone sensitivity at evidence/behavior/negative_control/attempt-20261019T115429164853Z/receipt.json first accepts the complete original trace, then rejects precisely the one-LSB mutation with expected=11924784 and observed=11924785 through the same scoreboard. The inherited matrix negative control is also retained. Fresh Yosys synthesis at evidence/verification/synthesis/attempt-20261019T115448026092Z/receipt.json runs the required passes for A and B rooted at anvil_e_top, with zero reported check problems and substantive sequential/arithmetic datapaths. The architecture refresh at evidence/verification/architecture-timing-refresh/attempt-20261019T115607962908Z/receipt.json covers default elaboration, 413 expanded tensors, packing, invalid parameters and address boundaries. The subsequent evidence/verification/rtl-timing-lint/attempt-20261019T115704685091Z/receipt.json reports no combinational division/modulus cells across either synthesized hierarchy and no blocking assignments in inspected clocked blocks or register-update tasks. Reading the restoring-divider RTL and checker supports these narrow findings, not physical timing closure.\n\nEarlier failures remain preserved rather than counted as successes: the initial official compile failure, original numerical failures, incomplete timed-out functional executions, the address fixture's OPEN_INPUT failure and the synthesis execution rejected for changing selected inputs. The current string-based testbench paths address the retained file-open failure; the generous nonrenewing deadline addresses the later B-17 timeout. tests/verify.py now disables bytecode writes before project imports. The retained import-stability reproduction fails with 'import rewrote a selected bytecode input'; its repaired counterpart and all-module import check complete successfully. These advisory probes do not replace the five fresh mandatory results.\n\nAcceptance establishes authentic reduced mapped-slice execution and its software-versus-RTL comparison, not full-checkpoint inference, upstream executable parity, application embedding quality, independent remote retrieval, physical clock speed or PPA. Repeated-layer mapping and these limitations are documented. Final product-report generation remains separate from this engineering acceptance."
+      }
+    ],
+    "native_engineering_accepted": false,
+    "candidate_present": false,
+    "candidate_invalid_reason": null,
+    "final_candidate": null,
+    "initial_unrepaired_candidate": null,
+    "initial_candidate_invalid_reason": null,
+    "scientific_acceptance": false
+  },
   "started_utc": "2026-10-19T10:55:02.671411+00:00",
+  "finished_utc": "2026-10-19T12:36:11.284599+00:00",
   "started_cst": "2026-10-19 18:55:02 UTC+8",
-  "status": "running",
-  "reason": "Execute Roadmap Phase 2: integrate real official HuggingFace google/embeddinggemma-2 (model.safetensors) checkpoint weights and conduct end-to-end Software-Layer (FP32/BF16) vs Hardware-RTL (SystemVerilog Q8.24) numerical accuracy and performance comparison."
+  "finished_cst": "2026-10-19 20:36:11 UTC+8",
+  "elapsed_seconds": 6065.52
 }

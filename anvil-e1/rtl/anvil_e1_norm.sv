@@ -18,10 +18,10 @@ module anvil_e1_norm #(
     output wire out_last,
     output wire out_error
 );
-    localparam IDLE=3'd0, LOAD=3'd1, SETUP=3'd2,
-               ROOT=3'd3, PREPARE=3'd4, HOLD=3'd5;
+    localparam IDLE=0, LOAD=1, SETUP=2, ROOT=3, PREPARE=4, HOLD=5,
+               DIVIDE=6, SETUP_SAVE=7, NORMALIZE=8;
     localparam [95:0] EPSILON_Q48 = 96'd281474977;
-    reg [2:0] state;
+    reg [3:0] state;
     reg [31:0] count, index;
     reg l2;
     reg signed [31:0] values [0:MAX_WIDTH-1];
@@ -34,10 +34,65 @@ module anvil_e1_norm #(
     reg [6:0] iteration;
     reg signed [31:0] result;
     reg error;
-    reg [95:0] denominator_square;
-    reg [161:0] shifted_remainder, trial;
-    reg signed [95:0] numerator, divisor, magnitude, quotient, residue;
-    reg signed [95:0] normalized, unit_weight, product, rounded;
+    wire [161:0] shifted_remainder=(remainder<<2)|{160'd0,radicand[159:158]};
+    wire [161:0] trial=({82'd0,root_value}<<2)|162'd1;
+    reg [95:0] div_quotient, div_divisor;
+    reg [96:0] div_remainder;
+    reg div_negative;
+    reg [4:0] div_iteration;
+    reg [3:0] div_return;
+    reg [95:0] div_next_quotient;
+    reg [96:0] div_next_remainder;
+    integer div_bit;
+    always @* begin
+        div_next_quotient=div_quotient;
+        div_next_remainder=div_remainder;
+        if (state==DIVIDE) begin
+            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+                div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
+                div_next_quotient=div_next_quotient<<1;
+                if (div_next_remainder>={1'b0,div_divisor}) begin
+                    div_next_remainder=div_next_remainder-{1'b0,div_divisor};
+                    div_next_quotient[0]=1'b1;
+                end
+            end
+        end
+    end
+    wire [95:0] div_rounded_magnitude=div_quotient+
+        ((div_remainder>{1'b0,div_divisor}-div_remainder ||
+          (div_remainder=={1'b0,div_divisor}-div_remainder && div_quotient[0]))
+         ? 96'd1:96'd0);
+    wire signed [95:0] div_result=div_negative ?
+        -$signed(div_rounded_magnitude):$signed(div_rounded_magnitude);
+    task automatic begin_divide;
+        input signed [95:0] numerator, denominator;
+        input [3:0] next_state;
+        begin
+            div_quotient<=numerator<0 ? -numerator:numerator;
+            div_divisor<=denominator<0 ? -denominator:denominator;
+            div_remainder<=0; div_iteration<=0;
+            div_negative<=(numerator<0)!=(denominator<0);
+            div_return<=next_state; state<=DIVIDE;
+        end
+    endtask
+    function automatic signed [31:0] apply_weight;
+        input signed [95:0] normalized;
+        input signed [31:0] weight_value;
+        input l2_mode;
+        reg signed [95:0] unit_weight, product, rounded;
+        begin
+            unit_weight=l2_mode ? 96'sd16777216:
+                96'sd16777216+{{64{weight_value[31]}},weight_value};
+            product=normalized*unit_weight;
+            rounded=product>>>24;
+            if (product[23:0]>24'h800000 ||
+                (product[23:0]==24'h800000 && rounded[0]))
+                rounded=rounded+96'sd1;
+            if (rounded>96'sd2147483647) apply_weight=32'sh7fffffff;
+            else if (rounded< -96'sd2147483648) apply_weight=32'sh80000000;
+            else apply_weight=rounded[31:0];
+        end
+    endfunction
 
     initial begin
         if (MAX_WIDTH <= 0 || MAX_WIDTH > 65535)
@@ -64,18 +119,8 @@ module anvil_e1_norm #(
             iteration <= 0;
             result <= 0;
             error <= 0;
-            denominator_square = 0;
-            shifted_remainder = 0;
-            trial = 0;
-            numerator = 0;
-            divisor = 0;
-            magnitude = 0;
-            quotient = 0;
-            residue = 0;
-            normalized = 0;
-            unit_weight = 0;
-            product = 0;
-            rounded = 0;
+            div_quotient<=0; div_divisor<=0; div_remainder<=0;
+            div_negative<=0; div_iteration<=0; div_return<=IDLE;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
@@ -105,24 +150,20 @@ module anvil_e1_norm #(
                 end
                 SETUP: begin
                     if (l2) begin
-                        denominator_square = sum_squares;
-                    end else begin
-                        denominator_square = sum_squares / count;
-                        residue = sum_squares % count;
-                        if (residue > count-residue ||
-                            (residue == count-residue && denominator_square[0]))
-                            denominator_square = denominator_square + 96'd1;
-                        denominator_square = denominator_square + EPSILON_Q48;
-                    end
-                    radicand <= {denominator_square,64'd0};
-                    root_value <= 0;
-                    remainder <= 0;
-                    iteration <= 0;
-                    state <= ROOT;
+                        radicand<={sum_squares,64'd0};
+                        root_value<=0; remainder<=0; iteration<=0; state<=ROOT;
+                    end else begin_divide($signed(sum_squares),{64'd0,count},SETUP_SAVE);
+                end
+                DIVIDE: begin
+                    div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
+                    if (div_iteration==23) state<=div_return;
+                    else div_iteration<=div_iteration+1'b1;
+                end
+                SETUP_SAVE: begin
+                    radicand <= {div_rounded_magnitude+EPSILON_Q48,64'd0};
+                    root_value<=0; remainder<=0; iteration<=0; state<=ROOT;
                 end
                 ROOT: begin
-                    shifted_remainder = (remainder << 2) | {160'd0,radicand[159:158]};
-                    trial = ({82'd0,root_value} << 2) | 162'd1;
                     if (shifted_remainder >= trial) begin
                         remainder <= shifted_remainder-trial;
                         root_value <= (root_value << 1) | 80'd1;
@@ -137,28 +178,14 @@ module anvil_e1_norm #(
                 PREPARE: begin
                     if (root_value == 0) begin
                         result <= 0;
-                    end else begin
-                        numerator = {{64{values[index][31]}},values[index]} <<< 56;
-                        divisor = {16'd0,root_value};
-                        magnitude = numerator < 0 ? -numerator : numerator;
-                        quotient = magnitude / divisor;
-                        residue = magnitude % divisor;
-                        if (residue > divisor-residue ||
-                            (residue == divisor-residue && quotient[0]))
-                            quotient = quotient + 96'sd1;
-                        normalized = numerator < 0 ? -quotient : quotient;
-                        unit_weight = l2 ? 96'sd16777216 :
-                            96'sd16777216 + {{64{weights[index][31]}},weights[index]};
-                        product = normalized * unit_weight;
-                        rounded = product >>> 24;
-                        if (product[23:0] > 24'h800000 ||
-                            (product[23:0] == 24'h800000 && rounded[0]))
-                            rounded = rounded + 96'sd1;
-                        if (rounded > 96'sd2147483647) result <= 32'sh7fffffff;
-                        else if (rounded < -96'sd2147483648) result <= 32'sh80000000;
-                        else result <= rounded[31:0];
-                    end
-                    state <= HOLD;
+                        state <= HOLD;
+                    end else begin_divide(
+                        $signed({{64{values[index][31]}},values[index]})<<<56,
+                        {16'd0,root_value},NORMALIZE);
+                end
+                NORMALIZE: begin
+                    result<=apply_weight(div_result,weights[index],l2);
+                    state<=HOLD;
                 end
                 HOLD: if (out_ready) begin
                     if (error || index == count-1) state <= IDLE;

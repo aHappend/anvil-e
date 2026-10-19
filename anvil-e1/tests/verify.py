@@ -5,6 +5,7 @@ import ctypes
 import datetime
 import hashlib
 import json
+import math
 import os
 import resource
 from pathlib import Path
@@ -14,11 +15,25 @@ import subprocess
 import sys
 import time
 
+# Imported verification modules must not mutate the runtime's selected inputs.
+sys.dont_write_bytecode = True
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 INPUTS = ("rtl/*.sv", "design/*.md", "design/*.py", "tests/*.py", "tests/*.sv",
           "hf_embeddinggemma2_spec/*.json", "hf_embeddinggemma2_spec/1_Pooling/config.json",
           "hf_embeddinggemma2_spec/official_weights/*")
+DELIVERY_CHECKS = frozenset(("architecture", "behavior", "functional", "sensitivity",
+                             "synthesis", "rtl-timing-lint"))
+# The current work order grants 24 hours per check, superseding legacy argv
+# watchdogs. Keep one phase deadline with an hour of outer cleanup headroom.
+DELIVERY_PHASE_MINIMUM_S = 23 * 60 * 60
+
+
+def phase_allowance(check, requested):
+    if not math.isfinite(requested) or requested <= 0:
+        raise ValueError("phase timeout must be finite and positive")
+    return max(requested, DELIVERY_PHASE_MINIMUM_S) if check in DELIVERY_CHECKS else requested
 
 
 def identities():
@@ -38,11 +53,20 @@ class Execution:
         self.output.mkdir(parents=True, exist_ok=False)
         self.deadline = time.monotonic() + allowance
         self.allowance = allowance
+        self.requested_allowance = allowance
         self.started = stamp()
         self.sources = identities()
         self.children = []
         self.versions = {}
         self.repair_of = None
+        self.prior_failed_attempt = None
+        for path in sorted(self.published_output.glob("attempt-*/receipt.json"), reverse=True):
+            content = path.read_bytes()
+            if json.loads(content)["status"] == "failed":
+                self.prior_failed_attempt = {
+                    "receipt": str(path.relative_to(ROOT)),
+                    "sha256": hashlib.sha256(content).hexdigest()}
+                break
         # Adopt orphaned tool grandchildren so cleanup can reap the whole tree.
         if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
             raise OSError(ctypes.get_errno(), "PR_SET_CHILD_SUBREAPER failed")
@@ -155,9 +179,11 @@ class Execution:
     def save(self, status, detail=None):
         receipt = {"argv": sys.argv, "cwd": str(ROOT), "start": self.started,
                    "end": stamp(), "phase_timeout_s": self.allowance,
+                   "requested_phase_timeout_s": self.requested_allowance,
                    "source_sha256": self.sources, "tool_versions": self.versions,
                    "children": self.children, "status": status, "detail": detail,
                    "repair_of": self.repair_of,
+                   "prior_failed_attempt": self.prior_failed_attempt,
                    "acceptance_evidence": "/preparation/" not in str(self.output)}
         if status in ("passed", "failed"):
             receipt["generated_output_sha256"] = {
@@ -176,6 +202,7 @@ def elaborate(execution):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", choices=("architecture", "behavior", "functional", "sensitivity", "synthesis",
+                                          "rtl-timing-lint", "prepare-timing",
                                           "prepare-official", "prepare-official-matrix",
                                           "prepare-official-sensitivity",
                                           "prepare-official-diagnosis",
@@ -194,13 +221,26 @@ def main():
     parser.add_argument("--repair-of")
     parser.add_argument("--diagnostic-report")
     args = parser.parse_args()
-    execution = Execution(args.output, args.timeout_s)
+    try:
+        allowance = phase_allowance(args.check, args.timeout_s)
+    except ValueError as error:
+        parser.error(str(error))
+    execution = Execution(args.output, allowance)
+    execution.requested_allowance = args.timeout_s
     execution.repair_of = args.repair_of
     try:
-        execution.prerequisites(("python3", "yosys") if args.check in (
+        execution.prerequisites(("python3",) if args.check in (
+                                "rtl-timing-lint", "prepare-timing") else
+                                ("python3", "yosys") if args.check in (
                                 "synthesis", "prepare-synthesis", "prepare-profile-synthesis")
                                 else ("python3", "iverilog", "vvp"))
-        if args.check == "prepare-elaboration":
+        if args.check == "prepare-timing":
+            from timing import verify_source_style
+            verify_source_style(execution)
+        elif args.check == "rtl-timing-lint":
+            from timing import verify_timing
+            verify_timing(execution, args.configs.split(","))
+        elif args.check == "prepare-elaboration":
             elaborate(execution)
         elif args.check == "prepare-profile-synthesis":
             from profiling import profile_synthesis
