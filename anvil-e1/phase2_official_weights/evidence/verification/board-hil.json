@@ -1,0 +1,77 @@
+{
+  "gate": "board-hil",
+  "timestamp_utc": "2026-10-19T14:21:03.380525+00:00",
+  "chip_id": "23645547322997765",
+  "heartbeat": {
+    "alive": true,
+    "age_s": 0.13,
+    "host": null,
+    "user": null,
+    "detail": "Bridge healthy"
+  },
+  "reg57_probe": {
+    "exit_code": 0,
+    "stdout": "Read register 57 (0x00000039): 178 (0x000000b2)\nFPGA diagnostics total time: 0.04 seconds"
+  },
+  "requested_runs": 3,
+  "deterministic_across_runs": true,
+  "status": "passed",
+  "runs": [
+    {
+      "run_index": 1,
+      "exit_code": 0,
+      "duration_s": 8.682,
+      "passed": true,
+      "missing_expected_tokens": [],
+      "forbidden_tokens_found": [],
+      "stdout": "Wrote soft shell register 3 (0x00000003): 2 (0x0000000000000002)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 0 (0x00000000): 4705793533462660401 (0x414e56494c5f4531)\nFPGA diagnostics total time: 0.04 seconds\nWrote soft shell register 3 (0x00000003): 256 (0x0000000000000100)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 2 (0x00000002): 4294968846 (0x000000010000060e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 11 (0x0000000b): 108107 (0x000000000001a64b)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 12 (0x0000000c): 463856469697 (0x0000006c000006c1)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 16 (0x00000010): 11924784 (0x0000000000b5f530)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 17 (0x00000011): 668719 (0x00000000000a342f)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 18 (0x00000012): 18446744073702366634 (0xffffffffff925daa)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 19 (0x00000013): 18446744073703912471 (0xffffffffffa9f417)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 20 (0x00000014): 1565749 (0x000000000017e435)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 21 (0x00000015): 18446744073702274816 (0xffffffffff90f700)\nFPGA diagnostics total time: 0.04 seconds\n",
+      "stderr": ""
+    },
+    {
+      "run_index": 2,
+      "exit_code": 0,
+      "duration_s": 8.079,
+      "passed": true,
+      "missing_expected_tokens": [],
+      "forbidden_tokens_found": [],
+      "stdout": "Wrote soft shell register 3 (0x00000003): 2 (0x0000000000000002)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 0 (0x00000000): 4705793533462660401 (0x414e56494c5f4531)\nFPGA diagnostics total time: 0.04 seconds\nWrote soft shell register 3 (0x00000003): 256 (0x0000000000000100)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 2 (0x00000002): 4294968846 (0x000000010000060e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 11 (0x0000000b): 108107 (0x000000000001a64b)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 12 (0x0000000c): 463856469697 (0x0000006c000006c1)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 16 (0x00000010): 11924784 (0x0000000000b5f530)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 17 (0x00000011): 668719 (0x00000000000a342f)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 18 (0x00000012): 18446744073702366634 (0xffffffffff925daa)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 19 (0x00000013): 18446744073703912471 (0xffffffffffa9f417)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 20 (0x00000014): 1565749 (0x000000000017e435)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 21 (0x00000015): 18446744073702274816 (0xffffffffff90f700)\nFPGA diagnostics total time: 0.04 seconds\n",
+      "stderr": ""
+    },
+    {
+      "run_index": 3,
+      "exit_code": 0,
+      "duration_s": 8.38,
+      "passed": true,
+      "missing_expected_tokens": [],
+      "forbidden_tokens_found": [],
+      "stdout": "Wrote soft shell register 3 (0x00000003): 2 (0x0000000000000002)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 0 (0x00000000): 4705793533462660401 (0x414e56494c5f4531)\nFPGA diagnostics total time: 0.04 seconds\nWrote soft shell register 3 (0x00000003): 256 (0x0000000000000100)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 2 (0x00000002): 4294968846 (0x000000010000060e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 11 (0x0000000b): 108107 (0x000000000001a64b)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 12 (0x0000000c): 463856469697 (0x0000006c000006c1)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 16 (0x00000010): 11924784 (0x0000000000b5f530)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 17 (0x00000011): 668719 (0x00000000000a342f)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 18 (0x00000012): 18446744073702366634 (0xffffffffff925daa)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 19 (0x00000013): 18446744073703912471 (0xffffffffffa9f417)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 20 (0x00000014): 1565749 (0x000000000017e435)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 21 (0x00000015): 18446744073702274816 (0xffffffffff90f700)\nFPGA diagnostics total time: 0.04 seconds\n",
+      "stderr": ""
+    }
+  ],
+  "detail": "All 3 physical FPGA HIL run(s) passed deterministically on chip 23645547322997765.",
+  "pipeline_telemetry": {
+    "bedrock_rpd": {
+      "rebuilt": false,
+      "rpd_path": "/home/v-sufengguo/bedrock_2_1_anvil_e1/output_files/LongsPeak_AnvilE1_full.rpd",
+      "rpd_sha256": "205eb9cb2d60dad9afd04209c926c65e91cfe002ffc9e288796d7d06e8c3610c",
+      "source_sha256": "1b5703b0aa81a1176342fed105b1e260e224a616211125a167d3be678f557dca"
+    },
+    "remote_transfer": {
+      "transferred": false,
+      "remote_rpd_win_path": "C:\\Users\\v-sufengguo\\anvil_e1_bedrock_role\\LongsPeak_AnvilE1_v091.rpd",
+      "rpd_sha256": "205eb9cb2d60dad9afd04209c926c65e91cfe002ffc9e288796d7d06e8c3610c"
+    },
+    "flash_and_reconfig": {
+      "flashed": false,
+      "reconfigured": false,
+      "rpd_sha256": "205eb9cb2d60dad9afd04209c926c65e91cfe002ffc9e288796d7d06e8c3610c",
+      "flash_stdout_tail": "",
+      "reconfig_stdout_tail": "",
+      "bar0_restore": {
+        "exit_code": 0,
+        "stdout": "BAR0 already active",
+        "stderr": ""
+      }
+    }
+  }
+}

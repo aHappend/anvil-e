@@ -1,0 +1,31 @@
+{
+  "bridge_dir": "/home/v-sufengguo/netsys17_bridge",
+  "chip_id": "23645547322997765",
+  "tools_win_dir": "C:\\Users\\v-sufengguo\\Catapult\\BoardTestPackages\\5.25.5.1\\retail-amd64\\Tools",
+  "bedrock_project_dir": "/home/v-sufengguo/bedrock_2_1_anvil_e1",
+  "bedrock_revision": "LongsPeak_AnvilE1",
+  "remote_rpd_win_path": "C:\\Users\\v-sufengguo\\anvil_e1_bedrock_role\\LongsPeak_AnvilE1_v091.rpd",
+  "local_http_host": "10.190.172.21",
+  "runs": 3,
+  "remote_test_cmd": "Set-Location 'C:\\Users\\v-sufengguo\\Catapult\\BoardTestPackages\\5.25.5.1\\retail-amd64\\Tools'; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justwritesoftreg 3 2; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 0; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justwritesoftreg 3 256; Start-Sleep -Milliseconds 50; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 2; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 11; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 12; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 16; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 17; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 18; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 19; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 20; .\\FpgaDiagnostics.exe -chip 23645547322997765 -justreadsoftreg 21",
+  "expected_tokens": [
+    "0x414e56494c5f4531",
+    "0x000000010000060e",
+    "0x000000000001a64b",
+    "0x0000006c000006c1",
+    "0x0000000000b5f530",
+    "0x00000000000a342f",
+    "0xffffffffff925daa",
+    "0xffffffffffa9f417",
+    "0x000000000017e435",
+    "0xffffffffff90f700"
+  ],
+  "forbidden_tokens": [
+    "TIMED OUT",
+    "TIMEOUT",
+    "FAIL",
+    "ERROR",
+    "STALL",
+    "0x0000000300fe0001"
+  ]
+}
