@@ -320,6 +320,38 @@ Completion errors are 0 success,\allowbreak{} 1 invalid descriptor,\allowbreak{}
 
 {\small Evidence: E087,\allowbreak{} E089,\allowbreak{} E042,\allowbreak{} E043}
 
+\section{Software-vs-Hardware Evaluation, Quartus 17.1 STA and Physical FPGA Verification}
+
+\subsection{Official Weights Software-Layer vs Hardware-RTL / FPGA Comparison}
+
+{\small\begin{longtable}{@{}L{0.38\textwidth}L{0.26\textwidth}L{0.28\textwidth}@{}}\toprule
+
+\textbf{Metric} & \textbf{Measured Value} & \textbf{Notes}\\\midrule\endhead
+
+Evaluate\allowbreak{}d Official-Weight Jobs & 16 & 0 bit mismatch\allowbreak{}es vs integer oracle\\[3pt]
+
+Minimum Cosine Similari\allowbreak{}ty (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 0.99999999\allowbreak{}9852 & Threshol\allowbreak{}d >=\allowbreak{} 0.999\\[3pt]
+
+Maximum Absolute Error (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 1.204014e-05 & Fixed-point Q8.24 quantiza\allowbreak{}tion bound\\[3pt]
+
+Mean Absolute Error /\allowbreak{} RMSE & 6.884336e-06 /\allowbreak{} 8.600952e-06 & Across all output dimensio\allowbreak{}ns\\[3pt]
+
+Exact Word Mismatch\allowbreak{}es (\allowbreak{}RTL vs Referenc\allowbreak{}e)\allowbreak{} & 0 & 100\% bit-exact hardware match\\[3pt]
+
+\bottomrule\end{longtable}}
+
+\subsection{Unified Hardware Signoff Gates (L1 Lint, L2 Quartus STA, L3 Physical FPGA)}
+
+{\small\begin{longtable}{@{}L{0.34\textwidth}L{0.12\textwidth}L{0.46\textwidth}@{}}\toprule
+
+\textbf{Hardware Gate} & \textbf{Status} & \textbf{Measured Summary}\\\midrule\endhead
+
+L1 Static RTL Timing \& Synthesi\allowbreak{}s Lint & passed & Combinat\allowbreak{}ional div/\allowbreak{}mod hazards: 0; mixed sequenti\allowbreak{}al assignme\allowbreak{}nts (\allowbreak{}10268)\allowbreak{}: 0\\[3pt]
+
+L2 Quartus 17.1 TimeQues\allowbreak{}t STA (\allowbreak{}Arria 10 10AX115N\allowbreak{}3F40E2SG)\allowbreak{} & passed & WNS\_\allowbreak{}setup =\allowbreak{} 7.916 ns,\allowbreak{} failing setup endpoint\allowbreak{}s =\allowbreak{} 0,\allowbreak{} lpm\_\allowbreak{}divide errors =\allowbreak{} 0,\allowbreak{} 10268 warnings =\allowbreak{} 0\\[3pt]
+
+\bottomrule\end{longtable}}
+
 \section{Integration and use}
 
 Use rtl/\allowbreak{}anvil\_\allowbreak{}e\_\allowbreak{}top.sv with all rtl/\allowbreak{}*\allowbreak{}.sv; direct anvil\_\allowbreak{}e1\_\allowbreak{}top compatibility remains available. Read design/\allowbreak{}ARCHITECTURE.md for packing,\allowbreak{} scratch layout and register boundaries,\allowbreak{} and design/\allowbreak{}OFFICIAL\_\allowbreak{}WEIGHTS\_\allowbreak{}EVALUATION.md for official mapping.
