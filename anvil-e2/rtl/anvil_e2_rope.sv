@@ -23,18 +23,23 @@ module anvil_e2_rope #(parameter integer VISION=0) (
 );
     localparam IDLE=0, SERIES=1, ANGLE=2, SINREQ=3, SINRSP=4,
         COSREQ=5, COSRSP=6, LO0=7, LO1=8, LOSAVE=9,
-        HI0=10, HI1=11, HISAVE=12, HOLD=13;
+        HI0=10, HI1=11, HISAVE=12, HOLD=13,
+        FREQ_START=14, FREQ_WAIT=15, REDUCE_START=16, REDUCE_WAIT=17;
     localparam signed [95:0] ONE=96'sd1099511627776,
         LN2=96'sd762123384786, PI=96'sd3454217652358,
         TWO_PI=96'sd6908435304715,
         LN_LOCAL=96'sd10126876334763, LN_FULL=96'sd15190314502144,
         LN_VISION=96'sd5063438167381;
-    reg [3:0] state;
+    reg [4:0] state;
     reg [5:0] iteration;
     reg [31:0] position;
     reg signed [47:0] lo, hi, sine, cosine, angle, result_lo, result_hi;
-    reg signed [95:0] reduced, term, total, exponent_shift, temporary, quotient;
-    reg signed [63:0] reduction_quotient, reduction_remainder;
+    reg signed [95:0] reduced, term, total, exponent_shift;
+    reg signed [127:0] divide_numerator;
+    reg [127:0] divide_denominator;
+    reg angle_reduction;
+    wire divide_ready, divide_valid, divide_error;
+    wire signed [127:0] divide_data, divide_quotient, divide_remainder;
     reg error_hold;
     reg trig_cached;
     reg signed [47:0] cached_angle, cached_sine, cached_cosine;
@@ -42,44 +47,31 @@ module anvil_e2_rope #(parameter integer VISION=0) (
     reg signed [47:0] previous_angle, previous_sine, previous_cosine;
     wire signed [63:0] series_term, series_total;
     wire [6:0] series_iteration;
-    wire series_finished;
+    wire series_finished, series_valid, series_error;
     anvil_e2_series #(.TRIG(0)) series (
+        .clk(clk), .rst_n(rst_n),
         .enable(state==SERIES), .operation(3'd0),
         .reduced(reduced[63:0]), .term(term[63:0]), .total(total[63:0]),
         .iteration({1'b0,iteration}),
         .next_term(series_term), .next_total(series_total),
-        .next_iteration(series_iteration), .finished(series_finished)
+        .next_iteration(series_iteration), .finished(series_finished),
+        .step_valid(series_valid), .step_error(series_error)
     );
-    function automatic signed [95:0] divide_round;
-        input signed [95:0] n,d;
-        reg signed [95:0] m,q,r;
-        reg [63:0] narrow_divisor, narrow_quotient, narrow_remainder, low_dividend;
-        begin
-            m=n<0 ? -n:n;
-            narrow_divisor=d[63:0];
-            narrow_quotient=0; narrow_remainder=0; low_dividend=0;
-            if (d==1) begin
-                q=m; r=0;
-            end else if (d>0 && d[95:64]==0 && m[95:64]==0) begin
-                narrow_quotient=$unsigned(m[63:0])/narrow_divisor;
-                narrow_remainder=m[63:0]-narrow_quotient*narrow_divisor;
-                q={32'd0,narrow_quotient};
-                r={32'd0,narrow_remainder};
-            end else if (d>0 && d[95:48]==0 && m[95:80]==0) begin
-                narrow_quotient=$unsigned(m[79:16])/narrow_divisor;
-                narrow_remainder=m[79:16]-narrow_quotient*narrow_divisor;
-                low_dividend={narrow_remainder[47:0],m[15:0]};
-                q={16'd0,narrow_quotient,16'd0};
-                narrow_quotient=low_dividend/narrow_divisor;
-                q=q+{32'd0,narrow_quotient};
-                r={32'd0,(low_dividend-narrow_quotient*narrow_divisor)};
-            end else begin
-                q=m/d; r=m-q*d;
-            end
-            if (r>d-r || (r==d-r && q[0])) q=q+96'sd1;
-            divide_round=n<0 ? -q:q;
-        end
-    endfunction
+    anvil_e2_divide divider (
+        .clk(clk), .rst_n(rst_n),
+        .in_valid(state==FREQ_START || state==REDUCE_START),
+        .in_ready(divide_ready), .in_numerator(divide_numerator),
+        .in_denominator(divide_denominator), .out_valid(divide_valid),
+        .out_ready(state==FREQ_WAIT || state==REDUCE_WAIT),
+        .out_data(divide_data), .out_error(divide_error),
+        .out_quotient(divide_quotient), .out_remainder(divide_remainder)
+    );
+    wire signed [95:0] remainder_value=divide_remainder[95:0];
+    wire signed [95:0] reduced_angle=remainder_value>PI ? remainder_value-TWO_PI:
+        remainder_value< -PI ? remainder_value+TWO_PI:remainder_value;
+    wire signed [95:0] floor_quotient=divide_remainder<0 ?
+        divide_quotient[95:0]-96'sd1:divide_quotient[95:0];
+    wire signed [95:0] angle_product=(total>>>-exponent_shift)*{64'd0,position};
     assign start_ready=rst_n && state==IDLE;
     assign nonlinear_valid=rst_n && (state==SINREQ || state==COSREQ);
     assign nonlinear_op=state==COSREQ ? 3'd2:3'd1;
@@ -99,53 +91,62 @@ module anvil_e2_rope #(parameter integer VISION=0) (
             state<=IDLE; iteration<=0; position<=0; lo<=0; hi<=0;
             sine<=0; cosine<=0; angle<=0; result_lo<=0; result_hi<=0;
             reduced<=0; term<=0; total<=0; exponent_shift<=0; error_hold<=0;
-            temporary=0; quotient=0;
+            divide_numerator<=0; divide_denominator<=0; angle_reduction<=0;
             trig_cached<=0; cached_angle<=0; cached_sine<=0; cached_cosine<=0;
             previous_trig_cached<=0; previous_angle<=0;
             previous_sine<=0; previous_cosine<=0;
-            reduction_quotient=0; reduction_remainder=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
                     position<=start_position; lo<=start_lo; hi<=start_hi;
                     error_hold<=0; result_lo<=0; result_hi<=0;
-                    if (start_dim==0 || start_dim[0] || start_pair>=start_dim/2) begin
+                    if (start_dim==0 || start_dim[0] || start_pair>=(start_dim>>1)) begin
                         error_hold<=1; state<=HOLD;
                     end else if (start_pair==0) begin
                         total<=ONE; exponent_shift<=0; state<=ANGLE;
                     end else begin
-                        temporary=-divide_round(
-                            (VISION ? LN_VISION:(start_full ? LN_FULL:LN_LOCAL))*96'sd2*{64'd0,start_pair},
-                            {64'd0,start_dim});
-                        reduction_quotient=$signed(temporary[63:0])/64'sd762123384786;
-                        reduction_remainder=$signed(temporary[63:0])-
-                            reduction_quotient*64'sd762123384786;
-                        quotient=reduction_quotient;
-                        if (reduction_remainder<0) quotient=quotient-96'sd1;
-                        exponent_shift<=quotient;
-                        reduced<=temporary-quotient*LN2;
+                        divide_numerator<=
+                            (VISION ? LN_VISION:(start_full ? LN_FULL:LN_LOCAL))*
+                            128'sd2*{96'd0,start_pair};
+                        divide_denominator<={96'd0,start_dim};
+                        state<=FREQ_START;
+                    end
+                end
+                FREQ_START: if (divide_ready) state<=FREQ_WAIT;
+                FREQ_WAIT: if (divide_valid) begin
+                    if (divide_error) begin error_hold<=1; state<=HOLD; end
+                    else begin
+                        divide_numerator<=-divide_data;
+                        divide_denominator<=128'd762123384786;
+                        angle_reduction<=0; state<=REDUCE_START;
+                    end
+                end
+                REDUCE_START: if (divide_ready) state<=REDUCE_WAIT;
+                REDUCE_WAIT: if (divide_valid) begin
+                    if (divide_error) begin error_hold<=1; state<=HOLD; end
+                    else if (angle_reduction) begin
+                        angle<=reduced_angle[47:0];
+                        if (trig_cached && cached_angle==reduced_angle[47:0]) begin
+                            sine<=cached_sine; cosine<=cached_cosine; state<=LO0;
+                        end else if (previous_trig_cached &&
+                                     previous_angle==reduced_angle[47:0]) begin
+                            sine<=previous_sine; cosine<=previous_cosine; state<=LO0;
+                        end else state<=SINREQ;
+                    end else begin
+                        exponent_shift<=floor_quotient;
+                        reduced<=divide_remainder<0 ? remainder_value+LN2:remainder_value;
                         term<=ONE; total<=ONE; iteration<=1; state<=SERIES;
                     end
                 end
-                SERIES: begin
+                SERIES: if (series_valid) begin
                     term<=series_term; total<=series_total; iteration<=series_iteration[5:0];
-                    if (series_finished) state<=ANGLE;
+                    if (series_error) begin error_hold<=1; state<=HOLD; end
+                    else if (series_finished) state<=ANGLE;
                 end
                 ANGLE: begin
-                    temporary=(total>>>-exponent_shift)*{64'd0,position};
-                    if (temporary[95:64]==0) begin
-                        reduction_remainder=$unsigned(temporary[63:0])%
-                            64'd6908435304715;
-                        temporary=reduction_remainder;
-                    end else temporary=temporary%TWO_PI;
-                    if (temporary>PI) temporary=temporary-TWO_PI;
-                    if (temporary< -PI) temporary=temporary+TWO_PI;
-                    angle<=temporary[47:0];
-                    if (trig_cached && cached_angle==temporary[47:0]) begin
-                        sine<=cached_sine; cosine<=cached_cosine; state<=LO0;
-                    end else if (previous_trig_cached && previous_angle==temporary[47:0]) begin
-                        sine<=previous_sine; cosine<=previous_cosine; state<=LO0;
-                    end else state<=SINREQ;
+                    divide_numerator<={{32{angle_product[95]}},angle_product};
+                    divide_denominator<=128'd6908435304715;
+                    angle_reduction<=1; state<=REDUCE_START;
                 end
                 SINREQ: if (nonlinear_ready) state<=SINRSP;
                 SINRSP: if (nonlinear_out_valid) begin

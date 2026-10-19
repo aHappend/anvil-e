@@ -23,12 +23,21 @@ module anvil_e2_address #(
     reg [127:0] scratch_address_value, region_offset, region_count;
     reg [127:0] h_words, ple_words, q_words, kv_words;
 
+    function automatic [31:0] sixth;
+        input [31:0] value;
+        reg [63:0] product;
+        begin
+            product={32'd0,value}*64'd2863311531;
+            sixth=32'(product>>34);
+        end
+    endfunction
+
     function automatic [127:0] rows;
         input integer id, layer;
         integer d, kv;
         begin
-            d=(layer%6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
-            kv=(layer%6==5) ? FULL_KV_HEADS:LOCAL_KV_HEADS;
+            d=(layer-sixth(layer)*6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            kv=(layer-sixth(layer)*6==5) ? FULL_KV_HEADS:LOCAL_KV_HEADS;
             case (id)
                 0: rows=VOCAB_SIZE;
                 1: rows=EMBEDDING_DIM;
@@ -51,7 +60,7 @@ module anvil_e2_address #(
         input integer id, layer;
         integer d;
         begin
-            d=(layer%6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            d=(layer-sixth(layer)*6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
             case (id)
                 0,1,3,8,9,10,17,20,21: cols=HIDDEN_SIZE;
                 7: cols=INTERMEDIATE_SIZE;
@@ -120,7 +129,7 @@ module anvil_e2_address #(
         end
     endfunction
 
-    wire [127:0] preceding_full_layers={96'd0,layer_index}/128'd6;
+    wire [127:0] preceding_full_layers={96'd0,sixth(layer_index)};
     assign weights_bytes=TOTAL_WEIGHTS_BYTES;
 
     always @* begin
@@ -136,7 +145,7 @@ module anvil_e2_address #(
                     offset=GLOBAL_BYTES+
                         ({96'd0,layer_index}-preceding_full_layers)*LOCAL_LAYER_BYTES+
                         preceding_full_layers*FULL_LAYER_BYTES+
-                        suffix_prefix(tensor_id,layer_index%6==5);
+                        suffix_prefix(tensor_id,layer_index-sixth(layer_index)*6==5);
             end
         endcase
         tensor_rows=rows(tensor_id,layer_index);

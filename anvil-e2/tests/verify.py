@@ -1045,6 +1045,8 @@ def sensitivity(run, selected=None):
 
 
 def synthesis(run, labels=("A", "C"), wrapper=True):
+    from timing_rules import check_clocked_sources
+    check_clocked_sources(run, rtl_files())
     run.tools(("python3", "yosys"))
     for label in labels:
         c = dataclasses.replace(
@@ -1096,6 +1098,18 @@ def synthesis(run, labels=("A", "C"), wrapper=True):
             run.save()
         data = json.loads(netlist.read_text())
         modules = data["modules"]
+        division_cells = [
+            f"{module_name}/{cell_name}:{cell['type']}"
+            for module_name, module in modules.items()
+            for cell_name, cell in module.get("cells", {}).items()
+            if cell["type"].lstrip("\\") in ("$div", "$mod", "$divfloor", "$modfloor")
+        ]
+        run.receipt.setdefault("timing_structure", []).append({
+            "config": label, "inspected_modules": len(modules),
+            "runtime_divide_modulo_cells": division_cells,
+        })
+        run.save()
+        assert not division_cells, f"runtime combinational division/modulo: {division_cells}"
         assert root_module in modules
         visited, stages, sequential = set(), set(), 0
 

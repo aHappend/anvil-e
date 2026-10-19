@@ -86,6 +86,34 @@ module anvil_e2_norm #(
     assign out_last = rst_n && (error || index == count-1);
     assign out_error = rst_n && error;
 
+    always @* begin
+        square=in_data*in_data;
+        root_groups=(bit_length(denominator_square)+64+15)>>4;
+        root_remainder_work=remainder;
+        root_work=root_value;
+        shifted_remainder=0;
+        trial=0;
+        for (root_step=0;root_step<8;root_step=root_step+1) begin
+            shifted_remainder=(root_remainder_work<<2)|
+                {96'd0,radicand[191-2*root_step -: 2]};
+            trial=({2'd0,root_work}<<2)|98'd1;
+            if (shifted_remainder>=trial) begin
+                root_remainder_work=shifted_remainder-trial;
+                root_work=(root_work<<1)|96'd1;
+            end else begin
+                root_remainder_work=shifted_remainder;
+                root_work=root_work<<1;
+            end
+        end
+        unit_weight=l2 ? 128'sd16777216:
+            128'sd16777216+{{96{weights[index][31]}},weights[index]};
+        product=normalized*unit_weight;
+        rounded=product>>>24;
+        if (product[23:0]>24'h800000 ||
+            (product[23:0]==24'h800000 && rounded[0]))
+            rounded=rounded+128'sd1;
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
@@ -93,7 +121,6 @@ module anvil_e2_norm #(
             index <= 0;
             l2 <= 0;
             sum_squares <= 0;
-            square = 0;
             radicand <= 0;
             remainder <= 0;
             root_value <= 0;
@@ -101,15 +128,7 @@ module anvil_e2_norm #(
             result <= 0;
             error <= 0;
             denominator_square <= 0;
-            shifted_remainder = 0;
-            trial = 0;
-            root_remainder_work = 0;
-            root_work = 0;
-            root_groups = 0;
             normalized <= 0;
-            unit_weight = 0;
-            product = 0;
-            rounded = 0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
@@ -129,7 +148,6 @@ module anvil_e2_norm #(
                 LOAD: if (in_valid) begin
                     values[index] <= in_data;
                     weights[index] <= in_weight;
-                    square = in_data * in_data;
                     sum_squares <= sum_squares + {32'd0,square};
                     if (index == count-1) begin
                         index <= 0;
@@ -160,7 +178,6 @@ module anvil_e2_norm #(
                         state <= PREPARE;
                     end else begin
                         // A zero leading prefix leaves both root and residue zero.
-                        root_groups=(bit_length(denominator_square)+64+15)/16;
                         radicand <= {denominator_square,64'd0} <<
                             (192-16*root_groups);
                         iteration <= 7'(12-root_groups);
@@ -168,20 +185,6 @@ module anvil_e2_norm #(
                     end
                 end
                 ROOT: begin
-                    root_remainder_work = remainder;
-                    root_work = root_value;
-                    for (root_step=0;root_step<8;root_step=root_step+1) begin
-                        shifted_remainder = (root_remainder_work << 2) |
-                            {96'd0,radicand[191-2*root_step -: 2]};
-                        trial = ({2'd0,root_work} << 2) | 98'd1;
-                        if (shifted_remainder >= trial) begin
-                            root_remainder_work = shifted_remainder-trial;
-                            root_work = (root_work << 1) | 96'd1;
-                        end else begin
-                            root_remainder_work = shifted_remainder;
-                            root_work = root_work << 1;
-                        end
-                    end
                     radicand <= radicand << 16;
                     remainder <= root_remainder_work;
                     root_value <= root_work;
@@ -199,13 +202,6 @@ module anvil_e2_norm #(
                     else begin normalized<=divide_result; state<=APPLY; end
                 end
                 APPLY: begin
-                    unit_weight = l2 ? 128'sd16777216 :
-                        128'sd16777216 + {{96{weights[index][31]}},weights[index]};
-                    product = normalized * unit_weight;
-                    rounded = product >>> 24;
-                    if (product[23:0] > 24'h800000 ||
-                        (product[23:0] == 24'h800000 && rounded[0]))
-                        rounded = rounded + 128'sd1;
                     if (rounded > 128'sd140737488289792) result <= 48'sh7fffffff0000;
                     else if (rounded < -128'sd140737488355328) result <= 48'sh800000000000;
                     else result <= rounded[47:0];

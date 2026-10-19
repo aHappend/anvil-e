@@ -1,0 +1,349 @@
+{
+  "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+  "started_at": 1792408094.6428502,
+  "timeout_s": 86400,
+  "source_sha256": {
+    "rtl/anvil_e2_address.sv": "a38cfaa3e52f8b3a33a30406739ac4896a390dd596456c756e14af7db0391c07",
+    "rtl/anvil_e2_attention.sv": "3ec7867589eb1934a293cb3b2e98c1e7e38a6b52e5f7e2ec7d03d11f2301fb3c",
+    "rtl/anvil_e2_clock_gate.sv": "c86967e7f2860b79c463946ead2d6ca52e00e96c30c53f0017e93e9d653a6d50",
+    "rtl/anvil_e2_const_divide.sv": "d9cd5d31329b2bfccc9fa3c6dd3ed6285c4fe213d8c5193aceb60bde9e333904",
+    "rtl/anvil_e2_divide.sv": "8078341757d031d7f424aacea75ce055e343725171ac739816082b01929f78a7",
+    "rtl/anvil_e2_hybrid_layer.sv": "bc8622b49768f0802c60b759dc83ea212932502ade263937bbf5f847d358b8ed",
+    "rtl/anvil_e2_mac.sv": "391ca25744985062432de2b6618e409a50091c495a960cbec56543a86aa214e4",
+    "rtl/anvil_e2_matvec.sv": "564dafdc2e3369602b7b93ca37d664c62c73114454e0a573898e6d6b86020b24",
+    "rtl/anvil_e2_memory.sv": "97c47186e1096d908b08efd6c4764a0b36fd7024309ab210e6e248717d9895b9",
+    "rtl/anvil_e2_multimodal_fusion.sv": "718da5fd2b38973cd677f6577ee021b21fdb9fdd03b6ff6c08c225efffc62d7b",
+    "rtl/anvil_e2_nonlinear.sv": "e0c4f1f5fb6ca43d760be3f796a7ad7ec5c181a5c854dffb7e2f1fada2b628d9",
+    "rtl/anvil_e2_norm.sv": "cd1fd19b9e1d2c0859791c95d445923d71a266b1375d578d006f911830c47d86",
+    "rtl/anvil_e2_pool.sv": "9d88258f4dedc61e542a091840ed125d382213e258829c5de23ba13abbdd05f5",
+    "rtl/anvil_e2_pool_norm.sv": "0e04897f83799cc62ea27e3feed754360304b91909d67836bc080a4893ffb4fe",
+    "rtl/anvil_e2_rope.sv": "2712aad403833f97be48f337a962763a4fe40eb62b5726e492c07e00f322913d",
+    "rtl/anvil_e2_series.sv": "57ad1edaa5fb5659adfb0fca72e6a90f4307ce2a97a615853511e4f67bcf2f6f",
+    "rtl/anvil_e2_text_frontend_ple.sv": "1ffc4be13f48fcba55d22efe4ee7726231c73a990d89364dda4b081bee2b784e",
+    "rtl/anvil_e2_top.sv": "b4127672d3b9415d436d1b0e0ec438ac8dd91e31a8e4e8a302b66c8d4b357fc1",
+    "rtl/anvil_e2_vision_encoder_layer.sv": "ff701a5c5a02bb89b57278d4a44d0600c0a354919b7f3977636084d54d28267c",
+    "rtl/anvil_e2_vision_patch_embed.sv": "ec30bcae11ebadd42c3e86b2f1b482f9e8dd16001a06237fc753647d32c520eb",
+    "rtl/anvil_e2_vision_pool_proj.sv": "dee1f2dcd89267db2a82ccfa984abf0eb0311c6465696a1d56af63740e8878a2",
+    "design/ARCHITECTURE.md": "9af49a7bfe1eb31febdff4973c2a5bbdbe31060918ce9077363831498a4d2fd2",
+    "design/OFFICIAL_WEIGHTS_EVALUATION.md": "a32f4f43f8caa385ab944538fe906338fdb2c237d54ea6dfaf5c059d734ba48b",
+    "tests/accept_delay_cost.py": "14f1b1c3639d8541f2d3f89b1e00fa4ab173b8bc18516eab81516c089e6d9496",
+    "tests/attention_boundaries.py": "2d46d864480653214c871d11ca3b2bf3ad00864cc66edbea002c4a107f8f009a",
+    "tests/behavior_summary.py": "8de2f8b9e32928a8b9866d13f252194c08126d7c63e22d5a370c6b926969efc1",
+    "tests/cursor_boundaries.py": "55efb739802edf43801c707eaefd7f39ae608555ded35cde5966501f9123e168",
+    "tests/cursor_cost.py": "f3b35017863377682154dbd869a19ba5a30ec072e9bde9cb5d0e3508b91c77f6",
+    "tests/deadline_cost.py": "f3f592233a92eb34d615638e16e6ea8fc729605cbc42433a655062f25e423ee2",
+    "tests/execution_cost.py": "03556d4c73a2764081306d8cacb00b92750738401837793d4f84691c7be1b3a3",
+    "tests/model.py": "eeb24a9abfaaa56c1029e0c83fa0dc79e63accf1753aae2a0141f4ad01cd48e7",
+    "tests/monitor_cost.py": "adf6d103b87c77bec03e1a50f5e93a1ca08386a6692fa4e0a1ede3c96040fc96",
+    "tests/numerical_diagnostic.py": "cd9e00791d7d5a58ead2ae3e500c9000dfc22a14b8aa7ab9116a1319ff7872db",
+    "tests/official_diagnostic.py": "9ca6e1e694ddd46ba75f309b2bdff0558d67dc9b157187d80b8c470d6f22fac9",
+    "tests/official_weights.py": "a991cc6c23715b38813768eb3d2e373a75bb3cdc6c341ead74445c3fa16daead",
+    "tests/phase_counter_cost.py": "d12b251a5bc13dd48ae766e00acfaed63f3c610993dec52f3bd91ea2f33bbc96",
+    "tests/progress.py": "16924c3f25c704c4cb414f3d52c96eb099d5f5e95d14e5da219839114328af56",
+    "tests/scheduler_cost.py": "bcd440f7207bb8d2a3e3cb51d4eb7734e275e4e71aed2c2e4a489528371f24c6",
+    "tests/stages.py": "b8d861933cb6933d8baf055d08f649d962d747c478f991a01e9d8a42f0463962",
+    "tests/synthesis_watchdog.py": "6b10340b1c806de3e1111bda451922528bc64f008aa0af8d209fc3364db56be6",
+    "tests/timing_rules.py": "1b9aecc8bf7682ac2503f8fee968601cb4594ef8ef7ad49e562706b07c60cf6a",
+    "tests/verify.py": "cc447fb5aee7b10e1b43cbc55e210ac8b4c4ef072d2666325dc56861e6955bf6",
+    "anvil_e1_reference/rtl/anvil_e1_address.sv": "c44d79b3f948a9eb9871a29af71b3fcbcde92b49549386442aedae2003f615b2",
+    "anvil_e1_reference/rtl/anvil_e1_attention.sv": "67676847b1d5a086432abe31c879e40ca992669fe1822900832a3aebe15f2dcd",
+    "anvil_e1_reference/rtl/anvil_e1_controller.sv": "f937c3ca61e29f44f4086f54666aa6bd44edc4226a0525f3f8e7595c456c3ea3",
+    "anvil_e1_reference/rtl/anvil_e1_mac.sv": "c70ccec662b2a47017c967e2e13633cb87b15af637b0da788cefecd440b21b39",
+    "anvil_e1_reference/rtl/anvil_e1_matvec.sv": "5266a0e05956748a2a85a33c5fdc565f53f4b3c42e71a3a8943cd34c98418e56",
+    "anvil_e1_reference/rtl/anvil_e1_memory.sv": "dcc0836ec3526d2225e2cd293a2dafe447654613976f40d1d6e0fc017de0eed1",
+    "anvil_e1_reference/rtl/anvil_e1_nonlinear.sv": "210e635714707f5f4a950cfbc59bae876f119ddbf071a751211d043908c48cce",
+    "anvil_e1_reference/rtl/anvil_e1_norm.sv": "a8196aec50e8507fc0743c05f9eb86104a9ce877400f719d3b8d6452778e624e",
+    "anvil_e1_reference/rtl/anvil_e1_pool.sv": "ad2bbe0adf36417a23270a94cde7c13a0de500878f94e065683513acb41d46c7",
+    "anvil_e1_reference/rtl/anvil_e1_rope.sv": "4b60664d10f9093a92d4b852df089c40fa30651ea631a20f65188e35d60d25c8",
+    "anvil_e1_reference/rtl/anvil_e1_sequencer.sv": "aa92e417a9a58bd24047ad543dd5cd2431a5dc730dd522c60689093daabacff4",
+    "anvil_e1_reference/rtl/anvil_e1_top.sv": "314c6b504833f0b9e6576c9739a70fb1f551fc3804df081103b7b1f95d25145e",
+    "hf_embeddinggemma2_vision_spec/config.json": "90eba2fc16ea674d0e03e2e9eea6405309fedc528f8f1c199fea6bb550380e04",
+    "hf_embeddinggemma2_vision_spec/vision_model_tensors.json": "b4cdf136800ef076347a9affbd03a65f5f54c7c33b1067a37387b012dbb6e8ad",
+    "hf_embeddinggemma2_vision_spec/language_model_tensors.json": "aea7f27765c7cc10ff0c183a4614d21b3ce43b6887de6bd44d9e22800520a8ec",
+    "hf_embeddinggemma2_vision_spec/modules.json": "3d02572a0455b832de67fb8e63a54981bc7e8b46e337c95e917bd8122a533bfd",
+    "hf_embeddinggemma2_vision_spec/1_Pooling/config.json": "8759bdf7c77efc7df7723f64856a593c8943b71ee38baf2a88771fbaf78438f9",
+    "hf_embeddinggemma2_vision_spec/sentence_bert_config.json": "53cddcdff8b19a51e5ace646be5c2b64ed818f01b78aea137c7c1334d36a5b5a",
+    "hf_embeddinggemma2_vision_spec/official_weights/google_embeddinggemma2_official_slice.safetensors": "3a310d7733a28f533b611eb7525f597303980c2ab2f890487a9a1fcbf0366bfb",
+    "hf_embeddinggemma2_vision_spec/official_weights/official_weights_manifest.json": "f5f745367a04761546d30a2faee9400e5a8f1df6e39748626c545c2c51c42dad",
+    "hf_embeddinggemma2_vision_spec/official_weights/official_hardware_slices_fp32_q824.json": "3068dbacc45260efc60b8165b89192e25ebfb96d8486b04e99b6f705af84353c"
+  },
+  "repair_of": null,
+  "tools": {
+    "python3": {
+      "path": "/usr/bin/python3",
+      "version": "Python 3.12.3\n"
+    },
+    "iverilog": {
+      "path": "/usr/bin/iverilog",
+      "version": "Icarus Verilog version 12.0 (stable) ()\n\nCopyright (c) 2000-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\nIcarus Verilog Preprocessor version 12.0 (stable) ()\n\nCopyright (c) 1999-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\nIcarus Verilog Parser/Elaborator version 12.0 (stable) ()\n\nCopyright (c) 1998-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\n FLAGS DLL vvp.tgt\nvvp.tgt: Icarus Verilog VVP Code Generator 12.0 (stable) ()\n\nCopyright (c) 2001-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\n"
+    },
+    "vvp": {
+      "path": "/usr/bin/vvp",
+      "version": "Icarus Verilog runtime version 12.0 (stable) ()\n\nCopyright (c) 2001-2021 Stephen Williams (steve@icarus.com)\n\n  This program is free software; you can redistribute it and/or modify\n  it under the terms of the GNU General Public License as published by\n  the Free Software Foundation; either version 2 of the License, or\n  (at your option) any later version.\n\n  This program is distributed in the hope that it will be useful,\n  but WITHOUT ANY WARRANTY; without even the implied warranty of\n  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n  GNU General Public License for more details.\n\n  You should have received a copy of the GNU General Public License along\n  with this program; if not, write to the Free Software Foundation, Inc.,\n  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.\n\n"
+    }
+  },
+  "executions": [
+    {
+      "argv": [
+        "/usr/bin/python3",
+        "--version"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/timing-repair-joint-A-20261019-004/version-python3.stdout",
+      "stderr": "evidence/preparation/timing-repair-joint-A-20261019-004/version-python3.stderr",
+      "started_at": 1792408094.6708796,
+      "remaining_common_s": 86399.97165599797,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 1539350,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.0047020199708640575,
+      "child_user_cpu_s": 0.001573,
+      "child_system_cpu_s": 0.001573,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 14,
+      "stderr_bytes": 0,
+      "ended_at": 1792408094.6754997
+    },
+    {
+      "argv": [
+        "/usr/bin/iverilog",
+        "-V"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/timing-repair-joint-A-20261019-004/version-iverilog.stdout",
+      "stderr": "evidence/preparation/timing-repair-joint-A-20261019-004/version-iverilog.stderr",
+      "started_at": 1792408094.6769724,
+      "remaining_common_s": 86399.96556154097,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 1539351,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.016152655996847898,
+      "child_user_cpu_s": 0.0038329999999999996,
+      "child_system_cpu_s": 0.011838,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 3294,
+      "stderr_bytes": 0,
+      "ended_at": 1792408094.69305
+    },
+    {
+      "argv": [
+        "/usr/bin/vvp",
+        "-V"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/timing-repair-joint-A-20261019-004/version-vvp.stdout",
+      "stderr": "evidence/preparation/timing-repair-joint-A-20261019-004/version-vvp.stderr",
+      "started_at": 1792408094.6951323,
+      "remaining_common_s": 86399.94740072096,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 1539356,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.008163936028722674,
+      "child_user_cpu_s": 0.0009230000000000002,
+      "child_system_cpu_s": 0.003691,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 0,
+      "stderr_bytes": 814,
+      "ended_at": 1792408094.703208
+    },
+    {
+      "argv": [
+        "iverilog",
+        "-g2012",
+        "-Wall",
+        "-s",
+        "tb",
+        "-o",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6.vvp",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_address.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_attention.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_clock_gate.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_const_divide.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_divide.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_hybrid_layer.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_mac.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_matvec.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_memory.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_multimodal_fusion.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_nonlinear.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_norm.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_pool.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_pool_norm.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_rope.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_series.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_text_frontend_ple.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_top.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_vision_encoder_layer.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_vision_patch_embed.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_vision_pool_proj.sv",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6.sv"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6-compile.stdout",
+      "stderr": "evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6-compile.stderr",
+      "started_at": 1792408094.8465307,
+      "remaining_common_s": 86399.79600281798,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 1539372,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 0.26507247099652886,
+      "child_user_cpu_s": 0.22669599999999998,
+      "child_system_cpu_s": 0.05371499999999999,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 0,
+      "stderr_bytes": 7684,
+      "ended_at": 1792408095.1114924
+    },
+    {
+      "argv": [
+        "vvp",
+        "/data/sufeng/anvil-e2-line4/workspace_phase2/project/evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6.vvp"
+      ],
+      "cwd": "/data/sufeng/anvil-e2-line4/workspace_phase2/project",
+      "requested_timeout_s": 3600,
+      "stdout": "evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6-simulate.stdout",
+      "stderr": "evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6-simulate.stderr",
+      "started_at": 1792408095.1139305,
+      "remaining_common_s": 86399.52860294702,
+      "timeout_s": 3600,
+      "effective_timeout_s": 3600,
+      "pid": 1539393,
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_s": 2.0195502690039575,
+      "child_user_cpu_s": 1.9502669999999998,
+      "child_system_cpu_s": 0.01999300000000001,
+      "cpu_accounting": "RUSAGE_CHILDREN delta; nonexclusive if commands overlap",
+      "cleanup": {
+        "launched": true,
+        "direct_child_reaped": true
+      },
+      "stdout_bytes": 4603,
+      "stderr_bytes": 0,
+      "ended_at": 1792408097.1333845
+    }
+  ],
+  "assertions": [],
+  "coverage": [
+    {
+      "case": "A-s17-m2-d6",
+      "config": {
+        "VISION_LAYERS": 1,
+        "VISION_HIDDEN": 4,
+        "VISION_FFN": 1,
+        "VISION_HEADS": 1,
+        "VISION_HEAD_DIM": 4,
+        "PATCH_SIZE": 1,
+        "POOL_KERNEL": 1,
+        "VISION_SOFT_TOKENS": 1,
+        "TEXT_LAYERS": 1,
+        "TEXT_HIDDEN": 1,
+        "PLE_DIM": 1,
+        "TEXT_FFN": 1,
+        "EMBED_DIM": 6,
+        "VOCAB_SIZE": 262144,
+        "POSITION_EMBEDDING_SIZE": 10240,
+        "TEXT_Q_HEADS": 4,
+        "LOCAL_KV_HEADS": 2,
+        "FULL_KV_HEADS": 1,
+        "LOCAL_HEAD_DIM": 2,
+        "FULL_HEAD_DIM": 4,
+        "SLIDING_WINDOW": 1,
+        "MAX_SEQ_LEN": 262144,
+        "RMS_EPSILON_Q80": 1224979098644774912
+      },
+      "seed": 17,
+      "mode": 2,
+      "dimension": 6,
+      "expected_error": 0,
+      "memory_error_target": null,
+      "injected_addresses": [],
+      "compared_components": 6,
+      "compared_scratch_addresses": 153,
+      "mathematical_max_abs_error": 2.9176724453128244e-08,
+      "l2_error": 2.3737189991379637e-09,
+      "completion": [
+        0,
+        1386,
+        1386,
+        6,
+        924,
+        0,
+        26,
+        26
+      ],
+      "transcript": "evidence/preparation/timing-repair-joint-A-20261019-004/A-s17-m2-d6-simulate.stdout",
+      "timing_edges": [
+        [
+          4,
+          26999,
+          27004,
+          27033
+        ]
+      ],
+      "unstalled": false
+    }
+  ],
+  "status": "passed",
+  "entry_argv": [
+    "/usr/bin/python3",
+    "tests/verify.py",
+    "--probe",
+    "A",
+    "--output",
+    "evidence/preparation/timing-repair-joint-A-20261019-004"
+  ],
+  "absolute_monotonic_deadline": 530037.290984859,
+  "python_phases": [
+    {
+      "phase": "A-s17-m2-d6-integer-oracle",
+      "elapsed_s": 0.0321376480278559,
+      "python_cpu_s": 0.032137945
+    },
+    {
+      "phase": "A-s17-m2-d6-floating-oracle",
+      "elapsed_s": 0.021017357998061925,
+      "python_cpu_s": 0.021018160000000008
+    },
+    {
+      "phase": "A-s17-m2-d6-stimulus",
+      "elapsed_s": 0.0006983029888942838,
+      "python_cpu_s": 0.0006984500000000171
+    },
+    {
+      "phase": "A-s17-m2-d6-scoreboard",
+      "elapsed_s": 0.0015265269903466105,
+      "python_cpu_s": 0.0015251000000000015
+    }
+  ],
+  "ended_at": 1792408097.1373513,
+  "error": null
+}

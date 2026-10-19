@@ -33,7 +33,7 @@ module anvil_e2_pool #(
     output wire [3:0] done_error
 );
     localparam IDLE=0, CLEAR=1, LOAD=2, MEAN=3, NSTART=4,
-               NLOAD=5, NOUTPUT=6, OUTPUT=7, DONE=8;
+               NLOAD=5, NOUTPUT=6, OUTPUT=7, DONE=8, MEAN_WAIT=9;
     reg [3:0] state;
     reg [31:0] tokens, valid_tokens, token_index, channel;
     reg [15:0] dimension;
@@ -43,7 +43,16 @@ module anvil_e2_pool #(
     reg signed [47:0] pooled [0:EMBEDDING_DIM-1];
     reg signed [31:0] normalized [0:EMBEDDING_DIM-1];
     reg [3:0] error_hold;
-    reg signed [127:0] magnitude, quotient, remainder, divisor;
+    wire divide_ready, divide_valid, divide_error;
+    wire signed [127:0] quotient;
+    anvil_e2_divide divider (
+        .clk(clk), .rst_n(rst_n),
+        .in_valid(state==MEAN && seen_valid==valid_tokens),
+        .in_ready(divide_ready), .in_numerator(sums[channel]),
+        .in_denominator({96'd0,valid_tokens}),
+        .out_valid(divide_valid), .out_ready(state==MEAN_WAIT),
+        .out_data(quotient), .out_error(divide_error)
+    );
     reg signed [31:0] data_hold;
     reg [15:0] index_hold;
     reg last_hold;
@@ -84,7 +93,6 @@ module anvil_e2_pool #(
             state<=IDLE; tokens<=0; valid_tokens<=0; token_index<=0;
             channel<=0; dimension<=0; seen_valid<=0; mask_hold<=0;
             error_hold<=0; data_hold<=0; index_hold<=0; last_hold<=0;
-            magnitude=0; quotient=0; remainder=0; divisor=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
@@ -122,20 +130,16 @@ module anvil_e2_pool #(
                 MEAN: begin
                     if (seen_valid!=valid_tokens) begin
                         error_hold<=2; state<=DONE;
-                    end else begin
-                        divisor={96'd0,valid_tokens};
-                        magnitude=sums[channel]<0 ? -sums[channel]:sums[channel];
-                        quotient=magnitude/divisor;
-                        remainder=magnitude-quotient*divisor;
-                        if (remainder>divisor-remainder ||
-                            (remainder==divisor-remainder && quotient[0]))
-                            quotient=quotient+128'sd1;
-                        if (sums[channel]<0) quotient=-quotient;
+                    end else if (divide_ready) state<=MEAN_WAIT;
+                end
+                MEAN_WAIT: if (divide_valid) begin
+                    if (divide_error) begin error_hold<=1; state<=DONE; end
+                    else begin
                         if (quotient>128'sd140737488289792) pooled[channel]<=48'sh7fffffff0000;
                         else if (quotient< -128'sd140737488355328) pooled[channel]<=48'sh800000000000;
                         else pooled[channel]<=quotient[47:0];
                         if (channel==dimension-1) begin channel<=0; state<=NSTART; end
-                        else channel<=channel+1'b1;
+                        else begin channel<=channel+1'b1; state<=MEAN; end
                     end
                 end
                 NSTART: if (norm_start_ready) state<=NLOAD;

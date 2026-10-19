@@ -265,6 +265,62 @@ def extremes(run):
     run.save()
 
 
+def constant_dividers(run):
+    """Check reciprocal geometry helpers against Python's exact Euclidean division."""
+    from verify import rtl_files
+    divisors = (1, 2, 3, 6, 7, 9, 10, 12, 16, 256,
+                (1 << 32)-1, (1 << 32)+1, (1 << 63)+1, (1 << 64)-1)
+    maximum = (1 << 64)-1
+    numerators = {0, 1, maximum, maximum-1, (1 << 63)-1, 1 << 63}
+    for divisor in divisors:
+        for quotient in (1, 2, 3, 17, 65535, maximum//divisor):
+            for delta in (-1, 0, 1):
+                numerator = quotient*divisor+delta
+                if 0 <= numerator <= maximum:
+                    numerators.add(numerator)
+    rng = random.Random(61017)
+    numerators.update(rng.randrange(1 << 64) for _ in range(256))
+    numerators = sorted(numerators)
+    rows = []
+    for index, numerator in enumerate(numerators):
+        rows.append(f"numerator=64'h{numerator:016x}; #1;")
+        for slot, divisor in enumerate(divisors):
+            quotient, remainder = divmod(numerator, divisor)
+            rows.append(
+                f"if(quotient[{slot}]!==64'h{quotient:016x} || "
+                f"remainder[{slot}]!==64'h{remainder:016x}) "
+                f'$fatal(1,"CONSTANT_DIVISION case={index} divisor={divisor}");')
+        rows.append(f'$display("CONSTANT_DIVISION_RESULT {index}");')
+    instances = "\n".join(
+        f"anvil_e2_const_divide #(.DIVISOR(64'd{divisor})) d{slot}("
+        f".numerator(numerator),.quotient(quotient[{slot}]),.remainder(remainder[{slot}]));"
+        for slot, divisor in enumerate(divisors))
+    text = f"""
+module tb;
+reg [63:0] numerator;
+wire [63:0] quotient[0:{len(divisors)-1}],remainder[0:{len(divisors)-1}];
+{instances}
+initial begin
+ {''.join(rows)}
+ $display("CONSTANT_DIVISION_COMPLETE"); $finish;
+end
+endmodule
+"""
+    tb, executable = run.directory/"constant-dividers.sv", run.directory/"constant-dividers.vvp"
+    tb.write_text(text)
+    run.command(["iverilog", "-g2012", "-Wall", "-s", "tb", "-o", executable,
+                 *rtl_files(), tb], "constant-dividers-compile")
+    out, _, _ = run.command(["vvp", executable], "constant-dividers-simulate")
+    assert out.count("CONSTANT_DIVISION_COMPLETE") == 1
+    assert out.count("CONSTANT_DIVISION_RESULT ") == len(numerators)
+    run.receipt["coverage"].append({
+        "case": "constant-dividers", "divisors": divisors, "numerators": numerators,
+        "compared_results": len(numerators)*len(divisors), "seed": 61017,
+        "expectation": "Python exact unsigned64 divmod; quotient and remainder",
+    })
+    run.save()
+
+
 def guard_boundaries(run):
     """Analytical boundary assertions independent of a particular RTL operator."""
     ops = Integer()
@@ -744,10 +800,17 @@ def guarded_divider(run):
         result = 0 if error else result
         expected.append({"numerator": n, "denominator": d,
                          "expected": result, "error": bool(error)})
+        quotient = abs(n)//d if d else 0
+        remainder = abs(n)-quotient*d if d else abs(n)
+        if n < 0:
+            quotient, remainder = -quotient, -remainder
+        expected[-1].update(truncating_quotient=quotient, signed_remainder=remainder)
         assignments.append(
             f"numerators[{i}]=128'h{n & ((1 << 128)-1):032x};"
             f"denominators[{i}]=128'h{d:032x};"
             f"expected[{i}]=128'h{result & ((1 << 128)-1):032x};"
+            f"quotients[{i}]=128'h{quotient & ((1 << 128)-1):032x};"
+            f"remainders[{i}]=128'h{remainder & ((1 << 128)-1):032x};"
             f"errors[{i}]=1'b{int(error)};")
     text = f"""
 module tb;
@@ -756,18 +819,21 @@ always #5 clk=~clk;
 reg signed [127:0] in_numerator=0;
 reg [127:0] in_denominator=0;
 wire in_ready,out_valid,out_error;
-wire signed [127:0] out_data;
+wire signed [127:0] out_data,out_quotient,out_remainder;
 anvil_e2_divide dut(.*);
 reg signed [127:0] numerators[0:{len(cases)-1}],expected[0:{len(cases)-1}];
+reg signed [127:0] quotients[0:{len(cases)-1}],remainders[0:{len(cases)-1}];
 reg [127:0] denominators[0:{len(cases)-1}];
 reg errors[0:{len(cases)-1}];
 integer sent=0,received=0,cycles=0,stalls=0;
 reg held=0;
-reg [128:0] payload;
+reg [384:0] payload;
 task automatic known;
 begin
- if ((^{{in_ready,out_valid,out_data,out_error}})===1'bx) $fatal(1,"DIVIDER_UNKNOWN");
- if (!rst_n && {{in_ready,out_valid,out_data,out_error}}!=='0) $fatal(1,"DIVIDER_RESET");
+ if ((^{{in_ready,out_valid,out_data,out_error,out_quotient,out_remainder}})===1'bx)
+  $fatal(1,"DIVIDER_UNKNOWN");
+ if (!rst_n && {{in_ready,out_valid,out_data,out_error,out_quotient,out_remainder}}!=='0)
+  $fatal(1,"DIVIDER_RESET");
 end
 endtask
 initial begin
@@ -777,7 +843,7 @@ end
 always @(negedge clk) begin
  known();
  if(rst_n) begin
-  cycles=cycles+1;if(cycles>{len(cases)*48}) $fatal(1,"DIVIDER_TIMEOUT");
+  cycles=cycles+1;if(cycles>{len(cases)*144}) $fatal(1,"DIVIDER_TIMEOUT");
   in_valid=sent<{len(cases)};
   if(in_valid) begin in_numerator=numerators[sent];in_denominator=denominators[sent];end
   out_ready=cycles%11==0;
@@ -787,11 +853,13 @@ always @(posedge clk) begin
  known();
  if(rst_n) begin
   if(in_valid && in_ready) sent=sent+1;
-  if(held && (!out_valid || {{out_error,out_data}}!==payload)) $fatal(1,"DIVIDER_STABILITY");
-  held=out_valid && !out_ready;payload={{out_error,out_data}};
+  if(held && (!out_valid || {{out_error,out_data,out_quotient,out_remainder}}!==payload))
+   $fatal(1,"DIVIDER_STABILITY");
+  held=out_valid && !out_ready;payload={{out_error,out_data,out_quotient,out_remainder}};
   if(held) stalls=stalls+1;
   if(out_valid && out_ready) begin
-   if(received>=sent || out_data!==expected[received] || out_error!==errors[received])
+   if(received>=sent || out_data!==expected[received] || out_error!==errors[received] ||
+      out_quotient!==quotients[received] || out_remainder!==remainders[received])
     $fatal(1,"DIVIDER_MISMATCH case=%0d data=%h error=%b",received,out_data,out_error);
    $display("DIVIDER_RESULT %0d %h %b",received,out_data,out_error);
    received=received+1;
@@ -815,7 +883,11 @@ endmodule
         "case": "guarded-divider", "compared_results": len(cases), "operands": expected,
         "boundaries": "signed128 extrema, unsigned128 divisors, signed ties, "
                       "zero divisor, exact guarded RMS ratios, output stalls, "
-                      "power-of-two shortcuts, all quotient-prefix lengths",
+                      "power-of-two shortcuts, all quotient-prefix lengths, "
+                      "exact truncating quotient and signed remainder",
+        "cycle_watchdog_per_case": 144,
+        "cycle_watchdog_basis": "at most 128 serial bits, ROUND, HOLD, "
+                                "up to 11 ready-stall clocks and next request",
         "random_seed": 17089,
         "digit_boundaries": digit_boundaries,
         "candidate_65536_correction": {
@@ -826,3 +898,4 @@ endmodule
                             "nonpower divisors exceed every signed128 magnitude",
     })
     run.save()
+    constant_dividers(run)

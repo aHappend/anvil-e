@@ -11,7 +11,8 @@ module anvil_e2_nonlinear (
     output wire out_error
 );
     localparam IDLE=4'd0, SERIES=4'd1, ROOT=4'd2, FINISH=4'd3, HOLD=4'd4,
-        DIV_START=4'd5, DIV_WAIT=4'd6, GELU_APPLY=4'd7;
+        DIV_START=4'd5, DIV_WAIT=4'd6, GELU_APPLY=4'd7,
+        REDUCE_START=4'd8, REDUCE_WAIT=4'd9;
     localparam EXP=3'd0, SIN=3'd1, COS=3'd2, RECIP=3'd3,
                RSQRT=3'd4, GELU=3'd5;
     localparam signed [95:0] ONE=96'sd1099511627776;
@@ -23,34 +24,38 @@ module anvil_e2_nonlinear (
     reg [3:0] state;
     reg [2:0] operation;
     reg signed [95:0] argument, reduced, term, total;
-    reg signed [95:0] temporary, quotient, exponential, tanh_value;
+    reg signed [95:0] tanh_value;
     reg signed [95:0] exponent_shift;
-    reg signed [63:0] reduction_quotient, reduction_remainder;
     reg [6:0] iteration;
     reg [127:0] radicand;
-    reg [129:0] remainder, shifted_remainder, trial;
+    reg [129:0] remainder;
     reg [63:0] root_value;
     reg signed [47:0] result;
     reg error;
     wire signed [63:0] series_term, series_total;
     wire [6:0] series_iteration;
-    wire series_finished;
+    wire series_finished, series_valid, series_error;
     anvil_e2_series series (
+        .clk(clk), .rst_n(rst_n),
         .enable(state==SERIES), .operation(operation),
         .reduced(reduced[63:0]), .term(term[63:0]), .total(total[63:0]),
         .iteration(iteration), .next_term(series_term), .next_total(series_total),
-        .next_iteration(series_iteration), .finished(series_finished)
+        .next_iteration(series_iteration), .finished(series_finished),
+        .step_valid(series_valid), .step_error(series_error)
     );
     reg signed [127:0] divide_numerator;
     reg [127:0] divide_denominator;
     wire divide_ready, divide_valid, divide_error;
     wire signed [127:0] divide_data;
+    wire signed [127:0] divide_quotient, divide_remainder;
     anvil_e2_divide divider (
-        .clk(clk), .rst_n(rst_n), .in_valid(state==DIV_START),
+        .clk(clk), .rst_n(rst_n),
+        .in_valid(state==DIV_START || state==REDUCE_START),
         .in_ready(divide_ready), .in_numerator(divide_numerator),
         .in_denominator(divide_denominator), .out_valid(divide_valid),
-        .out_ready(state==DIV_WAIT), .out_data(divide_data),
-        .out_error(divide_error)
+        .out_ready(state==DIV_WAIT || state==REDUCE_WAIT), .out_data(divide_data),
+        .out_error(divide_error), .out_quotient(divide_quotient),
+        .out_remainder(divide_remainder)
     );
 
     function automatic signed [95:0] multiply_q40;
@@ -70,22 +75,6 @@ module anvil_e2_nonlinear (
         end
     endfunction
 
-    function automatic signed [95:0] series_divide;
-        input signed [95:0] numerator;
-        input [11:0] denominator;
-        reg [63:0] magnitude, divisor, q, r;
-        begin
-            // Series numerators are bounded by 64*G, well below 2^64.
-            magnitude = numerator < 0 ? -numerator : numerator;
-            divisor = {52'd0,denominator};
-            q = magnitude / divisor;
-            r = magnitude - q*divisor;
-            if (r > divisor-r || (r == divisor-r && q[0]))
-                q = q + 64'd1;
-            series_divide = numerator < 0 ? -$signed({32'd0,q}):$signed({32'd0,q});
-        end
-    endfunction
-
     function automatic signed [47:0] saturate;
         input signed [95:0] x;
         begin
@@ -99,6 +88,26 @@ module anvil_e2_nonlinear (
     assign out_valid = rst_n && state == HOLD;
     assign out_data = rst_n ? result : 48'sd0;
     assign out_error = rst_n && error;
+    wire signed [95:0] input_value={{48{in_data[47]}},in_data};
+    wire signed [95:0] gelu_argument=multiply_q40(GELU_C,
+        input_value+multiply_q40(GELU_K,
+        multiply_q40(multiply_q40(input_value,input_value),input_value)));
+    wire signed [95:0] exp_argument=in_op==GELU ?
+        (gelu_argument<0 ? gelu_argument*96'sd2:-gelu_argument*96'sd2):input_value;
+    wire signed [95:0] bounded_argument=exp_argument< -96'sd17592186044416 ?
+        -96'sd17592186044416:exp_argument;
+    wire signed [95:0] trig_remainder=divide_remainder[95:0];
+    wire signed [95:0] trig_reduced=trig_remainder>PI ? trig_remainder-TWO_PI:
+        trig_remainder< -PI ? trig_remainder+TWO_PI:trig_remainder;
+    wire signed [95:0] floor_quotient=divide_remainder<0 ?
+        divide_quotient[95:0]-96'sd1:divide_quotient[95:0];
+    wire [129:0] shifted_remainder=(remainder<<2)|{128'd0,radicand[127:126]};
+    wire [129:0] trial=({66'd0,root_value}<<2)|130'd1;
+    wire signed [95:0] exponential=total>>>-exponent_shift;
+    wire signed [95:0] signed_tanh=argument<0 ? -tanh_value:tanh_value;
+    wire signed [95:0] gelu_product=multiply_q40(argument,ONE+signed_tanh);
+    wire signed [95:0] gelu_half=(gelu_product>>>1)+
+        (gelu_product[0] && gelu_product[1] ? 96'sd1:96'sd0);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -115,14 +124,7 @@ module anvil_e2_nonlinear (
             root_value <= 0;
             result <= 0;
             error <= 0;
-            temporary = 0;
-            quotient = 0;
-            exponential = 0;
-            tanh_value = 0;
-            shifted_remainder = 0;
-            trial = 0;
-            reduction_quotient = 0;
-            reduction_remainder = 0;
+            tanh_value <= 0;
             divide_numerator <= 0;
             divide_denominator <= 0;
         end else begin
@@ -163,16 +165,10 @@ module anvil_e2_nonlinear (
                             48'sd1099511627776 : 48'sd0;
                         state <= HOLD;
                     end else if (in_op == SIN || in_op == COS) begin
-                        reduction_remainder = $signed(in_data) % 64'sd6908435304715;
-                        temporary = reduction_remainder;
-                        if (temporary > PI) temporary = temporary - TWO_PI;
-                        if (temporary < -PI) temporary = temporary + TWO_PI;
-                        reduced <= temporary;
-                        term <= in_op == SIN ? temporary : ONE;
-                        total <= in_op == SIN ? temporary : ONE;
-                        state <= SERIES;
+                        divide_numerator <= {{80{in_data[47]}},in_data};
+                        divide_denominator <= 128'd6908435304715;
+                        state <= REDUCE_START;
                     end else if (in_op == EXP || in_op == GELU) begin
-                        temporary = {{48{in_data[47]}}, in_data};
                         if (in_op == GELU) begin
                             if (in_data >= 48'sd8796093022208) begin
                                 result <= in_data;
@@ -181,48 +177,50 @@ module anvil_e2_nonlinear (
                                 result <= 0;
                                 state <= HOLD;
                             end else begin
-                                temporary = multiply_q40(GELU_C,
-                                    temporary + multiply_q40(GELU_K,
-                                    multiply_q40(multiply_q40(temporary,temporary),temporary)));
-                                temporary = temporary < 0 ? temporary*96'sd2 : -temporary*96'sd2;
-                                state <= SERIES;
+                                state <= REDUCE_START;
                             end
                         end else if (in_data > 0) begin
                             error <= 1;
                             state <= HOLD;
                         end else begin
-                            state <= SERIES;
+                            state <= REDUCE_START;
                         end
                         if ((in_op == EXP && in_data <= 0) ||
                             (in_op == GELU && in_data > -48'sd8796093022208 &&
                              in_data < 48'sd8796093022208)) begin
-                            if (temporary < -96'sd17592186044416)
-                                temporary = -96'sd17592186044416;
-                            reduction_quotient = $signed(temporary[63:0]) /
-                                64'sd762123384786;
-                            reduction_remainder = $signed(temporary[63:0]) -
-                                reduction_quotient*64'sd762123384786;
-                            quotient = reduction_quotient;
-                            if (reduction_remainder < 0) quotient = quotient - 96'sd1;
-                            exponent_shift <= quotient;
-                            reduced <= temporary - quotient*LN2;
-                            term <= ONE;
-                            total <= ONE;
+                            divide_numerator <= {{32{bounded_argument[95]}},bounded_argument};
+                            divide_denominator <= 128'd762123384786;
                         end
                     end else begin
                         error <= 1;
                         state <= HOLD;
                     end
                 end
-                SERIES: begin
+                REDUCE_START: if (divide_ready) state <= REDUCE_WAIT;
+                REDUCE_WAIT: if (divide_valid) begin
+                    if (divide_error) begin error<=1; result<=0; state<=HOLD; end
+                    else begin
+                        if (operation==SIN || operation==COS) begin
+                            reduced<=trig_reduced;
+                            term<=operation==SIN ? trig_reduced:ONE;
+                            total<=operation==SIN ? trig_reduced:ONE;
+                        end else begin
+                            exponent_shift<=floor_quotient;
+                            reduced<=divide_remainder<0 ?
+                                divide_remainder[95:0]+LN2:divide_remainder[95:0];
+                            term<=ONE; total<=ONE;
+                        end
+                        state<=SERIES;
+                    end
+                end
+                SERIES: if (series_valid) begin
                     term <= series_term;
                     total <= series_total;
                     iteration <= series_iteration;
-                    if (series_finished) state <= FINISH;
+                    if (series_error) begin error<=1; result<=0; state<=HOLD; end
+                    else if (series_finished) state <= FINISH;
                 end
                 ROOT: begin
-                    shifted_remainder = (remainder << 2) | {128'd0,radicand[127:126]};
-                    trial = ({66'd0,root_value} << 2) | 130'd1;
                     if (shifted_remainder >= trial) begin
                         remainder <= shifted_remainder - trial;
                         root_value <= (root_value << 1) | 64'd1;
@@ -243,7 +241,6 @@ module anvil_e2_nonlinear (
                         result <= saturate(total);
                         state <= HOLD;
                     end else begin
-                        exponential = total >>> -exponent_shift;
                         if (operation == EXP) begin
                             result <= saturate(exponential);
                             state <= HOLD;
@@ -269,9 +266,7 @@ module anvil_e2_nonlinear (
                     end
                 end
                 GELU_APPLY: begin
-                    temporary = argument < 0 ? -tanh_value:tanh_value;
-                    result <= saturate(series_divide(
-                        multiply_q40(argument,ONE+temporary),12'd2));
+                    result <= saturate(gelu_half);
                     state <= HOLD;
                 end
                 HOLD: if (out_ready) state <= IDLE;

@@ -1,0 +1,2 @@
+/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_norm.sv:109: warning: @* is sensitive to all 4 words in array 'weights'.
+/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_norm.sv:109: warning: @* is sensitive to all 4 words in array 'weights'.

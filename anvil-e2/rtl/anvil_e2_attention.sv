@@ -53,7 +53,19 @@ module anvil_e2_attention #(
     reg [63:0] position_base, mask_base;
     reg [63:0] q_addr, query_position_addr, key_position_addr, key_mask_addr;
     reg [63:0] k_head_base, v_head_base, k_key_base, v_key_base, k_addr, v_addr;
-    reg [63:0] kv_byte_offset;
+    wire [63:0] local_group, full_group;
+    anvil_e2_const_divide #(
+        .DIVISOR(LOCAL_KV_HEADS>0 ? NUM_Q_HEADS/LOCAL_KV_HEADS:1)
+    ) local_group_divide (
+        .numerator({32'd0,start_head}), .quotient(local_group), .remainder()
+    );
+    anvil_e2_const_divide #(
+        .DIVISOR(FULL_KV_HEADS>0 ? NUM_Q_HEADS/FULL_KV_HEADS:1)
+    ) full_group_divide (
+        .numerator({32'd0,start_head}), .quotient(full_group), .remainder()
+    );
+    wire [63:0] kv_byte_offset=(start_full ? full_group:local_group)*
+        64'(start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM)*64'd4;
     reg signed [47:0] q_values [0:DM-1];
     reg signed [127:0] weighted [0:DM-1];
     reg signed [47:0] values [0:DM-1];
@@ -63,9 +75,13 @@ module anvil_e2_attention #(
     reg signed [47:0] data_hold;
     reg [31:0] index_hold;
     reg last_hold;
-    reg signed [127:0] difference;
-    reg signed [47:0] saturated_score;
-    reg [32:0] position_difference;
+    wire signed [127:0] difference=
+        {{80{saturated_score[47]}},saturated_score}-
+        {{80{score_max[47]}},score_max};
+    wire signed [47:0] saturated_score=saturate(divide_result);
+    wire [32:0] position_difference={1'b0,result_data}>{1'b0,query_position} ?
+        {1'b0,result_data}-{1'b0,query_position}:
+        {1'b0,query_position}-{1'b0,result_data};
 
     function automatic [63:0] dimension_root;
         input integer dimension;
@@ -168,20 +184,15 @@ module anvil_e2_attention #(
             position_base<=0; mask_base<=0;
             q_addr<=0; query_position_addr<=0; key_position_addr<=0; key_mask_addr<=0;
             k_head_base<=0; v_head_base<=0; k_key_base<=0; v_key_base<=0;
-            k_addr<=0; v_addr<=0; kv_byte_offset=0;
+            k_addr<=0; v_addr<=0;
             score_max<=0; score_value<=0; exponential<=0;
             denominator<=0; error_hold<=0; data_hold<=0; index_hold<=0; last_hold<=0;
-            difference=0; position_difference=0;
-            saturated_score=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
                     tokens<=start_tokens;
                     full_mode<=start_full;
                     dim<=start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
-                    kv_byte_offset=64'(start_head/
-                        (NUM_Q_HEADS/(start_full ? FULL_KV_HEADS:LOCAL_KV_HEADS)))*
-                        64'(start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM)*64'd4;
                     q_addr<=start_q_base+(64'(start_query)*NUM_Q_HEADS*DM+
                         64'(start_head)*64'(start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM))*64'd4;
                     k_head_base<=start_k_base+kv_byte_offset;
@@ -233,9 +244,6 @@ module anvil_e2_attention #(
                 KPOSRSP: if (result_valid) begin
                     if (result_error) begin error_hold<=3; state<=DONE; end
                     else begin
-                        position_difference={1'b0,result_data}> {1'b0,query_position} ?
-                            {1'b0,result_data}-{1'b0,query_position}:
-                            {1'b0,query_position}-{1'b0,result_data};
                         if (position_difference>=SLIDING_WINDOW) state<=NEXTKEY;
                         else begin component<=0; state<=KREQ; end
                     end
@@ -253,15 +261,12 @@ module anvil_e2_attention #(
                 SCORE_WAIT: if (divide_out_valid) begin
                     if (divide_error) begin error_hold<=6; state<=DONE; end
                     else begin
-                        saturated_score=saturate(divide_result);
                         score_value<=saturated_score;
                         if (!weighted_pass) begin
                             if (!found_key || saturated_score>score_max)
                                 score_max<=saturated_score;
                             found_key<=1; state<=NEXTKEY;
                         end else begin
-                            difference={{80{saturated_score[47]}},saturated_score}-
-                                       {{80{score_max[47]}},score_max};
                             if (difference< -128'sd17592186044416) begin
                                 exponential<=0; state<=NEXTKEY;
                             end else begin

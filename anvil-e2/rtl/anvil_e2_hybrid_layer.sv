@@ -47,10 +47,12 @@ module anvil_e2_hybrid_layer #(
         NORM_START=10, NORM_REQ=11, NORM_RSP=12, NORM_FEED=13, NORM_OUT=14,
         VECTOR=15, VPRODUCT=16, VSAVE=17, VGELU_REQ=18, VGELU_RSP=19,
         ROPE_START=20, ROPE_RUN=21, ATT_START=22, ATT_RUN=23,
-        POOL_START=24, POOL_FEED=25, POOL_WAIT=26, FLUSH=27, DONE=28;
+        POOL_START=24, POOL_FEED=25, POOL_WAIT=26, FLUSH=27, DONE=28,
+        SCALE_START=29, SCALE_WAIT=30;
     reg [4:0] state;
     reg [7:0] pc, return_pc;
     reg [31:0] token, layer, head, pair_index, index, count, columns;
+    reg [31:0] token_row, token_col;
     reg [31:0] token_id, position, token_mask;
     reg signed [31:0] scalar, norm_weight;
     reg [2:0] read_target, source_a, source_b, destination, vector_mode;
@@ -64,18 +66,21 @@ module anvil_e2_hybrid_layer #(
     reg signed [47:0] temporary [0:WIDTH-1];
     reg signed [47:0] gate [0:WIDTH-1];
     reg signed [47:0] auxiliary [0:WIDTH-1];
-    wire full_mode=VISION || layer%6==5;
+    wire [63:0] layer_product={32'd0,layer}*64'd2863311531;
+    wire [31:0] preceding_full=32'(layer_product>>34);
+    wire full_mode=VISION || layer-preceding_full*6==5;
     wire [31:0] dim=full_mode ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
     wire [31:0] kv_heads=full_mode ? FULL_KV_HEADS:LOCAL_KV_HEADS;
     wire [63:0] x_base=current_x ? bases[5]:bases[0];
     wire [63:0] next_x_base=current_x ? bases[0]:bases[5];
     // Abort only after the held memory result has been retired.
     wire unit_rst_n=rst_n && state!=FLUSH;
-    wire [31:0] rotary_dim=VISION ? dim/2:dim;
-    wire [31:0] rotary_pair=VISION ? pair_index%(dim/4):pair_index;
-    wire [31:0] rotary_offset=VISION ? (pair_index/(dim/4))*(dim/2):0;
+    wire [31:0] rotary_dim=VISION ? dim>>1:dim;
+    wire [31:0] rotary_pair=VISION && pair_index>=(dim>>2) ?
+        pair_index-(dim>>2):pair_index;
+    wire [31:0] rotary_offset=VISION && pair_index>=(dim>>2) ? dim>>1:0;
     wire [31:0] rotary_position=VISION ?
-        (pair_index<dim/4 ? token/patch_cols:token%patch_cols):position;
+        (pair_index<(dim>>2) ? token_row:token_col):position;
 
     reg signed [47:0] source_a_data, source_b_data, source_offset_data;
     // Explicit array reads keep bank writes in each operand mux's sensitivity.
@@ -85,7 +90,7 @@ module anvil_e2_hybrid_layer #(
         source_offset_data=0;
         if (rst_n) begin
             if (state==MAT_LOAD || state==VECTOR || state==VPRODUCT ||
-                state==VGELU_REQ) begin
+                state==VGELU_REQ || state==SCALE_START) begin
                 case (source_a)
                     0: source_a_data=xvec[index];
                     1: source_a_data=STAGE==0 ? 48'sd0:work[index];
@@ -155,20 +160,23 @@ module anvil_e2_hybrid_layer #(
         end
     endfunction
     localparam [63:0] H_ROOT=hidden_root(HIDDEN_SIZE);
-    function automatic signed [47:0] projection_scale;
-        input signed [47:0] value;
-        reg signed [127:0] numerator, magnitude, divisor, quotient, remainder;
-        begin
-            numerator={{80{value[47]}},value}<<<40;
-            divisor=$signed({64'd0,H_ROOT});
-            magnitude=numerator<0 ? -numerator:numerator;
-            quotient=magnitude/divisor; remainder=magnitude-quotient*divisor;
-            if (remainder>divisor-remainder ||
-                (remainder==divisor-remainder && quotient[0]))
-                quotient=quotient+128'sd1;
-            projection_scale=saturate(numerator<0 ? -quotient:quotient);
-        end
-    endfunction
+    wire scale_ready, scale_valid, scale_error;
+    wire signed [127:0] scale_data;
+    generate if (STAGE==0) begin : projection_scaling
+        anvil_e2_divide divider (
+            .clk(clk), .rst_n(unit_rst_n), .in_valid(state==SCALE_START),
+            .in_ready(scale_ready),
+            .in_numerator($signed({{80{source_a_data[47]}},source_a_data})<<<40),
+            .in_denominator({64'd0,H_ROOT}), .out_valid(scale_valid),
+            .out_ready(state==SCALE_WAIT), .out_data(scale_data),
+            .out_error(scale_error)
+        );
+    end else begin : no_projection_scaling
+        assign scale_ready=0;
+        assign scale_valid=0;
+        assign scale_error=0;
+        assign scale_data=0;
+    end endgenerate
     function automatic signed [47:0] add_values;
         input signed [47:0] a,b;
         begin
@@ -433,7 +441,7 @@ module anvil_e2_hybrid_layer #(
         .start_ready(rope_start_ready_raw), .start_full(full_mode),
         .start_position(rotary_position), .start_pair(rotary_pair), .start_dim(rotary_dim),
         .start_lo(temporary[head*dim+rotary_offset+rotary_pair]),
-        .start_hi(temporary[head*dim+rotary_offset+rotary_pair+rotary_dim/2]),
+        .start_hi(temporary[head*dim+rotary_offset+rotary_pair+(rotary_dim>>1)]),
         .nonlinear_valid(rope_nvalid), .nonlinear_ready(nready && state==ROPE_RUN),
         .nonlinear_op(rope_nop), .nonlinear_data(rope_ndata),
         .nonlinear_out_valid(nout_valid && state==ROPE_RUN),
@@ -635,15 +643,15 @@ module anvil_e2_hybrid_layer #(
                 end
                 VECTOR: begin
                     case (vector_mode)
-                        1: if (STAGE==0) begin
-                            bank_write_valid=1;
-                            bank_write_data=projection_scale(source_a_data);
-                        end
                         2: if (STAGE==1) begin
                             bank_write_valid=1;
                             bank_write_data=add_values(source_a_data,source_b_data);
                         end
                     endcase
+                end
+                SCALE_WAIT: if (STAGE==0 && scale_valid && !scale_error) begin
+                    bank_write_valid=1;
+                    bank_write_data=saturate(scale_data);
                 end
                 VSAVE: if (STAGE==1) begin
                     bank_write_valid=1; bank_write_data=mac_rounded;
@@ -656,7 +664,7 @@ module anvil_e2_hybrid_layer #(
                     bank_write_index=head*dim+rotary_offset+rotary_pair;
                     bank_write_data=rope_lo;
                     temporary_hi_valid=1;
-                    temporary_hi_index=head*dim+rotary_offset+rotary_pair+rotary_dim/2;
+                    temporary_hi_index=head*dim+rotary_offset+rotary_pair+(rotary_dim>>1);
                     temporary_hi_data=rope_hi;
                 end
                 ATT_RUN: if (STAGE==1 && att_out_valid && att_out_index==index &&
@@ -691,6 +699,7 @@ module anvil_e2_hybrid_layer #(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state<=IDLE; pc<=0; return_pc<=0; token<=0; layer<=0; head<=0;
+            token_row<=0; token_col<=0;
             pair_index<=0; index<=0; count<=0; columns<=0; token_id<=0;
             position<=0; token_mask<=0; scalar<=0; norm_weight<=0;
             read_target<=0; source_a<=0; source_b<=0;
@@ -702,6 +711,7 @@ module anvil_e2_hybrid_layer #(
             case (state)
                 IDLE: if (start_valid) begin
                     token<=0; layer<=layer_index; head<=0;
+                    token_row<=0; token_col<=0;
                     current_x<=start_current_x;
                     bases[0]<=x0_base; bases[5]<=x1_base; bases[1]<=ple_base;
                     bases[2]<=q_base; bases[3]<=k_base; bases[4]<=v_base;
@@ -766,8 +776,14 @@ module anvil_e2_hybrid_layer #(
                         22: `E2_MATRIX(tensor_addr,kv_heads*dim,HIDDEN_SIZE,1,2,23)
                         23: `E2_WRITE(bases[4]+64'(token)*KM*DM*4,kv_heads*dim,2,24)
                         24: begin
-                            if (token==tokens-1) begin token<=0; pc<=30; end
-                            else begin token<=token+1'b1; pc<=9; end
+                            if (token==tokens-1) begin
+                                token<=0; token_row<=0; token_col<=0; pc<=30;
+                            end else begin
+                                token<=token+1'b1; pc<=9;
+                                if (token_col==patch_cols-1) begin
+                                    token_col<=0; token_row<=token_row+1'b1;
+                                end else token_col<=token_col+1'b1;
+                            end
                         end
                         30: begin
                             head<=0;
@@ -898,13 +914,20 @@ module anvil_e2_hybrid_layer #(
                 end
                 VECTOR: begin
                     case (vector_mode)
-                        1: if (STAGE==0) finish_element; else abort_job(6);
+                        1: if (STAGE==0) state<=SCALE_START; else abort_job(6);
                         2: if (STAGE==1) finish_element; else abort_job(6);
                         3,5: if (STAGE==1) state<=VPRODUCT; else abort_job(6);
                         4: if (STAGE==1) state<=VGELU_REQ; else abort_job(6);
                         default: abort_job(6);
                     endcase
                 end
+                SCALE_START: if (STAGE!=0) abort_job(6);
+                    else if (scale_ready) state<=SCALE_WAIT;
+                SCALE_WAIT: if (STAGE!=0) abort_job(6);
+                    else if (scale_valid) begin
+                        if (scale_error) abort_job(6);
+                        else finish_element;
+                    end
                 VPRODUCT: if (STAGE==1) state<=VSAVE; else abort_job(6);
                 VSAVE: if (STAGE==1) finish_element; else abort_job(6);
                 VGELU_REQ: if (STAGE!=1) abort_job(6);
@@ -920,7 +943,7 @@ module anvil_e2_hybrid_layer #(
                     else if (rope_out_valid) begin
                     if (rope_error) abort_job(6);
                     else begin
-                        if (pair_index==dim/2-1) begin pc<=return_pc; state<=DISPATCH; end
+                        if (pair_index==(dim>>1)-1) begin pc<=return_pc; state<=DISPATCH; end
                         else begin pair_index<=pair_index+1'b1; state<=ROPE_START; end
                     end
                 end

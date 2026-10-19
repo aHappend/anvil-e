@@ -11,6 +11,32 @@ propagated elaboration-time RMS epsilon parameter. Public pins, memory ABI,
 all other arithmetic and synthetic regression fixtures remain unchanged.
 Implementation is not a claim that the amended numerical comparisons pass.
 
+### Current timing-gate recovery status
+
+The subsequent `rtl-timing-lint` rejection identified runtime combinational
+division/modulo and clocked blocking temporaries. The current RTL replaces
+runtime division with a bit-serial restoring `anvil_e2_divide`, including
+nonlinear/rotary argument reduction, one-term-at-a-time registered series,
+PLE scaling and spatial/sentence means. Constant geometry/head grouping uses
+the exact corrected reciprocal helper `rtl/anvil_e2_const_divide.sv`;
+patch/axis/pooling coordinates use shifts, comparisons and wrap counters.
+Clocked state uses only nonblocking assignments, with temporary arithmetic
+in combinational logic. `ARCHITECTURE.md` specifies the current private helper
+phases and exact reciprocal/restoring equations.
+
+This is an implementation repair, not a new numerical contract. The fixed
+official epsilon, legacy default, raw BF16 mapping, independent floating
+semantics, all fixtures/thresholds and Q24 scratch histories remain unchanged.
+No public pin, host memory layout, extra tensor storage or precision sidecar
+is added. Internal arithmetic latency changes; all cycle measurements need
+fresh execution. The supplied prior acceptance and retained results below
+refer to earlier sources and do not certify this timing-gate repair.
+Designer performs only static elaboration. Verifier and the shared runtime
+must rerun the complete required checks, including timing-lint and synthesis
+inspection for zero runtime divide/modulo cells. No renewed functional pass,
+physical timing closure, independent delivery review or final report is
+claimed by this handoff.
+
 `tests/official_weights.py` parses the actual BF16 safetensors payload using
 Python standard-library facilities. It validates the complete file digest,
 manifest/header agreement, tensor hashes, bounds, shapes, contiguous payload
@@ -95,9 +121,10 @@ replaces the RTL.
 Add B/seed17 vision-only (mode1) and joint (mode2), both with EMBED_DIM=12
 and output dimension12, without changing existing B inputs or geometry.
 The complete official matrix is therefore29 required cases. The two B cases
-are implemented in the verification matrix, but complete passing execution
-is outstanding. The retained B vision-only execution failed the numerical
-limits as detailed below; joint RTL was not reached. The retained27-case execution is
+are implemented in the verification matrix. Fresh complete passing execution
+on the timing-repaired sources is outstanding. The historical pre-epsilon
+B vision-only execution failed the numerical limits as detailed below; that
+diagnostic did not reach joint RTL. The retained27-case execution is
 `evidence/verification/functional/1792080927168812449-166504/receipt.json`.
 Its successful execution preceded a substantive official-geometry coverage
 rejection, not a simulator timeout or RTL mismatch: all its official images

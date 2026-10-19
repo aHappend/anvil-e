@@ -24,6 +24,13 @@ at least 3600 seconds bounded by the remaining shared deadline. Historical
 110-/120-second limits and pending epsilon-admission language are superseded
 by this current contract, not reapplied to the amended design.
 
+The current timing-gate recovery additionally replaces runtime division/modulo
+and clocked blocking temporaries. The former engineering acceptance is
+historical: it does not certify these changed sources. The numerical equations,
+epsilon choices, public protocols and memory/materialization ABI remain fixed;
+internal helper latency changes. Fresh independent verification and timing-lint
+are required. Removing native divide cells is not physical timing closure.
+
 ## Ownership and interfaces frozen before implementation
 
 The top is `anvil_e2_top`, with the following architectural defaults:
@@ -100,9 +107,9 @@ hybrid engine; there is one reusable vision-layer instance and one reusable
 text-layer instance, sequenced across their configured layer counts.
 Stage-local matvec, MAC, norm, nonlinear, attention, rotary and pool helpers
 are connected arithmetic operators, not disconnected demonstration blocks.
-Norm, attention and nonlinear each instantiate one `anvil_e2_divide` helper,
-reusing it across their guarded divisions without changing any stage memory
-interface.
+Norm, attention, nonlinear, rotary, frontend PLE scaling, spatial mean and
+sentence mean use `anvil_e2_divide` for runtime division. Each series helper
+also owns a registered divider. These helpers change no stage memory interface.
 `RMS_EPSILON_Q80` is declared `parameter logic [127:0]` (unsigned) in the top,
 vision encoder, text frontend/PLE, hybrid layer, pool/norm and norm modules.
 The top passes one identical value into the vision wrapper and all three text
@@ -138,9 +145,10 @@ The attention-owned divider has its own instance of the same gate. Only SCORE,
 SCORE_WAIT and nonzero-denominator FINISH/FINISH_WAIT request its clock.
 Registered active ownership qualifies both sides of its input and output
 handshakes; memory, nonlinear, output and completion phases do not request it.
-The combinational `anvil_e2_series` helper supplies four exact recurrence steps
-to the nonlinear and rotary controllers; only their existing SERIES edge
-captures its outputs. It adds no storage or handshake channel.
+The clocked `anvil_e2_series` helper supplies one exact recurrence at a time
+to the nonlinear and rotary controllers. SERIES captures term, total and
+iteration only when `step_valid` is asserted; divider errors propagate through
+`step_error`. No new public channel or tensor materialization is introduced.
 
 ## Pre-edge / post-edge cycle table
 
@@ -165,6 +173,9 @@ captures its outputs. It adds no storage or handshake channel.
 | Helper retirement | Held helper output/completion accepted | release helper ownership | Helper IDLE; controller advances; gate may sleep on a later edge |
 | Attention divider wake | SCORE or nonzero FINISH, divide_active=0 | no divider input acceptance or controller advance | Registered enable becomes one; remain in request state until a subsequent real divider edge |
 | Attention divider result | SCORE_WAIT or nonzero FINISH_WAIT, divide_active=1 and divider out_valid | Result retirement by divider and attention together | Divider IDLE; attention captures result/error and advances; enable remains set through this edge |
+| Arithmetic request | PLE SCALE_START, pooling MEAN, rotary FREQ_START/REDUCE_START or nonlinear REDUCE_START; helper input ready | Registered divider accepts operands | Caller enters separate WAIT; no numerical bank/result capture yet |
+| Arithmetic result | Corresponding WAIT and divider out_valid | Retire held divider result/error | Capture the original rounded result, or exact quotient/remainder for reduction; advance only post-edge |
+| Series recurrence | SERIES and step_valid | Retire one recurrence or exact zero-tail bypass | Capture next term/total/index; terminal term enters FINISH/ANGLE, otherwise request next recurrence on a later edge |
 | Stage completion | done_valid && done_ready | owner release | next START or error completion |
 | Embedding stalled | emb_valid=1, emb_ready=0 | none | data/index/last unchanged |
 | Nonfinal embedding | emb_valid && emb_ready | output beat | next registered beat may appear |
@@ -207,33 +218,35 @@ validation, stage handoff or memory bridge phases.
 | Maximum guarded reductions | Explicit products and 128-bit accumulators, no implicit narrow shifts |
 | Prefix one / final norm output | Materialize the current normalized beat, not a stale buffer element |
 | Guarded division | Exact signed magnitude division, nearest-even for either sign; zero divisor or signed quotient overflow reports helper error |
-| Divider quotient-digit boundaries | Exact 16-bit digits grouped up to four per RUN edge; divisor lengths 48/49/128, normalized 64-bit numerator, a 17-bit estimate of 65536, and one-step overestimate correction; full 128-bit residue retained; no digit after count eight |
+| Divider quotient-bit boundaries | One compare/subtract per RUN edge; exact 128-bit magnitude, shifted divisor, quotient and residue; start at the highest potentially nonzero quotient bit and stop after bit zero; include divisor lengths 48/49/128 |
 | Two-pass attention | First pass finds the maximum; second accumulates both exact reductions in ascending key order; empty eligibility never issues a zero-denominator divide |
 | Attention divider sleep/wake/reuse | Registered active qualifies ready/valid consumption and divider input/output acceptance; request state waits through wake, wait state keeps clock running through retirement; consecutive FINISH components may reuse the active clock; zero denominator never requests it; asynchronous reset cancels both gate and divider |
 | Attention final response | Successful K response clocks the dot MAC before SCORE; successful V response adds the exact shared product directly to the weighted component and enters VREQ or NEXTKEY; stalled/error responses never accumulate |
 | Attention address cursors | Capture query/head origins at start; successful nonfinal Q/K/V responses advance their component cursor by four; NEXTKEY advances fixed-stride K/V origins and metadata even for skipped keys, or rewinds all key cursors at the final key; no new FSM edge |
-| Series group/final term | Four ordered terms per clock; evaluate term 18 once, never term 19; exact-zero tails contribute zero |
+| Series recurrence/final term | One divider-owned term per retirement; evaluate term 18 once, never term 19; exact-zero tails contribute zero |
 | Repeated rotary angle | Reuse only a complete successful sine/cosine pair matching all 48 angle bits in either of two scalar entries; reset invalidates both entries |
 | Singleton matvec row | First successful weight response clears and accumulates; separate PREPARE captures the updated MAC before held output |
 | Matvec weight cursor | Capture base at accepted start; advance four bytes only on each successful weight-result retirement, including row-final and matrix-final elements; stalls/errors never advance |
 | Nonlinear non-series division | RECIP, RSQRT and GELU ratio use full signed-128 numerator/unsigned-128 divisor channels; no narrowed ratio or premature saturation |
-| Rotary angle product width transition | Use unsigned 64-bit modulus only when the entire product fits; otherwise preserve the signed 96-bit modulus |
-| Series bounded division | Divisors 1..18 and the actual sine/cosine quadratic divisors through term 18; exact unsigned-64 quotient, reconstructed residue and signed ties; reachable numerators strictly below 64*G |
-| Bit-length search | Zero returns zero; every 2^k boundary through k=127 returns the exact length; no change to divider/root grouping |
+| Rotary angle product width transition | Sign-extend the complete signed-96 product into the signed-128 divider; use exact truncation remainder, then reduce to [-PI,PI] |
+| Series bounded division | Divisors 1..18 and the actual sine/cosine quadratic divisors through term 18; sign-extend the bounded numerator and zero-extend the divisor into the restoring divider; retain signed ties |
+| Bit-length search | Zero returns zero; every 2^k boundary through k=127 returns the exact length; only provably zero quotient bits are skipped |
 | Exact zero nonlinear / rotary pair zero | Results appear only after input acceptance; held output/reset behavior unchanged; pair-zero frequency still passes through registered ANGLE |
 | Nonlinear multiply width | Every reachable argument is signed-64 representable; the exact signed 128-bit product retains the original low-40-bit tie test and signed-96 result |
 | Rotary two-entry replacement | A hit in either entry performs no fill; a successful miss pushes the newest entry into the previous entry; a failed response never changes either entry |
-| Divider edge-local work | RUN computes one digit from pre-edge operands once; ROUND computes nearest-even from the final registered quotient/residue, never from a partly updated digit |
+| Divider edge-local work | RUN computes one quotient bit from pre-edge operands; ROUND computes nearest-even from final registered quotient/residue |
 | MAC clear/accumulate | Accumulate samples both operands on that edge; clear selects replacement rather than addition; clear alone zeros the sum; neither holds the sum |
 | MAC exact product tap | Combinational signed 48x48 -> 96-bit product, zero unless reset is released and accumulate is asserted; attention captures its signed-128 extension only on successful V-result retirement, never the stale registered sum |
 | Operand isolation | Bank operands are selected throughout their consuming state, including stalls; registered helpers capture only on their existing valid/ready edge |
 | Norm root remainder width | All 96 restoring steps remain exact with a 98-bit shifted remainder/trial and a 96-bit root, including the largest 192-bit radicand |
-| Trig series divisor width | Terms 1..18 use exact unsigned 12-bit divisors: sine max 1332, cosine max 1260; zero-extend to unsigned 64 bits for magnitude division |
+| Trig series divisor width | Terms 1..18 use exact unsigned 12-bit divisors: sine max 1332, cosine max 1260; zero-extend to unsigned 128 bits for magnitude division |
 | Stage clock wake / sleep | Gate enable changes only on input rising edges; disabled clock is high; no start_valid until registered active; completed owner retires before its clock sleeps |
 | Reset with stopped stage clock | Asynchronous rst_n reaches every stage/helper directly; high inactive clock is not a substitute for reset; every later job reloads consumed banks |
 | Reset with stopped local helper clock | The same asynchronous reset and FLUSH cancellation reach every gated helper and its divider; no canceled HOLD/result can survive into another operation |
 | Bridge-wait clock isolation | Wake on actual response acceptance, not request acceptance; both sides of command/result handshakes require active; minimum-latency response and arbitrary stalls preserve single consumption |
-| Combinational series boundary | Input registers remain Q40; bounded signed-64 recurrence and total are sign-extended on the existing SERIES edge; term 18, zero tail and each signed tie are unchanged |
+| Registered series boundary | Input registers remain Q40 and stable until step_valid; bounded signed-64 recurrence and total sign-extend only on retirement; term 18, zero tail and signed ties remain unchanged |
+| Non-power-of-two coordinate wrap | Patch RGB/dy/dx, patch row/column and pooling origins advance on their existing MAC/result boundaries using terminal comparisons, including PATCH_SIZE=1 and partial edge windows |
+| Constant quotient correction | For unsigned 64-bit n and fixed d>1, high64(n*floor(2^64/d)) is at most one below floor(n/d); exact residual correction yields quotient/remainder; d=1 is identity, d=0 is an explicit parameter error |
 
 ## Numerical contract
 
@@ -275,13 +288,13 @@ Only the subsequent materialization table discards the sixteen guard bits.
 | L2 square reduction | Same exact square/sum, selected prefix only | D=sum, no epsilon |
 | RMS/L2 root | 192-bit D<<64; 98-bit restoring remainder/trial, 96-bit root; 96 radix-4 digit steps, with leading-zero steps omitted and eight remaining steps per clock | R=floor(sqrt(D<<64)), no rounding |
 | Norm ratio | Signed 128-bit a<<72, magnitude/division/remainder and ratio t | t=RN(a<<72,R), no premature saturation |
-| Shared divider digit | Unsigned 128-bit operands/residue/quotient; 144-bit trial, 64-bit normalized estimate operands, 17-bit candidate digit and explicit 145-bit candidate product; up to four ordered digits per RUN edge | Exact quotient/residue before the separate unchanged signed nearest-even ROUND edge |
+| Shared divider bit | Unsigned 128-bit magnitude/divisor/residue/quotient and shifted divisor; one compare/subtract/quotient-bit update per RUN edge | Exact quotient/residue before the separate unchanged signed nearest-even ROUND edge |
 | RMS weight | Signed Q24 w; 128-bit (W+w), product t*(W+w) | C(RN(t*(W+w),W)), Q40 |
 | L2 output | Same ratio (multiplication by W followed by /W is exact) | C(t), Q40; zero if R=0 |
 | Nonlinear/rotary series multiply | Bounded signed-64 Q40 operands, explicit signed 64x64 -> 128-bit exact product (bound proved below) | RN(product,G) into signed-64 recurrence; sign-extend at controller register capture; same low-40-bit tie test |
-| Nonlinear/rotary series divide | Reachable signed-64 numerator has magnitude below 64*G; exact unsigned-64 magnitude/divisor/quotient/residue; q=floor(m/d), r=m-q*d | RN(n,d), signed-64 recurrence, sign-extend into controller registers; no Q24 conversion |
+| Nonlinear/rotary series divide | Reachable signed-64 numerator has magnitude below 64*G; sign-extend into restoring signed-128 numerator, positive 12-bit divisor zero-extends to 128 bits | RN(n,d), signed-64 recurrence, sign-extend into controller registers; no Q24 conversion |
 | Nonlinear RECIP / RSQRT / GELU ratio | Signed-128 numerator, unsigned-128 positive divisor through the shared registered divider; successful quotient fits signed 96 bits before existing saturation/GELU use | Identical RN(n,d), no intermediate saturation of the GELU ratio |
-| Rotary frequency division | Initial logarithmic ratio retains the full signed-96 direct/two-limb/fallback calculation; frequency-series division uses exact bounded unsigned-64 quotient and reconstructed residue | Same original nearest-even result and sign |
+| Rotary frequency division | Full logarithmic numerator and positive dimension use the registered restoring divider; frequency-series division uses its own restoring helper | Same original nearest-even result and sign |
 | GELU / exp / sin / cos result | Retained Q40 series/constants/iteration counts | C(result), Q40 |
 | RoPE angle | Retained 96-bit Q40 frequency times unsigned position, modulo TWO_PI | Q40 angle, no Q24 rounding |
 | RoPE rotated pair | Two explicit 48x48 products in 128-bit signed Q80 sum per component | C(RN(a*cos-b*sin,G)), C(RN(a*sin+b*cos,G)) |
@@ -330,55 +343,40 @@ divisor larger than the magnitude, it captures quotient zero and residue
 equal to the magnitude, then enters ROUND; a nonzero rounded quotient is
 still possible and uses the same tie rule.
 
-Otherwise let `b=bit_length(magnitude)-bit_length(divisor)+1` and
-`g=ceil(b/16)`, with `1<=g<=8`. Initialize quotient zero, residue
-`magnitude>>(16*g)` and dividend `magnitude<<(128-16*g)`, all unsigned 128-bit.
-The omitted high prefix is strictly less than the divisor: it has at most
-`bit_length(divisor)-1` significant bits. Therefore its omitted quotient bits
-are exactly zero, and it is the exact residue obtained by processing that
-prefix. Consume the remaining `16*g` bits MSB first, up to four exact
-base-65536 quotient digits per clock. A shift by 128 yields zero, so `g=8` covers the
-full-width case without a reversed select or a narrowed operand.
-
-For divisor D, capture `s=max(bit_length(D)-48,0)` and `d=D>>s`.
-Each digit forms the unsigned 144-bit `T=residue*65536+next_16_bits`,
-then computes the candidate `qhat=floor((T>>s)/d)` using explicitly unsigned
-64-bit operands. For s=0 this is already the exact digit: D fits 48 bits,
-residue<D, and T fits 64 bits. For s>0, `2^47<=d<2^48` and
-`T<D*65536`, so `T>>s<2^64`; the selected 64-bit numerator is lossless.
-The exact digit q is below 65536. Since T>=q*D, qhat>=q.
-Also `T<(q+1)*D` and `D<(d+1)*2^s` imply
-`qhat<(q+1)*(1+1/d)<q+2`; thus qhat is at most q+1.
-The candidate can be 65536 and is retained in 17 bits, not prematurely
-truncated to a digit. Form `P=qhat*D` explicitly in 145 unsigned bits.
-If P>T, subtract D from P and decrement qhat once. This yields the exact
-digit and residue T-P, with `0<=T-P<D`. Append the corrected low 16 digit
-bits to the 128-bit quotient, retain the exact 128-bit residue, and shift
-the dividend by 16. Only exact prefix bits are skipped; no reciprocal
-approximation, floating arithmetic or precision reduction is used.
-
-Each RUN edge initializes private working dividend, quotient, residue and digit
-count from the pre-edge registers, then executes four ordered digit steps,
-guarding each step with count<8. Each step consumes the working values from its
-predecessor, including that predecessor's correction; no step uses a stale
-registered residue. Count starts at 8-g. After ceil(g/4) RUN clocks, quotient
-and residue are the exact unsigned division result. Partial final groups never
-consume an extra digit. Only the final working values are registered.
+Otherwise let `b=bit_length(magnitude)-bit_length(divisor)+1`, with
+`1<=b<=128`. Initialize quotient zero, residue magnitude and bit index b-1.
+Each RUN edge compares the full residue against `divisor<<index`. If eligible,
+subtract that shifted divisor and set exactly that quotient bit; otherwise
+hold quotient/residue. Decrement the index only after the comparison, or enter
+ROUND after bit zero. The aligned divisor fits 128 bits because its highest
+bit never exceeds the magnitude's highest bit. The initial residue is below
+twice the first aligned divisor, and each subsequent residue is below twice
+the next aligned divisor. One subtraction per bit therefore suffices.
+The invariant `magnitude=quotient*divisor+residue` holds after every edge;
+after b RUN edges `0<=residue<divisor`. No runtime estimate division, digit
+chain, approximate quotient or narrowed operand remains.
 A separate rounding clock increments the 129-bit
 extended quotient exactly when `residue > divisor-residue`, or on equality
 with an odd quotient, then restores the sign. This comparison avoids overflow
 from doubling a 128-bit residue. The divider does not saturate: zero divisor
 or a rounded result outside signed-128 range produces held `out_error`.
 Owning stages apply the unchanged Q40 saturation only at the ledger's sites.
+The helper also exposes exact signed truncation `out_quotient` and
+`out_remainder`, held alongside the rounded result. The remainder has the
+numerator's sign and satisfies n=q*d+r. Nonlinear/rotary range reduction uses
+these outputs, not the rounded quotient. Negative exp arguments obtain floor
+division by subtracting one from the truncation quotient exactly when r<0;
+the corresponding nonnegative remainder is r+d. Trig reduction uses r directly
+and adjusts once to [-PI,PI]. These are private helper outputs, not top pins.
 Zero L2 roots and empty attention denominators retain their explicit exact-zero
 owner paths and do not issue an invalid divide.
 
 | Helper edge | Pre-edge condition / accepted event | Post-edge state |
 |---|---|---|
 | Reset | rst_n=0, asynchronously | IDLE; ready, valid, data and error outputs zero |
-| I | in_valid && in_ready | Capture operands/prefix; RUN for ceil(g/4) clocks, directly ROUND for exact shortcut, or held error for zero divisor |
-| I+1 through I+ceil(g/4) | RUN, only for non-shortcut division | Up to four exact ordered 16-bit digits, each with at most one correction; final edge registers all digits and enters ROUND |
-| I+ceil(g/4)+1, or I+1 for shortcut | ROUND | Register signed nearest-even result/error; HOLD and out_valid |
+| I | in_valid && in_ready | Capture operands/sign; RUN for b clocks, directly ROUND for exact shortcut, or held error for zero divisor |
+| I+1 through I+b | RUN, only for non-shortcut division | One full-width comparison/subtraction and quotient bit; final bit registers exact quotient/residue and enters ROUND |
+| I+b+1, or I+1 for shortcut | ROUND | Register signed nearest-even result/error; HOLD and out_valid |
 | Held result | out_valid && !out_ready | Result/error unchanged; no new input accepted |
 | H | out_valid && out_ready | IDLE post-edge; no same-edge input acceptance |
 | H+1 | Next in_valid && in_ready | Next operation may start |
@@ -397,6 +395,83 @@ The empty-denominator path uses FINISH_WAIT without a divider request.
 Only after all component captures does OUTPUT present its registered first
 beat. Helper errors propagate through the existing arithmetic-error channels.
 Reset cancels helper work along with its owning stage.
+
+### Timing-gate recovery: constant geometry and sequential assignment discipline
+
+`anvil_e2_const_divide` implements exact unsigned constant division using a
+64x64-to-128 reciprocal product, high-half estimate and one residual correction.
+Its reciprocal is computed only at elaboration. For d>1, let
+R=floor(2^64/d), q0=high64(n*R), r0=n-q0*d. Since the reciprocal error
+times n is strictly below one, q0 is either floor(n/d) or one less.
+If r0>=d, increment q0 and subtract d; otherwise retain both. The estimate
+never exceeds the exact quotient, so n-q0*d cannot underflow. This works
+for all unsigned 64-bit n, including zero and the maximum code. d=1 directly
+wires n/zero remainder; d=0 selects an executable PARAMETER ERROR diagnostic.
+No runtime division/modulo operator is present in this helper.
+
+Top-level image geometry and the spatial bridge apply this helper to
+`rows+kernel-1` and `cols+kernel-1` in 64 bits. Their product is widened to
+128 bits for validation. Attention computes local and full contiguous KV
+groups using separate elaboration-selected group divisors, then selects the
+appropriate quotient. Layer addressing and full/local selection use the
+exact unsigned-32 identity `floor(layer/6)=(layer*2863311531)>>34` with a
+64-bit product; `layer-6*quotient==5` selects full layers. Public layer
+indices, including invalid indices, do not narrow before error checking.
+Remaining source `/` and `%` expressions have parameter-only operands and
+are elaboration constants (shape checks, output dimensions, reciprocal and
+head-group constants), not runtime arithmetic cells.
+
+Patch embedding tracks patch row/column and RGB channel/dy/dx with explicit
+terminal comparisons. Element coordinates advance on MAC, reset on the final
+element, and remain fixed during memory stalls; patch coordinates advance
+only after a successful final-channel write response. Vision rotary uses
+token row/column counters advanced only after a token's Q/K/V materialization,
+rewound at the pass boundary. Axis selection compares the pair index with
+dim>>2, subtracting that quarter for the second axis; half sizes use shifts.
+The bridge tracks r0/c0 directly, stepping by kernel only after a successful
+final-output-channel soft-token write response, wrapping c0 at patch_cols.
+No power-of-two assumption is made for grid, patch or kernel dimensions.
+
+PLE scaling, spatial mean and sentence mean now have separate divider request
+and wait phases. Only accepted results write their numerical banks; divider
+errors propagate through the existing internal/arithmetic error path. The
+series helper computes one original numerator and divisor from stable parent
+registers, then waits for its own restoring divider. Its `step_valid` retires
+one rounded recurrence; the parent can then request the next. A zero tail or
+iteration beyond 18 bypasses division exactly. GELU's final division by two
+uses arithmetic right shift plus the signed nearest-even low-bit correction.
+The original multiplication/rounding order, zero shortcuts and +/-8 branches
+are unchanged. RoPE frequency ratio and angle modulus, and nonlinear LN2/trig
+reduction, use the registered full-width divider described above.
+
+All clocked blocks use nonblocking register updates only. Attention offsets,
+score differences and position differences are combinational wires. Norm
+square/root-step/weight-rounding work is fully assigned in a combinational
+process and captured only in the original consuming states. Nonlinear/root
+and rotary temporaries are wires or registered divider operands. No state
+depends on the procedural ordering of blocking assignments inside a clocked
+block; reset and error priority remain unchanged.
+
+Fresh Verifier execution must cover exact divider sign/tie/overflow cases,
+all quotient-bit lengths, truncation remainders and floor reductions; constant
+reciprocal correction and d=1; non-power-of-two coordinate wraps; all retained
+protocol/reset/scratch assertions; the fixed synthetic and 29-case official
+matrix; sensitivity; A/C Yosys synthesis; and the runtime timing-lint gate.
+Synthesis must independently establish no remaining runtime `$div`/`$mod`
+cells, including descendants. Internal cycle counts must be remeasured at
+10ns, never copied from historical results. Static elaboration alone establishes
+neither integer equivalence, numerical limits, synthesis results nor FPGA slack.
+
+### Historical implementation repair notes (non-normative)
+
+The following repair notes through the materialization ledger preserve earlier
+diagnoses and evidence links. Their uses of "now", "current", grouped quotient
+digits, bounded-native division or four-step combinational series refer to
+those earlier source snapshots. Those mechanisms are superseded by the
+current restoring-divider/registered-series and coordinate implementation
+above. Retained root grouping, caches, clock ownership and memory protocols
+remain as specified in the current tables. Historical budgets and outstanding
+claims are not new acceptance gates.
 
 ### Attention-owned divider clock-isolation candidate
 
@@ -1988,10 +2063,12 @@ The fresh receipt and Verifier handoff must explicitly identify the fresh
 execution-local comparison path; canonical-path association belongs to the
 shared runtime.
 
-Designer changes only the six RTL modules carrying the RMS parameter and these
-two design documents. The sole arithmetic change is the selectable RMS
-denominator addition; there is no new port, scratch region, precision sidecar
-or bypass. At most one fast static elaboration is performed before immediate
+The earlier epsilon amendment changed the six RMS-parameter RTL modules and
+these two design documents. The subsequent timing-gate repair additionally
+changes the arithmetic/index helpers and introduces `rtl/anvil_e2_const_divide.sv`;
+it preserves the admitted numerical equations and all RMS parameter routes.
+There is no new public port, scratch region, precision sidecar or bypass.
+At most one fast static elaboration is performed before immediate
 handoff to Verifier, with no Designer simulation, oracle or synthesis probe.
 Binary provenance validation, model execution, threshold measurements,
 regressions, sensitivity and synthesis remain independent Verifier work.

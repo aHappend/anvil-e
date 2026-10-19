@@ -1,0 +1,153 @@
+#! /usr/bin/vvp
+:ivl_version "12.0 (stable)";
+:ivl_delay_selection "TYPICAL";
+:vpi_time_precision + 0;
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/system.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/vhdl_sys.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/vhdl_textio.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/v2005_math.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/va_math.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/v2009.vpi";
+S_0x6423d20a1ae0 .scope package, "$unit" "$unit" 2 1;
+ .timescale 0 0;
+S_0x6423d20d9b30 .scope module, "anvil_e2_top" "anvil_e2_top" 3 1;
+ .timescale 0 0;
+    .port_info 0 /INPUT 1 "clk";
+    .port_info 1 /INPUT 1 "rst_n";
+    .port_info 2 /INPUT 1 "job_valid";
+    .port_info 3 /INPUT 2 "job_mode";
+    .port_info 4 /INPUT 32 "job_tokens";
+    .port_info 5 /INPUT 32 "job_patch_rows";
+    .port_info 6 /INPUT 32 "job_patch_cols";
+    .port_info 7 /INPUT 16 "job_output_dim";
+    .port_info 8 /INPUT 64 "weights_base";
+    .port_info 9 /INPUT 64 "vision_weights_base";
+    .port_info 10 /INPUT 64 "image_base";
+    .port_info 11 /INPUT 64 "tokens_base";
+    .port_info 12 /INPUT 64 "positions_base";
+    .port_info 13 /INPUT 64 "mask_base";
+    .port_info 14 /INPUT 64 "scratch_base";
+    .port_info 15 /INPUT 1 "mem_req_ready";
+    .port_info 16 /INPUT 1 "mem_rsp_valid";
+    .port_info 17 /INPUT 32 "mem_rsp_rdata";
+    .port_info 18 /INPUT 1 "mem_rsp_error";
+    .port_info 19 /INPUT 1 "emb_ready";
+    .port_info 20 /INPUT 1 "done_ready";
+    .port_info 21 /OUTPUT 1 "job_ready";
+    .port_info 22 /OUTPUT 1 "mem_req_valid";
+    .port_info 23 /OUTPUT 1 "mem_req_write";
+    .port_info 24 /OUTPUT 64 "mem_req_addr";
+    .port_info 25 /OUTPUT 32 "mem_req_wdata";
+    .port_info 26 /OUTPUT 1 "mem_rsp_ready";
+    .port_info 27 /OUTPUT 1 "emb_valid";
+    .port_info 28 /OUTPUT 32 "emb_data";
+    .port_info 29 /OUTPUT 16 "emb_index";
+    .port_info 30 /OUTPUT 1 "emb_last";
+    .port_info 31 /OUTPUT 1 "done_valid";
+    .port_info 32 /OUTPUT 4 "done_error";
+    .port_info 33 /OUTPUT 1 "busy";
+P_0x6423d20a28b0 .param/l "EMBED_DIM" 0 3 5, +C4<00000000000000000000000000000110>;
+P_0x6423d20a28f0 .param/l "FULL_HEAD_DIM" 0 3 7, +C4<00000000000000000000000000000100>;
+P_0x6423d20a2930 .param/l "FULL_KV_HEADS" 0 3 7, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2970 .param/l "LEGAL" 1 3 30, C4<0>;
+P_0x6423d20a29b0 .param/l "LOCAL_HEAD_DIM" 0 3 7, +C4<00000000000000000000000000000010>;
+P_0x6423d20a29f0 .param/l "LOCAL_KV_HEADS" 0 3 6, +C4<00000000000000000000000000000010>;
+P_0x6423d20a2a30 .param/l "MAX_SEQ_LEN" 0 3 8, +C4<00000000000001000000000000000000>;
+P_0x6423d20a2a70 .param/l "PATCH_SIZE" 0 3 3, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2ab0 .param/l "PLE_DIM" 0 3 4, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2af0 .param/l "POOL_KERNEL" 0 3 3, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2b30 .param/l "POSITION_EMBEDDING_SIZE" 0 3 6, +C4<00000000000000000010100000000000>;
+P_0x6423d20a2b70 .param/l "RMS_EPSILON_Q80" 0 3 9, C4<00000000000000000000000000000000000000000000000000000000000000000001000100000000000000000000000000000000000000000000000000000000>;
+P_0x6423d20a2bb0 .param/l "SLIDING_WINDOW" 0 3 8, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2bf0 .param/l "TEXT_FFN" 0 3 5, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2c30 .param/l "TEXT_HIDDEN" 0 3 4, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2c70 .param/l "TEXT_LAYERS" 0 3 4, +C4<00000000000000000000000000000000>;
+P_0x6423d20a2cb0 .param/l "TEXT_Q_HEADS" 0 3 6, +C4<00000000000000000000000000000100>;
+P_0x6423d20a2cf0 .param/l "VISION_FFN" 0 3 2, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2d30 .param/l "VISION_HEADS" 0 3 3, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2d70 .param/l "VISION_HEAD_DIM" 0 3 3, +C4<00000000000000000000000000000100>;
+P_0x6423d20a2db0 .param/l "VISION_HIDDEN" 0 3 2, +C4<00000000000000000000000000000100>;
+P_0x6423d20a2df0 .param/l "VISION_LAYERS" 0 3 2, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2e30 .param/l "VISION_SOFT_TOKENS" 0 3 4, +C4<00000000000000000000000000000001>;
+P_0x6423d20a2e70 .param/l "VOCAB_SIZE" 0 3 5, +C4<00000000000001000000000000000000>;
+L_0x735da36ce060 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d23ff3a0_0 .net "busy", 0 0, L_0x735da36ce060;  1 drivers
+o0x735da3a86048 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d23cf140_0 .net "clk", 0 0, o0x735da3a86048;  0 drivers
+L_0x735da36ce378 .functor BUFT 1, C4<0000>, C4<0>, C4<0>, C4<0>;
+v0x6423d23cefd0_0 .net "done_error", 3 0, L_0x735da36ce378;  1 drivers
+o0x735da3a860a8 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d23cf630_0 .net "done_ready", 0 0, o0x735da3a860a8;  0 drivers
+L_0x735da36ce330 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d23cf430_0 .net "done_valid", 0 0, L_0x735da36ce330;  1 drivers
+L_0x735da36ce258 .functor BUFT 1, C4<00000000000000000000000000000000>, C4<0>, C4<0>, C4<0>;
+v0x6423d23dfb70_0 .net/s "emb_data", 31 0, L_0x735da36ce258;  1 drivers
+L_0x735da36ce2a0 .functor BUFT 1, C4<0000000000000000>, C4<0>, C4<0>, C4<0>;
+v0x6423d23d8330_0 .net "emb_index", 15 0, L_0x735da36ce2a0;  1 drivers
+L_0x735da36ce2e8 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d23ff820_0 .net "emb_last", 0 0, L_0x735da36ce2e8;  1 drivers
+o0x735da3a86198 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d23cf2c0_0 .net "emb_ready", 0 0, o0x735da3a86198;  0 drivers
+L_0x735da36ce210 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d2373410_0 .net "emb_valid", 0 0, L_0x735da36ce210;  1 drivers
+o0x735da3a861f8 .functor BUFZ 64, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2372d00_0 .net "image_base", 63 0, o0x735da3a861f8;  0 drivers
+o0x735da3a86228 .functor BUFZ 2, C4<zz>; HiZ drive
+v0x6423d2372fa0_0 .net "job_mode", 1 0, o0x735da3a86228;  0 drivers
+o0x735da3a86258 .functor BUFZ 16, C4<zzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2373130_0 .net "job_output_dim", 15 0, o0x735da3a86258;  0 drivers
+o0x735da3a86288 .functor BUFZ 32, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d23726a0_0 .net "job_patch_cols", 31 0, o0x735da3a86288;  0 drivers
+o0x735da3a862b8 .functor BUFZ 32, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d23cecb0_0 .net "job_patch_rows", 31 0, o0x735da3a862b8;  0 drivers
+L_0x735da36ce018 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d23cee40_0 .net "job_ready", 0 0, L_0x735da36ce018;  1 drivers
+o0x735da3a86318 .functor BUFZ 32, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2372380_0 .net "job_tokens", 31 0, o0x735da3a86318;  0 drivers
+o0x735da3a86348 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d2371910_0 .net "job_valid", 0 0, o0x735da3a86348;  0 drivers
+o0x735da3a86378 .functor BUFZ 64, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d23717a0_0 .net "mask_base", 63 0, o0x735da3a86378;  0 drivers
+L_0x735da36ce138 .functor BUFT 1, C4<0000000000000000000000000000000000000000000000000000000000000000>, C4<0>, C4<0>, C4<0>;
+v0x6423d2372b90_0 .net "mem_req_addr", 63 0, L_0x735da36ce138;  1 drivers
+o0x735da3a863d8 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d2372060_0 .net "mem_req_ready", 0 0, o0x735da3a863d8;  0 drivers
+L_0x735da36ce0a8 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d23721f0_0 .net "mem_req_valid", 0 0, L_0x735da36ce0a8;  1 drivers
+L_0x735da36ce180 .functor BUFT 1, C4<00000000000000000000000000000000>, C4<0>, C4<0>, C4<0>;
+v0x6423d2372510_0 .net "mem_req_wdata", 31 0, L_0x735da36ce180;  1 drivers
+L_0x735da36ce0f0 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d23732c0_0 .net "mem_req_write", 0 0, L_0x735da36ce0f0;  1 drivers
+o0x735da3a86498 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d2371a90_0 .net "mem_rsp_error", 0 0, o0x735da3a86498;  0 drivers
+o0x735da3a864c8 .functor BUFZ 32, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2367220_0 .net "mem_rsp_rdata", 31 0, o0x735da3a864c8;  0 drivers
+L_0x735da36ce1c8 .functor BUFT 1, C4<0>, C4<0>, C4<0>, C4<0>;
+v0x6423d2367fa0_0 .net "mem_rsp_ready", 0 0, L_0x735da36ce1c8;  1 drivers
+o0x735da3a86528 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d23676d0_0 .net "mem_rsp_valid", 0 0, o0x735da3a86528;  0 drivers
+o0x735da3a86558 .functor BUFZ 64, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2372860_0 .net "positions_base", 63 0, o0x735da3a86558;  0 drivers
+o0x735da3a86588 .functor BUFZ 1, C4<z>; HiZ drive
+v0x6423d2371ec0_0 .net "rst_n", 0 0, o0x735da3a86588;  0 drivers
+o0x735da3a865b8 .functor BUFZ 64, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2371480_0 .net "scratch_base", 63 0, o0x735da3a865b8;  0 drivers
+o0x735da3a865e8 .functor BUFZ 64, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2371610_0 .net "tokens_base", 63 0, o0x735da3a865e8;  0 drivers
+o0x735da3a86618 .functor BUFZ 64, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2367540_0 .net "vision_weights_base", 63 0, o0x735da3a86618;  0 drivers
+o0x735da3a86648 .functor BUFZ 64, C4<zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz>; HiZ drive
+v0x6423d2324f10_0 .net "weights_base", 63 0, o0x735da3a86648;  0 drivers
+S_0x6423d20d9cc0 .scope generate, "invalid_parameters" "invalid_parameters" 3 50, 3 50 0, S_0x6423d20d9b30;
+ .timescale 0 0;
+    .scope S_0x6423d20d9cc0;
+T_0 ;
+    %vpi_call/w 3 300 "$fatal", 32'sb00000000000000000000000000000001, "PARAMETER ERROR: unsupported Anvil-E2 geometry" {0 0 0};
+    %end;
+    .thread T_0;
+# The file index is used to find the file name in the following table.
+:file_names 4;
+    "N/A";
+    "<interactive>";
+    "-";
+    "/data/sufeng/anvil-e2-line4/workspace_phase2/project/rtl/anvil_e2_top.sv";

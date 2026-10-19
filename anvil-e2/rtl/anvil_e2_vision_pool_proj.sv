@@ -19,7 +19,8 @@ module anvil_e2_vision_pool_proj #(
     output wire [3:0] done_error
 );
     localparam IDLE=0, READ_REQ=1, READ_RSP=2, MEAN=3,
-        WEIGHT_REQ=4, WEIGHT_RSP=5, MAC=6, WRITE_REQ=7, WRITE_RSP=8, DONE=9;
+        WEIGHT_REQ=4, WEIGHT_RSP=5, MAC=6, WRITE_REQ=7, WRITE_RSP=8, DONE=9,
+        MEAN_WAIT=10;
     reg [3:0] state, error_hold;
     reg [31:0] soft_token, channel, dy, dx, output_channel;
     reg signed [47:0] pooled [0:VISION_HIDDEN-1];
@@ -27,9 +28,16 @@ module anvil_e2_vision_pool_proj #(
     reg signed [47:0] value;
     reg signed [127:0] sum, accumulator;
     wire signed [79:0] product=pooled[channel]*weight;
-    wire [63:0] pooled_cols=(64'(patch_cols)+POOL_KERNEL-1)/POOL_KERNEL;
-    wire [63:0] r0=(64'(soft_token)/pooled_cols)*POOL_KERNEL;
-    wire [63:0] c0=(64'(soft_token)%pooled_cols)*POOL_KERNEL;
+    wire [63:0] pooled_cols, pooled_rows;
+    reg [63:0] r0, c0;
+    anvil_e2_const_divide #(.DIVISOR(POOL_KERNEL)) column_count (
+        .numerator(64'(patch_cols)+POOL_KERNEL-1),
+        .quotient(pooled_cols), .remainder()
+    );
+    anvil_e2_const_divide #(.DIVISOR(POOL_KERNEL)) row_count (
+        .numerator(64'(patch_rows)+POOL_KERNEL-1),
+        .quotient(pooled_rows), .remainder()
+    );
     wire [63:0] nr=(64'(patch_rows)-r0)<POOL_KERNEL ? 64'(patch_rows)-r0:POOL_KERNEL;
     wire [63:0] nc=(64'(patch_cols)-c0)<POOL_KERNEL ? 64'(patch_cols)-c0:POOL_KERNEL;
     function automatic signed [47:0] sat(input signed [127:0] x);
@@ -37,14 +45,15 @@ module anvil_e2_vision_pool_proj #(
         else if (x< -128'sd140737488355328) sat=48'sh800000000000;
         else sat=x[47:0];
     endfunction
-    function automatic signed [47:0] mean(input signed [127:0] x, input [63:0] n);
-        reg signed [127:0] m,q,r;
-        begin
-            m=x<0 ? -x:x; q=m/n; r=m-q*n;
-            if (r>n-r || (r==n-r && q[0])) q=q+1;
-            mean=sat(x<0 ? -q:q);
-        end
-    endfunction
+    wire divide_ready, divide_valid, divide_error;
+    wire signed [127:0] divide_data;
+    anvil_e2_divide divider (
+        .clk(clk), .rst_n(rst_n), .in_valid(state==MEAN),
+        .in_ready(divide_ready), .in_numerator(sum),
+        .in_denominator(128'(nr)*nc), .out_valid(divide_valid),
+        .out_ready(state==MEAN_WAIT), .out_data(divide_data),
+        .out_error(divide_error)
+    );
     function automatic signed [47:0] rounded(input signed [127:0] x);
         reg signed [127:0] q;
         begin
@@ -78,14 +87,16 @@ module anvil_e2_vision_pool_proj #(
         if (!rst_n) begin
             state<=IDLE; error_hold<=0; soft_token<=0; channel<=0; dy<=0; dx<=0;
             output_channel<=0; weight<=0; value<=0; sum<=0; accumulator<=0;
+            r0<=0; c0<=0;
         end else if (result_valid && result_ready && result_error) begin
             error_hold<=3; state<=DONE;
         end else case (state)
             IDLE: if (start_valid) begin
                 soft_token<=0; channel<=0; dy<=0; dx<=0; output_channel<=0;
                 sum<=0; accumulator<=0; error_hold<=0;
+                r0<=0; c0<=0;
                 if (patch_rows==0 || patch_cols==0 ||
-                    ((64'(patch_rows)+POOL_KERNEL-1)/POOL_KERNEL)*pooled_cols!=VISION_SOFT_TOKENS) begin
+                    128'(pooled_rows)*pooled_cols!=VISION_SOFT_TOKENS) begin
                     error_hold<=1; state<=DONE;
                 end else state<=READ_REQ;
             end
@@ -98,10 +109,14 @@ module anvil_e2_vision_pool_proj #(
                     else begin dy<=dy+1; state<=READ_REQ; end
                 end else begin dx<=dx+1; state<=READ_REQ; end
             end
-            MEAN: begin
-                pooled[channel]<=mean(sum,nr*nc); sum<=0;
-                if (channel==VISION_HIDDEN-1) begin channel<=0; state<=WEIGHT_REQ; end
-                else begin channel<=channel+1; state<=READ_REQ; end
+            MEAN: if (divide_ready) state<=MEAN_WAIT;
+            MEAN_WAIT: if (divide_valid) begin
+                if (divide_error) begin error_hold<=6; state<=DONE; end
+                else begin
+                    pooled[channel]<=sat(divide_data); sum<=0;
+                    if (channel==VISION_HIDDEN-1) begin channel<=0; state<=WEIGHT_REQ; end
+                    else begin channel<=channel+1; state<=READ_REQ; end
+                end
             end
             WEIGHT_REQ: if (cmd_ready) state<=WEIGHT_RSP;
             WEIGHT_RSP: if (result_valid) begin weight<=result_data; state<=MAC; end
@@ -118,7 +133,12 @@ module anvil_e2_vision_pool_proj #(
                 if (output_channel==TEXT_HIDDEN-1) begin
                     output_channel<=0;
                     if (soft_token==VISION_SOFT_TOKENS-1) state<=DONE;
-                    else begin soft_token<=soft_token+1; state<=READ_REQ; end
+                    else begin
+                        soft_token<=soft_token+1; state<=READ_REQ;
+                        if (c0+POOL_KERNEL>=64'(patch_cols)) begin
+                            c0<=0; r0<=r0+POOL_KERNEL;
+                        end else c0<=c0+POOL_KERNEL;
+                    end
                 end else begin output_channel<=output_channel+1; state<=WEIGHT_REQ; end
             end
             DONE: if (done_ready) state<=IDLE;

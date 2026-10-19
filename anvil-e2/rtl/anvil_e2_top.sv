@@ -100,6 +100,15 @@ module anvil_e2_top #(
         function automatic overflow(input [63:0] base, input [127:0] bytes);
             overflow=({64'd0,base}+bytes)>128'hffffffffffffffff;
         endfunction
+        wire [63:0] pooled_rows, pooled_cols;
+        anvil_e2_const_divide #(.DIVISOR(POOL_KERNEL)) row_count (
+            .numerator(64'(rows)+POOL_KERNEL-1),
+            .quotient(pooled_rows), .remainder()
+        );
+        anvil_e2_const_divide #(.DIVISOR(POOL_KERNEL)) column_count (
+            .numerator(64'(cols)+POOL_KERNEL-1),
+            .quotient(pooled_cols), .remainder()
+        );
         wire descriptor_bad=mode==3 || n==0 || n>MAX_SEQ_LEN || n>32'hffffffff ||
             !(output_dim==EMBED_DIM || output_dim==2*EMBED_DIM/3 ||
               output_dim==EMBED_DIM/3 || output_dim==EMBED_DIM/6) ||
@@ -108,8 +117,7 @@ module anvil_e2_top #(
             (text_tokens!=0 && (|ids[1:0] || |positions[1:0] || |masks[1:0])) ||
             (image_mode && (rows==0 || cols==0 || rows>POSITION_EMBEDDING_SIZE ||
                 cols>POSITION_EMBEDDING_SIZE || p>32'hffffffff ||
-                ((128'(rows)+POOL_KERNEL-1)/POOL_KERNEL)*
-                ((128'(cols)+POOL_KERNEL-1)/POOL_KERNEL)!=s ||
+                128'(pooled_rows)*pooled_cols!=s ||
                 |vision_weights[1:0] || |image[1:0] || VOCAB_SIZE<=258882));
         wire extent_bad=overflow(weights,weight_bytes) || overflow(scratch,scratch_bytes) ||
             (text_tokens!=0 && (overflow(ids,128'(text_tokens)*4) ||
