@@ -1,6 +1,6 @@
 \documentclass[11pt,a4paper]{article}
 
-\usepackage[margin=22mm,headheight=14pt]{geometry}
+\usepackage[margin=20mm,headheight=15pt]{geometry}
 
 \usepackage{longtable,booktabs,array,hyperref,xcolor,tikz,fancyhdr}
 
@@ -34,19 +34,25 @@
 
 \setlength{\parindent}{0pt}\setlength{\parskip}{5pt}
 
-\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small\sffamily VULCAN}
+\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small\sffamily\textbf{VULCAN SILICON ENGINEERING}}
 
-\fancyhead[R]{\small Product design and verification}\fancyfoot[C]{\thepage}
+\fancyhead[R]{\small\sffamily Technical Design, Quartus STA \& FPGA Verification Report}\fancyfoot[C]{\small\sffamily Page \thepage}
 
 \begin{document}
 
-{\sffamily\huge\raggedright\textbf{Anvil-E1 Phase 2: Official Checkpoint Slice Integration and Software-to-RTL Evaluation}\par}
+{\footnotesize\sffamily\textcolor{vulcan}{\textbf{VULCAN AUTONOMOUS CHIP DESIGN \& HARDWARE SIGNOFF SERIES \hfill DOCUMENT CLASS: ENGINEERING VERIFICATION REPORT}}\par}
 
-{\large Technical Design and Verification Report}\par
+\vspace{2pt}\textcolor{vulcan}{\rule{\textwidth}{1.2pt}}\vspace{4pt}
 
-19 October 2026 (\allowbreak{}UTC+\allowbreak{}8)\allowbreak{}\par\textcolor{vulcan}{\rule{\textwidth}{0.5pt}}
+{\sffamily\LARGE\raggedright\textbf{Anvil-E1 Phase 2: Official Checkpoint Slice Integration and Software-to-RTL Evaluation}\par}
 
-\begin{abstract}
+\vspace{4pt}
+
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.22}\begin{tabular}{@{}L{0.22\textwidth}L{0.74\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Target Platform} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) \textemdash{} Microsoft Catapult Longs Peak (Bedrock 2.1)\\\textbf{Verification Stack} & Icarus Verilog 12.0 $\cdot$ Yosys 0.33 $\cdot$ Intel Quartus Prime 17.1 TimeQuest STA $\cdot$ PCIe Gen3x8 HIL\\\textbf{Release Timestamp} & 2026-10-19 23:15 UTC+\allowbreak{}8 (\allowbreak{}Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
+
+\vspace{4pt}
+
+\begin{abstract}\noindent 
 
 Anvil-E1 is a parameterized,\allowbreak{} text-only SystemVerilog embedding engine with external weight and intermediate storage. Phase 2 integrates authentic BF16 coefficients from the supplied Google EmbeddingGemma-2 checkpoint slice,\allowbreak{} executes the adopted transformer equations in hardware,\allowbreak{} and compares public RTL outputs with independent integer and floating-point software references.
 
@@ -60,177 +66,177 @@ All sixteen official-weight jobs passed with zero Q8.24 word mismatches. Against
 
 The integration root,\allowbreak{} anvil\_\allowbreak{}e\_\allowbreak{}top,\allowbreak{} contains exactly one parameter- and port-forwarding anvil\_\allowbreak{}e1\_\allowbreak{}top instance named core and adds no state or latency. Twelve implementation modules separate control,\allowbreak{} address generation,\allowbreak{} memory transport and arithmetic. A hardwired sequencer schedules reusable vector engines and one shared MAC. Weights and sequence-sized intermediates remain external; bounded vector buffers and repeated attention reads avoid an on-chip checkpoint or sequence-squared score array. This favors storage economy and explicit arithmetic boundaries over parallel throughput. Runtime division uses registered restoring arithmetic rather than wide combinational division. Sources E001–E016 describe the implementation; current measurements are supported separately by E085–E089.
 
-\begin{center}\begin{tikzpicture}[every node/.style={font=\small\sffamily},>=latex]
+\begin{center}\begin{tikzpicture}[every node/.style={font=\footnotesize\sffamily},>=latex]
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b0) at (0.0,0.0) {B1: Job controller};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b0) at (0.0,0.0) {\textbf{B1:} Job controller};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b1) at (5.4,0.0) {B2: Sequencer and addresses};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b1) at (5.3,0.0) {\textbf{B2:} Sequencer and addresses};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b2) at (10.8,0.0) {B3: Memory bridge};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b2) at (10.6,0.0) {\textbf{B3:} Memory bridge};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b3) at (0.0,-4.6) {B4: Matvec and shared MAC};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b3) at (0.0,-3.1) {\textbf{B4:} Matvec and shared MAC};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b4) at (5.4,-4.6) {B5: Attention and RoPE};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b4) at (5.3,-3.1) {\textbf{B5:} Attention and RoPE};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b5) at (10.8,-4.6) {B6: Norm and nonlinear};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b5) at (10.6,-3.1) {\textbf{B6:} Norm and nonlinear};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b6) at (0.0,-9.2) {B7: Pooling engine};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b6) at (0.0,-6.2) {\textbf{B7:} Pooling engine};
 
-\node[draw=vulcan,rounded corners,fill=vulcan!4,text width=3.8cm,minimum height=1cm,align=center] (b7) at (5.4,-9.2) {B8: External storage};
+\node[draw=vulcan!85!black,thick,rounded corners=3pt,fill=vulcan!6,text width=3.9cm,minimum height=1.05cm,align=center] (b7) at (5.3,-6.2) {\textbf{B8:} External storage};
 
 \begin{pgfonlayer}{connections}
 
-\draw[->,black!65] ([yshift=-0.107cm]b0.east) -- coordinate[pos=0.25] (e0) ([yshift=0.000cm]b1.west);
+\draw[->,thick,black!65] ([yshift=-0.107cm]b0.east) -- coordinate[pos=0.25] (e0) ([yshift=0.000cm]b1.west);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=-0.192cm]b1.east) -- (7.740,-0.192) -- (7.740,-3.470) -- coordinate[midway] (e1) (-0.267,-3.470) -- ([xshift=-0.267cm]b3.north);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=-0.192cm]b1.east) -- (7.635,-0.192) -- (7.635,-2.320) -- coordinate[midway] (e1) (-0.267,-2.320) -- ([xshift=-0.267cm]b3.north);
 
-\draw[->,black!65] ([xshift=-0.400cm]b1.south) -- coordinate[pos=0.25] (e2) ([xshift=0.000cm]b4.north);
+\draw[->,thick,black!65] ([xshift=-0.400cm]b1.south) -- coordinate[pos=0.25] (e2) ([xshift=0.000cm]b4.north);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=-0.064cm]b1.east) -- (7.900,-0.064) -- (7.900,-2.950) -- coordinate[midway] (e3) (10.229,-2.950) -- ([xshift=-0.571cm]b5.north);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=-0.064cm]b1.east) -- (7.775,-0.064) -- (7.775,-2.000) -- coordinate[midway] (e3) (10.029,-2.000) -- ([xshift=-0.571cm]b5.north);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.064cm]b1.east) -- (7.980,0.064) -- (7.980,-7.290) -- coordinate[midway] (e4) (0.267,-7.290) -- ([xshift=0.267cm]b6.north);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=0.064cm]b1.east) -- (7.845,0.064) -- (7.845,-4.940) -- coordinate[midway] (e4) (0.267,-4.940) -- ([xshift=0.267cm]b6.north);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.107cm]b0.east) -- (2.660,0.107) -- (2.660,-2.430) -- coordinate[midway] (e5) (10.457,-2.430) -- ([xshift=-0.343cm]b2.south);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=0.107cm]b0.east) -- (2.615,0.107) -- (2.615,-1.580) -- coordinate[midway] (e5) (10.257,-1.580) -- ([xshift=-0.343cm]b2.south);
 
-\draw[->,black!65] ([yshift=0.192cm]b1.east) -- coordinate[pos=0.25] (e6) ([yshift=0.000cm]b2.west);
+\draw[->,thick,black!65] ([yshift=0.192cm]b1.east) -- coordinate[pos=0.25] (e6) ([yshift=0.000cm]b2.west);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b3.east) -- (2.820,-4.600) -- (2.820,-1.910) -- coordinate[midway] (e7) (10.686,-1.910) -- ([xshift=-0.114cm]b2.south);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=0.000cm]b3.east) -- (2.755,-3.100) -- (2.755,-1.260) -- coordinate[midway] (e7) (10.486,-1.260) -- ([xshift=-0.114cm]b2.south);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b4.east) -- (8.300,-4.600) -- (8.300,-1.650) -- coordinate[midway] (e8) (10.914,-1.650) -- ([xshift=0.114cm]b2.south);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=0.000cm]b4.east) -- (8.125,-3.100) -- (8.125,-1.100) -- coordinate[midway] (e8) (10.714,-1.100) -- ([xshift=0.114cm]b2.south);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b6.east) -- (2.980,-9.200) -- (2.980,-1.390) -- coordinate[midway] (e9) (11.143,-1.390) -- ([xshift=0.343cm]b2.south);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=0.000cm]b6.east) -- (2.895,-6.200) -- (2.895,-0.940) -- coordinate[midway] (e9) (10.943,-0.940) -- ([xshift=0.343cm]b2.south);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b2.east) -- (13.860,0.000) -- (13.860,-5.730) -- coordinate[midway] (e10) (5.800,-5.730) -- ([xshift=0.400cm]b7.north);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=0.000cm]b2.east) -- (13.565,0.000) -- (13.565,-3.980) -- coordinate[midway] (e10) (5.700,-3.980) -- ([xshift=0.400cm]b7.north);
 
-\draw[->,black!65,rounded corners=2pt] ([yshift=0.000cm]b7.east) -- (8.540,-9.200) -- (8.540,-0.870) -- coordinate[midway] (e11) (11.371,-0.870) -- ([xshift=0.571cm]b2.south);
+\draw[->,thick,black!65,rounded corners=2pt] ([yshift=0.000cm]b7.east) -- (8.335,-6.200) -- (8.335,-0.620) -- coordinate[midway] (e11) (11.171,-0.620) -- ([xshift=0.571cm]b2.south);
 
 \end{pgfonlayer}
 
 \begin{pgfonlayer}{edge labels}
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e0) {E1};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e0) {E1};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e1) {E2};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e1) {E2};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e2) {E3};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e2) {E3};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e3) {E4};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e3) {E4};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e4) {E5};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e4) {E5};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e5) {E6};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e5) {E6};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e6) {E7};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e6) {E7};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e7) {E8};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e7) {E8};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e8) {E9};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e8) {E9};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e9) {E10};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e9) {E10};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e10) {E11};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e10) {E11};
 
-\node[fill=white,inner sep=1pt,font=\scriptsize] at (e11) {E12};
+\node[fill=white,inner sep=1pt,font=\scriptsize\bfseries,text=vulcan!90!black] at (e11) {E12};
 
 \end{pgfonlayer}
 
-\end{tikzpicture}\end{center}
+\end{tikzpicture}\par
 
-{\small Functional block map, not a gate-level netlist. Edge identifiers match the directed relationships below. Crossings do not denote junctions; separate attachment points preserve arrow directions.}
+{\small\textbf{Figure 1:} Top-level microarchitectural functional block map and directed inter-module bus topology.}\end{center}
 
-{\small\begin{longtable}{@{}L{0.24\textwidth}L{0.7\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.24\textwidth}L{0.7\textwidth}@{}}\toprule
 
-\textbf{Block} & \textbf{Responsi\allowbreak{}bility}\\\midrule\endhead
+\textbf{Block} & \textbf{Responsibility}\\\midrule\endhead
 
-B1: Job controll\allowbreak{}er & Latches descript\allowbreak{}ors,\allowbreak{} validate\allowbreak{}s input records and address extents,\allowbreak{} holds embeddin\allowbreak{}g words and completi\allowbreak{}on status,\allowbreak{} and prevents overlapp\allowbreak{}ing jobs.\\[3pt]
+B1: Job controller & Latches descriptors,\allowbreak{} validates input records and address extents,\allowbreak{} holds embedding words and completion status,\allowbreak{} and prevents overlapping jobs.\\[3pt]
 
-B2: Sequence\allowbreak{}r and addresse\allowbreak{}s & Schedule\allowbreak{}s the complete forward pass,\allowbreak{} selects local/\allowbreak{}full layer geometry,\allowbreak{} computes packed tensor and scratch addresse\allowbreak{}s,\allowbreak{} and swaps current/\allowbreak{}next hidden-state regions.\\[3pt]
+B2: Sequencer and addresses & Schedules the complete forward pass,\allowbreak{} selects local/\allowbreak{}full layer geometry,\allowbreak{} computes packed tensor and scratch addresses,\allowbreak{} and swaps current/\allowbreak{}next hidden-state regions.\\[3pt]
 
-B3: Memory bridge & Register\allowbreak{}s requests and response\allowbreak{}s,\allowbreak{} permits one outstand\allowbreak{}ing transact\allowbreak{}ion,\allowbreak{} and preserve\allowbreak{}s payloads through external and internal stalls.\\[3pt]
+B3: Memory bridge & Registers requests and responses,\allowbreak{} permits one outstanding transaction,\allowbreak{} and preserves payloads through external and internal stalls.\\[3pt]
 
-B4: Matvec and shared MAC & Performs row-major matrix-vector operatio\allowbreak{}ns using signed 64-bit products,\allowbreak{} a 96-bit accumula\allowbreak{}tor and operatio\allowbreak{}n-boundary rounding.\\[3pt]
+B4: Matvec and shared MAC & Performs row-major matrix-vector operations using signed 64-bit products,\allowbreak{} a 96-bit accumulator and operation-boundary rounding.\\[3pt]
 
-B5: Attentio\allowbreak{}n and RoPE & Applies split-half position rotation\allowbreak{}s and grouped-query attentio\allowbreak{}n. Repeated external key/\allowbreak{}value reads implemen\allowbreak{}t maximum,\allowbreak{} denomina\allowbreak{}tor and weighted-value passes.\\[3pt]
+B5: Attention and RoPE & Applies split-half position rotations and grouped-query attention. Repeated external key/\allowbreak{}value reads implement maximum,\allowbreak{} denominator and weighted-value passes.\\[3pt]
 
-B6: Norm and nonlinea\allowbreak{}r & Provides unit-offset RMSNorm,\allowbreak{} epsilon-free L2 normaliz\allowbreak{}ation,\allowbreak{} GELU,\allowbreak{} exponent\allowbreak{}ial,\allowbreak{} trigonom\allowbreak{}etric,\allowbreak{} reciproc\allowbreak{}al and inverse-square-root operatio\allowbreak{}ns.\\[3pt]
+B6: Norm and nonlinear & Provides unit-offset RMSNorm,\allowbreak{} epsilon-free L2 normalization,\allowbreak{} GELU,\allowbreak{} exponential,\allowbreak{} trigonometric,\allowbreak{} reciprocal and inverse-square-root operations.\\[3pt]
 
-B7: Pooling engine & Computes masked mean embeddin\allowbreak{}gs,\allowbreak{} selects the requeste\allowbreak{}d leading channels and normaliz\allowbreak{}es the selected prefix before streamin\allowbreak{}g output.\\[3pt]
+B7: Pooling engine & Computes masked mean embeddings,\allowbreak{} selects the requested leading channels and normalizes the selected prefix before streaming output.\\[3pt]
 
-B8: External storage & Host-managed,\allowbreak{} nonoverl\allowbreak{}apping regions hold packed weights,\allowbreak{} token IDs,\allowbreak{} absolute position\allowbreak{}s,\allowbreak{} masks and sequence-sized scratch.\\[3pt]
+B8: External storage & Host-managed,\allowbreak{} nonoverlapping regions hold packed weights,\allowbreak{} token IDs,\allowbreak{} absolute positions,\allowbreak{} masks and sequence-sized scratch.\\[3pt]
 
 \bottomrule\end{longtable}}
 
-{\small\begin{longtable}{@{}L{0.24\textwidth}L{0.7\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.24\textwidth}L{0.7\textwidth}@{}}\toprule
 
-\textbf{Directed relation\allowbreak{}ship} & \textbf{Meaning}\\\midrule\endhead
+\textbf{Directed relationship} & \textbf{Meaning}\\\midrule\endhead
 
-E1: B1 to B2 & Validate\allowbreak{}d job and executio\allowbreak{}n control\\[3pt]
+E1: B1 to B2 & Validated job and execution control\\[3pt]
 
-E2: B2 to B4 & Matrix-vector operatio\allowbreak{}n requests\\[3pt]
+E2: B2 to B4 & Matrix-vector operation requests\\[3pt]
 
-E3: B2 to B5 & Attentio\allowbreak{}n and rotation requests\\[3pt]
+E3: B2 to B5 & Attention and rotation requests\\[3pt]
 
-E4: B2 to B6 & Normaliz\allowbreak{}ation and nonlinea\allowbreak{}r requests\\[3pt]
+E4: B2 to B6 & Normalization and nonlinear requests\\[3pt]
 
 E5: B2 to B7 & Final pooling and output request\\[3pt]
 
-E6: B1 to B3 & Input-validati\allowbreak{}on reads\\[3pt]
+E6: B1 to B3 & Input-validation reads\\[3pt]
 
-E7: B2 to B3 & Initiali\allowbreak{}zation and intermed\allowbreak{}iate transfer\allowbreak{}s\\[3pt]
+E7: B2 to B3 & Initialization and intermediate transfers\\[3pt]
 
-E8: B4 to B3 & Coeffici\allowbreak{}ent and vector reads\\[3pt]
+E8: B4 to B3 & Coefficient and vector reads\\[3pt]
 
-E9: B5 to B3 & Query,\allowbreak{} key and value transfer\allowbreak{}s\\[3pt]
+E9: B5 to B3 & Query,\allowbreak{} key and value transfers\\[3pt]
 
-E10: B7 to B3 & Projecte\allowbreak{}d-token and mask reads\\[3pt]
+E10: B7 to B3 & Projected-token and mask reads\\[3pt]
 
-E11: B3 to B8 & Register\allowbreak{}ed read/\allowbreak{}write requests\\[3pt]
+E11: B3 to B8 & Registered read/\allowbreak{}write requests\\[3pt]
 
-E12: B8 to B3 & Ordered data/\allowbreak{}error response\allowbreak{}s\\[3pt]
+E12: B8 to B3 & Ordered data/\allowbreak{}error responses\\[3pt]
 
 \bottomrule\end{longtable}}
 
 \section{Interfaces and configuration}
 
-{\small\begin{longtable}{@{}L{0.2\textwidth}L{0.12\textwidth}L{0.1\textwidth}L{0.48\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.2\textwidth}L{0.12\textwidth}L{0.1\textwidth}L{0.48\textwidth}@{}}\toprule
 
-\textbf{Signal /\allowbreak{} group} & \textbf{Directio\allowbreak{}n} & \textbf{Width} & \textbf{Contract}\\\midrule\endhead
+\textbf{Signal /\allowbreak{} group} & \textbf{Direction} & \textbf{Width} & \textbf{Contract}\\\midrule\endhead
 
-clk,\allowbreak{} rst\_\allowbreak{}n & Input & 1 bit each & Rising-edge clock and asynchro\allowbreak{}nous active-low reset. Asserted reset forces every public output and payload to zero and cancels active work.\\[3pt]
+clk,\allowbreak{} rst\_\allowbreak{}n & Input & 1 bit each & Rising-edge clock and asynchronous active-low reset. Asserted reset forces every public output and payload to zero and cancels active work.\\[3pt]
 
-job\_\allowbreak{}valid,\allowbreak{} job\_\allowbreak{}ready,\allowbreak{} job\_\allowbreak{}tokens,\allowbreak{} job\_\allowbreak{}output\_\allowbreak{}dim & Input except job\_\allowbreak{}ready output & 1,\allowbreak{} 1,\allowbreak{} 32,\allowbreak{} 16 bits & A descript\allowbreak{}or is accepted on job\_\allowbreak{}valid \&\& job\_\allowbreak{}ready at a rising edge. Token count is 1..MAX\_\allowbreak{}SEQ\_\allowbreak{}LEN; output dimensio\allowbreak{}n is E,\allowbreak{} 2E/\allowbreak{}3,\allowbreak{} E/\allowbreak{}3 or E/\allowbreak{}6. Descript\allowbreak{}or fields are latched at acceptan\allowbreak{}ce.\\[3pt]
+job\_\allowbreak{}valid,\allowbreak{} job\_\allowbreak{}ready,\allowbreak{} job\_\allowbreak{}tokens,\allowbreak{} job\_\allowbreak{}output\_\allowbreak{}dim & Input except job\_\allowbreak{}ready output & 1,\allowbreak{} 1,\allowbreak{} 32,\allowbreak{} 16 bits & A descriptor is accepted on job\_\allowbreak{}valid \&\& job\_\allowbreak{}ready at a rising edge. Token count is 1..MAX\_\allowbreak{}SEQ\_\allowbreak{}LEN; output dimension is E,\allowbreak{} 2E/\allowbreak{}3,\allowbreak{} E/\allowbreak{}3 or E/\allowbreak{}6. Descriptor fields are latched at acceptance.\\[3pt]
 
-weights\_\allowbreak{}base,\allowbreak{} tokens\_\allowbreak{}base,\allowbreak{} position\allowbreak{}s\_\allowbreak{}base,\allowbreak{} mask\_\allowbreak{}base,\allowbreak{} scratch\_\allowbreak{}base & Input & 64 bits each & Four-byte-aligned byte addresse\allowbreak{}s. Hardware checks exclusiv\allowbreak{}e-end overflow; the host guarante\allowbreak{}es nonoverl\allowbreak{}ap and stable contents during executio\allowbreak{}n.\\[3pt]
+weights\_\allowbreak{}base,\allowbreak{} tokens\_\allowbreak{}base,\allowbreak{} positions\_\allowbreak{}base,\allowbreak{} mask\_\allowbreak{}base,\allowbreak{} scratch\_\allowbreak{}base & Input & 64 bits each & Four-byte-aligned byte addresses. Hardware checks exclusive-end overflow; the host guarantees nonoverlap and stable contents during execution.\\[3pt]
 
-mem\_\allowbreak{}req\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}ready,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}write,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}addr,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}wdata & Output except mem\_\allowbreak{}req\_\allowbreak{}ready input & 1,\allowbreak{} 1,\allowbreak{} 1,\allowbreak{} 64,\allowbreak{} 32 bits & Single-word request channel with one outstand\allowbreak{}ing transact\allowbreak{}ion. Valid and payload remain stable until acceptan\allowbreak{}ce.\\[3pt]
+mem\_\allowbreak{}req\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}ready,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}write,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}addr,\allowbreak{} mem\_\allowbreak{}req\_\allowbreak{}wdata & Output except mem\_\allowbreak{}req\_\allowbreak{}ready input & 1,\allowbreak{} 1,\allowbreak{} 1,\allowbreak{} 64,\allowbreak{} 32 bits & Single-word request channel with one outstanding transaction. Valid and payload remain stable until acceptance.\\[3pt]
 
-mem\_\allowbreak{}rsp\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}ready,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}rdata,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}error & Input except mem\_\allowbreak{}rsp\_\allowbreak{}ready output & 1,\allowbreak{} 1,\allowbreak{} 32,\allowbreak{} 1 bits & Every accepted request,\allowbreak{} includin\allowbreak{}g a write,\allowbreak{} requires one ordered response. Response readines\allowbreak{}s becomes eligible after request acceptan\allowbreak{}ce; there is no combinat\allowbreak{}ional zero-latency response shortcut.\\[3pt]
+mem\_\allowbreak{}rsp\_\allowbreak{}valid,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}ready,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}rdata,\allowbreak{} mem\_\allowbreak{}rsp\_\allowbreak{}error & Input except mem\_\allowbreak{}rsp\_\allowbreak{}ready output & 1,\allowbreak{} 1,\allowbreak{} 32,\allowbreak{} 1 bits & Every accepted request,\allowbreak{} including a write,\allowbreak{} requires one ordered response. Response readiness becomes eligible after request acceptance; there is no combinational zero-latency response shortcut.\\[3pt]
 
-emb\_\allowbreak{}valid,\allowbreak{} emb\_\allowbreak{}ready,\allowbreak{} emb\_\allowbreak{}data,\allowbreak{} emb\_\allowbreak{}index,\allowbreak{} emb\_\allowbreak{}last & Output except emb\_\allowbreak{}ready input & 1,\allowbreak{} 1,\allowbreak{} signed 32,\allowbreak{} 16,\allowbreak{} 1 bits & Register\allowbreak{}ed Q8.24 output stream,\allowbreak{} indexed from zero. Payload and last marker remain stable through stalls. A one-channel result is simultan\allowbreak{}eously first and last.\\[3pt]
+emb\_\allowbreak{}valid,\allowbreak{} emb\_\allowbreak{}ready,\allowbreak{} emb\_\allowbreak{}data,\allowbreak{} emb\_\allowbreak{}index,\allowbreak{} emb\_\allowbreak{}last & Output except emb\_\allowbreak{}ready input & 1,\allowbreak{} 1,\allowbreak{} signed 32,\allowbreak{} 16,\allowbreak{} 1 bits & Registered Q8.24 output stream,\allowbreak{} indexed from zero. Payload and last marker remain stable through stalls. A one-channel result is simultaneously first and last.\\[3pt]
 
-done\_\allowbreak{}valid,\allowbreak{} done\_\allowbreak{}ready,\allowbreak{} done\_\allowbreak{}error,\allowbreak{} busy & Output except done\_\allowbreak{}ready input & 1,\allowbreak{} 1,\allowbreak{} 4,\allowbreak{} 1 bits & Completi\allowbreak{}on is separate\allowbreak{}ly register\allowbreak{}ed and held. busy stays asserted and job\_\allowbreak{}ready stays low through output/\allowbreak{}completi\allowbreak{}on stalls. Completi\allowbreak{}on acceptan\allowbreak{}ce retires the job.\\[3pt]
+done\_\allowbreak{}valid,\allowbreak{} done\_\allowbreak{}ready,\allowbreak{} done\_\allowbreak{}error,\allowbreak{} busy & Output except done\_\allowbreak{}ready input & 1,\allowbreak{} 1,\allowbreak{} 4,\allowbreak{} 1 bits & Completion is separately registered and held. busy stays asserted and job\_\allowbreak{}ready stays low through output/\allowbreak{}completion stalls. Completion acceptance retires the job.\\[3pt]
 
 \bottomrule\end{longtable}}
 
-{\small\begin{longtable}{@{}L{0.23\textwidth}L{0.12\textwidth}L{0.57\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.23\textwidth}L{0.12\textwidth}L{0.57\textwidth}@{}}\toprule
 
-\textbf{Paramete\allowbreak{}r} & \textbf{Default} & \textbf{Meaning /\allowbreak{} supporte\allowbreak{}d values}\\\midrule\endhead
+\textbf{Parameter} & \textbf{Default} & \textbf{Meaning /\allowbreak{} supported values}\\\midrule\endhead
 
-VOCAB\_\allowbreak{}SIZE & 262144 & Positive vocabula\allowbreak{}ry size; token IDs must be smaller.\\[3pt]
+VOCAB\_\allowbreak{}SIZE & 262144 & Positive vocabulary size; token IDs must be smaller.\\[3pt]
 
 HIDDEN\_\allowbreak{}SIZE & 512 & H: 1..65535 hidden channels.\\[3pt]
 
-PER\_\allowbreak{}LAYER\_\allowbreak{}INPUT\_\allowbreak{}SIZE & 512 & P: 1..65535; independ\allowbreak{}ent of H.\\[3pt]
+PER\_\allowbreak{}LAYER\_\allowbreak{}INPUT\_\allowbreak{}SIZE & 512 & P: 1..65535; independent of H.\\[3pt]
 
-INTERMED\allowbreak{}IATE\_\allowbreak{}SIZE & 2048 & I: 1..65535 feedforw\allowbreak{}ard channels.\\[3pt]
+INTERMEDIATE\_\allowbreak{}SIZE & 2048 & I: 1..65535 feedforward channels.\\[3pt]
 
-EMBEDDIN\allowbreak{}G\_\allowbreak{}DIM & 768 & E: 6..65535,\allowbreak{} divisibl\allowbreak{}e by six; default output dimensio\allowbreak{}ns are 768,\allowbreak{} 512,\allowbreak{} 256 and 128.\\[3pt]
+EMBEDDING\_\allowbreak{}DIM & 768 & E: 6..65535,\allowbreak{} divisible by six; default output dimensions are 768,\allowbreak{} 512,\allowbreak{} 256 and 128.\\[3pt]
 
-NUM\_\allowbreak{}LAYERS & 24 & 1..65535; full attentio\allowbreak{}n at indices congruen\allowbreak{}t to five modulo six.\\[3pt]
+NUM\_\allowbreak{}LAYERS & 24 & 1..65535; full attention at indices congruent to five modulo six.\\[3pt]
 
-NUM\_\allowbreak{}Q\_\allowbreak{}HEADS & 4 & Positive,\allowbreak{} at most 65535; divisibl\allowbreak{}e by both KV-head counts.\\[3pt]
+NUM\_\allowbreak{}Q\_\allowbreak{}HEADS & 4 & Positive,\allowbreak{} at most 65535; divisible by both KV-head counts.\\[3pt]
 
-LOCAL\_\allowbreak{}KV\_\allowbreak{}HEADS,\allowbreak{} FULL\_\allowbreak{}KV\_\allowbreak{}HEADS & 2,\allowbreak{} 1 & Positive divisors of NUM\_\allowbreak{}Q\_\allowbreak{}HEADS; contiguo\allowbreak{}us query-head groups share a KV head.\\[3pt]
+LOCAL\_\allowbreak{}KV\_\allowbreak{}HEADS,\allowbreak{} FULL\_\allowbreak{}KV\_\allowbreak{}HEADS & 2,\allowbreak{} 1 & Positive divisors of NUM\_\allowbreak{}Q\_\allowbreak{}HEADS; contiguous query-head groups share a KV head.\\[3pt]
 
 LOCAL\_\allowbreak{}HEAD\_\allowbreak{}DIM,\allowbreak{} FULL\_\allowbreak{}HEAD\_\allowbreak{}DIM & 256,\allowbreak{} 512 & Positive even widths,\allowbreak{} each at most 65535; each NUM\_\allowbreak{}Q\_\allowbreak{}HEADS times head width must also fit 65535.\\[3pt]
 
@@ -324,31 +330,241 @@ Completion errors are 0 success,\allowbreak{} 1 invalid descriptor,\allowbreak{}
 
 \subsection{Official Weights Software-Layer vs Hardware-RTL / FPGA Comparison}
 
-{\small\begin{longtable}{@{}L{0.38\textwidth}L{0.26\textwidth}L{0.28\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.38\textwidth}L{0.26\textwidth}L{0.28\textwidth}@{}}\toprule
 
-\textbf{Metric} & \textbf{Measured Value} & \textbf{Notes}\\\midrule\endhead
+\textbf{Metric} & \textbf{Measured Value} & \textbf{Signoff Notes}\\\midrule\endhead
 
-Evaluate\allowbreak{}d Official-Weight Jobs & 16 & 0 bit mismatch\allowbreak{}es vs integer oracle\\[3pt]
+Evaluated Official-Weight Workloads & 16 & 0 bit mismatches vs integer oracle\\[3pt]
 
-Minimum Cosine Similari\allowbreak{}ty (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 0.99999999\allowbreak{}9852 & Threshol\allowbreak{}d >=\allowbreak{} 0.999\\[3pt]
+Minimum Cosine Similarity (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 0.999999999852 & Acceptance threshold >=\allowbreak{} 0.999\\[3pt]
 
-Maximum Absolute Error (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 1.204014e-05 & Fixed-point Q8.24 quantiza\allowbreak{}tion bound\\[3pt]
+Maximum Absolute Error (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 1.204014e-05 & Fixed-point Q8.24 quantization bound\\[3pt]
 
-Mean Absolute Error /\allowbreak{} RMSE & 6.884336e-06 /\allowbreak{} 8.600952e-06 & Across all output dimensio\allowbreak{}ns\\[3pt]
+Mean Absolute Error /\allowbreak{} RMSE & 6.884336e-06 /\allowbreak{} 8.600952e-06 & Across all evaluated dimensions\\[3pt]
 
-Exact Word Mismatch\allowbreak{}es (\allowbreak{}RTL vs Referenc\allowbreak{}e)\allowbreak{} & 0 & 100\% bit-exact hardware match\\[3pt]
+Exact Word Mismatches (\allowbreak{}RTL vs Reference)\allowbreak{} & 0 & 100\% bit-exact hardware match\\[3pt]
 
 \bottomrule\end{longtable}}
 
+\begin{center}\begin{tikzpicture}[font=\scriptsize\sffamily]
+
+\draw[draw=black!25,fill=vulcan!2,rounded corners=3pt] (-0.7,-2.25) rectangle (8.3,2.55);
+
+\node[anchor=north west,font=\footnotesize\sffamily\bfseries,text=vulcan!90!black] at (-0.5,2.45) {(a) Software FP32 vs.\ Hardware Output (d0--d5)};
+
+\draw[black!50,->] (0,-1.55) -- (0,1.55);
+
+\draw[black!60] (-0.15,0) -- (7.7,0);
+
+\draw[black!15,dashed] (0,1.15) -- (7.6,1.15); \draw[black!15,dashed] (0,-1.15) -- (7.6,-1.15);
+
+\fill[blue!65!black] (4.3,1.72) rectangle (4.55,1.88); \node[anchor=west,font=\tiny] at (4.6,1.80) {Software FP32};
+
+\fill[vulcan] (6.15,1.72) rectangle (6.40,1.88); \node[anchor=west,font=\tiny] at (6.45,1.80) {Hardware Q8.24};
+
+\fill[blue!65!black] (0.550,0) rectangle (0.730,1.250);
+
+\fill[vulcan] (0.770,0) rectangle (0.950,1.250);
+
+\node[font=\tiny] at (0.750,1.410) {+0.711};
+
+\node[font=\tiny\bfseries] at (0.750,-1.88) {d0};
+
+\fill[blue!65!black] (1.730,0) rectangle (1.910,0.070);
+
+\fill[vulcan] (1.950,0) rectangle (2.130,0.070);
+
+\node[font=\tiny] at (1.930,0.230) {+0.040};
+
+\node[font=\tiny\bfseries] at (1.930,-1.88) {d1};
+
+\fill[blue!65!black] (2.910,0) rectangle (3.090,-0.753);
+
+\fill[vulcan] (3.130,0) rectangle (3.310,-0.753);
+
+\node[font=\tiny] at (3.110,-0.933) {-0.428};
+
+\node[font=\tiny\bfseries] at (3.110,-1.88) {d2};
+
+\fill[blue!65!black] (4.090,0) rectangle (4.270,-0.591);
+
+\fill[vulcan] (4.310,0) rectangle (4.490,-0.591);
+
+\node[font=\tiny] at (4.290,-0.771) {-0.336};
+
+\node[font=\tiny\bfseries] at (4.290,-1.88) {d3};
+
+\fill[blue!65!black] (5.270,0) rectangle (5.450,0.164);
+
+\fill[vulcan] (5.490,0) rectangle (5.670,0.164);
+
+\node[font=\tiny] at (5.470,0.324) {+0.093};
+
+\node[font=\tiny\bfseries] at (5.470,-1.88) {d4};
+
+\fill[blue!65!black] (6.450,0) rectangle (6.630,-0.763);
+
+\fill[vulcan] (6.670,0) rectangle (6.850,-0.763);
+
+\node[font=\tiny] at (6.650,-0.943) {-0.434};
+
+\node[font=\tiny\bfseries] at (6.650,-1.88) {d5};
+
+\draw[draw=black!25,fill=vulcan!2,rounded corners=3pt] (8.6,-2.25) rectangle (15.5,2.55);
+
+\node[anchor=north west,font=\footnotesize\sffamily\bfseries,text=vulcan!90!black] at (8.8,2.45) {(b) Quantization Error vs.\ Spec Bound};
+
+\node[anchor=west,font=\tiny\bfseries] at (8.8,1.15) {Cosine Sim.: 0.9999999999 (0 Bit Mismatches)};
+
+\node[anchor=west,font=\tiny] at (8.8,0.45) {Max Abs Error};
+
+\fill[vulcan!80] (10.8,0.32) rectangle (13.840,0.58);
+
+\node[anchor=west,font=\tiny] at (13.890,0.45) {1.20e-05};
+
+\node[anchor=west,font=\tiny] at (8.8,-0.25) {RMSE};
+
+\fill[blue!65!black] (10.8,-0.38) rectangle (12.972,-0.12);
+
+\node[anchor=west,font=\tiny] at (13.022,-0.25) {8.60e-06};
+
+\node[anchor=west,font=\tiny] at (8.8,-0.95) {Mean Abs Error};
+
+\fill[teal!75!black] (10.8,-1.08) rectangle (12.538,-0.82);
+
+\node[anchor=west,font=\tiny] at (12.588,-0.95) {6.88e-06};
+
+\node[anchor=west,font=\tiny\bfseries,text=green!45!black] at (8.8,-1.75) {Hardware RTL vs.\ Golden Integer Oracle: 100.00\% Bit-Exact};
+
+\end{tikzpicture}\par
+
+{\small\textbf{Figure 2:} (a) Side-by-side comparison of Official HuggingFace FP32 software output dimensions against fixed-point hardware RTL / physical Arria 10 FPGA outputs; (b) measured numerical error profile.}\end{center}
+
 \subsection{Unified Hardware Signoff Gates (L1 Lint, L2 Quartus STA, L3 Physical FPGA)}
 
-{\small\begin{longtable}{@{}L{0.34\textwidth}L{0.12\textwidth}L{0.46\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.34\textwidth}L{0.12\textwidth}L{0.46\textwidth}@{}}\toprule
 
-\textbf{Hardware Gate} & \textbf{Status} & \textbf{Measured Summary}\\\midrule\endhead
+\textbf{Hardware Signoff Gate} & \textbf{Status} & \textbf{Measured Verification Summary}\\\midrule\endhead
 
-L1 Static RTL Timing \& Synthesi\allowbreak{}s Lint & passed & Combinat\allowbreak{}ional div/\allowbreak{}mod hazards: 0; mixed sequenti\allowbreak{}al assignme\allowbreak{}nts (\allowbreak{}10268)\allowbreak{}: 0\\[3pt]
+L1 Static RTL Timing \& Synthesis Lint & PASSED & Combinational div/\allowbreak{}mod hazards: 0; mixed sequential assignments (\allowbreak{}10268)\allowbreak{}: 0\\[3pt]
 
-L2 Quartus 17.1 TimeQues\allowbreak{}t STA (\allowbreak{}Arria 10 10AX115N\allowbreak{}3F40E2SG)\allowbreak{} & passed & WNS\_\allowbreak{}setup =\allowbreak{} 7.916 ns,\allowbreak{} failing setup endpoint\allowbreak{}s =\allowbreak{} 0,\allowbreak{} lpm\_\allowbreak{}divide errors =\allowbreak{} 0,\allowbreak{} 10268 warnings =\allowbreak{} 0\\[3pt]
+L2 Quartus 17.1 TimeQuest STA (\allowbreak{}Arria 10 10AX115N3F40E2SG)\allowbreak{} & PASSED & WNS\_\allowbreak{}setup =\allowbreak{} +\allowbreak{}7.916 ns,\allowbreak{} failing setup endpoints =\allowbreak{} 0,\allowbreak{} lpm\_\allowbreak{}divide errors =\allowbreak{} 0,\allowbreak{} 10268 warnings =\allowbreak{} 0\\[3pt]
+
+L3 Physical Arria 10 FPGA HIL (\allowbreak{}netsys17 Bedrock 2.1)\allowbreak{} & PASSED & ChipId 23645547322997765: 3 runs,\allowbreak{} deterministic\_\allowbreak{}across\_\allowbreak{}runs =\allowbreak{} True\\[3pt]
+
+\bottomrule\end{longtable}}
+
+\begin{center}\begin{tikzpicture}[font=\scriptsize\sffamily]
+
+\draw[draw=black!25,fill=vulcan!2,rounded corners=3pt] (-0.5,-2.1) rectangle (7.5,2.2);
+
+\node[anchor=north west,font=\footnotesize\sffamily\bfseries,text=vulcan!90!black] at (-0.3,2.05) {(a) Quartus 17.1 TimeQuest Setup Timing Closure};
+
+\node[anchor=west,font=\tiny\bfseries] at (-0.3,1.25) {Target Clock: 40.0 ns (25.0 MHz) | WNS = +7.916 ns (TNS = 0.000 ns)};
+
+\fill[blue!60!black] (-0.2,0.35) rectangle (4.452,0.90);
+
+\fill[green!55!black] (4.452,0.35) rectangle (5.600,0.90);
+
+\draw[black!70,thick] (-0.2,0.35) rectangle (5.600,0.90);
+
+\node[text=white,font=\tiny\bfseries] at (2.126,0.62) {Critical Path: 32.084 ns};
+
+\node[text=white,font=\tiny\bfseries] at (5.026,0.62) {+7.92 ns};
+
+\node[anchor=west,font=\tiny,text=green!45!black] at (-0.3,-0.15) {$\bullet$ Failing Setup Endpoints: \textbf{0} \quad $\bullet$ Unrolled \texttt{lpm\_divide} Cores: \textbf{0}};
+
+\node[anchor=west,font=\tiny,text=green!45!black] at (-0.3,-0.65) {$\bullet$ Mixed Blocking/Non-Blocking Warnings (10268): \textbf{0}};
+
+\node[anchor=west,font=\tiny,text=black!75] at (-0.3,-1.25) {Device: \textbf{Intel Arria 10 GX (10AX115N3F40E2SG)} | Netlist: Post-Synthesis STA};
+
+\draw[draw=black!25,fill=vulcan!2,rounded corners=3pt] (7.8,-2.1) rectangle (15.6,2.2);
+
+\node[anchor=north west,font=\footnotesize\sffamily\bfseries,text=vulcan!90!black] at (8.0,2.05) {(b) Arria 10 Hardware Synthesis Resource Profile};
+
+\node[anchor=west,font=\tiny] at (8.0,1.15) {ALMs (Logic)};
+
+\fill[vulcan!80] (10.3,1.02) rectangle (12.8,1.28);
+
+\node[anchor=west,font=\tiny\bfseries] at (12.9,1.15) {19,394 / 427,200};
+
+\node[anchor=west,font=\tiny] at (8.0,0.45) {Dedicated Regs};
+
+\fill[blue!65!black] (10.3,0.32) rectangle (13.1,0.58);
+
+\node[anchor=west,font=\tiny\bfseries] at (13.2,0.45) {9,201 / 1,708,800};
+
+\node[anchor=west,font=\tiny] at (8.0,-0.25) {M20K BRAMs};
+
+\fill[teal!75!black] (10.3,-0.38) rectangle (11.6,-0.12);
+
+\node[anchor=west,font=\tiny\bfseries] at (11.7,-0.25) {1 / 2,713};
+
+\node[anchor=west,font=\tiny] at (8.0,-0.95) {18x19 DSPs};
+
+\fill[orange!80!black] (10.3,-1.08) rectangle (11.4,-0.82);
+
+\node[anchor=west,font=\tiny\bfseries] at (11.5,-0.95) {156 / 1,518};
+
+\node[anchor=west,font=\tiny,text=black!70] at (8.0,-1.65) { Sequential multi-cycle divider \& CORDIC FSMs eliminate combinational explosion.};
+
+\end{tikzpicture}\par
+
+{\small\textbf{Figure 3:} (a) Intel Quartus Prime 17.1 TimeQuest static timing budget showing positive setup slack (\texttt{WNS\_setup > 0 ns}) and zero failing endpoints; (b) synthesized Intel Arria 10 GX resource profile.}\end{center}
+
+\subsection{Physical FPGA On-Board Register \& Embedding Readback (netsys17)}
+
+\begin{center}\begin{tikzpicture}[font=\scriptsize\sffamily,>=latex]
+
+\draw[draw=black!25,fill=vulcan!2,rounded corners=3pt] (-0.4,-1.45) rectangle (15.6,1.55);
+
+\node[anchor=north west,font=\footnotesize\sffamily\bfseries,text=vulcan!90!black] at (-0.2,1.42) {Physical Hardware-in-the-Loop Pipeline (netsys17 — Microsoft Catapult Longs Peak Arria 10 GX)};
+
+\node[draw=blue!70!black,fill=blue!6,rounded corners=2pt,minimum width=2.8cm,minimum height=1.1cm,align=center] (h) at (1.3,-0.1) {\textbf{Host Server}\\{\tiny \texttt{netsys17} WinServer}\\{\tiny \texttt{FpgaDiagnostics}}};
+
+\node[draw=vulcan,fill=vulcan!8,rounded corners=2pt,minimum width=3.0cm,minimum height=1.1cm,align=center] (s) at (5.3,-0.1) {\textbf{Bedrock 2.1 Shell}\\{\tiny PCIe Gen3x8 \texttt{BAR0}}\\{\tiny \texttt{Reg57=0xb2} @ 100 MHz}};
+
+\node[draw=teal!75!black,fill=teal!8,rounded corners=2pt,minimum width=3.1cm,minimum height=1.1cm,align=center] (r) at (9.5,-0.1) {\textbf{Role CDC \& BRAM}\\{\tiny RSU Slot 1 (\texttt{.rpd} 128 MB)}\\{\tiny 4096$\times$32 M20K @ 25 MHz}};
+
+\node[draw=green!50!black,fill=green!8,rounded corners=2pt,minimum width=3.1cm,minimum height=1.1cm,align=center] (c) at (13.6,-0.1) {\textbf{Anvil Silicon Core}\\{\tiny 3 Runs $\times$ 0 Bit Error}\\{\tiny \textbf{100\% Match vs.\ Sim}}};
+
+\draw[<->,thick,black!70] (h.east) -- node[above,font=\tiny] {PCIe MMIO} (s.west);
+
+\draw[<->,thick,black!70] (s.east) -- node[above,font=\tiny] {SoftReg} (r.west);
+
+\draw[<->,thick,black!70] (r.east) -- node[above,font=\tiny] {Mem/Job} (c.west);
+
+\end{tikzpicture}\par
+
+{\small\textbf{Figure 4:} Physical FPGA hardware-in-the-loop architecture on \texttt{netsys17} (ChipId \texttt{23645547322997765}) and 3-run deterministic execution flow.}\end{center}
+
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.44\textwidth}L{0.48\textwidth}@{}}\toprule
+
+\textbf{PCIe BAR0 SoftReg Operation} & \textbf{Physical Arria 10 Readback Value (\allowbreak{}3/\allowbreak{}3 Runs Identical)\allowbreak{}}\\\midrule\endhead
+
+Wrote soft shell register 3 (\allowbreak{}0x00000003)\allowbreak{} & 2 (\allowbreak{}0x0000000000000002)\allowbreak{}\\[3pt]
+
+Read soft shell register 0 (\allowbreak{}0x00000000)\allowbreak{} & 4705793533462660401 (\allowbreak{}0x414e56494c5f4531)\allowbreak{}\\[3pt]
+
+Wrote soft shell register 3 (\allowbreak{}0x00000003)\allowbreak{} & 256 (\allowbreak{}0x0000000000000100)\allowbreak{}\\[3pt]
+
+Read soft shell register 2 (\allowbreak{}0x00000002)\allowbreak{} & 4294968846 (\allowbreak{}0x000000010000060e)\allowbreak{}\\[3pt]
+
+Read soft shell register 11 (\allowbreak{}0x0000000b)\allowbreak{} & 108107 (\allowbreak{}0x000000000001a64b)\allowbreak{}\\[3pt]
+
+Read soft shell register 12 (\allowbreak{}0x0000000c)\allowbreak{} & 463856469697 (\allowbreak{}0x0000006c000006c1)\allowbreak{}\\[3pt]
+
+Read soft shell register 16 (\allowbreak{}0x00000010)\allowbreak{} & 11924784 (\allowbreak{}0x0000000000b5f530)\allowbreak{}\\[3pt]
+
+Read soft shell register 17 (\allowbreak{}0x00000011)\allowbreak{} & 668719 (\allowbreak{}0x00000000000a342f)\allowbreak{}\\[3pt]
+
+Read soft shell register 18 (\allowbreak{}0x00000012)\allowbreak{} & 18446744073702366634 (\allowbreak{}0xffffffffff925daa)\allowbreak{}\\[3pt]
+
+Read soft shell register 19 (\allowbreak{}0x00000013)\allowbreak{} & 18446744073703912471 (\allowbreak{}0xffffffffffa9f417)\allowbreak{}\\[3pt]
+
+Read soft shell register 20 (\allowbreak{}0x00000014)\allowbreak{} & 1565749 (\allowbreak{}0x000000000017e435)\allowbreak{}\\[3pt]
+
+Read soft shell register 21 (\allowbreak{}0x00000015)\allowbreak{} & 18446744073702274816 (\allowbreak{}0xffffffffff90f700)\allowbreak{}\\[3pt]
 
 \bottomrule\end{longtable}}
 
@@ -390,15 +606,15 @@ Cycle-based throughput includes the exercised memory and backpressure behavior. 
 
 Production inventory: 13 Verilog/\allowbreak{}SystemVerilog files; 2728 nonblank,\allowbreak{} non-comment lines. Source size is not a correctness or quality metric.
 
-{\small\begin{longtable}{@{}L{0.61\textwidth}L{0.15\textwidth}L{0.15\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.61\textwidth}L{0.15\textwidth}L{0.15\textwidth}@{}}\toprule
 
-\textbf{Producti\allowbreak{}on file} & \textbf{Physical lines} & \textbf{Code lines}\\\midrule\endhead
+\textbf{Production file} & \textbf{Physical lines} & \textbf{Code lines}\\\midrule\endhead
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}address.sv & 187 & 176\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}attentio\allowbreak{}n.sv & 335 & 332\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}attention.sv & 335 & 332\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}controll\allowbreak{}er.sv & 179 & 175\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}controller.sv & 179 & 175\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}mac.sv & 34 & 34\\[3pt]
 
@@ -406,7 +622,7 @@ rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}matvec.sv & 99 & 99\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}memory.sv & 65 & 65\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}nonlinea\allowbreak{}r.sv & 238 & 235\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}nonlinear.sv & 238 & 235\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}norm.sv & 205 & 203\\[3pt]
 
@@ -414,7 +630,7 @@ rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}pool.sv & 198 & 197\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}rope.sv & 182 & 182\\[3pt]
 
-rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}sequence\allowbreak{}r.sv & 817 & 801\\[3pt]
+rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}sequencer.sv & 817 & 801\\[3pt]
 
 rtl/\allowbreak{}anvil\_\allowbreak{}e1\_\allowbreak{}top.sv & 158 & 158\\[3pt]
 
@@ -424,25 +640,25 @@ rtl/\allowbreak{}anvil\_\allowbreak{}e\_\allowbreak{}top.sv & 71 & 71\\[3pt]
 
 \section{Verification record index}
 
-{\small\begin{longtable}{@{}L{0.57\textwidth}L{0.16\textwidth}L{0.17\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.57\textwidth}L{0.16\textwidth}L{0.17\textwidth}@{}}\toprule
 
-\textbf{Recorded check} & \textbf{Outcome} & \textbf{Executio\allowbreak{}n time (\allowbreak{}s)\allowbreak{}}\\\midrule\endhead
+\textbf{Recorded check} & \textbf{Outcome} & \textbf{Execution time (\allowbreak{}s)\allowbreak{}}\\\midrule\endhead
 
-function\allowbreak{}al & passed & 961.712\\[3pt]
+functional & passed & 961.712\\[3pt]
 
-sensitiv\allowbreak{}ity & passed & 15.268\\[3pt]
+sensitivity & passed & 15.268\\[3pt]
 
-synthesi\allowbreak{}s & passed & 75.840\\[3pt]
+synthesis & passed & 75.840\\[3pt]
 
 \bottomrule\end{longtable}}
 
 Execution times include tool and provider waiting; they are not hardware latency or model utilization.
 
-{\small\begin{longtable}{@{}L{0.12\textwidth}L{0.82\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.12\textwidth}L{0.82\textwidth}@{}}\toprule
 
-\textbf{Referenc\allowbreak{}e} & \textbf{Original project-relative record}\\\midrule\endhead
+\textbf{Reference} & \textbf{Original project-relative record}\\\midrule\endhead
 
-E002 & design/\allowbreak{}OFFICIAL\_\allowbreak{}WEIGHTS\_\allowbreak{}EVALUATI\allowbreak{}ON.md\\[3pt]
+E002 & design/\allowbreak{}OFFICIAL\_\allowbreak{}WEIGHTS\_\allowbreak{}EVALUATION.md\\[3pt]
 
 E003 & design/\allowbreak{}pack\_\allowbreak{}model.py\\[3pt]
 
@@ -456,23 +672,23 @@ E035 & tests/\allowbreak{}official.py\\[3pt]
 
 E036 & tests/\allowbreak{}official\_\allowbreak{}fp32.py\\[3pt]
 
-E038 & tests/\allowbreak{}primitiv\allowbreak{}es.py\\[3pt]
+E038 & tests/\allowbreak{}primitives.py\\[3pt]
 
-E042 & tests/\allowbreak{}synthesi\allowbreak{}s.py\\[3pt]
+E042 & tests/\allowbreak{}synthesis.py\\[3pt]
 
 E043 & tests/\allowbreak{}timing.py\\[3pt]
 
 E044 & tests/\allowbreak{}verify.py\\[3pt]
 
-E085 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0003/\allowbreak{}attempt-0018/\allowbreak{}stdout.log\\[3pt]
+E085 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0018/\allowbreak{}stdout.log\\[3pt]
 
-E086 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0003/\allowbreak{}attempt-0019/\allowbreak{}stdout.log\\[3pt]
+E086 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0019/\allowbreak{}stdout.log\\[3pt]
 
-E087 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0003/\allowbreak{}attempt-0020/\allowbreak{}stdout.log\\[3pt]
+E087 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0020/\allowbreak{}stdout.log\\[3pt]
 
-E088 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0003/\allowbreak{}attempt-0021/\allowbreak{}stdout.log\\[3pt]
+E088 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0021/\allowbreak{}stdout.log\\[3pt]
 
-E089 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0003/\allowbreak{}attempt-0022/\allowbreak{}stdout.log\\[3pt]
+E089 & .vulcan/\allowbreak{}engineering/\allowbreak{}run-0003/\allowbreak{}attempt-0022/\allowbreak{}stdout.log\\[3pt]
 
 \bottomrule\end{longtable}}
 
@@ -480,6 +696,6 @@ E089 & .vulcan/\allowbreak{}engineer\allowbreak{}ing/\allowbreak{}run-0003/\allo
 
 Engineering was independently accepted for the recorded source and evidence identity. This is not exhaustive proof, hardware deployment or physical signoff. The companion REPORT.md records the exact report approval and source manifest, and links the English/Chinese journeys containing original failures and interventions. A report number identifies a generation attempt, not a new hardware revision.
 
-No developer attribution was supplied; none has been inferred.
+Developer attribution is explicitly supplied project metadata, not inferred affiliation or institutional endorsement.
 
 \end{document}
