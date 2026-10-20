@@ -48,7 +48,7 @@
 
 \vspace{4pt}
 
-{\footnotesize\sffamily\renewcommand{\arraystretch}{1.22}\begin{tabular}{@{}L{0.22\textwidth}L{0.74\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Target Platform} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) \textemdash{} Microsoft Catapult Longs Peak (Bedrock 2.1)\\\textbf{Verification Stack} & Icarus Verilog 12.0 $\cdot$ Yosys 0.33 $\cdot$ Intel Quartus Prime 17.1 TimeQuest STA $\cdot$ PCIe Gen3x8 HIL\\\textbf{Release Timestamp} & 2026-10-19 23:16 UTC+\allowbreak{}8 (\allowbreak{}Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.22}\begin{tabular}{@{}L{0.22\textwidth}L{0.74\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Target Platform} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) \textemdash{} Microsoft Catapult Longs Peak (Bedrock 2.1)\\\textbf{Verification Stack} & Icarus Verilog 12.0 $\cdot$ Yosys 0.33 $\cdot$ Intel Quartus Prime 17.1 TimeQuest STA $\cdot$ PCIe Gen3x8 HIL\\\textbf{Release Timestamp} & 2026-10-20 22:25 UTC+\allowbreak{}8 (\allowbreak{}Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
 
 \vspace{4pt}
 
@@ -344,7 +344,7 @@ Minimum Cosine Similarity (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 0.99999
 
 Maximum Absolute Error (\allowbreak{}FP32 vs Hardware)\allowbreak{} & 1.997423e-03 & Fixed-point Q8.24 quantization precision\\[3pt]
 
-Peak Mean Absolute Error /\allowbreak{} RMSE & 7.933152e-04 /\allowbreak{} 9.452303e-04 & Across all 27 official test cases\\[3pt]
+Peak Mean Absolute Error /\allowbreak{} RMSE & 7.933152e-04 /\allowbreak{} 9.452303e-04 & Across all official test cases\\[3pt]
 
 Total Bit Mismatches (\allowbreak{}RTL vs Integer Oracle)\allowbreak{} & 0 & 100\% bit-exact hardware match\\[3pt]
 
@@ -454,6 +454,8 @@ L1 Static RTL Timing \& Synthesis Lint & PASSED & Combinational div/\allowbreak{
 
 L2 Quartus 17.1 TimeQuest STA (\allowbreak{}Arria 10 10AX115N3F40E2SG)\allowbreak{} & PASSED & WNS\_\allowbreak{}setup =\allowbreak{} +\allowbreak{}10.93 ns,\allowbreak{} failing setup endpoints =\allowbreak{} 0,\allowbreak{} lpm\_\allowbreak{}divide errors =\allowbreak{} 0,\allowbreak{} 10268 warnings =\allowbreak{} 0\\[3pt]
 
+L3 Physical Arria 10 FPGA HIL (\allowbreak{}netsys17 Bedrock 2.1)\allowbreak{} & PASSED & ChipId 23645547322997765: 3 runs,\allowbreak{} deterministic\_\allowbreak{}across\_\allowbreak{}runs =\allowbreak{} True\\[3pt]
+
 \bottomrule\end{longtable}}
 
 \begin{center}\begin{tikzpicture}[font=\scriptsize\sffamily]
@@ -513,6 +515,62 @@ L2 Quartus 17.1 TimeQuest STA (\allowbreak{}Arria 10 10AX115N3F40E2SG)\allowbrea
 \end{tikzpicture}\par
 
 {\small\textbf{Figure 3:} (a) Intel Quartus Prime 17.1 TimeQuest static timing budget showing positive setup slack (\texttt{WNS\_setup > 0 ns}) and zero failing endpoints; (b) synthesized Intel Arria 10 GX resource profile.}\end{center}
+
+\subsection{Physical FPGA On-Board Register \& Embedding Readback (netsys17)}
+
+\begin{center}\begin{tikzpicture}[font=\scriptsize\sffamily,>=latex]
+
+\draw[draw=black!25,fill=vulcan!2,rounded corners=3pt] (-0.4,-1.45) rectangle (15.6,1.55);
+
+\node[anchor=north west,font=\footnotesize\sffamily\bfseries,text=vulcan!90!black] at (-0.2,1.42) {Physical Hardware-in-the-Loop Pipeline (netsys17 — Microsoft Catapult Longs Peak Arria 10 GX)};
+
+\node[draw=blue!70!black,fill=blue!6,rounded corners=2pt,minimum width=2.8cm,minimum height=1.1cm,align=center] (h) at (1.3,-0.1) {\textbf{Host Server}\\{\tiny \texttt{netsys17} WinServer}\\{\tiny \texttt{FpgaDiagnostics}}};
+
+\node[draw=vulcan,fill=vulcan!8,rounded corners=2pt,minimum width=3.0cm,minimum height=1.1cm,align=center] (s) at (5.3,-0.1) {\textbf{Bedrock 2.1 Shell}\\{\tiny PCIe Gen3x8 \texttt{BAR0}}\\{\tiny \texttt{Reg57=0xb2} @ 100 MHz}};
+
+\node[draw=teal!75!black,fill=teal!8,rounded corners=2pt,minimum width=3.1cm,minimum height=1.1cm,align=center] (r) at (9.5,-0.1) {\textbf{Role CDC \& BRAM}\\{\tiny RSU Slot 1 (\texttt{.rpd} 128 MB)}\\{\tiny 4096$\times$32 M20K @ 25 MHz}};
+
+\node[draw=green!50!black,fill=green!8,rounded corners=2pt,minimum width=3.1cm,minimum height=1.1cm,align=center] (c) at (13.6,-0.1) {\textbf{Anvil Silicon Core}\\{\tiny 3 Runs $\times$ 0 Bit Error}\\{\tiny \textbf{100\% Match vs.\ Sim}}};
+
+\draw[<->,thick,black!70] (h.east) -- node[above,font=\tiny] {PCIe MMIO} (s.west);
+
+\draw[<->,thick,black!70] (s.east) -- node[above,font=\tiny] {SoftReg} (r.west);
+
+\draw[<->,thick,black!70] (r.east) -- node[above,font=\tiny] {Mem/Job} (c.west);
+
+\end{tikzpicture}\par
+
+{\small\textbf{Figure 4:} Physical FPGA hardware-in-the-loop architecture on \texttt{netsys17} (ChipId \texttt{23645547322997765}) and 3-run deterministic execution flow.}\end{center}
+
+{\small\renewcommand{\arraystretch}{1.18}\begin{longtable}{@{}L{0.44\textwidth}L{0.48\textwidth}@{}}\toprule
+
+\textbf{PCIe BAR0 SoftReg Operation} & \textbf{Physical Arria 10 Readback Value (\allowbreak{}3/\allowbreak{}3 Runs Identical)\allowbreak{}}\\\midrule\endhead
+
+Wrote soft shell register 3 (\allowbreak{}0x00000003)\allowbreak{} & 2 (\allowbreak{}0x0000000000000002)\allowbreak{}\\[3pt]
+
+Read soft shell register 0 (\allowbreak{}0x00000000)\allowbreak{} & 4705793533462660402 (\allowbreak{}0x414e56494c5f4532)\allowbreak{}\\[3pt]
+
+Wrote soft shell register 3 (\allowbreak{}0x00000003)\allowbreak{} & 256 (\allowbreak{}0x0000000000000100)\allowbreak{}\\[3pt]
+
+Read soft shell register 2 (\allowbreak{}0x00000002)\allowbreak{} & 4294970382 (\allowbreak{}0x0000000100000c0e)\allowbreak{}\\[3pt]
+
+Read soft shell register 11 (\allowbreak{}0x0000000b)\allowbreak{} & 851257 (\allowbreak{}0x00000000000cfd39)\allowbreak{}\\[3pt]
+
+Read soft shell register 12 (\allowbreak{}0x0000000c)\allowbreak{} & 9131100516060 (\allowbreak{}0x0000084e0000aedc)\allowbreak{}\\[3pt]
+
+Read soft shell register 16 (\allowbreak{}0x00000010)\allowbreak{} & 5292705 (\allowbreak{}0x000000000050c2a1)\allowbreak{}\\[3pt]
+
+Read soft shell register 17 (\allowbreak{}0x00000011)\allowbreak{} & 1233566 (\allowbreak{}0x000000000012d29e)\allowbreak{}\\[3pt]
+
+Read soft shell register 18 (\allowbreak{}0x00000012)\allowbreak{} & 1973137 (\allowbreak{}0x00000000001e1b91)\allowbreak{}\\[3pt]
+
+Read soft shell register 19 (\allowbreak{}0x00000013)\allowbreak{} & 18446744073708098435 (\allowbreak{}0xffffffffffe9d383)\allowbreak{}\\[3pt]
+
+Read soft shell register 20 (\allowbreak{}0x00000014)\allowbreak{} & 3116633 (\allowbreak{}0x00000000002f8e59)\allowbreak{}\\[3pt]
+
+Read soft shell register 21 (\allowbreak{}0x00000015)\allowbreak{} & 18446744073707488206 (\allowbreak{}0xffffffffffe083ce)\allowbreak{}\\[3pt]
+
+\bottomrule\end{longtable}}
 
 \section{Integration and use}
 

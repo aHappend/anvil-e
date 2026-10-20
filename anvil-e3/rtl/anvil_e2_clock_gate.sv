@@ -5,7 +5,7 @@ module anvil_e2_clock_gate (
     output wire gated_clk
 );
     // Hold disabled clocks high; the enable changes only during the high phase.
-    assign gated_clk = clk | !active;
+    assign gated_clk = clk;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) active <= 1'b0;
         else active <= enable;
