@@ -42,7 +42,7 @@ module anvil_e1_attention #(
         MASKREQ=5, MASKRSP=6, KPOSREQ=7, KPOSRSP=8, KREQ=9, KRSP=10,
         DOT=11, SCORE=12, EXPREQ=13, EXPRSP=14, VREQ=15, VRSP=16,
         PRODUCT=17, WEIGHT=18, NEXTKEY=19, FINISH=20, OUTPUT=21, DONE=22,
-        DIVIDE=23, SCORE_SAVE=24, FINISH_SAVE=25;
+        DIVIDE=23, SCORE_SAVE=24, FINISH_SAVE=25, DIV_DONE=26;
     reg [4:0] state;
     reg [31:0] tokens, query, head, kv_head, dim, key, component, channel;
     reg [31:0] query_position;
@@ -52,7 +52,7 @@ module anvil_e1_attention #(
     reg signed [31:0] q_values [0:DM-1];
     reg signed [95:0] weighted [0:DM-1];
     reg signed [31:0] values [0:DM-1];
-    reg signed [31:0] operand, score_max, score_value, exponential;
+    reg signed [31:0] operand, score_max, score_value, exponential, div_sat_reg;
     reg signed [95:0] denominator;
     reg [3:0] error_hold;
     reg signed [31:0] data_hold;
@@ -64,7 +64,8 @@ module anvil_e1_attention #(
     reg [95:0] div_quotient, div_divisor;
     reg [96:0] div_remainder;
     reg div_negative;
-    reg [4:0] div_iteration, div_return;
+    reg [5:0] div_iteration;
+    reg [4:0] div_return;
     reg [95:0] div_next_quotient;
     reg [96:0] div_next_remainder;
     integer div_bit;
@@ -72,7 +73,7 @@ module anvil_e1_attention #(
         div_next_quotient=div_quotient;
         div_next_remainder=div_remainder;
         if (state==DIVIDE) begin
-            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+            for (div_bit=0; div_bit<2; div_bit=div_bit+1) begin
                 div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
                 div_next_quotient=div_next_quotient<<1;
                 if (div_next_remainder>={1'b0,div_divisor}) begin
@@ -146,7 +147,7 @@ module anvil_e1_attention #(
             end
         end
     endfunction
-    wire signed [31:0] saturated_score=saturate(div_result);
+    wire signed [31:0] saturated_score=div_sat_reg;
     wire signed [95:0] difference={{64{saturated_score[31]}},saturated_score}-
         {{64{score_max[31]}},score_max};
     task automatic finish_channel;
@@ -203,7 +204,7 @@ module anvil_e1_attention #(
             key<=0; component<=0; channel<=0; query_position<=0;
             full_mode<=0; found_key<=0; pass<=0;
             q_base<=0; k_base<=0; v_base<=0; position_base<=0; mask_base<=0;
-            operand<=0; score_max<=0; score_value<=0; exponential<=0;
+            operand<=0; score_max<=0; score_value<=0; exponential<=0; div_sat_reg<=0;
             denominator<=0; error_hold<=0; data_hold<=0; index_hold<=0; last_hold<=0;
             div_quotient<=0; div_divisor<=0; div_remainder<=0;
             div_negative<=0; div_iteration<=0; div_return<=IDLE;
@@ -268,8 +269,12 @@ module anvil_e1_attention #(
                 end
                 DIVIDE: begin
                     div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
-                    if (div_iteration==23) state<=div_return;
+                    if (div_iteration==47) state<=DIV_DONE;
                     else div_iteration<=div_iteration+1'b1;
+                end
+                DIV_DONE: begin
+                    div_sat_reg<=saturate(div_result);
+                    state<=div_return;
                 end
                 SCORE_SAVE: begin
                     score_value<=saturated_score;
@@ -319,7 +324,7 @@ module anvil_e1_attention #(
                     if (denominator==0) finish_channel(32'sd0);
                     else begin_divide(weighted[channel],denominator,FINISH_SAVE);
                 end
-                FINISH_SAVE: finish_channel(saturate(div_result));
+                FINISH_SAVE: finish_channel(div_sat_reg);
                 OUTPUT: if (out_ready) begin
                     if (channel==dim-1) state<=DONE;
                     else begin

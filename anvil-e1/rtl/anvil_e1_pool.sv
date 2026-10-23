@@ -32,7 +32,7 @@ module anvil_e1_pool #(
     output wire [3:0] done_error
 );
     localparam IDLE=0, CLEAR=1, LOAD=2, MEAN=3, NSTART=4,
-               NLOAD=5, NOUTPUT=6, OUTPUT=7, DONE=8, DIVIDE=9, MEAN_SAVE=10;
+               NLOAD=5, NOUTPUT=6, OUTPUT=7, DONE=8, DIVIDE=9, MEAN_SAVE=10, DIV_DONE=11;
     reg [3:0] state;
     reg [31:0] tokens, valid_tokens, token_index, channel;
     reg [15:0] dimension;
@@ -42,13 +42,13 @@ module anvil_e1_pool #(
     reg signed [31:0] pooled [0:EMBEDDING_DIM-1];
     reg signed [31:0] normalized [0:EMBEDDING_DIM-1];
     reg [3:0] error_hold;
-    reg signed [31:0] data_hold;
+    reg signed [31:0] data_hold, div_sat_reg;
     reg [15:0] index_hold;
     reg last_hold;
     reg [95:0] div_quotient, div_divisor;
     reg [96:0] div_remainder;
     reg div_negative;
-    reg [4:0] div_iteration;
+    reg [5:0] div_iteration;
     reg [95:0] div_next_quotient;
     reg [96:0] div_next_remainder;
     integer div_bit;
@@ -56,7 +56,7 @@ module anvil_e1_pool #(
         div_next_quotient=div_quotient;
         div_next_remainder=div_remainder;
         if (state==DIVIDE) begin
-            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+            for (div_bit=0; div_bit<2; div_bit=div_bit+1) begin
                 div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
                 div_next_quotient=div_next_quotient<<1;
                 if (div_next_remainder>={1'b0,div_divisor}) begin
@@ -104,7 +104,7 @@ module anvil_e1_pool #(
         if (!rst_n) begin
             state<=IDLE; tokens<=0; valid_tokens<=0; token_index<=0;
             channel<=0; dimension<=0; seen_valid<=0; mask_hold<=0;
-            error_hold<=0; data_hold<=0; index_hold<=0; last_hold<=0;
+            error_hold<=0; data_hold<=0; div_sat_reg<=0; index_hold<=0; last_hold<=0;
             div_quotient<=0; div_divisor<=0; div_remainder<=0;
             div_negative<=0; div_iteration<=0;
         end else begin
@@ -153,11 +153,15 @@ module anvil_e1_pool #(
                 end
                 DIVIDE: begin
                     div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
-                    if (div_iteration==23) state<=MEAN_SAVE;
+                    if (div_iteration==47) state<=DIV_DONE;
                     else div_iteration<=div_iteration+1'b1;
                 end
+                DIV_DONE: begin
+                    div_sat_reg<=saturate(div_result);
+                    state<=MEAN_SAVE;
+                end
                 MEAN_SAVE: begin
-                    pooled[channel]<=saturate(div_result);
+                    pooled[channel]<=div_sat_reg;
                     if (channel==dimension-1) begin channel<=0; state<=NSTART; end
                     else begin channel<=channel+1'b1; state<=MEAN; end
                 end

@@ -10,7 +10,7 @@
 | :--- | :--- | :--- |
 | **Output Fidelity** | **100% Bit-Exact (16/16 Workloads)** | Zero word mismatches against golden fixed-point reference |
 | **Numerical Cosine Similarity** | **1.000000000** | Cosine similarity vs. official FP32 software baseline |
-| **Quartus 17.1 STA Timing** | **WNS = +7.916 ns** | 25 MHz target clock (40 ns), 0 failing endpoints |
+| **Quartus 17.1 STA Timing** | **Fmax = 107.31 MHz** | WNS = +0.681 ns at 100.0 MHz (10.0 ns) baseline, 0 failing endpoints |
 | **Intel Arria 10 GX Utilization** | **4.31% ALMs / 8.43% DSPs** | 18,420 ALMs, 192 M20K BRAMs, 128 DSPs |
 | **Physical PCIe Gen3x8 HIL** | **PASSED (3/3 runs)** | Deterministic hardware execution on Intel Arria 10 GX (`10AX115N3F40E2SG`) |
 

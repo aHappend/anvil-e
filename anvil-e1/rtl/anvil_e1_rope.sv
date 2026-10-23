@@ -24,7 +24,8 @@ module anvil_e1_rope (
     localparam IDLE=0, SERIES=1, ANGLE=2, SINREQ=3, SINRSP=4,
         COSREQ=5, COSRSP=6, LO0=7, LO1=8, LOSAVE=9,
         HI0=10, HI1=11, HISAVE=12, HOLD=13, DIVIDE=14,
-        EXPONENT_SAVE=15, RANGE_SAVE=16, SERIES_SAVE=17, ANGLE_SAVE=18;
+        EXPONENT_SAVE=15, RANGE_SAVE=16, SERIES_SAVE=17, ANGLE_SAVE=18,
+        DIV_DONE=19, IDLE_DIV=20, SERIES_DIV=21, ANGLE_MUL=22, ANGLE_DIV=23;
     localparam signed [95:0] ONE=96'sd1099511627776,
         LN2=96'sd762123384786, PI=96'sd3454217652358,
         TWO_PI=96'sd6908435304715,
@@ -34,11 +35,14 @@ module anvil_e1_rope (
     reg [31:0] position;
     reg signed [31:0] lo, hi, sine, cosine, angle, result_lo, result_hi;
     reg signed [95:0] reduced, term, total, exponent_shift;
+    reg signed [95:0] init_num_reg, init_den_reg, series_num_reg, shifted_total_reg, angle_num_reg;
+    reg signed [95:0] div_result_reg, div_floor_reg, div_rem_reg;
     reg error_hold;
     reg [95:0] div_quotient, div_divisor;
     reg [96:0] div_remainder;
     reg div_negative, div_dividend_negative;
-    reg [4:0] div_iteration, div_return;
+    reg [5:0] div_iteration;
+    reg [4:0] div_return;
     reg [95:0] div_next_quotient;
     reg [96:0] div_next_remainder;
     integer div_bit;
@@ -46,7 +50,7 @@ module anvil_e1_rope (
         div_next_quotient=div_quotient;
         div_next_remainder=div_remainder;
         if (state==DIVIDE) begin
-            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+            for (div_bit=0; div_bit<2; div_bit=div_bit+1) begin
                 div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
                 div_next_quotient=div_next_quotient<<1;
                 if (div_next_remainder>={1'b0,div_divisor}) begin
@@ -121,6 +125,9 @@ module anvil_e1_rope (
             state<=IDLE; iteration<=0; position<=0; lo<=0; hi<=0;
             sine<=0; cosine<=0; angle<=0; result_lo<=0; result_hi<=0;
             reduced<=0; term<=0; total<=0; exponent_shift<=0; error_hold<=0;
+            init_num_reg<=0; init_den_reg<=0; series_num_reg<=0;
+            shifted_total_reg<=0; angle_num_reg<=0;
+            div_result_reg<=0; div_floor_reg<=0; div_rem_reg<=0;
             div_quotient<=0; div_divisor<=0; div_remainder<=0;
             div_negative<=0; div_dividend_negative<=0; div_iteration<=0; div_return<=IDLE;
         end else begin
@@ -130,34 +137,50 @@ module anvil_e1_rope (
                     error_hold<=0; result_lo<=0; result_hi<=0;
                     if (start_dim==0 || start_dim[0] || start_pair>=(start_dim>>1)) begin
                         error_hold<=1; state<=HOLD;
-                    end else begin_divide(
-                        (start_full ? LN_FULL:LN_LOCAL)*96'sd2*{64'd0,start_pair},
-                        {64'd0,start_dim},EXPONENT_SAVE);
+                    end else begin
+                        init_num_reg<=(start_full ? LN_FULL:LN_LOCAL)*96'sd2*{64'd0,start_pair};
+                        init_den_reg<={64'd0,start_dim};
+                        state<=IDLE_DIV;
+                    end
                 end
+                IDLE_DIV: begin_divide(init_num_reg,init_den_reg,EXPONENT_SAVE);
                 DIVIDE: begin
                     div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
-                    if (div_iteration==23) state<=div_return;
+                    if (div_iteration==47) state<=DIV_DONE;
                     else div_iteration<=div_iteration+1'b1;
                 end
-                EXPONENT_SAVE: begin_divide(-div_result,LN2,RANGE_SAVE);
+                DIV_DONE: begin
+                    div_result_reg<=div_result;
+                    div_floor_reg<=div_floor;
+                    div_rem_reg<=div_signed_remainder;
+                    state<=div_return;
+                end
+                EXPONENT_SAVE: begin_divide(-div_result_reg,LN2,RANGE_SAVE);
                 RANGE_SAVE: begin
-                    exponent_shift<=div_floor;
-                    reduced<=div_signed_remainder<0 ? div_signed_remainder+LN2:div_signed_remainder;
+                    exponent_shift<=div_floor_reg;
+                    reduced<=div_rem_reg<0 ? div_rem_reg+LN2:div_rem_reg;
                     term<=ONE; total<=ONE; iteration<=1; state<=SERIES;
                 end
                 SERIES: begin
-                    begin_divide(multiply_q40(term,reduced),{90'd0,iteration},SERIES_SAVE);
+                    series_num_reg<=multiply_q40(term,reduced);
+                    state<=SERIES_DIV;
                 end
+                SERIES_DIV: begin_divide(series_num_reg,{90'd0,iteration},SERIES_SAVE);
                 SERIES_SAVE: begin
-                    term<=div_result; total<=total+div_result;
+                    term<=div_result_reg; total<=total+div_result_reg;
                     if (iteration==18) state<=ANGLE;
                     else begin iteration<=iteration+1'b1; state<=SERIES; end
                 end
                 ANGLE: begin
-                    begin_divide((total>>>-exponent_shift)*{64'd0,position},
-                        TWO_PI,ANGLE_SAVE);
+                    shifted_total_reg<=total>>>-exponent_shift;
+                    state<=ANGLE_MUL;
                 end
-                ANGLE_SAVE: begin angle<=angle_q24(div_signed_remainder); state<=SINREQ; end
+                ANGLE_MUL: begin
+                    angle_num_reg<=shifted_total_reg*{64'd0,position};
+                    state<=ANGLE_DIV;
+                end
+                ANGLE_DIV: begin_divide(angle_num_reg,TWO_PI,ANGLE_SAVE);
+                ANGLE_SAVE: begin angle<=angle_q24(div_rem_reg); state<=SINREQ; end
                 SINREQ: if (nonlinear_ready) state<=SINRSP;
                 SINRSP: if (nonlinear_out_valid) begin
                     if (nonlinear_out_error) begin error_hold<=1; state<=HOLD; end

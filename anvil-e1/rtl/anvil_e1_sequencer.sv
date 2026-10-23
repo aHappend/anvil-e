@@ -41,7 +41,7 @@ module anvil_e1_sequencer #(
         VECTOR=15, VPRODUCT=16, VSAVE=17, VGELU_REQ=18, VGELU_RSP=19,
         ROPE_START=20, ROPE_RUN=21, ATT_START=22, ATT_RUN=23,
         POOL_START=24, POOL_FEED=25, POOL_WAIT=26, FLUSH=27, DONE=28,
-        DIVIDE=29, PROJECTION_SAVE=30;
+        DIVIDE=29, PROJECTION_SAVE=30, DIV_DONE=31;
     reg [4:0] state;
     reg [7:0] pc, return_pc;
     reg [31:0] token, layer, head, pair_index, index, count, columns;
@@ -122,7 +122,8 @@ module anvil_e1_sequencer #(
     reg [95:0] div_quotient;
     reg [96:0] div_remainder;
     reg div_negative;
-    reg [4:0] div_iteration;
+    reg [5:0] div_iteration;
+    reg signed [31:0] div_sat_reg;
     reg [95:0] div_next_quotient;
     reg [96:0] div_next_remainder;
     integer div_bit;
@@ -130,7 +131,7 @@ module anvil_e1_sequencer #(
         div_next_quotient=div_quotient;
         div_next_remainder=div_remainder;
         if (state==DIVIDE) begin
-            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+            for (div_bit=0; div_bit<2; div_bit=div_bit+1) begin
                 div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
                 div_next_quotient=div_next_quotient<<1;
                 if (div_next_remainder>={33'd0,H_ROOT}) begin
@@ -510,7 +511,7 @@ module anvil_e1_sequencer #(
                     bank_write_valid=1; bank_write_data=mac_rounded;
                 end
                 PROJECTION_SAVE: begin
-                    bank_write_valid=1; bank_write_data=saturate(div_result);
+                    bank_write_valid=1; bank_write_data=div_sat_reg;
                 end
                 VGELU_RSP: if (nout_valid && !nout_error) begin
                     bank_write_valid=1; bank_write_data=nout_data;
@@ -556,7 +557,7 @@ module anvil_e1_sequencer #(
         if (!rst_n) begin
             state<=IDLE; pc<=0; return_pc<=0; token<=0; layer<=0; head<=0;
             layer_phase<=0;
-            div_quotient<=0; div_remainder<=0; div_negative<=0; div_iteration<=0;
+            div_quotient<=0; div_remainder<=0; div_negative<=0; div_iteration<=0; div_sat_reg<=0;
             pair_index<=0; index<=0; count<=0; columns<=0; token_id<=0;
             position<=0; token_mask<=0; scalar<=0; norm_weight<=0;
             base_index<=0; read_target<=0; source_a<=0; source_b<=0;
@@ -767,8 +768,12 @@ module anvil_e1_sequencer #(
                 end
                 DIVIDE: begin
                     div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
-                    if (div_iteration==23) state<=PROJECTION_SAVE;
+                    if (div_iteration==47) state<=DIV_DONE;
                     else div_iteration<=div_iteration+1'b1;
+                end
+                DIV_DONE: begin
+                    div_sat_reg<=saturate(div_result);
+                    state<=PROJECTION_SAVE;
                 end
                 PROJECTION_SAVE: finish_element;
                 VPRODUCT: state<=VSAVE;

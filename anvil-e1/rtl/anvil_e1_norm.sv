@@ -19,7 +19,7 @@ module anvil_e1_norm #(
     output wire out_error
 );
     localparam IDLE=0, LOAD=1, SETUP=2, ROOT=3, PREPARE=4, HOLD=5,
-               DIVIDE=6, SETUP_SAVE=7, NORMALIZE=8;
+               DIVIDE=6, SETUP_SAVE=7, NORMALIZE=8, DIV_DONE=9, NORMALIZE_SAVE=10;
     localparam [95:0] EPSILON_Q48 = 96'd281474977;
     reg [3:0] state;
     reg [31:0] count, index;
@@ -39,8 +39,10 @@ module anvil_e1_norm #(
     reg [95:0] div_quotient, div_divisor;
     reg [96:0] div_remainder;
     reg div_negative;
-    reg [4:0] div_iteration;
+    reg [5:0] div_iteration;
     reg [3:0] div_return;
+    reg [95:0] div_rounded_reg;
+    reg signed [95:0] div_result_reg, norm_prod_reg;
     reg [95:0] div_next_quotient;
     reg [96:0] div_next_remainder;
     integer div_bit;
@@ -48,7 +50,7 @@ module anvil_e1_norm #(
         div_next_quotient=div_quotient;
         div_next_remainder=div_remainder;
         if (state==DIVIDE) begin
-            for (div_bit=0; div_bit<4; div_bit=div_bit+1) begin
+            for (div_bit=0; div_bit<2; div_bit=div_bit+1) begin
                 div_next_remainder={div_next_remainder[95:0],div_next_quotient[95]};
                 div_next_quotient=div_next_quotient<<1;
                 if (div_next_remainder>={1'b0,div_divisor}) begin
@@ -75,22 +77,17 @@ module anvil_e1_norm #(
             div_return<=next_state; state<=DIVIDE;
         end
     endtask
-    function automatic signed [31:0] apply_weight;
-        input signed [95:0] normalized;
-        input signed [31:0] weight_value;
-        input l2_mode;
-        reg signed [95:0] unit_weight, product, rounded;
+    function automatic signed [31:0] round_saturate_q24;
+        input signed [95:0] product;
+        reg signed [95:0] rounded;
         begin
-            unit_weight=l2_mode ? 96'sd16777216:
-                96'sd16777216+{{64{weight_value[31]}},weight_value};
-            product=normalized*unit_weight;
             rounded=product>>>24;
             if (product[23:0]>24'h800000 ||
                 (product[23:0]==24'h800000 && rounded[0]))
                 rounded=rounded+96'sd1;
-            if (rounded>96'sd2147483647) apply_weight=32'sh7fffffff;
-            else if (rounded< -96'sd2147483648) apply_weight=32'sh80000000;
-            else apply_weight=rounded[31:0];
+            if (rounded>96'sd2147483647) round_saturate_q24=32'sh7fffffff;
+            else if (rounded< -96'sd2147483648) round_saturate_q24=32'sh80000000;
+            else round_saturate_q24=rounded[31:0];
         end
     endfunction
 
@@ -121,6 +118,7 @@ module anvil_e1_norm #(
             error <= 0;
             div_quotient<=0; div_divisor<=0; div_remainder<=0;
             div_negative<=0; div_iteration<=0; div_return<=IDLE;
+            div_rounded_reg<=0; div_result_reg<=0; norm_prod_reg<=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
@@ -156,11 +154,16 @@ module anvil_e1_norm #(
                 end
                 DIVIDE: begin
                     div_quotient<=div_next_quotient; div_remainder<=div_next_remainder;
-                    if (div_iteration==23) state<=div_return;
+                    if (div_iteration==47) state<=DIV_DONE;
                     else div_iteration<=div_iteration+1'b1;
                 end
+                DIV_DONE: begin
+                    div_rounded_reg<=div_rounded_magnitude;
+                    div_result_reg<=div_result;
+                    state<=div_return;
+                end
                 SETUP_SAVE: begin
-                    radicand <= {div_rounded_magnitude+EPSILON_Q48,64'd0};
+                    radicand <= {div_rounded_reg+EPSILON_Q48,64'd0};
                     root_value<=0; remainder<=0; iteration<=0; state<=ROOT;
                 end
                 ROOT: begin
@@ -184,7 +187,12 @@ module anvil_e1_norm #(
                         {16'd0,root_value},NORMALIZE);
                 end
                 NORMALIZE: begin
-                    result<=apply_weight(div_result,weights[index],l2);
+                    norm_prod_reg<=div_result_reg*(l2 ? 96'sd16777216:
+                        96'sd16777216+{{64{weights[index][31]}},weights[index]});
+                    state<=NORMALIZE_SAVE;
+                end
+                NORMALIZE_SAVE: begin
+                    result<=round_saturate_q24(norm_prod_reg);
                     state<=HOLD;
                 end
                 HOLD: if (out_ready) begin
