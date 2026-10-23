@@ -24,7 +24,8 @@ module anvil_e3_audio_attention #(
         REL_MAC=14, KREQ=15, KRSP=16, SCORE=17, SCORE_FINISH=18,
         CAP_START=19, CAP_WAIT=20, EXP_START=21, EXP_WAIT=22,
         VREQ=23, VRSP=24, NEXTKEY=25, VALUE_DIV=26, VALUE_WAIT=27,
-        WRITE_REQ=28, WRITE_RSP=29, FLUSH=30, DONE=31;
+        WRITE_REQ=28, WRITE_RSP=29, FLUSH=30, DONE=31,
+        SCALE_ROUND=32, REL_MUL=33, REL_ROUND=34, SCORE_MUL=35, VMAC=36;
     localparam signed [127:0] ONE=128'sd1099511627776;
     function automatic [63:0] root(input integer d);
         reg [127:0] a,r,t,q;
@@ -60,28 +61,28 @@ module anvil_e3_audio_attention #(
     endfunction
     localparam [127:0] SCALE_DENOM=round40(
         128'sd762123384786*$signed({64'd0,root(AUDIO_HEAD_DIM)}));
-    reg [4:0] state;
+    reg [5:0] state;
     reg [31:0] count, query, head, component, key, rel_index, rel_col, channel;
     reg [63:0] qb, kb, vb, rw, sw, dst, key_begin, key_end;
     reg weighted_pass;
     reg signed [47:0] query_value, scale_value, relative_weight, content_key;
+    reg signed [47:0] rel_vec_reg;
     reg signed [47:0] score_max, score_value, exponential;
-    reg signed [63:0] relative_value, cap_argument;
+    reg signed [63:0] relative_value, cap_argument, scaled_q_reg, combined_key_reg;
+    reg signed [95:0] rel_prod_reg, v_prod_reg;
+    reg signed [127:0] mul_prod_reg, weighted_cur_reg;
     reg signed [63:0] scaled_query [0:AUDIO_HEAD_DIM-1];
-    reg signed [47:0] relative_vector [0:AUDIO_HIDDEN-1];
+    reg signed [47:0] relative_vector [0:AUDIO_HEAD_DIM*AUDIO_HEADS-1];
     reg signed [127:0] weighted [0:AUDIO_HEAD_DIM-1];
     reg signed [127:0] relative_accumulator, score_accumulator, denominator, value;
-    reg signed [127:0] work, scaled_work;
+    reg signed [127:0] work;
     reg [3:0] error_hold;
     wire unit_rst_n=rst_n && state!=FLUSH;
-    wire [63:0] chunk_start=(64'(query)/AUDIO_CHUNK_SIZE)*AUDIO_CHUNK_SIZE;
+    reg [63:0] chunk_start;
+    reg [31:0] chunk_offset;
     wire [63:0] chunk_end=chunk_start+AUDIO_CHUNK_SIZE+64'(AUDIO_CONTEXT_RIGHT);
-    wire signed [95:0] relative_product=relative_vector[rel_col]*relative_weight;
     wire signed [127:0] relative_sum=relative_accumulator+
-        {{32{relative_product[95]}},relative_product};
-    wire signed [63:0] combined_key=
-        $signed({{16{content_key[47]}},content_key})+relative_value;
-    wire signed [127:0] score_product=scaled_query[component]*combined_key;
+        {{32{rel_prod_reg[95]}},rel_prod_reg};
     wire signed [47:0] memory_value={result_data,16'd0};
     wire signed [95:0] weighted_product=exponential*memory_value;
     wire rel_ready, rel_valid, rel_error;
@@ -156,15 +157,23 @@ module anvil_e3_audio_attention #(
         state==REL_WEIGHT_RSP || state==KRSP || state==VRSP || state==WRITE_RSP);
     assign done_valid=rst_n && state==DONE;
     assign done_error=rst_n ? error_hold:4'd0;
+    always @* begin
+        if (state==SCALE_ROUND)
+            work=round40(mul_prod_reg);
+        else if (state==REL_ROUND) work=round40(relative_accumulator);
+        else work=round40(score_accumulator);
+    end
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state<=IDLE; count<=0; query<=0; head<=0; component<=0; key<=0;
             rel_index<=0; rel_col<=0; channel<=0; qb<=0; kb<=0; vb<=0;
             rw<=0; sw<=0; dst<=0; key_begin<=0; key_end<=0; weighted_pass<=0;
             query_value<=0; scale_value<=0; relative_weight<=0; content_key<=0;
-            score_max<=0; score_value<=0; exponential<=0; relative_value<=0;
-            cap_argument<=0; relative_accumulator<=0; score_accumulator<=0;
-            denominator<=0; value<=0; error_hold<=0; work=0; scaled_work=0;
+            rel_vec_reg<=0; score_max<=0; score_value<=0; exponential<=0;
+            relative_value<=0; cap_argument<=0; scaled_q_reg<=0; combined_key_reg<=0;
+            rel_prod_reg<=0; v_prod_reg<=0; mul_prod_reg<=0; weighted_cur_reg<=0;
+            relative_accumulator<=0; score_accumulator<=0;
+            denominator<=0; value<=0; error_hold<=0; chunk_start<=0; chunk_offset<=0;
         end else if (result_valid && result_ready && result_error) begin
             error_hold<=3; state<=FLUSH;
         end else case (state)
@@ -172,6 +181,7 @@ module anvil_e3_audio_attention #(
                 count<=tokens; qb<=q_base; kb<=k_base; vb<=v_base;
                 rw<=relative_weights; sw<=scale_weights; dst<=output_base;
                 query<=0; head<=0; component<=0; channel<=0;
+                chunk_start<=0; chunk_offset<=0;
                 error_hold<=0; state<=SETUP;
             end
             SETUP: begin
@@ -198,18 +208,20 @@ module anvil_e3_audio_attention #(
                     divide_data< -128'sh8000000000000000) begin
                     error_hold<=6; state<=FLUSH;
                 end else begin
-                    scaled_work=$signed(query_value)*$signed(divide_data[63:0]);
-                    work=round40(scaled_work);
-                    if (work>128'sh7fffffffffffffff || work< -128'sh8000000000000000) begin
-                        error_hold<=6; state<=FLUSH;
-                    end else begin
-                        scaled_query[component]<=work[63:0];
-                        if (component==AUDIO_HEAD_DIM-1) begin
-                            component<=0; key<=32'(key_begin); rel_index<=0; rel_col<=0;
-                            relative_accumulator<=0; score_accumulator<=0;
-                            weighted_pass<=0; denominator<=0; state<=REL_START;
-                        end else begin component<=component+1'b1; state<=QREQ; end
-                    end
+                    mul_prod_reg<=$signed(query_value)*$signed(divide_data[63:0]);
+                    state<=SCALE_ROUND;
+                end
+            end
+            SCALE_ROUND: begin
+                if (work>128'sh7fffffffffffffff || work< -128'sh8000000000000000) begin
+                    error_hold<=6; state<=FLUSH;
+                end else begin
+                    scaled_query[component]<=work[63:0];
+                    if (component==AUDIO_HEAD_DIM-1) begin
+                        component<=0; key<=32'(key_begin); rel_index<=0; rel_col<=0;
+                        relative_accumulator<=0; score_accumulator<=0;
+                        weighted_pass<=0; denominator<=0; state<=REL_START;
+                    end else begin component<=component+1'b1; state<=QREQ; end
                 end
             end
             REL_START: if (rel_ready) state<=REL_WAIT;
@@ -225,21 +237,36 @@ module anvil_e3_audio_attention #(
             end
             REL_WEIGHT_REQ: if (cmd_ready) state<=REL_WEIGHT_RSP;
             REL_WEIGHT_RSP: if (result_valid) begin
-                relative_weight<={result_data,16'd0}; state<=REL_MAC;
+                rel_vec_reg<=relative_vector[rel_col];
+                relative_weight<={result_data,16'd0}; state<=REL_MUL;
+            end
+            REL_MUL: begin
+                rel_prod_reg<=rel_vec_reg*relative_weight;
+                state<=REL_MAC;
             end
             REL_MAC: begin
                 relative_accumulator<=relative_sum;
-                if (rel_col==AUDIO_HIDDEN-1) begin
-                    work=round40(relative_sum);
-                    if (work>128'sh7fffffffffffffff || work< -128'sh8000000000000000) begin
-                        error_hold<=6; state<=FLUSH;
-                    end else begin relative_value<=work[63:0]; state<=KREQ; end
-                end else begin rel_col<=rel_col+1'b1; state<=REL_WEIGHT_REQ; end
+                if (rel_col==AUDIO_HIDDEN-1) state<=REL_ROUND;
+                else begin rel_col<=rel_col+1'b1; state<=REL_WEIGHT_REQ; end
+            end
+            REL_ROUND: begin
+                if (work>128'sh7fffffffffffffff || work< -128'sh8000000000000000) begin
+                    error_hold<=6; state<=FLUSH;
+                end else begin relative_value<=work[63:0]; state<=KREQ; end
             end
             KREQ: if (cmd_ready) state<=KRSP;
-            KRSP: if (result_valid) begin content_key<={result_data,16'd0}; state<=SCORE; end
+            KRSP: if (result_valid) begin
+                content_key<={result_data,16'd0};
+                scaled_q_reg<=scaled_query[component];
+                combined_key_reg<=$signed({{16{result_data[31]}},result_data,16'd0})+relative_value;
+                state<=SCORE_MUL;
+            end
+            SCORE_MUL: begin
+                mul_prod_reg<=scaled_q_reg*combined_key_reg;
+                state<=SCORE;
+            end
             SCORE: begin
-                score_accumulator<=score_accumulator+score_product;
+                score_accumulator<=score_accumulator+mul_prod_reg;
                 if (component==AUDIO_HEAD_DIM-1) state<=SCORE_FINISH;
                 else begin
                     component<=component+1'b1; rel_col<=0; relative_accumulator<=0;
@@ -247,7 +274,6 @@ module anvil_e3_audio_attention #(
                 end
             end
             SCORE_FINISH: begin
-                work=round40(score_accumulator);
                 if (work>600*ONE) cap_argument<=64'sd659706976665600;
                 else if (work< -600*ONE) cap_argument<= -64'sd659706976665600;
                 else cap_argument<=work[63:0];
@@ -274,10 +300,15 @@ module anvil_e3_audio_attention #(
             end
             VREQ: if (cmd_ready) state<=VRSP;
             VRSP: if (result_valid) begin
+                v_prod_reg<=weighted_product;
+                weighted_cur_reg<=weighted[channel];
+                state<=VMAC;
+            end
+            VMAC: begin
                 if (64'(key)==key_begin)
-                    weighted[channel]<={{32{weighted_product[95]}},weighted_product};
-                else weighted[channel]<=weighted[channel]+
-                    {{32{weighted_product[95]}},weighted_product};
+                    weighted[channel]<={{32{v_prod_reg[95]}},v_prod_reg};
+                else weighted[channel]<=weighted_cur_reg+
+                    {{32{v_prod_reg[95]}},v_prod_reg};
                 if (channel==AUDIO_HEAD_DIM-1) state<=NEXTKEY;
                 else begin channel<=channel+1'b1; state<=VREQ; end
             end
@@ -304,6 +335,9 @@ module anvil_e3_audio_attention #(
                 else if (head!=AUDIO_HEADS-1) begin
                     head<=head+1'b1; component<=0; state<=QREQ;
                 end else if (query!=count-1) begin
+                    if (chunk_offset==AUDIO_CHUNK_SIZE-1) begin
+                        chunk_offset<=0; chunk_start<=chunk_start+AUDIO_CHUNK_SIZE;
+                    end else chunk_offset<=chunk_offset+1'b1;
                     query<=query+1'b1; head<=0; state<=SETUP;
                 end else state<=DONE;
             end

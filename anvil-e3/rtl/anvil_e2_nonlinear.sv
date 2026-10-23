@@ -10,8 +10,18 @@ module anvil_e2_nonlinear (
     output wire signed [47:0] out_data,
     output wire out_error
 );
-    localparam IDLE=4'd0, SERIES=4'd1, ROOT=4'd2, FINISH=4'd3, HOLD=4'd4,
-        DIV_START=4'd5, DIV_WAIT=4'd6, GELU_APPLY=4'd7;
+    localparam IDLE=6'd0, SERIES=6'd1, ROOT=6'd2, FINISH=6'd3, HOLD=6'd4,
+        DIV_START=6'd5, DIV_WAIT=6'd6, GELU_APPLY=6'd7,
+        SERIES_WAIT=6'd8, DISPATCH=6'd9, GELU_SQUARE=6'd10,
+        GELU_SQUARE_ROUND=6'd11, GELU_CUBE=6'd12,
+        GELU_CUBE_ROUND=6'd13, GELU_SCALE=6'd14,
+        GELU_SCALE_ROUND=6'd15, GELU_ADD=6'd16,
+        GELU_COEFFICIENT=6'd17, GELU_COEFFICIENT_ROUND=6'd18,
+        GELU_EXP_ARGUMENT=6'd19, EXP_CLAMP=6'd20,
+        RANGE_PREPARE=6'd21, RANGE_START=6'd22, RANGE_WAIT=6'd23,
+        RANGE_APPLY=6'd24, TRIG_WRAP=6'd25, TRIG_INIT=6'd26,
+        GELU_FINAL_PRODUCT=6'd27, GELU_FINAL_ROUND=6'd28,
+        GELU_FINAL_HALF=6'd29;
     localparam EXP=3'd0, SIN=3'd1, COS=3'd2, RECIP=3'd3,
                RSQRT=3'd4, GELU=3'd5;
     localparam signed [95:0] ONE=96'sd1099511627776;
@@ -20,23 +30,30 @@ module anvil_e2_nonlinear (
     localparam signed [95:0] TWO_PI=96'sd6908435304715;
     localparam signed [95:0] GELU_C=96'sd877283352226;
     localparam signed [95:0] GELU_K=96'sd49164662436;
-    reg [3:0] state;
+    reg [5:0] state;
     reg [2:0] operation;
     reg signed [95:0] argument, reduced, term, total;
-    reg signed [95:0] temporary, quotient, exponential, tanh_value;
+    reg signed [95:0] temporary, gelu_factor;
+    reg signed [127:0] product;
+    wire signed [95:0] exponential=total >>> -exponent_shift;
+    reg signed [95:0] tanh_value;
     reg signed [95:0] exponent_shift;
-    reg signed [63:0] reduction_quotient, reduction_remainder;
     reg [6:0] iteration;
     reg [127:0] radicand;
-    reg [129:0] remainder, shifted_remainder, trial;
+    reg [129:0] remainder;
+    wire [129:0] shifted_remainder=(remainder<<2)|{128'd0,radicand[127:126]};
+    wire [129:0] trial=({66'd0,root_value}<<2)|130'd1;
     reg [63:0] root_value;
     reg signed [47:0] result;
     reg error;
     wire signed [63:0] series_term, series_total;
     wire [6:0] series_iteration;
-    wire series_finished;
+    wire series_ready, series_valid, series_finished, series_error;
     anvil_e2_series series (
+        .clk(clk), .rst_n(rst_n),
         .enable(state==SERIES), .operation(operation),
+        .in_ready(series_ready), .out_valid(series_valid),
+        .out_ready(state==SERIES_WAIT), .out_error(series_error),
         .reduced(reduced[63:0]), .term(term[63:0]), .total(total[63:0]),
         .iteration(iteration), .next_term(series_term), .next_total(series_total),
         .next_iteration(series_iteration), .finished(series_finished)
@@ -53,38 +70,38 @@ module anvil_e2_nonlinear (
         .out_error(divide_error)
     );
 
-    function automatic signed [95:0] multiply_q40;
-        input signed [95:0] a, b;
-        reg signed [63:0] narrow_a, narrow_b;
-        reg signed [127:0] product, floor_value;
+    function automatic signed [95:0] round_product;
+        input signed [127:0] value;
+        reg signed [127:0] floor_value;
         begin
-            // All call sites are bounded below 1024*G, including GELU's cube.
-            narrow_a = a[63:0];
-            narrow_b = b[63:0];
-            product = narrow_a * narrow_b;
-            floor_value = product >>> 40;
-            if ((product[39:0] > 40'h8000000000) ||
-                (product[39:0] == 40'h8000000000 && floor_value[0]))
+            floor_value = value >>> 40;
+            if ((value[39:0] > 40'h8000000000) ||
+                (value[39:0] == 40'h8000000000 && floor_value[0]))
                 floor_value = floor_value + 128'sd1;
-            multiply_q40 = floor_value[95:0];
+            round_product = floor_value[95:0];
         end
     endfunction
 
-    function automatic signed [95:0] series_divide;
-        input signed [95:0] numerator;
-        input [11:0] denominator;
-        reg [63:0] magnitude, divisor, q, r;
+    function automatic signed [95:0] half_even(input signed [95:0] x);
+        reg signed [95:0] q;
         begin
-            // Series numerators are bounded by 64*G, well below 2^64.
-            magnitude = numerator < 0 ? -numerator : numerator;
-            divisor = {52'd0,denominator};
-            q = magnitude / divisor;
-            r = magnitude - q*divisor;
-            if (r > divisor-r || (r == divisor-r && q[0]))
-                q = q + 64'd1;
-            series_divide = numerator < 0 ? -$signed({32'd0,q}):$signed({32'd0,q});
+            q=x>>>1;
+            half_even=q+96'(x[0] && q[0]);
         end
     endfunction
+
+    reg [63:0] range_numerator, range_denominator;
+    reg [63:0] range_quotient, range_remainder;
+    wire [63:0] range_q, range_r;
+    wire range_ready, range_valid, range_error;
+    wire trig_operation=operation==SIN || operation==COS;
+    anvil_e3_unsigned_divide #(.WIDTH(64)) range_divider (
+        .clk(clk), .rst_n(rst_n), .in_valid(state==RANGE_START),
+        .in_ready(range_ready), .in_numerator(range_numerator),
+        .in_denominator(range_denominator), .out_valid(range_valid),
+        .out_ready(state==RANGE_WAIT), .out_quotient(range_q),
+        .out_remainder(range_r), .out_error(range_error)
+    );
 
     function automatic signed [47:0] saturate;
         input signed [95:0] x;
@@ -115,16 +132,16 @@ module anvil_e2_nonlinear (
             root_value <= 0;
             result <= 0;
             error <= 0;
-            temporary = 0;
-            quotient = 0;
-            exponential = 0;
-            tanh_value = 0;
-            shifted_remainder = 0;
-            trial = 0;
-            reduction_quotient = 0;
-            reduction_remainder = 0;
+            tanh_value <= 0;
             divide_numerator <= 0;
             divide_denominator <= 0;
+            temporary <= 0;
+            gelu_factor <= 0;
+            product <= 0;
+            range_numerator <= 0;
+            range_denominator <= 0;
+            range_quotient <= 0;
+            range_remainder <= 0;
         end else begin
             case (state)
                 IDLE: if (in_valid) begin
@@ -133,96 +150,174 @@ module anvil_e2_nonlinear (
                     error <= 0;
                     result <= 0;
                     iteration <= 1;
-                    if (in_op == RECIP) begin
-                        if (in_data == 0) begin
+                    state <= DISPATCH;
+                end
+                DISPATCH: begin
+                    if (operation == RECIP) begin
+                        if (argument == 0) begin
                             error <= 1;
                             state <= HOLD;
                         end else begin
-                            divide_numerator <= in_data[47] ?
+                            divide_numerator <= argument[95] ?
                                 -128'sd1208925819614629174706176:
                                 128'sd1208925819614629174706176;
-                            divide_denominator <= in_data[47] ?
-                                -$signed({{80{in_data[47]}},in_data}):
-                                $signed({{80{in_data[47]}},in_data});
+                            divide_denominator <= argument[95] ?
+                                -$signed({{32{argument[95]}},argument}):
+                                $signed({{32{argument[95]}},argument});
                             state <= DIV_START;
                         end
-                    end else if (in_op == RSQRT) begin
-                        if (in_data <= 0) begin
+                    end else if (operation == RSQRT) begin
+                        if (argument <= 0) begin
                             error <= 1;
                             state <= HOLD;
                         end else begin
-                            radicand <= {80'd0, in_data} << 56;
+                            radicand <= {80'd0, argument[47:0]} << 56;
                             root_value <= 0;
                             remainder <= 0;
                             iteration <= 0;
                             state <= ROOT;
                         end
-                    end else if ((in_op == SIN || in_op == COS || in_op == EXP ||
-                                  in_op == GELU) && in_data == 0) begin
-                        result <= (in_op == COS || in_op == EXP) ?
+                    end else if ((operation == SIN || operation == COS ||
+                                  operation == EXP || operation == GELU) &&
+                                 argument == 0) begin
+                        result <= (operation == COS || operation == EXP) ?
                             48'sd1099511627776 : 48'sd0;
                         state <= HOLD;
-                    end else if (in_op == SIN || in_op == COS) begin
-                        reduction_remainder = $signed(in_data) % 64'sd6908435304715;
-                        temporary = reduction_remainder;
-                        if (temporary > PI) temporary = temporary - TWO_PI;
-                        if (temporary < -PI) temporary = temporary + TWO_PI;
-                        reduced <= temporary;
-                        term <= in_op == SIN ? temporary : ONE;
-                        total <= in_op == SIN ? temporary : ONE;
-                        state <= SERIES;
-                    end else if (in_op == EXP || in_op == GELU) begin
-                        temporary = {{48{in_data[47]}}, in_data};
-                        if (in_op == GELU) begin
-                            if (in_data >= 48'sd8796093022208) begin
-                                result <= in_data;
+                    end else if (trig_operation) begin
+                        temporary <= argument;
+                        state <= RANGE_PREPARE;
+                    end else if (operation == EXP || operation == GELU) begin
+                        if (operation == GELU) begin
+                            if (argument >= 96'sd8796093022208) begin
+                                result <= argument[47:0];
                                 state <= HOLD;
-                            end else if (in_data <= -48'sd8796093022208) begin
+                            end else if (argument <= -96'sd8796093022208) begin
                                 result <= 0;
                                 state <= HOLD;
                             end else begin
-                                temporary = multiply_q40(GELU_C,
-                                    temporary + multiply_q40(GELU_K,
-                                    multiply_q40(multiply_q40(temporary,temporary),temporary)));
-                                temporary = temporary < 0 ? temporary*96'sd2 : -temporary*96'sd2;
-                                state <= SERIES;
+                                state <= GELU_SQUARE;
                             end
-                        end else if (in_data > 0) begin
+                        end else if (argument > 0) begin
                             error <= 1;
                             state <= HOLD;
                         end else begin
-                            state <= SERIES;
-                        end
-                        if ((in_op == EXP && in_data <= 0) ||
-                            (in_op == GELU && in_data > -48'sd8796093022208 &&
-                             in_data < 48'sd8796093022208)) begin
-                            if (temporary < -96'sd17592186044416)
-                                temporary = -96'sd17592186044416;
-                            reduction_quotient = $signed(temporary[63:0]) /
-                                64'sd762123384786;
-                            reduction_remainder = $signed(temporary[63:0]) -
-                                reduction_quotient*64'sd762123384786;
-                            quotient = reduction_quotient;
-                            if (reduction_remainder < 0) quotient = quotient - 96'sd1;
-                            exponent_shift <= quotient;
-                            reduced <= temporary - quotient*LN2;
-                            term <= ONE;
-                            total <= ONE;
+                            temporary <= argument;
+                            state <= EXP_CLAMP;
                         end
                     end else begin
                         error <= 1;
                         state <= HOLD;
                     end
                 end
-                SERIES: begin
-                    term <= series_term;
-                    total <= series_total;
-                    iteration <= series_iteration;
-                    if (series_finished) state <= FINISH;
+                GELU_SQUARE: begin
+                    product <= $signed(argument[63:0])*$signed(argument[63:0]);
+                    state <= GELU_SQUARE_ROUND;
+                end
+                GELU_SQUARE_ROUND: begin
+                    gelu_factor <= round_product(product);
+                    state <= GELU_CUBE;
+                end
+                GELU_CUBE: begin
+                    product <= $signed(gelu_factor[63:0])*$signed(argument[63:0]);
+                    state <= GELU_CUBE_ROUND;
+                end
+                GELU_CUBE_ROUND: begin
+                    gelu_factor <= round_product(product);
+                    state <= GELU_SCALE;
+                end
+                GELU_SCALE: begin
+                    product <= $signed(GELU_K[63:0])*$signed(gelu_factor[63:0]);
+                    state <= GELU_SCALE_ROUND;
+                end
+                GELU_SCALE_ROUND: begin
+                    gelu_factor <= round_product(product);
+                    state <= GELU_ADD;
+                end
+                GELU_ADD: begin
+                    gelu_factor <= argument+gelu_factor;
+                    state <= GELU_COEFFICIENT;
+                end
+                GELU_COEFFICIENT: begin
+                    product <= $signed(GELU_C[63:0])*$signed(gelu_factor[63:0]);
+                    state <= GELU_COEFFICIENT_ROUND;
+                end
+                GELU_COEFFICIENT_ROUND: begin
+                    gelu_factor <= round_product(product);
+                    state <= GELU_EXP_ARGUMENT;
+                end
+                GELU_EXP_ARGUMENT: begin
+                    temporary <= gelu_factor<0 ? gelu_factor<<<1:-(gelu_factor<<<1);
+                    state <= EXP_CLAMP;
+                end
+                EXP_CLAMP: begin
+                    if (temporary < -96'sd17592186044416)
+                        temporary <= -96'sd17592186044416;
+                    state <= RANGE_PREPARE;
+                end
+                RANGE_PREPARE: begin
+                    range_numerator <= temporary[63] ?
+                        -$unsigned(temporary[63:0]):$unsigned(temporary[63:0]);
+                    range_denominator <= trig_operation ?
+                        64'd6908435304715:64'd762123384786;
+                    state <= RANGE_START;
+                end
+                RANGE_START: if (range_ready) state <= RANGE_WAIT;
+                RANGE_WAIT: if (range_valid) begin
+                    if (range_error) begin
+                        error <= 1;
+                        result <= 0;
+                        state <= HOLD;
+                    end else begin
+                        range_quotient <= range_q;
+                        range_remainder <= range_r;
+                        state <= RANGE_APPLY;
+                    end
+                end
+                RANGE_APPLY: begin
+                    if (trig_operation) begin
+                        reduced <= temporary[63] ?
+                            -$signed({32'd0,range_remainder}):
+                            $signed({32'd0,range_remainder});
+                        state <= TRIG_WRAP;
+                    end else begin
+                        // Negative exponential reduction floors, not truncates.
+                        exponent_shift <= temporary[63] ?
+                            -$signed({32'd0,range_quotient})-
+                                96'(range_remainder!=0):
+                            $signed({32'd0,range_quotient});
+                        reduced <= temporary[63] && range_remainder!=0 ?
+                            LN2-$signed({32'd0,range_remainder}):
+                            $signed({32'd0,range_remainder});
+                        term <= ONE;
+                        total <= ONE;
+                        state <= SERIES;
+                    end
+                end
+                TRIG_WRAP: begin
+                    if (reduced>PI) reduced <= reduced-TWO_PI;
+                    else if (reduced< -PI) reduced <= reduced+TWO_PI;
+                    state <= TRIG_INIT;
+                end
+                TRIG_INIT: begin
+                    term <= operation==SIN ? reduced:ONE;
+                    total <= operation==SIN ? reduced:ONE;
+                    state <= SERIES;
+                end
+                SERIES: if (series_ready) state <= SERIES_WAIT;
+                SERIES_WAIT: if (series_valid) begin
+                    if (series_error) begin
+                        error <= 1;
+                        result <= 0;
+                        state <= HOLD;
+                    end else begin
+                        term <= series_term;
+                        total <= series_total;
+                        iteration <= series_iteration;
+                        if (series_finished) state <= FINISH;
+                        else state <= SERIES;
+                    end
                 end
                 ROOT: begin
-                    shifted_remainder = (remainder << 2) | {128'd0,radicand[127:126]};
-                    trial = ({66'd0,root_value} << 2) | 130'd1;
                     if (shifted_remainder >= trial) begin
                         remainder <= shifted_remainder - trial;
                         root_value <= (root_value << 1) | 64'd1;
@@ -243,7 +338,6 @@ module anvil_e2_nonlinear (
                         result <= saturate(total);
                         state <= HOLD;
                     end else begin
-                        exponential = total >>> -exponent_shift;
                         if (operation == EXP) begin
                             result <= saturate(exponential);
                             state <= HOLD;
@@ -269,9 +363,19 @@ module anvil_e2_nonlinear (
                     end
                 end
                 GELU_APPLY: begin
-                    temporary = argument < 0 ? -tanh_value:tanh_value;
-                    result <= saturate(series_divide(
-                        multiply_q40(argument,ONE+temporary),12'd2));
+                    gelu_factor <= ONE+(argument<0 ? -tanh_value:tanh_value);
+                    state <= GELU_FINAL_PRODUCT;
+                end
+                GELU_FINAL_PRODUCT: begin
+                    product <= $signed(argument[63:0])*$signed(gelu_factor[63:0]);
+                    state <= GELU_FINAL_ROUND;
+                end
+                GELU_FINAL_ROUND: begin
+                    gelu_factor <= round_product(product);
+                    state <= GELU_FINAL_HALF;
+                end
+                GELU_FINAL_HALF: begin
+                    result <= saturate(half_even(gelu_factor));
                     state <= HOLD;
                 end
                 HOLD: if (out_ready) state <= IDLE;

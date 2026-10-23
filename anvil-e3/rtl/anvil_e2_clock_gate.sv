@@ -4,7 +4,7 @@ module anvil_e2_clock_gate (
     output reg active,
     output wire gated_clk
 );
-    // Hold disabled clocks high; the enable changes only during the high phase.
+    // Keep one clock domain; active is a registered launch qualifier, not a clock gate.
     assign gated_clk = clk;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) active <= 1'b0;

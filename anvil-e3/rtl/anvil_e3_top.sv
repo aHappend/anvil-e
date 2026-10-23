@@ -82,44 +82,63 @@ module anvil_e3_top #(
         reg [15:0] output_dim;
         reg [63:0] weights, vision_weights, audio_weights, image, audio;
         reg [63:0] ids, positions, masks, scratch;
+        reg [63:0] p_reg, pooled_rows_reg, pooled_cols_reg, at1_reg, at2_reg, n_reg;
+        reg [63:0] v0, v1, vq, vk, vv, soft_tokens_base, fid, fpos, fmask;
+        reg [63:0] x0, x1, ple, tq, tk, tv, asub, ax0, ax1, aw0, aw1;
+        reg [63:0] aq, ak, av, aa, aout, asoft;
         reg audio_x, vision_x, text_x;
         reg [3:0] error_hold;
+        wire job_audio_mode=job_mode>=3 && job_mode<=6;
+        wire job_image_mode=job_mode==1 || job_mode==2 || job_mode==5 || job_mode==6;
+        wire [32:0] job_pooled_rows, job_pooled_cols, pooled_row_remainder, pooled_col_remainder;
+        anvil_e3_constant_divide #(.WIDTH(33), .DIVISOR(33'(POOL_KERNEL)))
+            row_extent (.numerator(33'(job_patch_rows)+POOL_KERNEL-1),
+                .quotient(job_pooled_rows), .remainder(pooled_row_remainder));
+        anvil_e3_constant_divide #(.WIDTH(33), .DIVISOR(33'(POOL_KERNEL)))
+            column_extent (.numerator(33'(job_patch_cols)+POOL_KERNEL-1),
+                .quotient(job_pooled_cols), .remainder(pooled_col_remainder));
         wire audio_mode=mode>=3 && mode<=6;
         wire image_mode=mode==1 || mode==2 || mode==5 || mode==6;
         wire text_mode=mode==0 || mode==2 || mode==4 || mode==6;
-        wire [127:0] p=image_mode ? 128'(rows)*cols:0;
+        wire [127:0] p={64'd0,p_reg};
         wire [127:0] s=image_mode ? VISION_SOFT_TOKENS:0;
-        wire [127:0] at1=audio_mode ? (128'(frames)+1)/2:0;
-        wire [127:0] at2=audio_mode ? (128'(frames)+3)/4:0;
-        wire [127:0] n=128'(text_tokens)+(image_mode ? s+2:0)+(audio_mode ? at2+2:0);
-        wire [127:0] vw=p*VISION_HIDDEN, va=p*VISION_HEADS*VISION_HEAD_DIM;
-        wire [127:0] sw=s*TEXT_HIDDEN, tw=n*TEXT_HIDDEN;
-        wire [127:0] pw=n*TEXT_LAYERS*PLE_DIM, qw=n*TEXT_Q_HEADS*DM, kw=n*KM*DM;
+        wire [127:0] at1={64'd0,at1_reg};
+        wire [127:0] at2={64'd0,at2_reg};
+        wire [63:0] pooled_rows=pooled_rows_reg;
+        wire [63:0] pooled_cols=pooled_cols_reg;
+        wire [127:0] n={64'd0,n_reg};
+        localparam [127:0] VA_STRIDE=128'(VISION_HEADS)*VISION_HEAD_DIM;
+        localparam [127:0] P_SOFT_STRIDE=2*128'(VISION_HIDDEN)+3*VA_STRIDE;
+        localparam [127:0] PLE_STRIDE=128'(TEXT_LAYERS)*PLE_DIM;
+        localparam [127:0] QW_STRIDE=128'(TEXT_Q_HEADS)*DM;
+        localparam [127:0] KW_STRIDE=128'(KM)*DM;
+        localparam [127:0] N_SUB_STRIDE=128'd3+2*128'(TEXT_HIDDEN)+PLE_STRIDE+QW_STRIDE+2*KW_STRIDE;
+        localparam [127:0] AC0_STRIDE=AF1*AUDIO_SUBSAMPLE_C0;
+        localparam [127:0] AC1_STRIDE=AF2*AUDIO_SUBSAMPLE_C1;
+        localparam [127:0] AT2_TOTAL_STRIDE=3*AC1_STRIDE+6*128'(AUDIO_HIDDEN)+
+            2*128'(AW)+128'(AUDIO_OUT_DIM)+128'(TEXT_HIDDEN);
+        wire [127:0] vw=p*VISION_HIDDEN, va=p*VA_STRIDE;
+        wire [127:0] sw=s*TEXT_HIDDEN;
         wire [127:0] o_v0=0, o_v1=vw, o_vq=2*vw, o_vk=2*vw+va, o_vv=2*vw+2*va;
-        wire [127:0] o_soft=2*vw+3*va, o_ids=o_soft+sw, o_pos=o_ids+n;
-        wire [127:0] o_mask=o_pos+n, o_x0=o_mask+n, o_x1=o_x0+tw;
-        wire [127:0] o_ple=o_x1+tw, o_q=o_ple+pw, o_k=o_q+qw, o_v=o_k+kw;
-        wire [127:0] ac0=at1*AF1*AUDIO_SUBSAMPLE_C0;
-        wire [127:0] ac1=at2*AF2*AUDIO_SUBSAMPLE_C1;
-        wire [127:0] ah=at2*AUDIO_HIDDEN, aw=at2*AW, ao=at2*AUDIO_OUT_DIM;
-        wire [127:0] o_sub=o_v+kw, o_ax0=o_sub+2*ac0+3*ac1, o_ax1=o_ax0+ah;
-        wire [127:0] o_aw0=o_ax1+ah, o_aw1=o_aw0+aw, o_aq=o_aw1+aw;
-        wire [127:0] o_ak=o_aq+ah, o_av=o_ak+ah, o_att=o_av+ah;
-        wire [127:0] o_aout=o_att+ah, o_asoft=o_aout+ao;
-        wire [127:0] scratch_bytes=(o_asoft+at2*TEXT_HIDDEN)*4;
-        wire [63:0] v0=scratch+64'(o_v0*4), v1=scratch+64'(o_v1*4);
-        wire [63:0] vq=scratch+64'(o_vq*4), vk=scratch+64'(o_vk*4), vv=scratch+64'(o_vv*4);
-        wire [63:0] soft_tokens_base=scratch+64'(o_soft*4), fid=scratch+64'(o_ids*4);
-        wire [63:0] fpos=scratch+64'(o_pos*4), fmask=scratch+64'(o_mask*4);
-        wire [63:0] x0=scratch+64'(o_x0*4), x1=scratch+64'(o_x1*4);
-        wire [63:0] ple=scratch+64'(o_ple*4), tq=scratch+64'(o_q*4);
-        wire [63:0] tk=scratch+64'(o_k*4), tv=scratch+64'(o_v*4);
-        wire [63:0] asub=scratch+64'(o_sub*4), ax0=scratch+64'(o_ax0*4);
-        wire [63:0] ax1=scratch+64'(o_ax1*4), aw0=scratch+64'(o_aw0*4);
-        wire [63:0] aw1=scratch+64'(o_aw1*4), aq=scratch+64'(o_aq*4);
-        wire [63:0] ak=scratch+64'(o_ak*4), av=scratch+64'(o_av*4);
-        wire [63:0] aa=scratch+64'(o_att*4), aout=scratch+64'(o_aout*4);
-        wire [63:0] asoft=scratch+64'(o_asoft*4);
+        wire [127:0] o_soft=p*P_SOFT_STRIDE, o_ids=o_soft+sw, o_pos=o_ids+n;
+        wire [127:0] o_mask=o_ids+2*n, o_x0=o_ids+3*n;
+        wire [127:0] o_x1=o_ids+n*(3+TEXT_HIDDEN);
+        wire [127:0] o_ple=o_ids+n*(3+2*TEXT_HIDDEN);
+        wire [127:0] o_q=o_ids+n*(3+2*TEXT_HIDDEN+PLE_STRIDE);
+        wire [127:0] o_k=o_ids+n*(3+2*TEXT_HIDDEN+PLE_STRIDE+QW_STRIDE);
+        wire [127:0] o_v=o_ids+n*(3+2*TEXT_HIDDEN+PLE_STRIDE+QW_STRIDE+KW_STRIDE);
+        wire [127:0] o_sub=o_ids+n*N_SUB_STRIDE;
+        wire [127:0] o_ax0=o_sub+2*at1*AC0_STRIDE+3*at2*AC1_STRIDE;
+        wire [127:0] o_ax1=o_ax0+at2*AUDIO_HIDDEN;
+        wire [127:0] o_aw0=o_ax0+at2*(2*AUDIO_HIDDEN);
+        wire [127:0] o_aw1=o_ax0+at2*(2*AUDIO_HIDDEN+AW);
+        wire [127:0] o_aq=o_ax0+at2*(2*AUDIO_HIDDEN+2*AW);
+        wire [127:0] o_ak=o_ax0+at2*(3*AUDIO_HIDDEN+2*AW);
+        wire [127:0] o_av=o_ax0+at2*(4*AUDIO_HIDDEN+2*AW);
+        wire [127:0] o_att=o_ax0+at2*(5*AUDIO_HIDDEN+2*AW);
+        wire [127:0] o_aout=o_ax0+at2*(6*AUDIO_HIDDEN+2*AW);
+        wire [127:0] o_asoft=o_ax0+at2*(6*AUDIO_HIDDEN+2*AW+AUDIO_OUT_DIM);
+        wire [127:0] scratch_bytes=(o_sub+2*at1*AC0_STRIDE+at2*AT2_TOTAL_STRIDE)*4;
         wire [127:0] weight_bytes, audio_weight_bytes;
         anvil_e2_address #(
             .VOCAB_SIZE(VOCAB_SIZE), .HIDDEN_SIZE(TEXT_HIDDEN),
@@ -158,8 +177,7 @@ module anvil_e3_top #(
                 |audio[1:0] || VOCAB_SIZE<=258883)) ||
             (image_mode && (rows==0 || cols==0 || rows>POSITION_EMBEDDING_SIZE ||
                 cols>POSITION_EMBEDDING_SIZE || p>32'hffffffff ||
-                ((128'(rows)+POOL_KERNEL-1)/POOL_KERNEL)*
-                ((128'(cols)+POOL_KERNEL-1)/POOL_KERNEL)!=s ||
+                128'(pooled_rows)*pooled_cols!=s ||
                 |vision_weights[1:0] || |image[1:0] || VOCAB_SIZE<=258882));
         wire extent_bad=overflow(weights,weight_bytes) || overflow(scratch,scratch_bytes) ||
             (text_mode && (overflow(ids,128'(text_tokens)*4) ||
@@ -298,6 +316,12 @@ module anvil_e3_top #(
                 state<=IDLE; owner<=0; mode<=0; text_tokens<=0; rows<=0; cols<=0; frames<=0;
                 output_dim<=0; weights<=0; vision_weights<=0; audio_weights<=0;
                 image<=0; audio<=0; ids<=0; positions<=0; masks<=0; scratch<=0;
+                p_reg<=0; pooled_rows_reg<=0; pooled_cols_reg<=0;
+                at1_reg<=0; at2_reg<=0; n_reg<=0;
+                v0<=0; v1<=0; vq<=0; vk<=0; vv<=0; soft_tokens_base<=0;
+                fid<=0; fpos<=0; fmask<=0; x0<=0; x1<=0; ple<=0; tq<=0; tk<=0; tv<=0;
+                asub<=0; ax0<=0; ax1<=0; aw0<=0; aw1<=0; aq<=0; ak<=0; av<=0;
+                aa<=0; aout<=0; asoft<=0;
                 audio_layer<=0; vision_layer<=0; text_layer<=0;
                 audio_x<=0; vision_x<=0; text_x<=0; error_hold<=0;
             end else case (state)
@@ -307,10 +331,31 @@ module anvil_e3_top #(
                     weights<=weights_base; vision_weights<=vision_weights_base;
                     audio_weights<=audio_weights_base; image<=image_base; audio<=audio_base;
                     ids<=tokens_base; positions<=positions_base; masks<=mask_base; scratch<=scratch_base;
+                    p_reg<=job_image_mode ? (64'(job_patch_rows)*64'(job_patch_cols)):64'd0;
+                    pooled_rows_reg<={31'd0,job_pooled_rows};
+                    pooled_cols_reg<={31'd0,job_pooled_cols};
+                    at1_reg<=job_audio_mode ? ((64'(job_audio_frames)+64'd1)>>1):64'd0;
+                    at2_reg<=job_audio_mode ? ((64'(job_audio_frames)+64'd3)>>2):64'd0;
+                    n_reg<=64'(job_tokens)+
+                        (job_image_mode ? (64'(VISION_SOFT_TOKENS)+64'd2):64'd0)+
+                        (job_audio_mode ? (((64'(job_audio_frames)+64'd3)>>2)+64'd2):64'd0);
                     audio_layer<=0; vision_layer<=0; text_layer<=0;
                     audio_x<=0; vision_x<=0; text_x<=0; error_hold<=0; state<=VALIDATE;
                 end
                 VALIDATE: begin
+                    v0<=scratch+64'(o_v0*4); v1<=scratch+64'(o_v1*4);
+                    vq<=scratch+64'(o_vq*4); vk<=scratch+64'(o_vk*4); vv<=scratch+64'(o_vv*4);
+                    soft_tokens_base<=scratch+64'(o_soft*4); fid<=scratch+64'(o_ids*4);
+                    fpos<=scratch+64'(o_pos*4); fmask<=scratch+64'(o_mask*4);
+                    x0<=scratch+64'(o_x0*4); x1<=scratch+64'(o_x1*4);
+                    ple<=scratch+64'(o_ple*4); tq<=scratch+64'(o_q*4);
+                    tk<=scratch+64'(o_k*4); tv<=scratch+64'(o_v*4);
+                    asub<=scratch+64'(o_sub*4); ax0<=scratch+64'(o_ax0*4);
+                    ax1<=scratch+64'(o_ax1*4); aw0<=scratch+64'(o_aw0*4);
+                    aw1<=scratch+64'(o_aw1*4); aq<=scratch+64'(o_aq*4);
+                    ak<=scratch+64'(o_ak*4); av<=scratch+64'(o_av*4);
+                    aa<=scratch+64'(o_att*4); aout<=scratch+64'(o_aout*4);
+                    asoft<=scratch+64'(o_asoft*4);
                     if (descriptor_bad) begin error_hold<=1; state<=DONE; end
                     else if (extent_bad) begin error_hold<=5; state<=DONE; end
                     else begin

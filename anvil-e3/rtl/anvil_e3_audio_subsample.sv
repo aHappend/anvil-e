@@ -31,8 +31,8 @@ module anvil_e3_audio_subsample #(
     reg [31:0] frame_count;
     reg [63:0] w, src, tmp, dst;
     reg [3:0] error_hold;
-    wire [31:0] t1=32'((64'(frame_count)+1)/2);
-    wire [31:0] t2=32'((64'(frame_count)+3)/4);
+    wire [31:0] t1=32'((64'(frame_count)+1)>>1);
+    wire [31:0] t2=32'((64'(frame_count)+3)>>2);
     wire [63:0] n0=64'(t1)*F1*AUDIO_SUBSAMPLE_C0;
     wire [63:0] n1=64'(t2)*F2*AUDIO_SUBSAMPLE_C1;
     wire [63:0] raw0=tmp, norm0=tmp+n0*4;

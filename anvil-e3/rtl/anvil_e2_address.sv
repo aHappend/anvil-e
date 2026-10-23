@@ -22,13 +22,26 @@ module anvil_e2_address #(
     reg [127:0] offset, count, tensor_address_value;
     reg [127:0] scratch_address_value, region_offset, region_count;
     reg [127:0] h_words, ple_words, q_words, kv_words;
+    reg layer_full;
+    reg [127:0] preceding_full_layers;
+    integer layer_slot;
+    always @* begin
+        layer_full=0;
+        preceding_full_layers=0;
+        for (layer_slot=5;layer_slot<NUM_LAYERS;layer_slot=layer_slot+6)
+            if (layer_index==layer_slot) layer_full=1;
+        for (layer_slot=6;layer_slot<=NUM_LAYERS;layer_slot=layer_slot+6)
+            if (layer_index>=layer_slot)
+                preceding_full_layers=preceding_full_layers+128'd1;
+    end
 
     function automatic [127:0] rows;
-        input integer id, layer;
+        input integer id;
+        input full_layer;
         integer d, kv;
         begin
-            d=(layer%6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
-            kv=(layer%6==5) ? FULL_KV_HEADS:LOCAL_KV_HEADS;
+            d=full_layer ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            kv=full_layer ? FULL_KV_HEADS:LOCAL_KV_HEADS;
             case (id)
                 0: rows=VOCAB_SIZE;
                 1: rows=EMBEDDING_DIM;
@@ -48,10 +61,11 @@ module anvil_e2_address #(
     endfunction
 
     function automatic [127:0] cols;
-        input integer id, layer;
+        input integer id;
+        input full_layer;
         integer d;
         begin
-            d=(layer%6==5) ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            d=full_layer ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
             case (id)
                 0,1,3,8,9,10,17,20,21: cols=HIDDEN_SIZE;
                 7: cols=INTERMEDIATE_SIZE;
@@ -64,7 +78,7 @@ module anvil_e2_address #(
 
     // Called only for elaboration-time constants; entry 17 is the layer extent.
     function automatic [2303:0] layer_prefixes;
-        input integer layer;
+        input full_layer;
         reg [127:0] prefix;
         integer suffix;
         begin
@@ -72,7 +86,7 @@ module anvil_e2_address #(
             prefix=0;
             for (suffix=5; suffix<22; suffix=suffix+1) begin
                 layer_prefixes[(suffix-5)*128 +: 128]=prefix;
-                prefix=prefix+rows(suffix,layer)*cols(suffix,layer)*128'd4;
+                prefix=prefix+rows(suffix,full_layer)*cols(suffix,full_layer)*128'd4;
             end
             layer_prefixes[17*128 +: 128]=prefix;
         end
@@ -85,13 +99,72 @@ module anvil_e2_address #(
     localparam [127:0] GLOBAL_4=GLOBAL_3+rows(3,0)*cols(3,0)*128'd4;
     localparam [127:0] GLOBAL_BYTES=GLOBAL_4+rows(4,0)*cols(4,0)*128'd4;
     localparam [2303:0] LOCAL_PREFIXES=layer_prefixes(0);
-    localparam [2303:0] FULL_PREFIXES=layer_prefixes(5);
+    localparam [2303:0] FULL_PREFIXES=layer_prefixes(1'b1);
     localparam [127:0] LOCAL_LAYER_BYTES=LOCAL_PREFIXES[17*128 +: 128];
     localparam [127:0] FULL_LAYER_BYTES=FULL_PREFIXES[17*128 +: 128];
     localparam [127:0] FULL_LAYER_COUNT=128'(NUM_LAYERS)/128'd6;
     localparam [127:0] TOTAL_WEIGHTS_BYTES=GLOBAL_BYTES+
         (128'(NUM_LAYERS)-FULL_LAYER_COUNT)*LOCAL_LAYER_BYTES+
         FULL_LAYER_COUNT*FULL_LAYER_BYTES;
+
+    function automatic [4095:0] build_layer_bases;
+        input dummy;
+        reg [127:0] acc;
+        integer l;
+        begin
+            build_layer_bases=0;
+            acc=GLOBAL_BYTES;
+            for (l=0; l<32; l=l+1) begin
+                build_layer_bases[l*128 +: 128]=acc;
+                if (l==5 || l==11 || l==17 || l==23 || l==29)
+                    acc=acc+FULL_LAYER_BYTES;
+                else
+                    acc=acc+LOCAL_LAYER_BYTES;
+            end
+        end
+    endfunction
+    localparam [4095:0] LAYER_BASES=build_layer_bases(1'b0);
+
+    function automatic [127:0] layer_base;
+        input [4:0] idx;
+        begin
+            case (idx)
+                5'd0: layer_base=LAYER_BASES[0*128 +: 128];
+                5'd1: layer_base=LAYER_BASES[1*128 +: 128];
+                5'd2: layer_base=LAYER_BASES[2*128 +: 128];
+                5'd3: layer_base=LAYER_BASES[3*128 +: 128];
+                5'd4: layer_base=LAYER_BASES[4*128 +: 128];
+                5'd5: layer_base=LAYER_BASES[5*128 +: 128];
+                5'd6: layer_base=LAYER_BASES[6*128 +: 128];
+                5'd7: layer_base=LAYER_BASES[7*128 +: 128];
+                5'd8: layer_base=LAYER_BASES[8*128 +: 128];
+                5'd9: layer_base=LAYER_BASES[9*128 +: 128];
+                5'd10: layer_base=LAYER_BASES[10*128 +: 128];
+                5'd11: layer_base=LAYER_BASES[11*128 +: 128];
+                5'd12: layer_base=LAYER_BASES[12*128 +: 128];
+                5'd13: layer_base=LAYER_BASES[13*128 +: 128];
+                5'd14: layer_base=LAYER_BASES[14*128 +: 128];
+                5'd15: layer_base=LAYER_BASES[15*128 +: 128];
+                5'd16: layer_base=LAYER_BASES[16*128 +: 128];
+                5'd17: layer_base=LAYER_BASES[17*128 +: 128];
+                5'd18: layer_base=LAYER_BASES[18*128 +: 128];
+                5'd19: layer_base=LAYER_BASES[19*128 +: 128];
+                5'd20: layer_base=LAYER_BASES[20*128 +: 128];
+                5'd21: layer_base=LAYER_BASES[21*128 +: 128];
+                5'd22: layer_base=LAYER_BASES[22*128 +: 128];
+                5'd23: layer_base=LAYER_BASES[23*128 +: 128];
+                5'd24: layer_base=LAYER_BASES[24*128 +: 128];
+                5'd25: layer_base=LAYER_BASES[25*128 +: 128];
+                5'd26: layer_base=LAYER_BASES[26*128 +: 128];
+                5'd27: layer_base=LAYER_BASES[27*128 +: 128];
+                5'd28: layer_base=LAYER_BASES[28*128 +: 128];
+                5'd29: layer_base=LAYER_BASES[29*128 +: 128];
+                5'd30: layer_base=LAYER_BASES[30*128 +: 128];
+                5'd31: layer_base=LAYER_BASES[31*128 +: 128];
+                default: layer_base=GLOBAL_BYTES;
+            endcase
+        end
+    endfunction
 
     function automatic [127:0] suffix_prefix;
         input [4:0] id;
@@ -120,7 +193,6 @@ module anvil_e2_address #(
         end
     endfunction
 
-    wire [127:0] preceding_full_layers={96'd0,layer_index}/128'd6;
     assign weights_bytes=TOTAL_WEIGHTS_BYTES;
 
     always @* begin
@@ -133,15 +205,13 @@ module anvil_e2_address #(
             4: offset=GLOBAL_4;
             default: begin
                 if (tensor_id<=21 && layer_index<NUM_LAYERS)
-                    offset=GLOBAL_BYTES+
-                        ({96'd0,layer_index}-preceding_full_layers)*LOCAL_LAYER_BYTES+
-                        preceding_full_layers*FULL_LAYER_BYTES+
-                        suffix_prefix(tensor_id,layer_index%6==5);
+                    offset=layer_base(layer_index[4:0])+
+                        suffix_prefix(tensor_id,layer_full);
             end
         endcase
-        tensor_rows=rows(tensor_id,layer_index);
-        tensor_cols=cols(tensor_id,layer_index);
-        count=rows(tensor_id,layer_index)*cols(tensor_id,layer_index);
+        tensor_rows=rows(tensor_id,layer_full);
+        tensor_cols=cols(tensor_id,layer_full);
+        count=rows(tensor_id,layer_full)*cols(tensor_id,layer_full);
         tensor_address_value={64'd0,weights_base}+offset+{64'd0,element_index}*128'd4;
         tensor_error=tensor_id>21 || (tensor_id>=5 && layer_index>=NUM_LAYERS) ||
                      {64'd0,element_index}>=count || |tensor_address_value[127:64];

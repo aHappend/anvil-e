@@ -23,6 +23,7 @@ module anvil_e3_audio_conv #(
         WRITE_RSP=10, DONE=11;
     localparam integer OUT_FREQ=(FREQ_BINS+STRIDE-1)/STRIDE;
     localparam integer KX=DEPTHWISE ? 1:KERNEL;
+    localparam integer PADDING=(KERNEL-1)/2;
     localparam [127:0] WEIGHT_WORDS=DEPTHWISE ?
         128'(OUTPUT_CHANNELS)*KERNEL:
         128'(OUTPUT_CHANNELS)*INPUT_CHANNELS*KERNEL*KERNEL;
@@ -31,10 +32,13 @@ module anvil_e3_audio_conv #(
     reg [63:0] weights, input_base, output_base;
     reg signed [47:0] operand, weight, value;
     reg signed [127:0] accumulator;
-    wire [63:0] out_frames=(64'(frames)+STRIDE-1)/STRIDE;
-    wire signed [63:0] input_t=$signed(64'(out_t)*STRIDE+ky)-(KERNEL-1)/2;
+    wire [63:0] out_frames, frame_remainder;
+    anvil_e3_constant_divide #(.WIDTH(64), .DIVISOR(64'(STRIDE)))
+        frame_extent (.numerator(64'(frames)+STRIDE-1),
+            .quotient(out_frames), .remainder(frame_remainder));
+    wire signed [63:0] input_t=$signed(64'(out_t)*STRIDE+ky)-PADDING;
     wire signed [63:0] input_f=DEPTHWISE ? 64'sd0:
-        $signed(64'(out_f)*STRIDE+kx)-(KERNEL-1)/2;
+        $signed(64'(out_f)*STRIDE+kx)-PADDING;
     wire padded=input_t<0 || input_t>=$signed({32'd0,frames}) ||
         input_f<0 || input_f>=FREQ_BINS;
     wire [63:0] input_word=($unsigned(input_t)*FREQ_BINS+
