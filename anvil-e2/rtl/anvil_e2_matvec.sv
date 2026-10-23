@@ -44,9 +44,7 @@ module anvil_e2_matvec #(
     assign start_ready=rst_n && state==IDLE;
     assign in_ready=rst_n && state==LOAD;
     assign cmd_valid=rst_n && state==REQUEST;
-    assign cmd_addr=rst_n ?
-        ((state==REQUEST || state==RESPONSE) ? weight_addr :
-            base+(64'(row)*cols+col)*64'd4):64'd0;
+    assign cmd_addr=rst_n && (state==REQUEST || state==RESPONSE) ? weight_addr : 64'd0;
     assign result_ready=rst_n && state==RESPONSE;
     assign mac_clear=mac_accumulate && col==0;
     assign mac_accumulate=rst_n && state==RESPONSE && result_valid && !result_error;

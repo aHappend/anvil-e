@@ -48,7 +48,8 @@ module anvil_e2_top #(
         64'(TEXT_Q_HEADS)*FULL_HEAD_DIM<=65535 &&
         SLIDING_WINDOW>0 && MAX_SEQ_LEN>0;
     generate if (LEGAL) begin : legal_datapath
-        localparam IDLE=0, VALIDATE=1, START=2, WAIT=3, DONE=4;
+        localparam IDLE=0, VALIDATE=1, START=2, WAIT=3, DONE=4,
+            VALIDATE_1B=5, VALIDATE_2=6, VALIDATE_3=7;
         localparam integer DM=LOCAL_HEAD_DIM>FULL_HEAD_DIM ? LOCAL_HEAD_DIM:FULL_HEAD_DIM;
         localparam integer KM=LOCAL_KV_HEADS>FULL_KV_HEADS ? LOCAL_KV_HEADS:FULL_KV_HEADS;
         localparam [127:0] VH=VISION_HIDDEN, VF=VISION_FFN;
@@ -56,6 +57,25 @@ module anvil_e2_top #(
         localparam [127:0] BRIDGE_WORD=VH*3*PATCH_SIZE*PATCH_SIZE+
             2*POSITION_EMBEDDING_SIZE*VH+VISION_LAYERS*VL_WORDS;
         localparam [127:0] VWEIGHT_BYTES=(BRIDGE_WORD+128'(TEXT_HIDDEN)*VISION_HIDDEN)*4;
+        localparam [63:0] PK_SAFE = POOL_KERNEL > 0 ? POOL_KERNEL : 1;
+        localparam [63:0] PK_RECIP = (128'd1 << 64) / PK_SAFE;
+        localparam [127:0] VW_C = VISION_HIDDEN;
+        localparam [127:0] VA_C = VISION_HEADS*VISION_HEAD_DIM;
+        localparam [127:0] O_V1_P = VW_C;
+        localparam [127:0] O_VQ_P = 2*VW_C;
+        localparam [127:0] O_VK_P = 2*VW_C + VA_C;
+        localparam [127:0] O_VV_P = 2*VW_C + 2*VA_C;
+        localparam [127:0] O_SOFT_P = 2*VW_C + 3*VA_C;
+        localparam [127:0] TW_C = TEXT_HIDDEN;
+        localparam [127:0] PW_C = TEXT_LAYERS*PLE_DIM;
+        localparam [127:0] QW_C = TEXT_Q_HEADS*DM;
+        localparam [127:0] KW_C = KM*DM;
+        localparam [127:0] O_X1_N = 3 + TW_C;
+        localparam [127:0] O_PLE_N = 3 + 2*TW_C;
+        localparam [127:0] O_Q_N = 3 + 2*TW_C + PW_C;
+        localparam [127:0] O_K_N = 3 + 2*TW_C + PW_C + QW_C;
+        localparam [127:0] O_V_N = 3 + 2*TW_C + PW_C + QW_C + KW_C;
+        localparam [127:0] TOT_N = 3 + 2*TW_C + PW_C + QW_C + 2*KW_C;
         reg [2:0] state, owner;
         reg [1:0] mode;
         reg [31:0] text_tokens, rows, cols, vision_layer, text_layer;
@@ -64,24 +84,27 @@ module anvil_e2_top #(
         reg vision_x, text_x;
         reg [3:0] error_hold;
         wire image_mode=mode!=0;
-        wire [127:0] p=image_mode ? 128'(rows)*cols:0;
+        wire [127:0] p_comb=image_mode ? 128'(rows)*cols:0;
         wire [127:0] s=image_mode ? VISION_SOFT_TOKENS:0;
-        wire [127:0] n=128'(text_tokens)+(image_mode ? s+2:0);
-        wire [127:0] vw=p*VISION_HIDDEN, va=p*VISION_HEADS*VISION_HEAD_DIM;
-        wire [127:0] sw=s*TEXT_HIDDEN, tw=n*TEXT_HIDDEN;
-        wire [127:0] pw=n*TEXT_LAYERS*PLE_DIM, qw=n*TEXT_Q_HEADS*DM, kw=n*KM*DM;
-        wire [127:0] o_v0=0, o_v1=vw, o_vq=2*vw, o_vk=2*vw+va, o_vv=2*vw+2*va;
-        wire [127:0] o_soft=2*vw+3*va, o_ids=o_soft+sw, o_pos=o_ids+n;
-        wire [127:0] o_mask=o_pos+n, o_x0=o_mask+n, o_x1=o_x0+tw;
-        wire [127:0] o_ple=o_x1+tw, o_q=o_ple+pw, o_k=o_q+qw, o_v=o_k+kw;
-        wire [127:0] scratch_bytes=(o_v+kw)*4;
-        wire [63:0] v0=scratch+64'(o_v0*4), v1=scratch+64'(o_v1*4);
-        wire [63:0] vq=scratch+64'(o_vq*4), vk=scratch+64'(o_vk*4), vv=scratch+64'(o_vv*4);
-        wire [63:0] soft_tokens_base=scratch+64'(o_soft*4), fid=scratch+64'(o_ids*4);
-        wire [63:0] fpos=scratch+64'(o_pos*4), fmask=scratch+64'(o_mask*4);
-        wire [63:0] x0=scratch+64'(o_x0*4), x1=scratch+64'(o_x1*4);
-        wire [63:0] ple=scratch+64'(o_ple*4), tq=scratch+64'(o_q*4);
-        wire [63:0] tk=scratch+64'(o_k*4), tv=scratch+64'(o_v*4);
+        wire [127:0] n_comb=128'(text_tokens)+(image_mode ? s+2:0);
+        reg [127:0] p, n, o_ids_reg, pooled_prod_reg, scratch_bytes_reg, image_bytes_reg;
+        reg [63:0] num_rows_reg, num_cols_reg, est_rows_reg, est_cols_reg;
+        reg [63:0] pooled_rows_reg, pooled_cols_reg;
+        reg [63:0] v0, v1, vq, vk, vv, soft_tokens_base, fid, fpos, fmask, x0, x1, ple, tq, tk, tv;
+        wire [127:0] sw=s*TEXT_HIDDEN;
+        wire [127:0] o_v0=0, o_v1=p*O_V1_P, o_vq=p*O_VQ_P, o_vk=p*O_VK_P, o_vv=p*O_VV_P;
+        wire [127:0] o_soft=p*O_SOFT_P, o_ids=o_soft+sw;
+        wire [127:0] o_pos=o_ids_reg+n, o_mask=o_ids_reg+n*2, o_x0=o_ids_reg+n*3;
+        wire [127:0] o_x1=o_ids_reg+n*O_X1_N, o_ple=o_ids_reg+n*O_PLE_N;
+        wire [127:0] o_q=o_ids_reg+n*O_Q_N, o_k=o_ids_reg+n*O_K_N, o_v=o_ids_reg+n*O_V_N;
+        wire [127:0] scratch_bytes=(o_ids_reg+n*TOT_N)*4;
+        wire [63:0] v0_next=scratch+64'(o_v0*4), v1_next=scratch+64'(o_v1*4);
+        wire [63:0] vq_next=scratch+64'(o_vq*4), vk_next=scratch+64'(o_vk*4), vv_next=scratch+64'(o_vv*4);
+        wire [63:0] soft_tokens_base_next=scratch+64'(o_soft*4), fid_next=scratch+64'(o_ids*4);
+        wire [63:0] fpos_next=scratch+64'(o_pos*4), fmask_next=scratch+64'(o_mask*4);
+        wire [63:0] x0_next=scratch+64'(o_x0*4), x1_next=scratch+64'(o_x1*4);
+        wire [63:0] ple_next=scratch+64'(o_ple*4), tq_next=scratch+64'(o_q*4);
+        wire [63:0] tk_next=scratch+64'(o_k*4), tv_next=scratch+64'(o_v*4);
         wire [127:0] weight_bytes, unused_scratch;
         anvil_e2_address #(
             .VOCAB_SIZE(VOCAB_SIZE), .HIDDEN_SIZE(TEXT_HIDDEN),
@@ -100,15 +123,16 @@ module anvil_e2_top #(
         function automatic overflow(input [63:0] base, input [127:0] bytes);
             overflow=({64'd0,base}+bytes)>128'hffffffffffffffff;
         endfunction
-        wire [63:0] pooled_rows, pooled_cols;
-        anvil_e2_const_divide #(.DIVISOR(POOL_KERNEL)) row_count (
-            .numerator(64'(rows)+POOL_KERNEL-1),
-            .quotient(pooled_rows), .remainder()
-        );
-        anvil_e2_const_divide #(.DIVISOR(POOL_KERNEL)) column_count (
-            .numerator(64'(cols)+POOL_KERNEL-1),
-            .quotient(pooled_cols), .remainder()
-        );
+        wire [127:0] prod_rows_w = 128'(num_rows_reg) * PK_RECIP;
+        wire [127:0] prod_cols_w = 128'(num_cols_reg) * PK_RECIP;
+        wire [63:0] res_rows_w = num_rows_reg - est_rows_reg * POOL_KERNEL;
+        wire [63:0] res_cols_w = num_cols_reg - est_cols_reg * POOL_KERNEL;
+        wire [63:0] pooled_rows = POOL_KERNEL == 0 ? 64'd0 :
+            POOL_KERNEL == 1 ? num_rows_reg :
+            (est_rows_reg + (res_rows_w >= POOL_KERNEL ? 64'd1 : 64'd0));
+        wire [63:0] pooled_cols = POOL_KERNEL == 0 ? 64'd0 :
+            POOL_KERNEL == 1 ? num_cols_reg :
+            (est_cols_reg + (res_cols_w >= POOL_KERNEL ? 64'd1 : 64'd0));
         wire descriptor_bad=mode==3 || n==0 || n>MAX_SEQ_LEN || n>32'hffffffff ||
             !(output_dim==EMBED_DIM || output_dim==2*EMBED_DIM/3 ||
               output_dim==EMBED_DIM/3 || output_dim==EMBED_DIM/6) ||
@@ -117,13 +141,13 @@ module anvil_e2_top #(
             (text_tokens!=0 && (|ids[1:0] || |positions[1:0] || |masks[1:0])) ||
             (image_mode && (rows==0 || cols==0 || rows>POSITION_EMBEDDING_SIZE ||
                 cols>POSITION_EMBEDDING_SIZE || p>32'hffffffff ||
-                128'(pooled_rows)*pooled_cols!=s ||
+                pooled_prod_reg!=s ||
                 |vision_weights[1:0] || |image[1:0] || VOCAB_SIZE<=258882));
-        wire extent_bad=overflow(weights,weight_bytes) || overflow(scratch,scratch_bytes) ||
+        wire extent_bad=overflow(weights,weight_bytes) || overflow(scratch,scratch_bytes_reg) ||
             (text_tokens!=0 && (overflow(ids,128'(text_tokens)*4) ||
                 overflow(positions,128'(text_tokens)*4) || overflow(masks,128'(text_tokens)*4))) ||
             (image_mode && (overflow(vision_weights,VWEIGHT_BYTES) ||
-                overflow(image,p*3*PATCH_SIZE*PATCH_SIZE*4)));
+                overflow(image,image_bytes_reg)));
         wire [6:0] start_valids, start_readys, stage_valids, stage_writes;
         wire [6:0] stage_readys, result_valids, result_readys, stage_dones, done_readys;
         wire [63:0] stage_addrs [0:6];
@@ -250,16 +274,46 @@ module anvil_e2_top #(
                 output_dim<=0; weights<=0; vision_weights<=0; image<=0; ids<=0;
                 positions<=0; masks<=0; scratch<=0; vision_layer<=0; text_layer<=0;
                 vision_x<=0; text_x<=0; error_hold<=0;
+                p<=0; n<=0; o_ids_reg<=0; pooled_prod_reg<=0; scratch_bytes_reg<=0; image_bytes_reg<=0;
+                num_rows_reg<=0; num_cols_reg<=0; est_rows_reg<=0; est_cols_reg<=0;
+                pooled_rows_reg<=0; pooled_cols_reg<=0;
+                v0<=0; v1<=0; vq<=0; vk<=0; vv<=0; soft_tokens_base<=0;
+                fid<=0; fpos<=0; fmask<=0; x0<=0; x1<=0; ple<=0; tq<=0; tk<=0; tv<=0;
             end else case (state)
                 IDLE: if (job_valid) begin
                     mode<=job_mode; text_tokens<=job_tokens; rows<=job_patch_rows;
                     cols<=job_patch_cols; output_dim<=job_output_dim; weights<=weights_base;
                     vision_weights<=vision_weights_base; image<=image_base; ids<=tokens_base;
                     positions<=positions_base; masks<=mask_base; scratch<=scratch_base;
+                    num_rows_reg<=64'(job_patch_rows)+POOL_KERNEL-1;
+                    num_cols_reg<=64'(job_patch_cols)+POOL_KERNEL-1;
                     vision_layer<=0; text_layer<=0; vision_x<=0; text_x<=0;
                     error_hold<=0; state<=VALIDATE;
                 end
                 VALIDATE: begin
+                    p<=p_comb;
+                    n<=n_comb;
+                    est_rows_reg<=prod_rows_w[127:64];
+                    est_cols_reg<=prod_cols_w[127:64];
+                    state<=VALIDATE_1B;
+                end
+                VALIDATE_1B: begin
+                    pooled_rows_reg<=pooled_rows;
+                    pooled_cols_reg<=pooled_cols;
+                    o_ids_reg<=o_ids;
+                    image_bytes_reg<=p*(3*PATCH_SIZE*PATCH_SIZE*4);
+                    v0<=v0_next; v1<=v1_next; vq<=vq_next; vk<=vk_next; vv<=vv_next;
+                    soft_tokens_base<=soft_tokens_base_next; fid<=fid_next;
+                    state<=VALIDATE_2;
+                end
+                VALIDATE_2: begin
+                    pooled_prod_reg<=128'(pooled_rows_reg)*pooled_cols_reg;
+                    scratch_bytes_reg<=scratch_bytes;
+                    fpos<=fpos_next; fmask<=fmask_next; x0<=x0_next; x1<=x1_next;
+                    ple<=ple_next; tq<=tq_next; tk<=tk_next; tv<=tv_next;
+                    state<=VALIDATE_3;
+                end
+                VALIDATE_3: begin
                     if (descriptor_bad) begin error_hold<=1; state<=DONE; end
                     else if (extent_bad) begin error_hold<=5; state<=DONE; end
                     else begin

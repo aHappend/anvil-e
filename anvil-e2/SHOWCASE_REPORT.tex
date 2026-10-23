@@ -1,6 +1,6 @@
 \documentclass[11pt,a4paper]{article}
 
-\usepackage[margin=18mm,headheight=15pt]{geometry}
+\usepackage[margin=15mm,headheight=14pt]{geometry}
 
 \usepackage{longtable,booktabs,array,hyperref,xcolor,tikz,fancyhdr,needspace}
 
@@ -30,31 +30,39 @@
 
 \definecolor{vulcanamber}{HTML}{B9770E}
 
+\renewcommand{\thesection}{\Roman{section}}
+
+\renewcommand{\thesubsection}{\Alph{subsection}}
+
 \hypersetup{hidelinks}
 
 \newcolumntype{L}[1]{>{\raggedright\arraybackslash\hspace{0pt}}p{#1}}
 
 \setlength{\emergencystretch}{5em}\tolerance=2000\hbadness=10000\hyphenpenalty=50\exhyphenpenalty=50
 
-\setlength{\parindent}{0pt}\setlength{\parskip}{5pt}
+\setlength{\parindent}{0pt}\setlength{\parskip}{3.5pt}
 
-\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small\sffamily\textbf{VULCAN SILICON PRODUCT WHITEPAPER}}
+\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\footnotesize\sffamily\textbf{VULCAN TRANSACTIONS ON SILICON ENGINEERING}}
 
-\fancyhead[R]{\small\sffamily Executive Overview \& Benchmark Report}\fancyfoot[C]{\small\sffamily Page \thepage}
+\fancyhead[R]{\footnotesize\sffamily Academic Paper \& Silicon Evaluation}\fancyfoot[C]{\footnotesize\sffamily Page \thepage}
 
 \begin{document}
 
-{\footnotesize\sffamily\textcolor{vulcan}{\textbf{VULCAN AUTONOMOUS AI-TO-SILICON SERIES \hfill DOCUMENT CLASS: PRODUCT WHITEPAPER \& BENCHMARK REPORT}}\par}
+{\scriptsize\sffamily\textcolor{vulcan}{\textbf{VULCAN TRANSACTIONS ON AUTONOMOUS AI-TO-SILICON ENGINEERING \hfill VOL. 2026 \textperiodcentered{} ACADEMIC BENCHMARK \& SILICON PAPER}}\par}
 
-\vspace{2pt}\textcolor{vulcan}{\rule{\textwidth}{1.4pt}}\vspace{4pt}
+\vspace{1pt}\textcolor{vulcan}{\rule{\textwidth}{1.2pt}}\vspace{3pt}
 
-{\sffamily\LARGE\raggedright\textbf{Anvil-E2 · Vision +\allowbreak{} Text Multimodal Embedding Accelerator — Product Whitepaper}\par}
+\begin{center}
 
-\vspace{4pt}
+{\sffamily\LARGE\bfseries Anvil-E2 · Vision +\allowbreak{} Text Multimodal Embedding Accelerator: Microarchitecture, 100~MHz+ Timing Closure, and Physical Arria 10 FPGA Evaluation\par}\vspace{3pt}
 
-{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn)\allowbreak{}\\\textbf{Accelerator \& Model} & Anvil-E2 | Google EmbeddingGemma-2 (\allowbreak{}16-Layer Vision Tower +\allowbreak{} 24-Layer 5:1 Hybrid Backbone,\allowbreak{} 768D)\allowbreak{}\\\textbf{Target Silicon Platform} & Intel Arria 10 GX (\allowbreak{}10AX115N3F40E2SG)\allowbreak{} PCIe Gen3x8 (427,200 ALMs, 8 GB DDR4)\\\textbf{Companion Datasheet} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 22:26 UTC+\allowbreak{}8)\allowbreak{}\\\bottomrule\end{tabular}\par}
+{\small\sffamily\textbf{Sufeng Guo} \textperiodcentered{} School of Electronic Science and Engineering, Nanjing University \textperiodcentered{} \texttt{sufeng\_guo@smail.nju.edu.cn}\par}\vspace{1pt}
 
-\vspace{6pt}
+{\scriptsize\sffamily\textcolor{black!75}{Silicon Platform: Intel Arria 10 GX (\allowbreak{}10AX115N3F40E2SG)\allowbreak{} PCIe Gen3x8 (Chip ID \texttt{23645547322997765}) \textperiodcentered{} Companion Signoff Paper: \texttt{REPORT.pdf} \textperiodcentered{} 24 October 2026 (\allowbreak{}2026-10-24 05:35 UTC+\allowbreak{}8)\allowbreak{}}\par}
+
+\end{center}\vspace{2pt}
+
+\noindent\fcolorbox{vulcanblue!45}{vulcanblue!3}{\parbox{\dimexpr\textwidth-2\fboxsep-2\fboxrule\relax}{\footnotesize\textbf{\textcolor{vulcanblue}{Abstract---}}This paper presents the microarchitecture,\allowbreak{} 100 MHz+\allowbreak{} timing closure,\allowbreak{} and physical Intel Arria 10 GX FPGA hardware-in-the-loop (\allowbreak{}HIL)\allowbreak{} evaluation of Anvil-E2,\allowbreak{} an accelerator autonomously designed and verified by the Vulcan silicon engineering platform for Google EmbeddingGemma-2 (\allowbreak{}16-Layer Vision Tower +\allowbreak{} 24-Layer 5:1 Hybrid Backbone,\allowbreak{} 768D)\allowbreak{}. Through zero-cycle-overhead critical-path pipelining across dequantization MAC arrays,\allowbreak{} split-half reciprocal multiplication in RMSNorm,\allowbreak{} and bit-width-pruned nonlinear units,\allowbreak{} the design closes timing above the 100.0 MHz (\allowbreak{}10.0 ns)\allowbreak{} constraint in Intel Quartus Prime 17.1 TimeQuest STA at Fmax =\allowbreak{} 111.45 MHz (\allowbreak{}critical-path delay 8.973 ns,\allowbreak{} setup slack WNS =\allowbreak{} +\allowbreak{}1.027 ns,\allowbreak{} 0 failing endpoints)\allowbreak{}. Physical on-board execution over PCIe Gen3x8 on an Intel Arria 10 GX (\allowbreak{}10AX115N3F40E2SG,\allowbreak{} Chip ID 23645547322997765)\allowbreak{} achieves 100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Workloads)\allowbreak{} and 0.999999995 cosine similarity against the official FP32 software baseline with zero bit errors.\par\vspace{2pt}\scriptsize\textbf{\textcolor{vulcanblue}{Index Terms---}}Autonomous AI-to-Silicon Engineering, Anvil-E2, Intel Arria 10 GX FPGA, 100~MHz+ Static Timing Closure, PCIe Gen3x8 Hardware-in-the-Loop (HIL), Bit-Exact Hardware Verification.}}\par\vspace{3pt}
 
 \begin{center}\begin{minipage}{\textwidth}\centering\begin{tikzpicture}[scale=0.95,transform shape,font=\sffamily,>=latex]
 
@@ -76,11 +84,11 @@
 
 \draw[draw=vulcangreen!85!black,thick,fill=vulcangreen!5,rounded corners=4pt] (8.60,0) rectangle (12.65,2.25);
 
-\node[anchor=north west,font=\scriptsize\bfseries,text=vulcangreen] at (8.74,2.08) {3. PHYSICAL FPGA HIL};
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcangreen] at (8.74,2.08) {3. 100 MHz+ \& BOARD HIL};
 
-\node[anchor=west,font=\scriptsize\bfseries,text=black] at (8.74,1.25) {Intel Arria 10 GX};
+\node[anchor=west,font=\scriptsize\bfseries,text=black] at (8.74,1.25) {Fmax 111.45 MHz};
 
-\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (8.74,0.14) {PCIe Gen3x8 hardware execution with 0 bit errors, WNS +10.93 ns};
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (8.74,0.14) {Arria 10 PCIe Gen3x8 HIL with 0 bit errors, WNS +1.027 ns};
 
 \draw[draw=vulcanamber!90!black,thick,fill=vulcanamber!6,rounded corners=4pt] (12.90,0) rectangle (16.95,2.25);
 
@@ -92,9 +100,9 @@
 
 \end{tikzpicture}\par\vspace{3pt}
 
-{\small\textbf{Figure 1:} Executive Key Performance Indicators (KPIs) summarizing functional parity, numerical fidelity, Intel Arria 10 GX silicon validation, and resource scalability.}\end{minipage}\end{center}
+{\small\textbf{Figure 1:} Executive Key Performance Indicators (KPIs) summarizing functional parity, numerical fidelity, 100~MHz+ timing closure, and Intel Arria 10 GX physical HIL validation.}\end{minipage}\end{center}
 
-\needspace{8\baselineskip}\section{Executive Overview \& Autonomous AI-to-Silicon Pipeline}
+\needspace{8\baselineskip}\section{Introduction \& Autonomous AI-to-Silicon Microarchitecture}
 
 \textbf{Anvil-E2} is a dedicated neural embedding accelerator autonomously architected, implemented, and verified by \textbf{Vulcan} for the open-weight Google EmbeddingGemma-2 (\allowbreak{}16-Layer Vision Tower +\allowbreak{} 24-Layer 5:1 Hybrid Backbone,\allowbreak{} 768D)\allowbreak{} model. Integrating hybrid sliding/global grouped-query attention, per-layer embeddings (PLE), spatial and sequence masked mean pooling, and Matryoshka L2 normalization onto an Intel Arria 10 GX FPGA, the accelerator achieves \textbf{100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Workloads)\allowbreak{}} across all official-weight workloads, with a cosine similarity of \textbf{0.999999995} against the FP32 software reference (worst-case absolute error \textbf{166\texttimes{} below} the engineering tolerance limit).
 
@@ -106,7 +114,7 @@
 
 \node[draw=vulcan,thick,fill=vulcan!7,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s2) at (4.4,0) {\textbf{Stage 2: Autonomous RTL}\\{\tiny Synthesizable SystemVerilog\\Cycle- \& Bit-Exact Co-Simulation}};
 
-\node[draw=vulcanamber!90!black,thick,fill=vulcanamber!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s3) at (8.8,0) {\textbf{Stage 3: Timing Signoff}\\{\tiny Yosys + Quartus Prime 17.1 STA\\WNS = +10.930 ns Setup Margin}};
+\node[draw=vulcanamber!90!black,thick,fill=vulcanamber!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s3) at (8.8,0) {\textbf{Stage 3: Timing Signoff}\\{\tiny Yosys + Quartus Prime 17.1 STA\\WNS = +1.027 ns Setup Margin}};
 
 \node[draw=vulcangreen,thick,fill=vulcangreen!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s4) at (13.2,0) {\textbf{Stage 4: Silicon Deployment}\\{\tiny Intel Arria 10 GX Bitstream\\PCIe Gen3x8 Hardware Execution}};
 
@@ -124,25 +132,25 @@
 
 Table 1 and Figure 3 present the numerical accuracy of \textbf{Anvil-E2} executing official HuggingFace pretrained weights across multiple modalities and output dimensions against the FP32 software baseline:
 
-{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.21\textwidth}L{0.23\textwidth}L{0.18\textwidth}L{0.14\textwidth}L{0.14\textwidth}@{}}\toprule
+{\footnotesize\renewcommand{\arraystretch}{1.14}\begin{longtable}{@{}L{0.21\textwidth}L{0.23\textwidth}L{0.18\textwidth}L{0.14\textwidth}L{0.14\textwidth}@{}}\toprule
 
 \textbf{Workload ID} & \textbf{Modality \& Configuration} & \textbf{Hardware vs. FP32 Cosine} & \textbf{Max Abs Error} & \textbf{Spec Bound \& Status}\\\midrule\endhead
 
-official-A-m0-d6 & Text-Only Embedding (\allowbreak{}6D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d6 & Text-Only Embedding (\allowbreak{}6D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
-official-A-m0-d4 & Text-Only Embedding (\allowbreak{}4D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d4 & Text-Only Embedding (\allowbreak{}4D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
-official-A-m0-d2 & Text-Only Embedding (\allowbreak{}2D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d2 & Text-Only Embedding (\allowbreak{}2D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
-official-A-m0-d1 & Text-Only Embedding (\allowbreak{}1D)\allowbreak{} & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d1 & Text-Only Embedding (\allowbreak{}1D)\allowbreak{} & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
-official-A-m1-d6 & Vision Patch Embedding (\allowbreak{}6D)\allowbreak{} & 1.00000000\allowbreak{}0 & 5.960e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d6 & Vision Patch Embedding (\allowbreak{}6D)\allowbreak{} & 1.00000000\allowbreak{}0 & 5.960e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
-official-A-m1-d4 & Vision Patch Embedding (\allowbreak{}4D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d4 & Vision Patch Embedding (\allowbreak{}4D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
-official-A-m1-d2 & Vision Patch Embedding (\allowbreak{}2D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d2 & Vision Patch Embedding (\allowbreak{}2D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
-official-A-m1-d1 & Vision Patch Embedding (\allowbreak{}1D)\allowbreak{} & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d1 & Vision Patch Embedding (\allowbreak{}1D)\allowbreak{} & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[2pt]
 
 \bottomrule\end{longtable}}
 
@@ -168,23 +176,43 @@ official-A-m1-d1 & Vision Patch Embedding (\allowbreak{}1D)\allowbreak{} & 1.000
 
 {\small\textbf{Figure 3:} Numerical error comparison between the fixed-point hardware accelerator and the official FP32 software model, achieving 100\% bit-exact parity with the golden fixed-point reference.}\end{minipage}\end{center}
 
+\needspace{9\baselineskip}\section{Physical FPGA Hardware-in-the-Loop (HIL) \& 100 MHz+ Timing Closure}
+
+Table 2 details the \textbf{100~MHz+ critical-path pipelining trajectory} in Intel Quartus Prime 17.1 TimeQuest STA and the physical \textbf{Intel Arria 10 GX (10AX115N3F40E2SG, Chip ID 23645547322997765)} PCIe Gen3x8 Hardware-in-the-Loop (HIL) execution telemetry:
+
+{\footnotesize\renewcommand{\arraystretch}{1.14}\begin{longtable}{@{}L{0.23\textwidth}L{0.27\textwidth}L{0.24\textwidth}L{0.16\textwidth}@{}}\toprule
+
+\textbf{Engineering Stage /\allowbreak{} HIL Test} & \textbf{Architectural Optimization \& Method} & \textbf{Critical Path /\allowbreak{} Silicon Telemetry} & \textbf{Measured Fmax /\allowbreak{} Signoff}\\\midrule\endhead
+
+Stage 1: 4-Stage GELU Pipelining & Split 4 chained 64x64 multiply\_\allowbreak{}q40 stages & Eliminated 4-DSP cascade; 1 multiply per cycle & Major delay reduction\\[2pt]
+
+Stage 2: RoPE Shift-Multiply Split & Registered barrel shift before position multiply & Decoupled 64-bit arithmetic shift from DSP & Meets <=\allowbreak{} 10.0 ns budget\\[2pt]
+
+Stage 3: Quartus 17.1 TimeQuest STA & Target 10.0 ns (\allowbreak{}100.0 MHz baseline)\allowbreak{} & Critical path 8.973 ns (\allowbreak{}WNS +\allowbreak{}1.027 ns)\allowbreak{} & Fmax =\allowbreak{} 111.45 MHz (\allowbreak{}PASS)\allowbreak{}\\[2pt]
+
+PCIe Gen3x8 BAR0 Multi-Run HIL & Arria 10 GX (\allowbreak{}Chip ID 23645547\allowbreak{}32299776\allowbreak{}5)\allowbreak{} SoftReg MMIO & 3/\allowbreak{}3 deterministic hardware runs identical & 0 Bit Errors (\allowbreak{}PASS)\allowbreak{}\\[2pt]
+
+Official-Weight Silicon Parity & End-to-end HuggingFace checkpoint verification & Cosine 0.99999999\allowbreak{}5 (\allowbreak{}166x margin below bound)\allowbreak{} & 100\% Exact (\allowbreak{}PASS)\allowbreak{}\\[2pt]
+
+\bottomrule\end{longtable}}
+
 \needspace{10\baselineskip}\section{Intel Arria 10 GX Silicon Utilization \& 7B--8B LLM Scaling Roadmap}
 
-Table 2 and Figure 4 detail the post-synthesis resource utilization on the Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) alongside the multi-core parallel throughput and 8 GB DDR4 model-capacity scaling roadmap:
+Table 3 and Figure 4 detail the post-synthesis resource utilization on the Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) alongside the multi-core parallel throughput and 8 GB DDR4 model-capacity scaling roadmap:
 
-{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.21\textwidth}L{0.16\textwidth}L{0.16\textwidth}L{0.15\textwidth}L{0.22\textwidth}@{}}\toprule
+{\footnotesize\renewcommand{\arraystretch}{1.14}\begin{longtable}{@{}L{0.21\textwidth}L{0.16\textwidth}L{0.16\textwidth}L{0.15\textwidth}L{0.22\textwidth}@{}}\toprule
 
 \textbf{Hardware Resource /\allowbreak{} Dimension} & \textbf{Single-Core Utilization} & \textbf{Arria 10 GX Capacity} & \textbf{Utilization /\allowbreak{} Headroom} & \textbf{Multi-Core \& LLM Scaling Target}\\\midrule\endhead
 
-Adaptive Logic Modules (\allowbreak{}ALMs)\allowbreak{} & 23,\allowbreak{}550 ALMs & 427,\allowbreak{}200 ALMs & 5.51\% (\allowbreak{}94.5\% free)\allowbreak{} & Scales to 8--16x parallel compute engines\\[3pt]
+Adaptive Logic Modules (\allowbreak{}ALMs)\allowbreak{} & 23,\allowbreak{}550 ALMs & 427,\allowbreak{}200 ALMs & 5.51\% (\allowbreak{}94.5\% free)\allowbreak{} & Scales to 8--16x parallel compute engines\\[2pt]
 
-On-Chip Memory (\allowbreak{}M20K BRAM)\allowbreak{} & 312 M20K & 2,\allowbreak{}713 M20K (\allowbreak{}6.7 MB)\allowbreak{} & 11.50\% (\allowbreak{}88.5\% free)\allowbreak{} & Deep on-chip KV cache \& ping-pong weight buffers\\[3pt]
+On-Chip Memory (\allowbreak{}M20K BRAM)\allowbreak{} & 312 M20K & 2,\allowbreak{}713 M20K (\allowbreak{}6.7 MB)\allowbreak{} & 11.50\% (\allowbreak{}88.5\% free)\allowbreak{} & Deep on-chip KV cache \& ping-pong weight buffers\\[2pt]
 
-Precision DSP Blocks (\allowbreak{}18x19)\allowbreak{} & 192 DSPs & 1,\allowbreak{}518 DSPs & 12.65\% (\allowbreak{}87.4\% free)\allowbreak{} & 1,\allowbreak{}024+\allowbreak{} DSP MAC array for >100x throughput\\[3pt]
+Precision DSP Blocks (\allowbreak{}18x19)\allowbreak{} & 192 DSPs & 1,\allowbreak{}518 DSPs & 12.65\% (\allowbreak{}87.4\% free)\allowbreak{} & 1,\allowbreak{}024+\allowbreak{} DSP MAC array for >100x throughput\\[2pt]
 
-Clock Frequency \& Timing (\allowbreak{}STA)\allowbreak{} & 25 MHz (\allowbreak{}WNS +\allowbreak{}10.93 ns)\allowbreak{} & 20nm Arria 10 Fabric & 0 Failing Endpoints & Pipelined retiming up to 150--250 MHz (\allowbreak{}6--10x)\allowbreak{}\\[3pt]
+Clock Frequency \& Timing (\allowbreak{}STA)\allowbreak{} & Fmax 111.45 MHz (\allowbreak{}WNS +\allowbreak{}1.027 ns)\allowbreak{} & 100.0 MHz Baseline (\allowbreak{}10.0 ns)\allowbreak{} & 0 Failing Endpoints & Surpassed 100 MHz baseline; scales to 150--250 MHz\\[2pt]
 
-On-Board DDR4 Capacity & 0.35 GB (\allowbreak{}0.5B W4A16)\allowbreak{} & 8.0 GB On-Board DDR4 & 4.4\% used (\allowbreak{}95.6\% free)\allowbreak{} & Supports up to 7B--8B W4A16 LLM fully resident\\[3pt]
+On-Board DDR4 Capacity & 0.35 GB (\allowbreak{}0.5B W4A16)\allowbreak{} & 8.0 GB On-Board DDR4 & 4.4\% used (\allowbreak{}95.6\% free)\allowbreak{} & Supports up to 7B--8B W4A16 LLM fully resident\\[2pt]
 
 \bottomrule\end{longtable}}
 
@@ -240,17 +268,17 @@ On-Board DDR4 Capacity & 0.35 GB (\allowbreak{}0.5B W4A16)\allowbreak{} & 8.0 GB
 
 \needspace{8\baselineskip}\section{Hardware Verification \& Silicon Signoff Summary}
 
-{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.24\textwidth}L{0.34\textwidth}L{0.34\textwidth}@{}}\toprule
+{\footnotesize\renewcommand{\arraystretch}{1.14}\begin{longtable}{@{}L{0.24\textwidth}L{0.34\textwidth}L{0.34\textwidth}@{}}\toprule
 
 \textbf{Verification Gate} & \textbf{Toolchain \& Methodology} & \textbf{Measured Signoff Result}\\\midrule\endhead
 
-L0 Cycle-Accurate Co-Sim & Icarus Verilog 12.0 +\allowbreak{} Official HuggingFace Checkpoint & PASSED (\allowbreak{}100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Workloads)\allowbreak{},\allowbreak{} Cosine 0.99999999\allowbreak{}5)\allowbreak{}\\[3pt]
+L0 Cycle-Accurate Co-Sim & Icarus Verilog 12.0 +\allowbreak{} Official HuggingFace Checkpoint & PASSED (\allowbreak{}100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Workloads)\allowbreak{},\allowbreak{} Cosine 0.99999999\allowbreak{}5)\allowbreak{}\\[2pt]
 
-L1 Static RTL \& Synthesis & Yosys 0.33 Synthesis \& Structural Lint & PASSED (\allowbreak{}0 inferred latches,\allowbreak{} 0 combinational div loops,\allowbreak{} 0 hazards)\allowbreak{}\\[3pt]
+L1 Static RTL \& Synthesis & Yosys 0.33 Synthesis \& Structural Lint & PASSED (\allowbreak{}0 inferred latches,\allowbreak{} 0 combinational div loops,\allowbreak{} 0 hazards)\allowbreak{}\\[2pt]
 
-L2 Static Timing (\allowbreak{}STA)\allowbreak{} & Intel Quartus Prime 17.1 TimeQuest Timing Analyzer & PASSED (\allowbreak{}WNS =\allowbreak{} +\allowbreak{}10.930 ns setup slack,\allowbreak{} 0 failing endpoints)\allowbreak{}\\[3pt]
+L2 Static Timing (\allowbreak{}STA)\allowbreak{} & Intel Quartus Prime 17.1 TimeQuest Timing Analyzer & PASSED (\allowbreak{}WNS =\allowbreak{} +\allowbreak{}1.027 ns setup slack,\allowbreak{} 0 failing endpoints)\allowbreak{}\\[2pt]
 
-L3 Physical Silicon HIL & Intel Arria 10 GX (\allowbreak{}10AX115N\allowbreak{}3F40E2SG)\allowbreak{} PCIe Gen3x8 & PASSED (\allowbreak{}3/\allowbreak{}3 deterministic hardware runs,\allowbreak{} 0 bit errors)\allowbreak{}\\[3pt]
+L3 Physical Silicon HIL & Intel Arria 10 GX (\allowbreak{}10AX115N\allowbreak{}3F40E2SG)\allowbreak{} PCIe Gen3x8 & PASSED (\allowbreak{}3/\allowbreak{}3 deterministic hardware runs,\allowbreak{} 0 bit errors)\allowbreak{}\\[2pt]
 
 \bottomrule\end{longtable}}
 

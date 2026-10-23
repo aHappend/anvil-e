@@ -11,8 +11,8 @@ module anvil_e2_divide (
     output wire signed [127:0] out_quotient,
     output wire signed [127:0] out_remainder
 );
-    localparam IDLE=0, RUN=1, ROUND=2, HOLD=3;
-    reg [1:0] state;
+    localparam IDLE=0, RUN=1, ROUND=2, HOLD=3, PREP=4;
+    reg [2:0] state;
     reg negative, error;
     reg [7:0] iteration;
     reg [127:0] divisor, quotient, residue;
@@ -63,14 +63,17 @@ module anvil_e2_divide (
                 negative<=in_numerator[127];
                 divisor<=in_denominator; quotient<=0; residue<=magnitude;
                 iteration<=0; result<=0; error<=0;
-                if (in_denominator==0) begin error<=1; state<=HOLD; end
-                else if ((in_denominator & (in_denominator-128'd1))==0) begin
-                    quotient<=magnitude >> (bit_length(in_denominator)-1'b1);
-                    residue<=magnitude & (in_denominator-128'd1);
+                state<=PREP;
+            end
+            PREP: begin
+                if (divisor==0) begin error<=1; state<=HOLD; end
+                else if ((divisor & (divisor-128'd1))==0) begin
+                    quotient<=residue >> (bit_length(divisor)-1'b1);
+                    residue<=residue & (divisor-128'd1);
                     state<=ROUND;
-                end else if (magnitude<in_denominator) state<=ROUND;
+                end else if (residue<divisor) state<=ROUND;
                 else begin
-                    iteration<=bit_length(magnitude)-bit_length(in_denominator);
+                    iteration<=bit_length(residue)-bit_length(divisor);
                     state<=RUN;
                 end
             end

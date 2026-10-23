@@ -19,7 +19,7 @@ module anvil_e2_vision_patch_embed #(
 );
     localparam IDLE=0, IMAGE_REQ=1, IMAGE_RSP=2, WEIGHT_REQ=3, WEIGHT_RSP=4,
         MAC=5, ROW_REQ=6, ROW_RSP=7, COL_REQ=8, COL_RSP=9, WRITE_REQ=10,
-        WRITE_RSP=11, DONE=12;
+        WRITE_RSP=11, DONE=12, INIT_PLANE=13, IMAGE_PREP=14, MAC_ROUND=15;
     localparam [63:0] PATCH_WORDS=64'd3*PATCH_SIZE*PATCH_SIZE;
     reg [3:0] state, error_hold;
     reg [31:0] patch, channel, element;
@@ -28,8 +28,8 @@ module anvil_e2_vision_patch_embed #(
     reg signed [127:0] accumulator;
     wire signed [79:0] product=pixel*weight;
     reg [31:0] pr, pc, c, dy, dx;
-    wire [63:0] height=64'(patch_rows)*PATCH_SIZE, width=64'(patch_cols)*PATCH_SIZE;
-    wire [63:0] image_word=c*height*width+(pr*PATCH_SIZE+dy)*width+pc*PATCH_SIZE+dx;
+    reg [63:0] height_reg, width_reg, plane_words_reg, total_patches_reg, image_word_reg;
+    wire [63:0] c_plane_offset = c==0 ? 64'd0 : c==1 ? plane_words_reg : (plane_words_reg<<1);
     wire [63:0] pos_base=weights+PATCH_WORDS*VISION_HIDDEN*4;
     function automatic signed [47:0] sat(input signed [127:0] x);
         if (x>128'sd140737488289792) sat=48'sh7fffffff0000;
@@ -59,7 +59,7 @@ module anvil_e2_vision_patch_embed #(
         state==ROW_REQ || state==COL_REQ || state==WRITE_REQ);
     assign cmd_write=rst_n && state==WRITE_REQ;
     assign cmd_addr=!rst_n ? 64'd0:
-        state==IMAGE_REQ ? image+image_word*4:
+        state==IMAGE_REQ ? image+image_word_reg*4:
         state==WEIGHT_REQ ? weights+(64'(channel)*PATCH_WORDS+element)*4:
         state==ROW_REQ ? pos_base+(pr*VISION_HIDDEN+channel)*4:
         state==COL_REQ ? pos_base+((64'(POSITION_EMBEDDING_SIZE)+pc)*VISION_HIDDEN+channel)*4:
@@ -74,16 +74,28 @@ module anvil_e2_vision_patch_embed #(
             state<=IDLE; error_hold<=0; patch<=0; channel<=0; element<=0;
             pixel<=0; weight<=0; value<=0; accumulator<=0;
             pr<=0; pc<=0; c<=0; dy<=0; dx<=0;
+            height_reg<=0; width_reg<=0; plane_words_reg<=0; total_patches_reg<=0; image_word_reg<=0;
         end else if (result_valid && result_ready && result_error) begin
             error_hold<=3; state<=DONE;
         end else case (state)
             IDLE: if (start_valid) begin
                 patch<=0; channel<=0; element<=0; accumulator<=0; error_hold<=0;
                 pr<=0; pc<=0; c<=0; dy<=0; dx<=0;
+                height_reg<=64'(patch_rows)*PATCH_SIZE;
+                width_reg<=64'(patch_cols)*PATCH_SIZE;
+                total_patches_reg<=64'(patch_rows)*patch_cols;
                 if (patch_rows==0 || patch_cols==0 ||
                     patch_rows>POSITION_EMBEDDING_SIZE || patch_cols>POSITION_EMBEDDING_SIZE) begin
                     error_hold<=1; state<=DONE;
-                end else state<=IMAGE_REQ;
+                end else state<=INIT_PLANE;
+            end
+            INIT_PLANE: begin
+                plane_words_reg<=height_reg*width_reg;
+                state<=IMAGE_PREP;
+            end
+            IMAGE_PREP: begin
+                image_word_reg<=c_plane_offset+(pr*PATCH_SIZE+dy)*width_reg+pc*PATCH_SIZE+dx;
+                state<=IMAGE_REQ;
             end
             IMAGE_REQ: if (cmd_ready) state<=IMAGE_RSP;
             IMAGE_RSP: if (result_valid) begin pixel<={result_data,16'd0}; state<=WEIGHT_REQ; end
@@ -92,17 +104,20 @@ module anvil_e2_vision_patch_embed #(
             MAC: begin
                 accumulator<=accumulator+{{48{product[79]}},product};
                 if (element==PATCH_WORDS-1) begin
-                    value<=rounded(accumulator+{{48{product[79]}},product});
-                    element<=0; state<=ROW_REQ;
-                    c<=0; dy<=0; dx<=0;
+                    state<=MAC_ROUND;
                 end else begin
-                    element<=element+1; state<=IMAGE_REQ;
+                    element<=element+1; state<=IMAGE_PREP;
                     if (dx==PATCH_SIZE-1) begin
                         dx<=0;
                         if (dy==PATCH_SIZE-1) begin dy<=0; c<=c+1'b1; end
                         else dy<=dy+1'b1;
                     end else dx<=dx+1'b1;
                 end
+            end
+            MAC_ROUND: begin
+                value<=rounded(accumulator);
+                element<=0; state<=ROW_REQ;
+                c<=0; dy<=0; dx<=0;
             end
             ROW_REQ: if (cmd_ready) state<=ROW_RSP;
             ROW_RSP: if (result_valid) begin
@@ -121,13 +136,13 @@ module anvil_e2_vision_patch_embed #(
                 accumulator<=0;
                 if (channel==VISION_HIDDEN-1) begin
                     channel<=0;
-                    if (64'(patch)==64'(patch_rows)*patch_cols-1) state<=DONE;
+                    if (64'(patch)==total_patches_reg-1) state<=DONE;
                     else begin
-                        patch<=patch+1; state<=IMAGE_REQ;
+                        patch<=patch+1; state<=IMAGE_PREP;
                         if (pc==patch_cols-1) begin pc<=0; pr<=pr+1'b1; end
                         else pc<=pc+1'b1;
                     end
-                end else begin channel<=channel+1; state<=IMAGE_REQ; end
+                end else begin channel<=channel+1; state<=IMAGE_PREP; end
             end
             DONE: if (done_ready) state<=IDLE;
             default: begin error_hold<=6; state<=DONE; end

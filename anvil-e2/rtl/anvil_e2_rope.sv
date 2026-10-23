@@ -24,7 +24,8 @@ module anvil_e2_rope #(parameter integer VISION=0) (
     localparam IDLE=0, SERIES=1, ANGLE=2, SINREQ=3, SINRSP=4,
         COSREQ=5, COSRSP=6, LO0=7, LO1=8, LOSAVE=9,
         HI0=10, HI1=11, HISAVE=12, HOLD=13,
-        FREQ_START=14, FREQ_WAIT=15, REDUCE_START=16, REDUCE_WAIT=17;
+        FREQ_START=14, FREQ_WAIT=15, REDUCE_START=16, REDUCE_WAIT=17,
+        FREQ_PREP=18, ANGLE_MUL=19;
     localparam signed [95:0] ONE=96'sd1099511627776,
         LN2=96'sd762123384786, PI=96'sd3454217652358,
         TWO_PI=96'sd6908435304715,
@@ -32,9 +33,10 @@ module anvil_e2_rope #(parameter integer VISION=0) (
         LN_VISION=96'sd5063438167381;
     reg [4:0] state;
     reg [5:0] iteration;
-    reg [31:0] position;
+    reg [31:0] position, pair_reg, dim_reg;
+    reg full_reg;
     reg signed [47:0] lo, hi, sine, cosine, angle, result_lo, result_hi;
-    reg signed [95:0] reduced, term, total, exponent_shift;
+    reg signed [95:0] reduced, term, total, shifted_total_reg, exponent_shift;
     reg signed [127:0] divide_numerator;
     reg [127:0] divide_denominator;
     reg angle_reduction;
@@ -71,7 +73,8 @@ module anvil_e2_rope #(parameter integer VISION=0) (
         remainder_value< -PI ? remainder_value+TWO_PI:remainder_value;
     wire signed [95:0] floor_quotient=divide_remainder<0 ?
         divide_quotient[95:0]-96'sd1:divide_quotient[95:0];
-    wire signed [95:0] angle_product=(total>>>-exponent_shift)*{64'd0,position};
+    wire signed [95:0] shifted_total=total>>>-exponent_shift;
+    wire signed [95:0] angle_product=shifted_total_reg*{64'd0,position};
     assign start_ready=rst_n && state==IDLE;
     assign nonlinear_valid=rst_n && (state==SINREQ || state==COSREQ);
     assign nonlinear_op=state==COSREQ ? 3'd2:3'd1;
@@ -88,9 +91,9 @@ module anvil_e2_rope #(parameter integer VISION=0) (
     assign out_error=rst_n && error_hold;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state<=IDLE; iteration<=0; position<=0; lo<=0; hi<=0;
-            sine<=0; cosine<=0; angle<=0; result_lo<=0; result_hi<=0;
-            reduced<=0; term<=0; total<=0; exponent_shift<=0; error_hold<=0;
+            state<=IDLE; iteration<=0; position<=0; pair_reg<=0; dim_reg<=0; full_reg<=0;
+            lo<=0; hi<=0; sine<=0; cosine<=0; angle<=0; result_lo<=0; result_hi<=0;
+            reduced<=0; term<=0; total<=0; shifted_total_reg<=0; exponent_shift<=0; error_hold<=0;
             divide_numerator<=0; divide_denominator<=0; angle_reduction<=0;
             trig_cached<=0; cached_angle<=0; cached_sine<=0; cached_cosine<=0;
             previous_trig_cached<=0; previous_angle<=0;
@@ -98,17 +101,21 @@ module anvil_e2_rope #(parameter integer VISION=0) (
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
-                    position<=start_position; lo<=start_lo; hi<=start_hi;
+                    position<=start_position; pair_reg<=start_pair; dim_reg<=start_dim;
+                    full_reg<=start_full; lo<=start_lo; hi<=start_hi;
                     error_hold<=0; result_lo<=0; result_hi<=0;
-                    if (start_dim==0 || start_dim[0] || start_pair>=(start_dim>>1)) begin
+                    state<=FREQ_PREP;
+                end
+                FREQ_PREP: begin
+                    if (dim_reg==0 || dim_reg[0] || pair_reg>=(dim_reg>>1)) begin
                         error_hold<=1; state<=HOLD;
-                    end else if (start_pair==0) begin
+                    end else if (pair_reg==0) begin
                         total<=ONE; exponent_shift<=0; state<=ANGLE;
                     end else begin
                         divide_numerator<=
-                            (VISION ? LN_VISION:(start_full ? LN_FULL:LN_LOCAL))*
-                            128'sd2*{96'd0,start_pair};
-                        divide_denominator<={96'd0,start_dim};
+                            (VISION ? LN_VISION:(full_reg ? LN_FULL:LN_LOCAL))*
+                            128'sd2*{96'd0,pair_reg};
+                        divide_denominator<={96'd0,dim_reg};
                         state<=FREQ_START;
                     end
                 end
@@ -144,6 +151,10 @@ module anvil_e2_rope #(parameter integer VISION=0) (
                     else if (series_finished) state<=ANGLE;
                 end
                 ANGLE: begin
+                    shifted_total_reg<=shifted_total;
+                    state<=ANGLE_MUL;
+                end
+                ANGLE_MUL: begin
                     divide_numerator<={{32{angle_product[95]}},angle_product};
                     divide_denominator<=128'd6908435304715;
                     angle_reduction<=1; state<=REDUCE_START;

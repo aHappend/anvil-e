@@ -66,11 +66,23 @@ module anvil_e2_hybrid_layer #(
     reg signed [47:0] temporary [0:WIDTH-1];
     reg signed [47:0] gate [0:WIDTH-1];
     reg signed [47:0] auxiliary [0:WIDTH-1];
-    wire [63:0] layer_product={32'd0,layer}*64'd2863311531;
-    wire [31:0] preceding_full=32'(layer_product>>34);
-    wire full_mode=VISION || layer-preceding_full*6==5;
+    function automatic is_full_layer;
+        input [31:0] l;
+        integer g;
+        begin
+            is_full_layer=1'b0;
+            for (g=1; g*6<=NUM_LAYERS; g=g+1) begin
+                if (l==32'(g*6-1)) is_full_layer=1'b1;
+            end
+        end
+    endfunction
+    reg full_mode_reg;
+    wire full_mode=VISION ? 1'b1:full_mode_reg;
     wire [31:0] dim=full_mode ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
     wire [31:0] kv_heads=full_mode ? FULL_KV_HEADS:LOCAL_KV_HEADS;
+    wire [31:0] q_total_dim=full_mode ? (NUM_Q_HEADS*FULL_HEAD_DIM):(NUM_Q_HEADS*LOCAL_HEAD_DIM);
+    wire [31:0] kv_total_dim=full_mode ? (FULL_KV_HEADS*FULL_HEAD_DIM):(LOCAL_KV_HEADS*LOCAL_HEAD_DIM);
+    wire [31:0] head_dim_offset=full_mode ? (head*FULL_HEAD_DIM):(head*LOCAL_HEAD_DIM);
     wire [63:0] x_base=current_x ? bases[5]:bases[0];
     wire [63:0] next_x_base=current_x ? bases[0]:bases[5];
     // Abort only after the held memory result has been retired.
@@ -239,10 +251,23 @@ module anvil_e2_hybrid_layer #(
     localparam [127:0] VISION_LAYER_WORDS=4*VH+4*VH*VH+
         2*FULL_HEAD_DIM+3*VH*VF;
     generate if (VISION) begin : vision_addressing
+    function automatic [127:0] vision_layer_base;
+        input [31:0] l;
+        integer vl;
+        begin
+            vision_layer_base=VH*3*PATCH_SIZE*PATCH_SIZE+
+                2*POSITION_EMBEDDING_SIZE*VH;
+            for (vl=0; vl<NUM_LAYERS; vl=vl+1) begin
+                if (l==32'(vl))
+                    vision_layer_base=VH*3*PATCH_SIZE*PATCH_SIZE+
+                        2*POSITION_EMBEDDING_SIZE*VH+
+                        128'(vl)*VISION_LAYER_WORDS;
+            end
+        end
+    endfunction
     reg [127:0] vision_offset;
     always @* begin
-        vision_offset=VH*3*PATCH_SIZE*PATCH_SIZE+
-            2*POSITION_EMBEDDING_SIZE*VH+128'(layer)*VISION_LAYER_WORDS;
+        vision_offset=vision_layer_base(layer);
         case (tensor_id)
             5: vision_offset=vision_offset;
             20: vision_offset=vision_offset+VH;
@@ -440,8 +465,8 @@ module anvil_e2_hybrid_layer #(
         .clk(rope_clk), .rst_n(unit_rst_n), .start_valid(state==ROPE_START && rope_active),
         .start_ready(rope_start_ready_raw), .start_full(full_mode),
         .start_position(rotary_position), .start_pair(rotary_pair), .start_dim(rotary_dim),
-        .start_lo(temporary[head*dim+rotary_offset+rotary_pair]),
-        .start_hi(temporary[head*dim+rotary_offset+rotary_pair+(rotary_dim>>1)]),
+        .start_lo(temporary[head_dim_offset+rotary_offset+rotary_pair]),
+        .start_hi(temporary[head_dim_offset+rotary_offset+rotary_pair+(rotary_dim>>1)]),
         .nonlinear_valid(rope_nvalid), .nonlinear_ready(nready && state==ROPE_RUN),
         .nonlinear_op(rope_nop), .nonlinear_data(rope_ndata),
         .nonlinear_out_valid(nout_valid && state==ROPE_RUN),
@@ -661,16 +686,16 @@ module anvil_e2_hybrid_layer #(
                 end
                 ROPE_RUN: if (STAGE==1 && rope_out_valid && !rope_error) begin
                     bank_write_valid=1; bank_write_select=2;
-                    bank_write_index=head*dim+rotary_offset+rotary_pair;
+                    bank_write_index=head_dim_offset+rotary_offset+rotary_pair;
                     bank_write_data=rope_lo;
                     temporary_hi_valid=1;
-                    temporary_hi_index=head*dim+rotary_offset+rotary_pair+(rotary_dim>>1);
+                    temporary_hi_index=head_dim_offset+rotary_offset+rotary_pair+(rotary_dim>>1);
                     temporary_hi_data=rope_hi;
                 end
                 ATT_RUN: if (STAGE==1 && att_out_valid && att_out_index==index &&
                              att_out_last==(index==dim-1)) begin
                     bank_write_valid=1; bank_write_select=4;
-                    bank_write_index=head*dim+index;
+                    bank_write_index=head_dim_offset+index;
                     bank_write_data=att_out_data;
                 end
             endcase
@@ -704,13 +729,14 @@ module anvil_e2_hybrid_layer #(
             position<=0; token_mask<=0; scalar<=0; norm_weight<=0;
             read_target<=0; source_a<=0; source_b<=0;
             destination<=0; vector_mode<=0; source_offset<=0; destination_offset<=0;
-            op_base<=0; current_x<=0; error_hold<=0;
+            op_base<=0; current_x<=0; full_mode_reg<=0; error_hold<=0;
             bases[0]<=0; bases[1]<=0; bases[2]<=0;
             bases[3]<=0; bases[4]<=0; bases[5]<=0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
                     token<=0; layer<=layer_index; head<=0;
+                    full_mode_reg<=VISION || is_full_layer(layer_index);
                     token_row<=0; token_col<=0;
                     current_x<=start_current_x;
                     bases[0]<=x0_base; bases[5]<=x1_base; bases[1]<=ple_base;
@@ -724,21 +750,26 @@ module anvil_e2_hybrid_layer #(
                     if (tensor_error) abort_job(5);
                     else if (STAGE==0) begin
                         case (pc)
-                        70: `E2_LOAD(bases[0]+64'(token)*HIDDEN_SIZE*4,
+                        70: `E2_LOAD(bases[0]+64'(token)*(HIDDEN_SIZE*4),
                                         HIDDEN_SIZE,0,4)
-                        4: `E2_MATRIX(tensor_addr+64'(layer)*PER_LAYER_INPUT_SIZE*HIDDEN_SIZE*4,
+                        4: `E2_MATRIX(tensor_addr+64'(layer)*(PER_LAYER_INPUT_SIZE*HIDDEN_SIZE*4),
                                   PER_LAYER_INPUT_SIZE,HIDDEN_SIZE,0,2,5)
                         5: `E2_VECTOR(1,2,0,2,PER_LAYER_INPUT_SIZE,6)
                         6: `E2_NORM(tensor_addr,PER_LAYER_INPUT_SIZE,0,2,2,7)
                         7: `E2_WRITE(bases[1]+
-                            (64'(token)*NUM_LAYERS+layer)*PER_LAYER_INPUT_SIZE*4,
+                            (64'(token)*NUM_LAYERS+layer)*(PER_LAYER_INPUT_SIZE*4),
                             PER_LAYER_INPUT_SIZE,2,8)
                         8: begin
                             if (layer==NUM_LAYERS-1) begin
                                 layer<=0;
+                                full_mode_reg<=VISION || is_full_layer(32'd0);
                                 if (token==tokens-1) begin token<=0; state<=DONE; end
                                 else begin token<=token+1'b1; pc<=70; end
-                            end else begin layer<=layer+1'b1; pc<=4; end
+                            end else begin
+                                layer<=layer+1'b1;
+                                full_mode_reg<=VISION || is_full_layer(layer+1'b1);
+                                pc<=4;
+                            end
                         end
                         default: abort_job(6);
                         endcase
@@ -748,33 +779,33 @@ module anvil_e2_hybrid_layer #(
                             if (VISION) begin position<=0; pc<=10; end
                             else `E2_READ(positions+64'(token)*4,2,10)
                         end
-                        10: `E2_LOAD(x_base+64'(token)*HIDDEN_SIZE*4,HIDDEN_SIZE,0,11)
+                        10: `E2_LOAD(x_base+64'(token)*(HIDDEN_SIZE*4),HIDDEN_SIZE,0,11)
                         11: `E2_NORM(tensor_addr,HIDDEN_SIZE,0,0,1,12)
                         12: begin
                             head<=0;
-                            `E2_MATRIX(tensor_addr,NUM_Q_HEADS*dim,HIDDEN_SIZE,1,2,13)
+                            `E2_MATRIX(tensor_addr,q_total_dim,HIDDEN_SIZE,1,2,13)
                         end
-                        13: `E2_NORM(tensor_addr,dim,head*dim,2,2,14)
+                        13: `E2_NORM(tensor_addr,dim,head_dim_offset,2,2,14)
                         14: begin pair_index<=0; return_pc<=15; state<=ROPE_START; end
                         15: begin
                             if (head==NUM_Q_HEADS-1) pc<=16;
                             else begin head<=head+1'b1; pc<=13; end
                         end
-                        16: `E2_WRITE(bases[2]+64'(token)*NUM_Q_HEADS*DM*4,
-                                         NUM_Q_HEADS*dim,2,17)
+                        16: `E2_WRITE(bases[2]+64'(token)*(NUM_Q_HEADS*DM*4),
+                                         q_total_dim,2,17)
                         17: begin
-                            head<=0; `E2_MATRIX(tensor_addr,kv_heads*dim,HIDDEN_SIZE,1,2,18)
+                            head<=0; `E2_MATRIX(tensor_addr,kv_total_dim,HIDDEN_SIZE,1,2,18)
                         end
-                        18: `E2_NORM(tensor_addr,dim,head*dim,2,2,19)
+                        18: `E2_NORM(tensor_addr,dim,head_dim_offset,2,2,19)
                         19: begin pair_index<=0; return_pc<=20; state<=ROPE_START; end
                         20: begin
                             if (head==kv_heads-1) pc<=21;
                             else begin head<=head+1'b1; pc<=18; end
                         end
-                        21: `E2_WRITE(bases[3]+64'(token)*KM*DM*4,
-                                         kv_heads*dim,2,22)
-                        22: `E2_MATRIX(tensor_addr,kv_heads*dim,HIDDEN_SIZE,1,2,23)
-                        23: `E2_WRITE(bases[4]+64'(token)*KM*DM*4,kv_heads*dim,2,24)
+                        21: `E2_WRITE(bases[3]+64'(token)*(KM*DM*4),
+                                         kv_total_dim,2,22)
+                        22: `E2_MATRIX(tensor_addr,kv_total_dim,HIDDEN_SIZE,1,2,23)
+                        23: `E2_WRITE(bases[4]+64'(token)*(KM*DM*4),kv_total_dim,2,24)
                         24: begin
                             if (token==tokens-1) begin
                                 token<=0; token_row<=0; token_col<=0; pc<=30;
@@ -787,14 +818,14 @@ module anvil_e2_hybrid_layer #(
                         end
                         30: begin
                             head<=0;
-                            `E2_LOAD(x_base+64'(token)*HIDDEN_SIZE*4,HIDDEN_SIZE,0,31)
+                            `E2_LOAD(x_base+64'(token)*(HIDDEN_SIZE*4),HIDDEN_SIZE,0,31)
                         end
                         31: begin index<=0; state<=ATT_START; end
                         32: begin
                             if (head==NUM_Q_HEADS-1) pc<=33;
                             else begin head<=head+1'b1; pc<=31; end
                         end
-                        33: `E2_MATRIX(tensor_addr,HIDDEN_SIZE,NUM_Q_HEADS*dim,4,2,34)
+                        33: `E2_MATRIX(tensor_addr,HIDDEN_SIZE,q_total_dim,4,2,34)
                         34: `E2_NORM(tensor_addr,HIDDEN_SIZE,0,2,2,35)
                         35: `E2_VECTOR(2,0,2,0,HIDDEN_SIZE,36)
                         36: `E2_NORM(tensor_addr,HIDDEN_SIZE,0,0,1,37)
@@ -815,7 +846,7 @@ module anvil_e2_hybrid_layer #(
                             `E2_VECTOR(4,3,0,3,PER_LAYER_INPUT_SIZE,46)
                             else abort_job(6);
                         46: if (!VISION) `E2_LOAD(bases[1]+
-                            (64'(token)*NUM_LAYERS+layer)*PER_LAYER_INPUT_SIZE*4,
+                            (64'(token)*NUM_LAYERS+layer)*(PER_LAYER_INPUT_SIZE*4),
                             PER_LAYER_INPUT_SIZE,4,47)
                             else abort_job(6);
                         47: if (!VISION) `E2_VECTOR(3,3,4,4,PER_LAYER_INPUT_SIZE,48)

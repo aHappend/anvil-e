@@ -20,7 +20,8 @@ module anvil_e2_norm #(
     output wire out_error
 );
     localparam IDLE=0, LOAD=1, SETUP=2, ROOT=3, PREPARE=4, HOLD=5,
-               MEAN_WAIT=6, ROOT_SETUP=7, RATIO_WAIT=8, APPLY=9;
+               MEAN_WAIT=6, ROOT_SETUP=7, RATIO_WAIT=8, APPLY=9,
+               ROOT_PREP=10, APPLY_SAVE=11;
     reg [3:0] state;
     reg [31:0] count, index;
     reg l2;
@@ -32,6 +33,7 @@ module anvil_e2_norm #(
     reg [97:0] remainder;
     reg [95:0] root_value;
     reg [6:0] iteration;
+    reg [3:0] root_groups_reg;
     reg signed [47:0] result;
     reg error;
     reg [127:0] denominator_square;
@@ -39,7 +41,7 @@ module anvil_e2_norm #(
     reg [97:0] root_remainder_work;
     reg [95:0] root_work;
     integer root_step, root_groups;
-    reg signed [127:0] normalized, unit_weight, product, rounded;
+    reg signed [127:0] normalized, unit_weight, unit_weight_reg, product, rounded, rounded_reg;
     wire divide_in_ready, divide_out_valid, divide_error;
     wire signed [127:0] divide_result;
     wire signed [127:0] ratio_numerator=
@@ -93,7 +95,7 @@ module anvil_e2_norm #(
         root_work=root_value;
         shifted_remainder=0;
         trial=0;
-        for (root_step=0;root_step<8;root_step=root_step+1) begin
+        for (root_step=0;root_step<2;root_step=root_step+1) begin
             shifted_remainder=(root_remainder_work<<2)|
                 {96'd0,radicand[191-2*root_step -: 2]};
             trial=({2'd0,root_work}<<2)|98'd1;
@@ -107,7 +109,7 @@ module anvil_e2_norm #(
         end
         unit_weight=l2 ? 128'sd16777216:
             128'sd16777216+{{96{weights[index][31]}},weights[index]};
-        product=normalized*unit_weight;
+        product=normalized*unit_weight_reg;
         rounded=product>>>24;
         if (product[23:0]>24'h800000 ||
             (product[23:0]==24'h800000 && rounded[0]))
@@ -125,10 +127,13 @@ module anvil_e2_norm #(
             remainder <= 0;
             root_value <= 0;
             iteration <= 0;
+            root_groups_reg <= 0;
             result <= 0;
             error <= 0;
             denominator_square <= 0;
             normalized <= 0;
+            unit_weight_reg <= 0;
+            rounded_reg <= 0;
         end else begin
             case (state)
                 IDLE: if (start_valid) begin
@@ -159,15 +164,19 @@ module anvil_e2_norm #(
                 SETUP: begin
                     if (l2) begin
                         denominator_square <= sum_squares;
-                        state <= ROOT_SETUP;
+                        state <= ROOT_PREP;
                     end else if (divide_in_ready) state <= MEAN_WAIT;
                 end
                 MEAN_WAIT: if (divide_out_valid) begin
                     if (divide_error) begin error<=1; result<=0; state<=HOLD; end
                     else begin
                         denominator_square <= $unsigned(divide_result) + RMS_EPSILON_Q80;
-                        state <= ROOT_SETUP;
+                        state <= ROOT_PREP;
                     end
+                end
+                ROOT_PREP: begin
+                    root_groups_reg <= 4'(root_groups);
+                    state <= ROOT_SETUP;
                 end
                 ROOT_SETUP: begin
                     root_value <= 0;
@@ -179,16 +188,16 @@ module anvil_e2_norm #(
                     end else begin
                         // A zero leading prefix leaves both root and residue zero.
                         radicand <= {denominator_square,64'd0} <<
-                            (192-16*root_groups);
-                        iteration <= 7'(12-root_groups);
+                            (192-16*root_groups_reg);
+                        iteration <= 7'(48-4*root_groups_reg);
                         state <= ROOT;
                     end
                 end
                 ROOT: begin
-                    radicand <= radicand << 16;
+                    radicand <= radicand << 4;
                     remainder <= root_remainder_work;
                     root_value <= root_work;
-                    if (iteration == 11) state <= PREPARE;
+                    if (iteration == 47) state <= PREPARE;
                     else iteration <= iteration + 1'b1;
                 end
                 PREPARE: begin
@@ -199,12 +208,20 @@ module anvil_e2_norm #(
                 end
                 RATIO_WAIT: if (divide_out_valid) begin
                     if (divide_error) begin error<=1; result<=0; state<=HOLD; end
-                    else begin normalized<=divide_result; state<=APPLY; end
+                    else begin
+                        normalized<=divide_result;
+                        unit_weight_reg<=unit_weight;
+                        state<=APPLY;
+                    end
                 end
                 APPLY: begin
-                    if (rounded > 128'sd140737488289792) result <= 48'sh7fffffff0000;
-                    else if (rounded < -128'sd140737488355328) result <= 48'sh800000000000;
-                    else result <= rounded[47:0];
+                    rounded_reg <= rounded;
+                    state <= APPLY_SAVE;
+                end
+                APPLY_SAVE: begin
+                    if (rounded_reg > 128'sd140737488289792) result <= 48'sh7fffffff0000;
+                    else if (rounded_reg < -128'sd140737488355328) result <= 48'sh800000000000;
+                    else result <= rounded_reg[47:0];
                     state <= HOLD;
                 end
                 HOLD: if (out_ready) begin

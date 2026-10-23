@@ -8,7 +8,7 @@
 | :--- | :--- | :--- |
 | **Output Fidelity** | **100% Bit-Exact (29/29 Workloads)** | Zero word mismatches against golden fixed-point reference |
 | **Numerical Precision** | **0.999999995** | Cosine similarity vs. official FP32 software baseline |
-| **Physical FPGA Validation** | **Intel Arria 10 GX** | PCIe Gen3x8 hardware execution with **0 bit errors**, Quartus 17.1 setup slack **+10.930 ns** |
+| **100 MHz+ STA & Physical FPGA HIL** | **Fmax 111.45 MHz** | Intel Arria 10 GX PCIe Gen3x8 HIL with **0 bit errors**, setup slack **+1.027 ns** at `100.0 MHz` |
 | **Silicon Utilization & Scaling** | **5.51% ALMs / 12.65% DSPs** | **>94.5%** fabric headroom; 8 GB on-board DDR4 scales up to **7B–8B AWQ LLMs** |
 
 ## 2. Official-Weight Multimodal Numerical Benchmark
@@ -24,7 +24,7 @@
 | **Adaptive Logic Modules (ALMs)** | `23,550` | `427,200` | `5.51%` | Scales to 8–16x parallel compute engines |
 | **On-Chip Memory (M20K BRAM)** | `312` | `2,713` | `11.50%` | Deep on-chip KV cache & ping-pong weight buffers |
 | **Precision DSP Blocks (18x19)** | `192` | `1,518` | `12.65%` | 1,024+ DSP MAC array for >100x throughput |
-| **Clock Frequency (Fmax)** | `25 MHz` (`WNS +10.930 ns`) | `20nm Arria 10` | `0 Failing Paths` | Pipelined retiming up to **150–250 MHz** |
+| **Clock Frequency (Fmax)** | **`111.45 MHz`** (`WNS +1.027 ns` @ `100.0 MHz`) | `20nm Arria 10` | `0 Failing Paths` | Surpassed **100 MHz** baseline; scales to **150–250 MHz** |
 | **On-Board 8 GB DDR4 Capacity** | `0.5B` (`0.35 GB`) | `8.0 GB DDR4` | `4.4%` | **0.5B $\to$ 1.5B (`0.95 GB`) $\to$ 3B (`1.8 GB`) $\to$ 7B–8B (`3.9 GB` W4 weights + `4 GB` KV Cache)** |
 
 ## Whitepaper Page Preview

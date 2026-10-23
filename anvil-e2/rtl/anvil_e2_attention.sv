@@ -64,8 +64,12 @@ module anvil_e2_attention #(
     ) full_group_divide (
         .numerator({32'd0,start_head}), .quotient(full_group), .remainder()
     );
-    wire [63:0] kv_byte_offset=(start_full ? full_group:local_group)*
-        64'(start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM)*64'd4;
+    wire [63:0] kv_byte_offset=start_full ?
+        (full_group*64'(FULL_HEAD_DIM*4)):
+        (local_group*64'(LOCAL_HEAD_DIM*4));
+    wire [63:0] q_byte_offset=start_full ?
+        ((64'(start_query)*(NUM_Q_HEADS*DM)+64'(start_head)*FULL_HEAD_DIM)*64'd4):
+        ((64'(start_query)*(NUM_Q_HEADS*DM)+64'(start_head)*LOCAL_HEAD_DIM)*64'd4);
     reg signed [47:0] q_values [0:DM-1];
     reg signed [127:0] weighted [0:DM-1];
     reg signed [47:0] values [0:DM-1];
@@ -193,8 +197,7 @@ module anvil_e2_attention #(
                     tokens<=start_tokens;
                     full_mode<=start_full;
                     dim<=start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
-                    q_addr<=start_q_base+(64'(start_query)*NUM_Q_HEADS*DM+
-                        64'(start_head)*64'(start_full ? FULL_HEAD_DIM:LOCAL_HEAD_DIM))*64'd4;
+                    q_addr<=start_q_base+q_byte_offset;
                     k_head_base<=start_k_base+kv_byte_offset;
                     v_head_base<=start_v_base+kv_byte_offset;
                     k_key_base<=start_k_base+kv_byte_offset;

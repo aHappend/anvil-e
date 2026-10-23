@@ -129,7 +129,99 @@ module anvil_e2_address #(
         end
     endfunction
 
-    wire [127:0] preceding_full_layers={96'd0,sixth(layer_index)};
+    function automatic full_layer_flag;
+        input [31:0] layer;
+        integer g;
+        begin
+            full_layer_flag=1'b0;
+            for (g=1; g*6<=NUM_LAYERS; g=g+1) begin
+                if (layer==32'(g*6-1)) full_layer_flag=1'b1;
+            end
+        end
+    endfunction
+
+    function automatic [127:0] layer_base_offset;
+        input [31:0] layer;
+        integer i;
+        begin
+            layer_base_offset=128'd0;
+            for (i=0; i<NUM_LAYERS; i=i+1) begin
+                if (layer==32'(i))
+                    layer_base_offset=GLOBAL_BYTES+
+                        128'(i-(i/6))*LOCAL_LAYER_BYTES+
+                        128'(i/6)*FULL_LAYER_BYTES;
+            end
+        end
+    endfunction
+
+    function automatic [31:0] runtime_rows;
+        input [4:0] id;
+        input full_layer;
+        integer d, kv;
+        begin
+            d=full_layer ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            kv=full_layer ? FULL_KV_HEADS:LOCAL_KV_HEADS;
+            case (id)
+                0: runtime_rows=VOCAB_SIZE;
+                1: runtime_rows=EMBEDDING_DIM;
+                2: runtime_rows=HIDDEN_SIZE;
+                3: runtime_rows=32'(NUM_LAYERS*PER_LAYER_INPUT_SIZE);
+                4: runtime_rows=PER_LAYER_INPUT_SIZE;
+                5,7,11,12,13,14,15,18: runtime_rows=HIDDEN_SIZE;
+                6: runtime_rows=1;
+                8,9: runtime_rows=INTERMEDIATE_SIZE;
+                10: runtime_rows=PER_LAYER_INPUT_SIZE;
+                16,19: runtime_rows=d;
+                17,21: runtime_rows=32'(kv*d);
+                20: runtime_rows=32'(NUM_Q_HEADS*d);
+                default: runtime_rows=0;
+            endcase
+        end
+    endfunction
+
+    function automatic [31:0] runtime_cols;
+        input [4:0] id;
+        input full_layer;
+        integer d;
+        begin
+            d=full_layer ? FULL_HEAD_DIM:LOCAL_HEAD_DIM;
+            case (id)
+                0,1,3,8,9,10,17,20,21: runtime_cols=HIDDEN_SIZE;
+                7: runtime_cols=INTERMEDIATE_SIZE;
+                11: runtime_cols=PER_LAYER_INPUT_SIZE;
+                18: runtime_cols=32'(NUM_Q_HEADS*d);
+                default: runtime_cols=1;
+            endcase
+        end
+    endfunction
+
+    function automatic [127:0] runtime_count;
+        input [4:0] id;
+        input full_layer;
+        begin
+            case (id)
+                0: runtime_count=128'(VOCAB_SIZE)*128'(HIDDEN_SIZE);
+                1: runtime_count=128'(EMBEDDING_DIM)*128'(HIDDEN_SIZE);
+                2: runtime_count=128'(HIDDEN_SIZE);
+                3: runtime_count=128'(NUM_LAYERS)*128'(PER_LAYER_INPUT_SIZE)*128'(HIDDEN_SIZE);
+                4: runtime_count=128'(PER_LAYER_INPUT_SIZE);
+                5,12,13,14,15: runtime_count=128'(HIDDEN_SIZE);
+                6: runtime_count=128'd1;
+                7,8,9: runtime_count=128'(HIDDEN_SIZE)*128'(INTERMEDIATE_SIZE);
+                10,11: runtime_count=128'(HIDDEN_SIZE)*128'(PER_LAYER_INPUT_SIZE);
+                16,19: runtime_count=full_layer ? 128'(FULL_HEAD_DIM):128'(LOCAL_HEAD_DIM);
+                17,21: runtime_count=full_layer ?
+                    (128'(FULL_KV_HEADS)*128'(FULL_HEAD_DIM)*128'(HIDDEN_SIZE)):
+                    (128'(LOCAL_KV_HEADS)*128'(LOCAL_HEAD_DIM)*128'(HIDDEN_SIZE));
+                18,20: runtime_count=full_layer ?
+                    (128'(NUM_Q_HEADS)*128'(FULL_HEAD_DIM)*128'(HIDDEN_SIZE)):
+                    (128'(NUM_Q_HEADS)*128'(LOCAL_HEAD_DIM)*128'(HIDDEN_SIZE));
+                default: runtime_count=128'd0;
+            endcase
+        end
+    endfunction
+
+    wire full_layer_now=full_layer_flag(layer_index);
     assign weights_bytes=TOTAL_WEIGHTS_BYTES;
 
     always @* begin
@@ -142,15 +234,13 @@ module anvil_e2_address #(
             4: offset=GLOBAL_4;
             default: begin
                 if (tensor_id<=21 && layer_index<NUM_LAYERS)
-                    offset=GLOBAL_BYTES+
-                        ({96'd0,layer_index}-preceding_full_layers)*LOCAL_LAYER_BYTES+
-                        preceding_full_layers*FULL_LAYER_BYTES+
-                        suffix_prefix(tensor_id,layer_index-sixth(layer_index)*6==5);
+                    offset=layer_base_offset(layer_index)+
+                        suffix_prefix(tensor_id,full_layer_now);
             end
         endcase
-        tensor_rows=rows(tensor_id,layer_index);
-        tensor_cols=cols(tensor_id,layer_index);
-        count=rows(tensor_id,layer_index)*cols(tensor_id,layer_index);
+        tensor_rows=runtime_rows(tensor_id,full_layer_now);
+        tensor_cols=runtime_cols(tensor_id,full_layer_now);
+        count=runtime_count(tensor_id,full_layer_now);
         tensor_address_value={64'd0,weights_base}+offset+{64'd0,element_index}*128'd4;
         tensor_error=tensor_id>21 || (tensor_id>=5 && layer_index>=NUM_LAYERS) ||
                      {64'd0,element_index}>=count || |tensor_address_value[127:64];
@@ -159,9 +249,9 @@ module anvil_e2_address #(
 
     always @* begin
         h_words={96'd0,job_tokens}*HIDDEN_SIZE;
-        ple_words={96'd0,job_tokens}*NUM_LAYERS*PER_LAYER_INPUT_SIZE;
-        q_words={96'd0,job_tokens}*NUM_Q_HEADS*DM;
-        kv_words={96'd0,job_tokens}*KM*DM;
+        ple_words={96'd0,job_tokens}*(NUM_LAYERS*PER_LAYER_INPUT_SIZE);
+        q_words={96'd0,job_tokens}*(NUM_Q_HEADS*DM);
+        kv_words={96'd0,job_tokens}*(KM*DM);
         scratch_bytes=(h_words*2+ple_words+q_words+kv_words*2)*128'd4;
         region_offset=0;
         region_count=0;

@@ -12,7 +12,9 @@ module anvil_e2_nonlinear (
 );
     localparam IDLE=4'd0, SERIES=4'd1, ROOT=4'd2, FINISH=4'd3, HOLD=4'd4,
         DIV_START=4'd5, DIV_WAIT=4'd6, GELU_APPLY=4'd7,
-        REDUCE_START=4'd8, REDUCE_WAIT=4'd9;
+        REDUCE_START=4'd8, REDUCE_WAIT=4'd9,
+        GELU_1=4'd10, GELU_2=4'd11, GELU_3=4'd12, GELU_4=4'd13,
+        GELU_5=4'd14, GELU_DONE=4'd15;
     localparam EXP=3'd0, SIN=3'd1, COS=3'd2, RECIP=3'd3,
                RSQRT=3'd4, GELU=3'd5;
     localparam signed [95:0] ONE=96'sd1099511627776;
@@ -24,7 +26,7 @@ module anvil_e2_nonlinear (
     reg [3:0] state;
     reg [2:0] operation;
     reg signed [95:0] argument, reduced, term, total;
-    reg signed [95:0] tanh_value;
+    reg signed [95:0] tanh_value, gelu_work, gelu_prod_reg;
     reg signed [95:0] exponent_shift;
     reg [6:0] iteration;
     reg [127:0] radicand;
@@ -89,13 +91,11 @@ module anvil_e2_nonlinear (
     assign out_data = rst_n ? result : 48'sd0;
     assign out_error = rst_n && error;
     wire signed [95:0] input_value={{48{in_data[47]}},in_data};
-    wire signed [95:0] gelu_argument=multiply_q40(GELU_C,
-        input_value+multiply_q40(GELU_K,
-        multiply_q40(multiply_q40(input_value,input_value),input_value)));
-    wire signed [95:0] exp_argument=in_op==GELU ?
-        (gelu_argument<0 ? gelu_argument*96'sd2:-gelu_argument*96'sd2):input_value;
-    wire signed [95:0] bounded_argument=exp_argument< -96'sd17592186044416 ?
-        -96'sd17592186044416:exp_argument;
+    wire signed [95:0] exp_only_bounded=input_value< -96'sd17592186044416 ?
+        -96'sd17592186044416:input_value;
+    wire signed [95:0] gelu_exp_arg=gelu_work<0 ? gelu_work*96'sd2:-gelu_work*96'sd2;
+    wire signed [95:0] gelu_bounded=gelu_exp_arg< -96'sd17592186044416 ?
+        -96'sd17592186044416:gelu_exp_arg;
     wire signed [95:0] trig_remainder=divide_remainder[95:0];
     wire signed [95:0] trig_reduced=trig_remainder>PI ? trig_remainder-TWO_PI:
         trig_remainder< -PI ? trig_remainder+TWO_PI:trig_remainder;
@@ -106,8 +106,8 @@ module anvil_e2_nonlinear (
     wire signed [95:0] exponential=total>>>-exponent_shift;
     wire signed [95:0] signed_tanh=argument<0 ? -tanh_value:tanh_value;
     wire signed [95:0] gelu_product=multiply_q40(argument,ONE+signed_tanh);
-    wire signed [95:0] gelu_half=(gelu_product>>>1)+
-        (gelu_product[0] && gelu_product[1] ? 96'sd1:96'sd0);
+    wire signed [95:0] gelu_half=(gelu_prod_reg>>>1)+
+        (gelu_prod_reg[0] && gelu_prod_reg[1] ? 96'sd1:96'sd0);
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -125,6 +125,8 @@ module anvil_e2_nonlinear (
             result <= 0;
             error <= 0;
             tanh_value <= 0;
+            gelu_work <= 0;
+            gelu_prod_reg <= 0;
             divide_numerator <= 0;
             divide_denominator <= 0;
         end else begin
@@ -168,33 +170,51 @@ module anvil_e2_nonlinear (
                         divide_numerator <= {{80{in_data[47]}},in_data};
                         divide_denominator <= 128'd6908435304715;
                         state <= REDUCE_START;
-                    end else if (in_op == EXP || in_op == GELU) begin
-                        if (in_op == GELU) begin
-                            if (in_data >= 48'sd8796093022208) begin
-                                result <= in_data;
-                                state <= HOLD;
-                            end else if (in_data <= -48'sd8796093022208) begin
-                                result <= 0;
-                                state <= HOLD;
-                            end else begin
-                                state <= REDUCE_START;
-                            end
-                        end else if (in_data > 0) begin
+                    end else if (in_op == EXP) begin
+                        if (in_data > 0) begin
                             error <= 1;
                             state <= HOLD;
                         end else begin
+                            divide_numerator <= {{32{exp_only_bounded[95]}},exp_only_bounded};
+                            divide_denominator <= 128'd762123384786;
                             state <= REDUCE_START;
                         end
-                        if ((in_op == EXP && in_data <= 0) ||
-                            (in_op == GELU && in_data > -48'sd8796093022208 &&
-                             in_data < 48'sd8796093022208)) begin
-                            divide_numerator <= {{32{bounded_argument[95]}},bounded_argument};
-                            divide_denominator <= 128'd762123384786;
+                    end else if (in_op == GELU) begin
+                        if (in_data >= 48'sd8796093022208) begin
+                            result <= in_data;
+                            state <= HOLD;
+                        end else if (in_data <= -48'sd8796093022208) begin
+                            result <= 0;
+                            state <= HOLD;
+                        end else begin
+                            gelu_work <= {{48{in_data[47]}}, in_data};
+                            state <= GELU_1;
                         end
                     end else begin
                         error <= 1;
                         state <= HOLD;
                     end
+                end
+                GELU_1: begin
+                    gelu_work <= multiply_q40(argument, argument);
+                    state <= GELU_2;
+                end
+                GELU_2: begin
+                    gelu_work <= multiply_q40(gelu_work, argument);
+                    state <= GELU_3;
+                end
+                GELU_3: begin
+                    gelu_work <= argument + multiply_q40(GELU_K, gelu_work);
+                    state <= GELU_4;
+                end
+                GELU_4: begin
+                    gelu_work <= multiply_q40(GELU_C, gelu_work);
+                    state <= GELU_5;
+                end
+                GELU_5: begin
+                    divide_numerator <= {{32{gelu_bounded[95]}},gelu_bounded};
+                    divide_denominator <= 128'd762123384786;
+                    state <= REDUCE_START;
                 end
                 REDUCE_START: if (divide_ready) state <= REDUCE_WAIT;
                 REDUCE_WAIT: if (divide_valid) begin
@@ -266,6 +286,10 @@ module anvil_e2_nonlinear (
                     end
                 end
                 GELU_APPLY: begin
+                    gelu_prod_reg <= gelu_product;
+                    state <= GELU_DONE;
+                end
+                GELU_DONE: begin
                     result <= saturate(gelu_half);
                     state <= HOLD;
                 end
