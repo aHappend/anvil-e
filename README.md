@@ -13,8 +13,8 @@
   <a href="https://ahappend.github.io/vulcan/">Visit the website</a>
   · <a href="https://github.com/aHappend/vulcan-showcase">Vulcan Showcase</a>
   · <a href="README.zh-CN.md">中文</a>
-  · <a href="anvil-e1/">Anvil-E1 package</a> · <a href="anvil-e1/REPORT.pdf">Anvil-E1 Report (PDF)</a>
-  · <a href="anvil-e2/">Anvil-E2 package</a> · <a href="anvil-e2/REPORT.pdf">Anvil-E2 Report (PDF)</a>
+  · <a href="anvil-e1/">Anvil-E1 package</a> · <a href="anvil-e1/SHOWCASE_REPORT.pdf">Anvil-E1 Showcase Whitepaper (PDF)</a> · <a href="anvil-e1/REPORT.pdf">Anvil-E1 Developer Report (PDF)</a>
+  · <a href="anvil-e2/">Anvil-E2 package</a> · <a href="anvil-e2/SHOWCASE_REPORT.pdf">Anvil-E2 Showcase Whitepaper (PDF)</a> · <a href="anvil-e2/REPORT.pdf">Anvil-E2 Developer Report (PDF)</a>
   · <a href="anvil-e3/">Anvil-E3 package</a>
   · <a href="brand/">Brand assets</a>
 </p>
@@ -24,13 +24,30 @@ is the dedicated embedding series within the family, turning open embedding
 model specifications into synthesizable SystemVerilog RTL, self-checking
 verification suites and reproducible delivery packages.
 
+## Dual-Track Reports (双轨制报告导读：对外通俗高级版 + 面向开发者专业版)
+
+For every accepted chip, **Vulcan** natively generates and publishes **two complementary reports**:
+
+| Chip | Executive & Public Showcase Whitepaper (对外通俗高级版：亮点卡片、四步造芯图解、多模态实测对比、7B 扩容路线图) | Developer Engineering Signoff Report (面向开发者专业版：RTL 架构图、接口位宽、定点边界、Quartus STA 与上板寄存器台账) | Physical Arria 10 FPGA (`netsys17`) |
+| --- | --- | --- | --- |
+| **Anvil-E1** (`Text-Only`) | [**`SHOWCASE_REPORT.pdf`**](anvil-e1/SHOWCASE_REPORT.pdf) · [`SHOWCASE_REPORT.md`](anvil-e1/SHOWCASE_REPORT.md) | [**`REPORT.pdf`**](anvil-e1/REPORT.pdf) · [`REPORT.md`](anvil-e1/REPORT.md) | **PASSED** (`1,728 ALMs / 0.40%`, `WNS +10.892 ns`, `Cosine 0.99999999985`) |
+| **Anvil-E2** (`Vision + Text`) | [**`SHOWCASE_REPORT.pdf`**](anvil-e2/SHOWCASE_REPORT.pdf) · [`SHOWCASE_REPORT.md`](anvil-e2/SHOWCASE_REPORT.md) | [**`REPORT.pdf`**](anvil-e2/REPORT.pdf) · [`REPORT.md`](anvil-e2/REPORT.md) | **PASSED** (`23,550 ALMs / 5.51%`, `WNS +21.119 ns`, `Cosine 0.9999999950`) |
+
+### Visual Preview · Anvil-E2 Dual-Track Reports
+
+<p align="center">
+  <img src="anvil-e2/showcase_figures/page-1.png" width="32%" alt="Anvil-E2 Showcase Page 1">
+  <img src="anvil-e2/showcase_figures/page-2.png" width="32%" alt="Anvil-E2 Showcase Page 2">
+  <img src="anvil-e2/showcase_figures/page-3.png" width="32%" alt="Anvil-E2 Showcase Page 3">
+</p>
+
 ## Series roadmap
 
 | Generation | Design | Target model & scope | Autonomous Build Time | Status |
 | --- | --- | --- | --- | --- |
-| **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (5:1 hybrid sliding/full GQA attention, PLE per-layer embeddings, `512d → 768d` projection, masked mean pooling and Matryoshka L2 normalization) | **3h 17m 25s total** (`2h 17m 48s` Phase 1 RTL + `59m 37s` Phase 2 Official HF Weights Co-Sim) | Completed & Verified — [Official Report (`REPORT.pdf`)](anvil-e1/REPORT.pdf) & Live Demo Published |
-| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | **8h 00m 15s** (`Step 122 · completed`, `20` RTL files / `3592` lines) | Completed & Verified — [Official Report (`REPORT.pdf`)](anvil-e2/REPORT.pdf) Published · Phase 2 Official HF Weights Co-Sim In Progress |
-| **Gen-3** | **[Anvil-E3](anvil-e3/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Audio + Vision + Text Trimodal edition (12-layer `gemma4_audio` Conformer tower + `embed_audio` `1536d → 512d` + 16-layer `gemma4_vision` tower + 24-layer 5:1 hybrid trimodal backbone) | Running (`Step 6 · designer`) | In Progress — Trimodal Spec & Autonomous RTL Generation |
+| **Gen-1** | **[Anvil-E1](anvil-e1/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Text-Only edition (5:1 hybrid sliding/full GQA attention, PLE per-layer embeddings, `512d → 768d` projection, masked mean pooling and Matryoshka L2 normalization) | **3h 17m 25s total** (`2h 17m 48s` Phase 1 RTL + `59m 37s` Phase 2 Official HF Weights Co-Sim) | Completed & Verified — [Showcase (`SHOWCASE_REPORT.pdf`)](anvil-e1/SHOWCASE_REPORT.pdf) · [Developer (`REPORT.pdf`)](anvil-e1/REPORT.pdf) |
+| **Gen-2** | **[Anvil-E2](anvil-e2/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Vision + Text Multimodal edition (16-layer `gemma4_vision` tower, 3×3 spatial pooler to 280 soft tokens, 768d → 512d vision bridge, and 24-layer 5:1 hybrid multimodal backbone) | **8h 00m 15s** (`Step 122 · completed`, `20` RTL files / `3592` lines) | Completed & Verified (Phase 1 + Phase 2 + Physical Arria 10 HIL) — [Showcase (`SHOWCASE_REPORT.pdf`)](anvil-e2/SHOWCASE_REPORT.pdf) · [Developer (`REPORT.pdf`)](anvil-e2/REPORT.pdf) |
+| **Gen-3** | **[Anvil-E3](anvil-e3/)** | [Google EmbeddingGemma-2 (`google/embeddinggemma-2`)](https://huggingface.co/google/embeddinggemma-2) · Audio + Vision + Text Trimodal edition (12-layer `gemma4_audio` Conformer tower + `embed_audio` `1536d → 512d` + 16-layer `gemma4_vision` tower + 24-layer 5:1 hybrid trimodal backbone) | Running (`Step 6 · checks`) | In Progress — Trimodal Verification Checks Running (`elaboration` & `behavior` passed) |
 
 ## Anvil-E2 · Generation 2 (Vision + Text Multimodal edition)
 
