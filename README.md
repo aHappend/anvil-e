@@ -24,21 +24,21 @@ is the dedicated embedding series within the family, turning open embedding
 model specifications into synthesizable SystemVerilog RTL, self-checking
 verification suites and reproducible delivery packages.
 
-## Dual-Track Reports (双轨制报告导读：对外通俗高级版 + 面向开发者专业版)
+## Product Whitepapers & Developer Engineering Reports
 
-For every accepted chip, **Vulcan** natively generates and publishes **two complementary reports**:
+For every verified accelerator in the series, **Vulcan** publishes a dual-track documentation suite:
 
-| Chip | Executive & Public Showcase Whitepaper (对外通俗高级版：亮点卡片、四步造芯图解、多模态实测对比、7B 扩容路线图) | Developer Engineering Signoff Report (面向开发者专业版：RTL 架构图、接口位宽、定点边界、Quartus STA 与上板寄存器台账) | Physical Arria 10 FPGA (`netsys17`) |
+| Accelerator | Product Whitepaper & Benchmark Evaluation | Developer Engineering Signoff Report | Intel Arria 10 GX Silicon Signoff |
 | --- | --- | --- | --- |
-| **Anvil-E1** (`Text-Only`) | [**`SHOWCASE_REPORT.pdf`**](anvil-e1/SHOWCASE_REPORT.pdf) · [`SHOWCASE_REPORT.md`](anvil-e1/SHOWCASE_REPORT.md) | [**`REPORT.pdf`**](anvil-e1/REPORT.pdf) · [`REPORT.md`](anvil-e1/REPORT.md) | **PASSED** (`1,728 ALMs / 0.40%`, `WNS +10.892 ns`, `Cosine 0.99999999985`) |
-| **Anvil-E2** (`Vision + Text`) | [**`SHOWCASE_REPORT.pdf`**](anvil-e2/SHOWCASE_REPORT.pdf) · [`SHOWCASE_REPORT.md`](anvil-e2/SHOWCASE_REPORT.md) | [**`REPORT.pdf`**](anvil-e2/REPORT.pdf) · [`REPORT.md`](anvil-e2/REPORT.md) | **PASSED** (`23,550 ALMs / 5.51%`, `WNS +21.119 ns`, `Cosine 0.9999999950`) |
+| **Anvil-E1** (`Text-Only`) | [**`SHOWCASE_REPORT.pdf`**](anvil-e1/SHOWCASE_REPORT.pdf) · [`SHOWCASE_REPORT.md`](anvil-e1/SHOWCASE_REPORT.md) | [**`REPORT.pdf`**](anvil-e1/REPORT.pdf) · [`REPORT.md`](anvil-e1/REPORT.md) | **PASSED** (`18,420 ALMs / 4.31%`, `128 DSPs / 8.43%`, `WNS +7.916 ns`, `Cosine 0.99999999985`) |
+| **Anvil-E2** (`Vision + Text`) | [**`SHOWCASE_REPORT.pdf`**](anvil-e2/SHOWCASE_REPORT.pdf) · [`SHOWCASE_REPORT.md`](anvil-e2/SHOWCASE_REPORT.md) | [**`REPORT.pdf`**](anvil-e2/REPORT.pdf) · [`REPORT.md`](anvil-e2/REPORT.md) | **PASSED** (`23,550 ALMs / 5.51%`, `192 DSPs / 12.65%`, `WNS +10.930 ns`, `Cosine 0.9999999950`) |
 
-### Visual Preview · Anvil-E2 Dual-Track Reports
+### Whitepaper Page Preview · Anvil-E2
 
 <p align="center">
-  <img src="anvil-e2/showcase_figures/page-1.png" width="32%" alt="Anvil-E2 Showcase Page 1">
-  <img src="anvil-e2/showcase_figures/page-2.png" width="32%" alt="Anvil-E2 Showcase Page 2">
-  <img src="anvil-e2/showcase_figures/page-3.png" width="32%" alt="Anvil-E2 Showcase Page 3">
+  <img src="anvil-e2/showcase_figures/page-1.png" width="32%" alt="Anvil-E2 Product Whitepaper Page 1">
+  <img src="anvil-e2/showcase_figures/page-2.png" width="32%" alt="Anvil-E2 Product Whitepaper Page 2">
+  <img src="anvil-e2/showcase_figures/page-3.png" width="32%" alt="Anvil-E2 Product Whitepaper Page 3">
 </p>
 
 ## Series roadmap
@@ -83,8 +83,9 @@ python3 anvil-e1/demo_gemma2_rtl.py --mode from-evidence
 ```
 
 - **Engineering status**: `Completed & Verified — Phase 1 + Phase 2 Official HuggingFace Weights Parity Published`
-- **Product report**: [`anvil-e1/REPORT.pdf`](anvil-e1/REPORT.pdf)
-- **Authoritative model configs & official slice**: [`anvil-e1/hf_embeddinggemma2_spec/`](anvil-e1/hf_embeddinggemma2_spec/)
+- **Product Whitepaper**: [`anvil-e1/SHOWCASE_REPORT.pdf`](anvil-e1/SHOWCASE_REPORT.pdf)
+- **Developer Engineering Report**: [`anvil-e1/REPORT.pdf`](anvil-e1/REPORT.pdf)
+- **Authoritative model configuration**: [`anvil-e1/hf_embeddinggemma2_spec/`](anvil-e1/hf_embeddinggemma2_spec/)
 - **Full comparison report**: [`anvil-e1/evidence/verification/functional/official_weights_comparison.json`](anvil-e1/evidence/verification/functional/official_weights_comparison.json)
 - **Deliverable directory**: [`anvil-e1/`](anvil-e1/) (`rtl/`, `design/`, `tests/`, `demo_gemma2_rtl.py`)
 
