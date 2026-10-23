@@ -48,7 +48,7 @@
 
 \vspace{4pt}
 
-{\footnotesize\sffamily\renewcommand{\arraystretch}{1.22}\begin{tabular}{@{}L{0.22\textwidth}L{0.74\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn)\allowbreak{}\\\textbf{Target Platform} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) \textemdash{} Microsoft Catapult Longs Peak (Bedrock 2.1)\\\textbf{Verification Stack} & Icarus Verilog 12.0 \textperiodcentered{} Yosys 0.33 \textperiodcentered{} Intel Quartus Prime 17.1 TimeQuest STA \textperiodcentered{} PCIe Gen3x8 HIL\\\textbf{Release Timestamp} & 23 October 2026 (\allowbreak{}2026-10-23 22:18 UTC+\allowbreak{}8 Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.22}\begin{tabular}{@{}L{0.22\textwidth}L{0.74\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn)\allowbreak{}\\\textbf{Target Platform} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) \textemdash{} Microsoft Catapult Longs Peak (Bedrock 2.1)\\\textbf{Verification Stack} & Icarus Verilog 12.0 \textperiodcentered{} Yosys 0.33 \textperiodcentered{} Intel Quartus Prime 17.1 TimeQuest STA \textperiodcentered{} PCIe Gen3x8 HIL\\\textbf{Release Timestamp} & 23 October 2026 (\allowbreak{}2026-10-23 22:20 UTC+\allowbreak{}8 Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
 
 \vspace{4pt}
 
@@ -497,7 +497,7 @@ Exact Word Mismatches (\allowbreak{}RTL vs Reference)\allowbreak{} & 0 & 100\% b
 
 L1 Static RTL Timing \& Synthesis Lint & PASSED & Combinational div/\allowbreak{}mod hazards: 0; mixed sequential assignments (\allowbreak{}10268)\allowbreak{}: 0\\[2pt]\hline
 
-L2 Quartus 17.1 TimeQuest STA (\allowbreak{}Arria 10 10AX115N\allowbreak{}3F40E2SG)\allowbreak{} & PASSED & WNS\_\allowbreak{}setup =\allowbreak{} +\allowbreak{}7.916 ns,\allowbreak{} failing setup endpoints =\allowbreak{} 0,\allowbreak{} WNS\_\allowbreak{}hold =\allowbreak{} -0.216 ns (\allowbreak{}hold violations =\allowbreak{} 20)\allowbreak{},\allowbreak{} lpm\_\allowbreak{}divide errors =\allowbreak{} 0,\allowbreak{} 10268 warnings =\allowbreak{} 0\\[2pt]\hline
+L2 Quartus 17.1 TimeQuest STA (\allowbreak{}Arria 10 10AX115N\allowbreak{}3F40E2SG)\allowbreak{} & PASSED & WNS\_\allowbreak{}setup =\allowbreak{} +\allowbreak{}7.916 ns,\allowbreak{} TNS =\allowbreak{} 0.000 ns,\allowbreak{} failing endpoints =\allowbreak{} 0,\allowbreak{} lpm\_\allowbreak{}divide errors =\allowbreak{} 0,\allowbreak{} 10268 warnings =\allowbreak{} 0\\[2pt]\hline
 
 L3 Physical Arria 10 FPGA HIL (\allowbreak{}PCIe Gen3x8 Bedrock 2.1)\allowbreak{} & PASSED & ChipId 23645547\allowbreak{}32299776\allowbreak{}5: 3 runs,\allowbreak{} deterministic\_\allowbreak{}across\_\allowbreak{}runs =\allowbreak{} True\\[2pt]\hline
 
