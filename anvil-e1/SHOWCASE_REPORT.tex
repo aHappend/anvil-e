@@ -52,7 +52,7 @@
 
 \vspace{4pt}
 
-{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Chip \& Target Model} & Anvil-E1 (\allowbreak{}Gemma-3n Text Embedding Accelerator)\allowbreak{} | Google Gemma-3n-E2B Text Embedding Slice (\allowbreak{}768-D Matryoshka)\allowbreak{}\\\textbf{Physical FPGA Silicon} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}, 427,200 ALMs, 8 GB DDR4) on \texttt{netsys17}\\\textbf{Companion Report} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 19:27 UTC+\allowbreak{}8 Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Chip \& Target Model} & Anvil-E1 (\allowbreak{}Gemma-3n Text Embedding Accelerator)\allowbreak{} | Google Gemma-3n-E2B Text Embedding Slice (\allowbreak{}768-D Matryoshka)\allowbreak{}\\\textbf{Physical FPGA Silicon} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}, 427,200 ALMs, 8 GB DDR4) on \texttt{netsys17}\\\textbf{Companion Report} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 19:30 UTC+\allowbreak{}8 Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
 
 \vspace{6pt}
 
@@ -168,9 +168,9 @@ multimodal\_\allowbreak{}case & Joint Vision+\allowbreak{}Text Fusion & 1.000000
 
 逻辑单元 (\allowbreak{}ALMs)\allowbreak{} & 19,\allowbreak{}394 ALMs & 427,\allowbreak{}200 ALMs & 4.54\% (\allowbreak{}余 95.5\%)\allowbreak{} & 可扩展 64–128 路并行计算阵列\\[3pt]
 
-片上存储 (\allowbreak{}M20K BRAM)\allowbreak{} & 1 M20K & 2,\allowbreak{}713 M20K (\allowbreak{}6.7 MB)\allowbreak{} & 0.04\% (\allowbreak{}余 99.5\%)\allowbreak{} & 可做大容量片上 KV Cache 与双缓冲 Ping-Pong\\[3pt]
+片上存储 (\allowbreak{}M20K BRAM)\allowbreak{} & 1 M20K & 2,\allowbreak{}713 M20K (\allowbreak{}6.7 MB)\allowbreak{} & 0.04\% (\allowbreak{}余 99.96\%)\allowbreak{} & 可做大容量片上 KV Cache 与双缓冲 Ping-Pong\\[3pt]
 
-硬件乘加器 (\allowbreak{}DSP Blocks)\allowbreak{} & 156 DSPs & 1,\allowbreak{}518 DSPs & 10.28\% (\allowbreak{}余 99.4\%)\allowbreak{} & 启用 1,\allowbreak{}024 颗 DSP 可获 \textasciitilde{}128 倍并行算力提升\\[3pt]
+硬件乘加器 (\allowbreak{}DSP Blocks)\allowbreak{} & 156 DSPs & 1,\allowbreak{}518 DSPs & 10.28\% (\allowbreak{}余 89.72\%)\allowbreak{} & 启用 1,\allowbreak{}024 颗 DSP 可获 \textasciitilde{}128 倍并行算力提升\\[3pt]
 
 工作主频与时序 (\allowbreak{}Clock /\allowbreak{} STA)\allowbreak{} & 25 MHz (\allowbreak{}WNS +\allowbreak{}7.92 ns)\allowbreak{} & Arria 10 20nm Fabric & 正裕量充足 & 深度流水化后可达 150–250 MHz (\allowbreak{}6–10 倍提速)\allowbreak{}\\[3pt]
 
@@ -186,19 +186,19 @@ multimodal\_\allowbreak{}case & Joint Vision+\allowbreak{}Text Fusion & 1.000000
 
 \node[anchor=west,font=\tiny\bfseries] at (-0.1,1.30) {ALMs 逻辑};
 
-\fill[black!12] (1.8,1.15) rectangle (6.2,1.45); \fill[vulcan] (1.8,1.15) rectangle (2.05,1.45); \node[anchor=west,font=\tiny\bfseries] at (6.3,1.30) {已用 4.54\%};
+\fill[black!12] (1.8,1.15) rectangle (6.2,1.45); \fill[vulcan] (1.8,1.15) rectangle (2.000,1.45); \node[anchor=west,font=\tiny\bfseries] at (6.3,1.30) {已用 4.54\%};
 
 \node[anchor=west,font=\tiny\bfseries] at (-0.1,0.65) {M20K 存储};
 
-\fill[black!12] (1.8,0.50) rectangle (6.2,0.80); \fill[vulcanblue] (1.8,0.50) rectangle (1.95,0.80); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.65) {已用 0.04\%};
+\fill[black!12] (1.8,0.50) rectangle (6.2,0.80); \fill[vulcanblue] (1.8,0.50) rectangle (1.840,0.80); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.65) {已用 0.04\%};
 
 \node[anchor=west,font=\tiny\bfseries] at (-0.1,0.00) {DSP 乘加器};
 
-\fill[black!12] (1.8,-0.15) rectangle (6.2,0.15); \fill[vulcangreen] (1.8,-0.15) rectangle (1.95,0.15); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.00) {已用 10.28\%};
+\fill[black!12] (1.8,-0.15) rectangle (6.2,0.15); \fill[vulcangreen] (1.8,-0.15) rectangle (2.252,0.15); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.00) {已用 10.28\%};
 
 \node[anchor=west,font=\tiny\bfseries] at (-0.1,-0.65) {8GB DDR4};
 
-\fill[black!12] (1.8,-0.80) rectangle (6.2,-0.50); \fill[vulcanamber] (1.8,-0.80) rectangle (2.10,-0.50); \node[anchor=west,font=\tiny\bfseries] at (6.3,-0.65) {0.5B 仅占 4.4\%};
+\fill[black!12] (1.8,-0.80) rectangle (6.2,-0.50); \fill[vulcanamber] (1.8,-0.80) rectangle (1.994,-0.50); \node[anchor=west,font=\tiny\bfseries] at (6.3,-0.65) {0.5B 仅占 4.4\%};
 
 \node[anchor=west,font=\tiny,text width=7.6cm,text=black!80] at (-0.1,-1.55) {\textbf{核心结论}: 当前 v1 架构优先保障首版 100\% 精度对齐与极高时序安全裕量，\textbf{超过 94\% 的 FPGA 算力与 95\% 的 DDR4 容量可供下一代并行加速与大模型扩容}。};
 

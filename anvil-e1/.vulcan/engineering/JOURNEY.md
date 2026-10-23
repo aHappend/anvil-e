@@ -10,7 +10,7 @@ This is a milestone/tool-boundary record, not a token transcript or independent 
 
 New backend tool streams: .vulcan/runtime/agent_io.jsonl. Historical records remain at their original locations.
 
-**Last event:** 732
+**Last event:** 734
 
 ## Workflow setup
 
@@ -18393,3 +18393,45 @@ Full checkpoint and selection details remain in journal.jsonl.
 
 **Original records (project-relative):** `.vulcan/engineering/reports/report-0008/role-render-02-reviewer/`
 `request.json` / `response.json` / `result.json` / `stdout.log` / `stderr.log`
+
+### 0733 - Product report completed
+**UTC:** 2026-10-23T11:27:58+00:00 | **Beijing:** 2026-10-23T19:27:58+08:00
+
+**status:** reported
+
+**summary:**
+> LaTeX source, rendered PDF and source/evidence manifest retained. Acceptance remains current.
+
+**Original records (project-relative):** `.vulcan/engineering/reports/report-0008/`
+`request.json` / `response.json` / `result.json` / `stdout.log` / `stderr.log`
+
+### 0734 - Report stage paused
+**UTC:** 2026-10-23T11:27:58+00:00 | **Beijing:** 2026-10-23T19:27:58+08:00
+
+**status:** blocked
+
+**summary:**
+> Refusing to overwrite an unowned or edited published copy: /data/sufeng/anvil-e-line4/workspace_phase2/project/VULCAN/REPORT.pdf
+
+**Task checkpoint**
+**kind:**
+> report_blocked
+**reason:**
+> Refusing to overwrite an unowned or edited published copy: /data/sufeng/anvil-e-line4/workspace_phase2/project/VULCAN/REPORT.pdf
+**owner:**
+> operator
+**engineering_status:**
+> null
+**independently_accepted:**
+> null
+**delivery_status:**
+> null
+**report_candidate_status:**
+> null
+**next_action:**
+> Resolve the recorded prerequisite or report/input failure, then retry report generation. Recheck current engineering acceptance before continuing.
+**evidence:**
+> ["vulcan-workflow.json", ".vulcan/engineering"]
+**scope:**
+> Failure observation only. Current acceptance and delivery are not re-evaluated: their status reader may have caused this failure. Null fields are unavailable, not approval.
+Full checkpoint and selection details remain in journal.jsonl.
