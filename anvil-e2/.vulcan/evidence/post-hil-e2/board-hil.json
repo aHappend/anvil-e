@@ -1,0 +1,77 @@
+{
+  "gate": "board-hil",
+  "timestamp_utc": "2026-10-20T14:22:05.019823+00:00",
+  "chip_id": "23645547322997765",
+  "heartbeat": {
+    "alive": true,
+    "age_s": 0.16,
+    "host": null,
+    "user": null,
+    "detail": "Bridge healthy"
+  },
+  "reg57_probe": {
+    "exit_code": 0,
+    "stdout": "Read register 57 (0x00000039): 178 (0x000000b2)\nFPGA diagnostics total time: 0.05 seconds"
+  },
+  "requested_runs": 3,
+  "deterministic_across_runs": true,
+  "status": "passed",
+  "runs": [
+    {
+      "run_index": 1,
+      "exit_code": 0,
+      "duration_s": 7.928,
+      "passed": true,
+      "missing_expected_tokens": [],
+      "forbidden_tokens_found": [],
+      "stdout": "Wrote soft shell register 3 (0x00000003): 2 (0x0000000000000002)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 0 (0x00000000): 4705793533462660402 (0x414e56494c5f4532)\nFPGA diagnostics total time: 0.04 seconds\nWrote soft shell register 3 (0x00000003): 256 (0x0000000000000100)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 2 (0x00000002): 4294970382 (0x0000000100000c0e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 11 (0x0000000b): 851257 (0x00000000000cfd39)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 12 (0x0000000c): 9131100516060 (0x0000084e0000aedc)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 16 (0x00000010): 5292705 (0x000000000050c2a1)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 17 (0x00000011): 1233566 (0x000000000012d29e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 18 (0x00000012): 1973137 (0x00000000001e1b91)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 19 (0x00000013): 18446744073708098435 (0xffffffffffe9d383)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 20 (0x00000014): 3116633 (0x00000000002f8e59)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 21 (0x00000015): 18446744073707488206 (0xffffffffffe083ce)\nFPGA diagnostics total time: 0.04 seconds\n",
+      "stderr": ""
+    },
+    {
+      "run_index": 2,
+      "exit_code": 0,
+      "duration_s": 8.529,
+      "passed": true,
+      "missing_expected_tokens": [],
+      "forbidden_tokens_found": [],
+      "stdout": "Wrote soft shell register 3 (0x00000003): 2 (0x0000000000000002)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 0 (0x00000000): 4705793533462660402 (0x414e56494c5f4532)\nFPGA diagnostics total time: 0.04 seconds\nWrote soft shell register 3 (0x00000003): 256 (0x0000000000000100)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 2 (0x00000002): 4294970382 (0x0000000100000c0e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 11 (0x0000000b): 851257 (0x00000000000cfd39)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 12 (0x0000000c): 9131100516060 (0x0000084e0000aedc)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 16 (0x00000010): 5292705 (0x000000000050c2a1)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 17 (0x00000011): 1233566 (0x000000000012d29e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 18 (0x00000012): 1973137 (0x00000000001e1b91)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 19 (0x00000013): 18446744073708098435 (0xffffffffffe9d383)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 20 (0x00000014): 3116633 (0x00000000002f8e59)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 21 (0x00000015): 18446744073707488206 (0xffffffffffe083ce)\nFPGA diagnostics total time: 0.04 seconds\n",
+      "stderr": ""
+    },
+    {
+      "run_index": 3,
+      "exit_code": 0,
+      "duration_s": 7.78,
+      "passed": true,
+      "missing_expected_tokens": [],
+      "forbidden_tokens_found": [],
+      "stdout": "Wrote soft shell register 3 (0x00000003): 2 (0x0000000000000002)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 0 (0x00000000): 4705793533462660402 (0x414e56494c5f4532)\nFPGA diagnostics total time: 0.04 seconds\nWrote soft shell register 3 (0x00000003): 256 (0x0000000000000100)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 2 (0x00000002): 4294970382 (0x0000000100000c0e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 11 (0x0000000b): 851257 (0x00000000000cfd39)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 12 (0x0000000c): 9131100516060 (0x0000084e0000aedc)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 16 (0x00000010): 5292705 (0x000000000050c2a1)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 17 (0x00000011): 1233566 (0x000000000012d29e)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 18 (0x00000012): 1973137 (0x00000000001e1b91)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 19 (0x00000013): 18446744073708098435 (0xffffffffffe9d383)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 20 (0x00000014): 3116633 (0x00000000002f8e59)\nFPGA diagnostics total time: 0.04 seconds\nRead soft shell register 21 (0x00000015): 18446744073707488206 (0xffffffffffe083ce)\nFPGA diagnostics total time: 0.04 seconds\n",
+      "stderr": ""
+    }
+  ],
+  "detail": "All 3 physical FPGA HIL run(s) passed deterministically on chip 23645547322997765.",
+  "pipeline_telemetry": {
+    "bedrock_rpd": {
+      "rebuilt": false,
+      "rpd_path": "/home/v-sufengguo/bedrock_2_1_anvil_e2/output_files/LongsPeak_AnvilE1_full.rpd",
+      "rpd_sha256": "8a7e768c13fbed9f2d4c36eabd974dae1ee04f54083c57d03824f779f964c119",
+      "source_sha256": "5af12cdb9d1266bb3ba0c9952b07c90f4d6ad8c9b3155e0a8a2d2ff9e12e4983"
+    },
+    "remote_transfer": {
+      "transferred": false,
+      "remote_rpd_win_path": "C:\\Users\\v-sufengguo\\anvil_e2_bedrock_role\\LongsPeak_AnvilE2_v091.rpd",
+      "rpd_sha256": "8a7e768c13fbed9f2d4c36eabd974dae1ee04f54083c57d03824f779f964c119"
+    },
+    "flash_and_reconfig": {
+      "flashed": true,
+      "reconfigured": true,
+      "rpd_sha256": "8a7e768c13fbed9f2d4c36eabd974dae1ee04f54083c57d03824f779f964c119",
+      "flash_stdout_tail": "FLASH_DONE\n[hip-0,fn-0]: Sector 5f70000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.15\n[hip-0,fn-0]: Sector 5f80000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.19\n[hip-0,fn-0]: Sector 5f90000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.16\n[hip-0,fn-0]: Sector 5fa0000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.18\n[hip-0,fn-0]: Sector 5fb0000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.15\n[hip-0,fn-0]: Sector 5fc0000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.17\n[hip-0,fn-0]: Sector 5fd0000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.18\n[hip-0,fn-0]: Sector 5fe0000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 26.22, Write time (ms) = 0.06, Read time (ms) = 80.16\n[hip-0,fn-0]: Sector 5ff0000: Erasing/Writing/Verifying\n[hip-0,fn-0]: Erase time(ms) = 325.03, Write time (ms) = 0.07, Read time (ms) = 80.45\n[hip-0,fn-0]: Done at address 6000000. Sectors written: 512. Non ff bytes: 5667840\n[hip-0,fn-0]: Erase times Min (ms) = 26.22, Max (ms) = 325.03, Avg (ms) = 204.64\n[hip-0,fn-0]: Write time Min (ms) = 0.06, Max (ms) = 167.42, Avg (ms) = 112.93\n[hip-0,fn-0]: Read time Min (ms) = 79.42, Max (ms) = 82.30, Avg (ms) = 80.22\n[hip-0,fn-0]: Time 203.76 seconds\n[hip-0,fn-0]: Exiting WriteFlashSlot FPGA_STATUS 0x0.\nFPGA diagnostics total time: 204.78 seconds\n",
+      "reconfig_stdout_tail": "ajor Version: 0xB0003, RSU Minor Version 0x3, RDID 0x21\n[hip-0,fn-0]: Value used for Reconfig Delay Timeout = 650 \n[hip-0,fn-0]: Masking errors on all rootports\n[hip-0,fn-0]: Disabled AER on rp instance 0\n[hip-0,fn-0]: Disabled Error Reporting on rp instance 0\n[hip-0,fn-0]: Disabled Error Reporting on rp instance 1\n[hip-0,fn-0]: Disabled AER on rp instance 2\n[hip-0,fn-0]: Disabled Error Reporting on rp instance 2\n[hip-0,fn-0]: Disabled AER on rp instance 3\n[hip-0,fn-0]: Disabled Error Reporting on rp instance 3\n[hip-0,fn-0]: Disabled AER on rp instance 4\n[hip-0,fn-0]: Disabled Error Reporting on rp instance 4\n[hip-0,fn-0]: Reconfiguring to flash slot 1 over flash, RSU 3.0 Detected \n[hip-0,fn-0]: Value used for disableLinkWaitTime = 900\n[hip-0,fn-0]: Value used for postRetrainWaitTime = 0\n[hip-0,fn-0]: Disabled AER on the upstream port\n[hip-0,fn-0]: Using legacy method to arm for reconfig\n[hip-0,fn-0]: RSU write to 0x4 = 0x40000\n[hip-0,fn-0]: CM failed to disable the child devnode. Error code 0\n[hip-0,fn-0]: Beginning wait of 900 ms for the image to load from flash and to come back up\n[hip-0,fn-0]: _FPGA_RootportEnableLink called for chip 23645547322997765 with doRetrain parameter set to 1\n[hip-0,fn-0]: Writing 0x20 to PCIe capabilities link control register\n[hip-0,fn-0]: Value used for Retrain Poll Time = 10, GoodCounterLimit = 10, MarginalCounterLimit = 100, SafetyCounterLimit = 600 \n[hip-0,fn-0]: PCIe link retrained to gen3x8\n[hip-0,fn-0]: Beginning wait of 0 ms after PCIe link is trained until devices are reenabled\n[hip-0,fn-0]: Restored AER on rp instance 0\n[hip-0,fn-0]: Restored Error Reporting on rp instance 0\n[hip-0,fn-0]: Restored Error Reporting on rp instance 1\n[hip-0,fn-0]: Restored AER on rp instance 2\n[hip-0,fn-0]: Restored Error Reporting on rp instance 2\n[hip-0,fn-0]: Restored AER on rp instance 3\n[hip-0,fn-0]: Restored Error Reporting on rp instance 3\n[hip-0,fn-0]: Restored AER on rp instance 4\n[hip-0,fn-0]: Restored Error Reporting on rp instance 4\n",
+      "bar0_restore": {
+        "exit_code": 0,
+        "stdout": "BAR0_RESTORED cmd=0x00100006 bar0=0xc8000000",
+        "stderr": ""
+      }
+    }
+  }
+}
