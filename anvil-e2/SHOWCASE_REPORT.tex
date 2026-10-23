@@ -38,21 +38,21 @@
 
 \setlength{\parindent}{0pt}\setlength{\parskip}{5pt}
 
-\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small\sffamily\textbf{VULCAN EXECUTIVE \& PUBLIC SHOWCASE WHITEPAPER}}
+\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small\sffamily\textbf{VULCAN SILICON PRODUCT WHITEPAPER}}
 
-\fancyhead[R]{\small\sffamily AI-to-Silicon Autonomous Hardware Report}\fancyfoot[C]{\small\sffamily Page \thepage}
+\fancyhead[R]{\small\sffamily Executive Overview \& Benchmark Report}\fancyfoot[C]{\small\sffamily Page \thepage}
 
 \begin{document}
 
-{\footnotesize\sffamily\textcolor{vulcan}{\textbf{VULCAN AUTONOMOUS AI-TO-SILICON SERIES \hfill DOCUMENT CLASS: PUBLIC SHOWCASE WHITEPAPER (对外通俗高级版)}}\par}
+{\footnotesize\sffamily\textcolor{vulcan}{\textbf{VULCAN AUTONOMOUS AI-TO-SILICON SERIES \hfill DOCUMENT CLASS: PRODUCT WHITEPAPER \& BENCHMARK REPORT}}\par}
 
 \vspace{2pt}\textcolor{vulcan}{\rule{\textwidth}{1.4pt}}\vspace{4pt}
 
-{\sffamily\LARGE\raggedright\textbf{Anvil-E2 Phase 2: Official-Weight Multimodal RTL Evaluation — 芯片成果展示与实验对比白皮书}\par}
+{\sffamily\LARGE\raggedright\textbf{Anvil-E2 · Vision +\allowbreak{} Text Multimodal Embedding Accelerator — Product Whitepaper}\par}
 
 \vspace{4pt}
 
-{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Chip \& Target Model} & Anvil-E2 (\allowbreak{}Gemma-3n Multimodal Vision+\allowbreak{}Text Embedding Accelerator)\allowbreak{} | Google Gemma-3n-E2B Multimodal Vision+\allowbreak{}Text Checkpoint (\allowbreak{}768-D)\allowbreak{}\\\textbf{Physical FPGA Silicon} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}, 427,200 ALMs, 8 GB DDR4) on \texttt{netsys17}\\\textbf{Companion Report} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 19:31 UTC+\allowbreak{}8 Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn)\allowbreak{}\\\textbf{Accelerator \& Model} & Anvil-E2 | Google EmbeddingGemma-2 (\allowbreak{}16-Layer Vision Tower +\allowbreak{} 24-Layer 5:1 Hybrid Backbone,\allowbreak{} 768D)\allowbreak{}\\\textbf{Target Silicon Platform} & Intel Arria 10 GX (\allowbreak{}10AX115N3F40E2SG)\allowbreak{} PCIe Gen3x8 (427,200 ALMs, 8 GB DDR4)\\\textbf{Companion Datasheet} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 22:18 UTC+\allowbreak{}8)\allowbreak{}\\\bottomrule\end{tabular}\par}
 
 \vspace{6pt}
 
@@ -60,55 +60,55 @@
 
 \draw[draw=vulcan!80!black,thick,fill=vulcan!5,rounded corners=4pt] (0,0) rectangle (4.05,2.25);
 
-\node[anchor=north west,font=\scriptsize\bfseries,text=vulcan!90!black] at (0.14,2.08) {1. 任务对齐率 (FIDELITY)};
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcan!90!black] at (0.14,2.08) {1. OUTPUT FIDELITY};
 
-\node[anchor=west,font=\footnotesize\bfseries,text=black] at (0.14,1.25) {100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29)\allowbreak{}};
+\node[anchor=west,font=\footnotesize\bfseries,text=black] at (0.14,1.25) {100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Workloads)\allowbreak{}};
 
-\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (0.14,0.14) {与 HuggingFace 官方软件模型逐词/逐比特对比零偏差};
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (0.14,0.14) {Zero word mismatches against golden fixed-point reference};
 
 \draw[draw=vulcanblue!85!black,thick,fill=vulcanblue!5,rounded corners=4pt] (4.30,0) rectangle (8.35,2.25);
 
-\node[anchor=north west,font=\scriptsize\bfseries,text=vulcanblue] at (4.44,2.08) {2. 数值精度 (COSINE SIM)};
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcanblue] at (4.44,2.08) {2. NUMERICAL PRECISION};
 
 \node[anchor=west,font=\normalsize\bfseries,text=black] at (4.44,1.25) {0.999999995};
 
-\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (4.44,0.14) {全词表/全维度余弦相似度极高，误差远低于规格上限};
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (4.44,0.14) {Cosine similarity vs. official FP32 software baseline};
 
 \draw[draw=vulcangreen!85!black,thick,fill=vulcangreen!5,rounded corners=4pt] (8.60,0) rectangle (12.65,2.25);
 
-\node[anchor=north west,font=\scriptsize\bfseries,text=vulcangreen] at (8.74,2.08) {3. 真实芯片上板 (FPGA HIL)};
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcangreen] at (8.74,2.08) {3. PHYSICAL FPGA HIL};
 
-\node[anchor=west,font=\footnotesize\bfseries,text=black] at (8.74,1.25) {Arria 10 (\texttt{netsys17})};
+\node[anchor=west,font=\footnotesize\bfseries,text=black] at (8.74,1.25) {Intel Arria 10 GX};
 
-\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (8.74,0.14) {PCIe Gen3x8 物理板卡实测 0 错误，时序裕量 +10.93 ns};
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (8.74,0.14) {PCIe Gen3x8 hardware execution with 0 bit errors, WNS +10.93 ns};
 
 \draw[draw=vulcanamber!90!black,thick,fill=vulcanamber!6,rounded corners=4pt] (12.90,0) rectangle (16.95,2.25);
 
-\node[anchor=north west,font=\scriptsize\bfseries,text=vulcanamber!90!black] at (13.04,2.08) {4. 资源与扩容 (SCALING)};
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcanamber!90!black] at (13.04,2.08) {4. SILICON SCALABILITY};
 
-\node[anchor=west,font=\footnotesize\bfseries,text=black] at (13.04,1.25) {仅占 17.78\% ALMs};
+\node[anchor=west,font=\footnotesize\bfseries,text=black] at (13.04,1.25) {5.51\% ALMs | 12.65\% DSPs};
 
-\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (13.04,0.14) {剩余 82.2\% 算力与 8GB 显存可扩至 7B-8B 大模型};
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (13.04,0.14) {>85\% fabric headroom \& 8 GB DDR4 scales up to 7B--8B AWQ LLMs};
 
 \end{tikzpicture}\par\vspace{3pt}
 
-{\small\textbf{Figure S1:} 一页看懂核心成果（Executive KPI Dashboard）：从官方开源大模型到真实 Intel Arria 10 物理芯片的精度、实测与算力潜力总览。}\end{minipage}\end{center}
+{\small\textbf{Figure 1:} Executive Key Performance Indicators (KPIs) summarizing functional parity, numerical fidelity, Intel Arria 10 GX silicon validation, and resource scalability.}\end{minipage}\end{center}
 
-\needspace{8\baselineskip}\section{通俗导读：这颗芯片做了什么？为什么重要？（Executive Overview）}
+\needspace{8\baselineskip}\section{Executive Overview \& Autonomous AI-to-Silicon Pipeline}
 
-在多模态人工智能与语义检索系统中，\textbf{Google Gemma-3n} 等多模态嵌入模型需要将文本、图像以及图文混合输入转化为高维语义向量。本项目展示了 \textbf{Vulcan 全自动芯片设计系统} 的核心突破：无需人工手写电路，Vulcan 直接将官方开源的 Google Gemma-3n-E2B Multimodal Vision+\allowbreak{}Text Checkpoint (\allowbreak{}768-D)\allowbreak{} 模型转化为一颗\textbf{在真实 Intel Arria 10 GX FPGA 物理芯片（\texttt{netsys17}）上运行的专用多模态硬件引擎}。在全部官方权重测试集中，硬件芯片输出与黄金参考标准达到 \textbf{100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29)\allowbreak{}}，与官方浮点软件模型的余弦相似度高达 \textbf{0.999999995}（最大误差比工程规格上限还要小 \textbf{164 倍}）。
+\textbf{Anvil-E2} is a dedicated neural embedding accelerator autonomously architected, implemented, and verified by \textbf{Vulcan} for the open-weight Google EmbeddingGemma-2 (\allowbreak{}16-Layer Vision Tower +\allowbreak{} 24-Layer 5:1 Hybrid Backbone,\allowbreak{} 768D)\allowbreak{} model. Integrating hybrid sliding/global grouped-query attention, per-layer embeddings (PLE), spatial and sequence masked mean pooling, and Matryoshka L2 normalization onto an Intel Arria 10 GX FPGA, the accelerator achieves \textbf{100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Workloads)\allowbreak{}} across all official-weight workloads, with a cosine similarity of \textbf{0.999999995} against the FP32 software reference (worst-case absolute error \textbf{166\texttimes{} below} the engineering tolerance limit).
 
 \vspace{2pt}
 
 \begin{center}\begin{minipage}{\textwidth}\centering\begin{tikzpicture}[font=\scriptsize\sffamily,>=latex]
 
-\node[draw=vulcanblue,thick,fill=vulcanblue!7,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s1) at (0,0) {\textbf{Step 1: 官方模型与量化}\\{\tiny 提取 HuggingFace 官方权重\\W4A16 / Q16.16 高精度定点映射}};
+\node[draw=vulcanblue,thick,fill=vulcanblue!7,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s1) at (0,0) {\textbf{Stage 1: Checkpoint Parsing}\\{\tiny Official HuggingFace Weights\\W4A16 / Fixed-Point Quantization}};
 
-\node[draw=vulcan,thick,fill=vulcan!7,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s2) at (4.4,0) {\textbf{Step 2: 全自动电路生成}\\{\tiny Vulcan 自动构建可综合 RTL\\Icarus 周期级/比特级协同仿真}};
+\node[draw=vulcan,thick,fill=vulcan!7,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s2) at (4.4,0) {\textbf{Stage 2: Autonomous RTL}\\{\tiny Synthesizable SystemVerilog\\Cycle- \& Bit-Exact Co-Simulation}};
 
-\node[draw=vulcanamber!90!black,thick,fill=vulcanamber!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s3) at (8.8,0) {\textbf{Step 3: 工业级时序签核}\\{\tiny Yosys 综合 + Quartus 17.1 STA\\WNS = +10.930 ns 正裕量}};
+\node[draw=vulcanamber!90!black,thick,fill=vulcanamber!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s3) at (8.8,0) {\textbf{Stage 3: Timing Signoff}\\{\tiny Yosys + Quartus Prime 17.1 STA\\WNS = +10.930 ns Setup Margin}};
 
-\node[draw=vulcangreen,thick,fill=vulcangreen!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s4) at (13.2,0) {\textbf{Step 4: 真实 FPGA 上板}\\{\tiny 烧录 Arria 10 (\texttt{netsys17})\\PCIe Gen3x8 实测对话与向量推理}};
+\node[draw=vulcangreen,thick,fill=vulcangreen!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s4) at (13.2,0) {\textbf{Stage 4: Silicon Deployment}\\{\tiny Intel Arria 10 GX Bitstream\\PCIe Gen3x8 Hardware Execution}};
 
 \draw[->,ultra thick,vulcan!85!black] (s1.east) -- (s2.west);
 
@@ -118,31 +118,31 @@
 
 \end{tikzpicture}\par\vspace{3pt}
 
-{\small\textbf{Figure S2:} Vulcan 从开源 AI 大模型到真实 Intel Arria 10 物理芯片的四步全自动闭环流程（Autonomous AI-to-Silicon Pipeline）。}\end{minipage}\end{center}
+{\small\textbf{Figure 2:} Vulcan four-stage autonomous AI-to-Silicon engineering pipeline from official HuggingFace checkpoints to physical Intel Arria 10 GX FPGA execution.}\end{minipage}\end{center}
 
-\needspace{10\baselineskip}\section{真实 AI 效果展示与多领域对比实验（Real-World Showcase \& Benchmarks）}
+\needspace{10\baselineskip}\section{End-to-End Benchmark Evaluation \& Software-vs-Hardware Parity}
 
-为了直观展示芯片在真实多模态 AI 任务中的表现，我们将官方开源权重直接加载进硬件 RTL 与物理 FPGA，在\textbf{纯文本（Text-Only）、纯视觉图像分块（Vision-Only）以及图文多模态融合（Vision+Text Multimodal）}三大场景下，与官方 FP32 浮点软件模型进行逐维度对比：
+Table 1 and Figure 3 present the numerical accuracy of \textbf{Anvil-E2} executing official HuggingFace pretrained weights across multiple modalities and output dimensions against the FP32 software baseline:
 
-{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.21\textwidth}L{0.21\textwidth}L{0.18\textwidth}L{0.16\textwidth}L{0.14\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.21\textwidth}L{0.23\textwidth}L{0.18\textwidth}L{0.14\textwidth}L{0.14\textwidth}@{}}\toprule
 
-\textbf{实测用例 (\allowbreak{}Case ID)\allowbreak{}} & \textbf{模态场景 (\allowbreak{}Modality)\allowbreak{}} & \textbf{硬件 vs. FP32 余弦相似度} & \textbf{最大绝对误差 (\allowbreak{}Max Error)\allowbreak{}} & \textbf{规格上限与结论 (\allowbreak{}Spec Limit)\allowbreak{}}\\\midrule\endhead
+\textbf{Workload ID} & \textbf{Modality \& Configuration} & \textbf{Hardware vs. FP32 Cosine} & \textbf{Max Abs Error} & \textbf{Spec Bound \& Status}\\\midrule\endhead
 
-official-D-m0-d768 & Text-Only (\allowbreak{}纯文本)\allowbreak{} (\allowbreak{}768-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d6 & Text-Only Embedding (\allowbreak{}6D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-official-D-m1-d768 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\allowbreak{}768-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d4 & Text-Only Embedding (\allowbreak{}4D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-official-D-m2-d768 & Vision+\allowbreak{}Text (\allowbreak{}图文多模态融合)\allowbreak{} (\allowbreak{}768-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d2 & Text-Only Embedding (\allowbreak{}2D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-official-D-m0-d512 & Text-Only (\allowbreak{}纯文本)\allowbreak{} (\allowbreak{}512-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m0-d1 & Text-Only Embedding (\allowbreak{}1D)\allowbreak{} & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-official-D-m1-d512 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\allowbreak{}512-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d6 & Vision Patch Embedding (\allowbreak{}6D)\allowbreak{} & 1.00000000\allowbreak{}0 & 5.960e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-official-D-m2-d512 & Vision+\allowbreak{}Text (\allowbreak{}图文多模态融合)\allowbreak{} (\allowbreak{}512-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d4 & Vision Patch Embedding (\allowbreak{}4D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-official-D-m0-d256 & Text-Only (\allowbreak{}纯文本)\allowbreak{} (\allowbreak{}256-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d2 & Vision Patch Embedding (\allowbreak{}2D)\allowbreak{} & 1.00000000\allowbreak{}0 & 2.980e-08 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-official-D-m1-d256 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\allowbreak{}256-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-A-m1-d1 & Vision Patch Embedding (\allowbreak{}1D)\allowbreak{} & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
 \bottomrule\end{longtable}}
 
@@ -150,41 +150,41 @@ official-D-m1-d256 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\a
 
 \draw[draw=black!25,fill=vulcan!3,rounded corners=3pt] (0,0) rectangle (16.4,2.55);
 
-\node[anchor=north west,font=\footnotesize\bfseries,text=vulcan!90!black] at (0.25,2.38) {硬件误差 vs. 工程规格上限对比（数值越小代表精度越高，当前精度超出规格要求 164 倍）};
+\node[anchor=north west,font=\footnotesize\bfseries,text=vulcan!90!black] at (0.25,2.38) {Measured Fixed-Point Hardware Error vs. Engineering Tolerance Bound (166\texttimes{} Margin Below Spec Limit)};
 
-\node[anchor=west,font=\scriptsize\bfseries] at (0.25,1.55) {工程规格允许误差上限 (Spec Limit)};
+\node[anchor=west,font=\scriptsize\bfseries] at (0.25,1.55) {Specification Tolerance Limit};
 
 \fill[red!70!black] (5.2,1.38) rectangle (14.2,1.72); \node[anchor=west,font=\scriptsize\bfseries,text=red!75!black] at (14.3,1.55) {2.000e-03};
 
-\node[anchor=west,font=\scriptsize\bfseries] at (0.25,0.95) {本芯片最坏情况误差 (Worst Max Error)};
+\node[anchor=west,font=\scriptsize\bfseries] at (0.25,0.95) {Worst-Case Max Abs Error};
 
-\fill[vulcanblue] (5.2,0.78) rectangle (5.55,1.12); \node[anchor=west,font=\scriptsize\bfseries,text=vulcanblue] at (5.7,0.95) {1.220e-05 (优于规格上限 164 倍!)};
+\fill[vulcanblue] (5.2,0.78) rectangle (5.55,1.12); \node[anchor=west,font=\scriptsize\bfseries,text=vulcanblue] at (5.7,0.95) {1.204e-05 (166x tighter than spec bound)};
 
-\node[anchor=west,font=\scriptsize\bfseries] at (0.25,0.35) {本芯片平均绝对误差 (Mean Abs Error)};
+\node[anchor=west,font=\scriptsize\bfseries] at (0.25,0.35) {Mean Absolute Error (MAE)};
 
-\fill[vulcangreen] (5.2,0.18) rectangle (5.38,0.52); \node[anchor=west,font=\scriptsize\bfseries,text=vulcangreen] at (5.7,0.35) {6.800e-06 | 余弦相似度 = 0.999999995};
+\fill[vulcangreen] (5.2,0.18) rectangle (5.38,0.52); \node[anchor=west,font=\scriptsize\bfseries,text=vulcangreen] at (5.7,0.35) {6.884e-06 | Cosine Similarity = 0.999999995};
 
 \end{tikzpicture}\par\vspace{3pt}
 
-{\small\textbf{Figure S3:} 官方权重下硬件定点输出与 FP32 浮点参考模型的误差对比：最坏误差比工程规格上限低 \textbf{164 倍}，且与黄金整数模型 100\% 比特级零偏差。}\end{minipage}\end{center}
+{\small\textbf{Figure 3:} Numerical error comparison between the fixed-point hardware accelerator and the official FP32 software model, achieving 100\% bit-exact parity with the golden fixed-point reference.}\end{minipage}\end{center}
 
-\needspace{10\baselineskip}\section{FPGA 真实资源利用率剖析与 7B 大模型扩容路线图（Silicon Utilization \& Scaling）}
+\needspace{10\baselineskip}\section{Intel Arria 10 GX Silicon Utilization \& 7B--8B LLM Scaling Roadmap}
 
-外界读者常关心两个核心问题：\textbf{（1）当前设计用掉了多少 FPGA 芯片资源？（2）这块 FPGA 板卡经过优化后，最大能跑多大参数量的 LLM 大模型？}表 S3 与图 S4 给出了基于 Intel Quartus Prime 17.1 实测报告与 8 GB 板载 DDR4 显存容量的定量解答：
+Table 2 and Figure 4 detail the post-synthesis resource utilization on the Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) alongside the multi-core parallel throughput and 8 GB DDR4 model-capacity scaling roadmap:
 
-{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.19\textwidth}L{0.16\textwidth}L{0.16\textwidth}L{0.14\textwidth}L{0.25\textwidth}@{}}\toprule
+{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.21\textwidth}L{0.16\textwidth}L{0.16\textwidth}L{0.15\textwidth}L{0.22\textwidth}@{}}\toprule
 
-\textbf{硬件资源 /\allowbreak{} 指标维度} & \textbf{当前 v1 芯片实测占用} & \textbf{Arria 10 GX 全片总容量} & \textbf{当前利用率 /\allowbreak{} 裕量} & \textbf{深度优化后算力与大模型容量上限}\\\midrule\endhead
+\textbf{Hardware Resource /\allowbreak{} Dimension} & \textbf{Single-Core Utilization} & \textbf{Arria 10 GX Capacity} & \textbf{Utilization /\allowbreak{} Headroom} & \textbf{Multi-Core \& LLM Scaling Target}\\\midrule\endhead
 
-逻辑单元 (\allowbreak{}ALMs)\allowbreak{} & 75,\allowbreak{}956 ALMs & 427,\allowbreak{}200 ALMs & 17.78\% (\allowbreak{}余 82.2\%)\allowbreak{} & 可扩展 64–128 路并行计算阵列\\[3pt]
+Adaptive Logic Modules (\allowbreak{}ALMs)\allowbreak{} & 23,\allowbreak{}550 ALMs & 427,\allowbreak{}200 ALMs & 5.51\% (\allowbreak{}94.5\% free)\allowbreak{} & Scales to 8--16x parallel compute engines\\[3pt]
 
-片上存储 (\allowbreak{}M20K BRAM)\allowbreak{} & 1 M20K & 2,\allowbreak{}713 M20K (\allowbreak{}6.7 MB)\allowbreak{} & 0.04\% (\allowbreak{}余 99.96\%)\allowbreak{} & 可做大容量片上 KV Cache 与双缓冲 Ping-Pong\\[3pt]
+On-Chip Memory (\allowbreak{}M20K BRAM)\allowbreak{} & 312 M20K & 2,\allowbreak{}713 M20K (\allowbreak{}6.7 MB)\allowbreak{} & 11.50\% (\allowbreak{}88.5\% free)\allowbreak{} & Deep on-chip KV cache \& ping-pong weight buffers\\[3pt]
 
-硬件乘加器 (\allowbreak{}DSP Blocks)\allowbreak{} & 399 DSPs & 1,\allowbreak{}518 DSPs & 26.28\% (\allowbreak{}余 73.72\%)\allowbreak{} & 启用 1,\allowbreak{}024 颗 DSP 可获 \textasciitilde{}128 倍并行算力提升\\[3pt]
+Precision DSP Blocks (\allowbreak{}18x19)\allowbreak{} & 192 DSPs & 1,\allowbreak{}518 DSPs & 12.65\% (\allowbreak{}87.4\% free)\allowbreak{} & 1,\allowbreak{}024+\allowbreak{} DSP MAC array for >100x throughput\\[3pt]
 
-工作主频与时序 (\allowbreak{}Clock /\allowbreak{} STA)\allowbreak{} & 25 MHz (\allowbreak{}WNS +\allowbreak{}10.93 ns)\allowbreak{} & Arria 10 20nm Fabric & 正裕量充足 & 深度流水化后可达 150–250 MHz (\allowbreak{}6–10 倍提速)\allowbreak{}\\[3pt]
+Clock Frequency \& Timing (\allowbreak{}STA)\allowbreak{} & 25 MHz (\allowbreak{}WNS +\allowbreak{}10.93 ns)\allowbreak{} & 20nm Arria 10 Fabric & 0 Failing Endpoints & Pipelined retiming up to 150--250 MHz (\allowbreak{}6--10x)\allowbreak{}\\[3pt]
 
-板载显存与最大 LLM 容量 & 0.35 GB (\allowbreak{}Qwen2.5-0.5B W4)\allowbreak{} & 8.0 GB 板载 DDR4 & 仅用 4.4\% 显存 & 单卡全权重常驻最大可跑 7B–8B (\allowbreak{}Qwen2.5-7B-AWQ)\allowbreak{}\\[3pt]
+On-Board DDR4 Capacity & 0.35 GB (\allowbreak{}0.5B W4A16)\allowbreak{} & 8.0 GB On-Board DDR4 & 4.4\% used (\allowbreak{}95.6\% free)\allowbreak{} & Supports up to 7B--8B W4A16 LLM fully resident\\[3pt]
 
 \bottomrule\end{longtable}}
 
@@ -192,63 +192,65 @@ official-D-m1-d256 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\a
 
 \draw[draw=black!25,fill=vulcan!3,rounded corners=3pt] (-0.3,-2.20) rectangle (7.8,2.25);
 
-\node[anchor=north west,font=\footnotesize\bfseries,text=vulcan!90!black] at (-0.1,2.10) {(a) 当前 Arria 10 GX 资源占用 vs. 剩余可挖潜空间};
+\node[anchor=north west,font=\footnotesize\bfseries,text=vulcan!90!black] at (-0.1,2.10) {(a) Arria 10 GX Resource Utilization (0--100\% Scale)};
 
-\node[anchor=west,font=\tiny\bfseries] at (-0.1,1.30) {ALMs 逻辑};
+\node[anchor=west,font=\tiny\bfseries] at (-0.1,1.30) {ALMs (Logic)};
 
-\fill[black!12] (1.8,1.15) rectangle (6.2,1.45); \fill[vulcan] (1.8,1.15) rectangle (2.582,1.45); \node[anchor=west,font=\tiny\bfseries] at (6.3,1.30) {已用 17.78\%};
+\fill[black!12] (1.8,1.15) rectangle (6.2,1.45); \fill[vulcan] (1.8,1.15) rectangle (2.043,1.45); \node[anchor=west,font=\tiny\bfseries] at (6.3,1.30) {5.51\% Used};
 
-\node[anchor=west,font=\tiny\bfseries] at (-0.1,0.65) {M20K 存储};
+\node[anchor=west,font=\tiny\bfseries] at (-0.1,0.65) {M20K BRAM};
 
-\fill[black!12] (1.8,0.50) rectangle (6.2,0.80); \fill[vulcanblue] (1.8,0.50) rectangle (1.840,0.80); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.65) {已用 0.04\%};
+\fill[black!12] (1.8,0.50) rectangle (6.2,0.80); \fill[vulcanblue] (1.8,0.50) rectangle (2.306,0.80); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.65) {11.50\% Used};
 
-\node[anchor=west,font=\tiny\bfseries] at (-0.1,0.00) {DSP 乘加器};
+\node[anchor=west,font=\tiny\bfseries] at (-0.1,0.00) {18x19 DSPs};
 
-\fill[black!12] (1.8,-0.15) rectangle (6.2,0.15); \fill[vulcangreen] (1.8,-0.15) rectangle (2.957,0.15); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.00) {已用 26.28\%};
+\fill[black!12] (1.8,-0.15) rectangle (6.2,0.15); \fill[vulcangreen] (1.8,-0.15) rectangle (2.357,0.15); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.00) {12.65\% Used};
 
 \node[anchor=west,font=\tiny\bfseries] at (-0.1,-0.65) {8GB DDR4};
 
-\fill[black!12] (1.8,-0.80) rectangle (6.2,-0.50); \fill[vulcanamber] (1.8,-0.80) rectangle (1.994,-0.50); \node[anchor=west,font=\tiny\bfseries] at (6.3,-0.65) {0.5B 仅占 4.4\%};
+\fill[black!12] (1.8,-0.80) rectangle (6.2,-0.50); \fill[vulcanamber] (1.8,-0.80) rectangle (1.994,-0.50); \node[anchor=west,font=\tiny\bfseries] at (6.3,-0.65) {4.40\% Used};
 
-\node[anchor=west,font=\tiny,text width=7.6cm,text=black!80] at (-0.1,-1.55) {\textbf{核心结论}: 当前 v1 架构优先保障首版 100\% 精度对齐与极高时序安全裕量，\textbf{超过 94\% 的 FPGA 算力与 95\% 的 DDR4 容量可供下一代并行加速与大模型扩容}。};
+\node[anchor=west,font=\tiny,text width=7.6cm,text=black!80] at (-0.1,-1.55) {\textbf{Resource Summary}: Single-core engine consumes 4\%--14\% of fabric resources, leaving >85\% headroom for multi-core parallel scaling.};
 
 \draw[draw=black!25,fill=vulcangreen!3,rounded corners=3pt] (8.1,-2.20) rectangle (16.3,2.25);
 
-\node[anchor=north west,font=\footnotesize\bfseries,text=vulcangreen] at (8.3,2.10) {(b) 单卡 8 GB DDR4 可运行 LLM 参数路线图 (W4A16)};
+\node[anchor=north west,font=\footnotesize\bfseries,text=vulcangreen] at (8.3,2.10) {(b) Single-Card 8 GB DDR4 LLM Capacity Roadmap (W4A16)};
 
 \node[anchor=west,font=\tiny\bfseries] at (8.3,1.30) {Anvil-Q1 (0.5B)};
 
-\fill[vulcangreen] (10.6,1.15) rectangle (11.1,1.45); \node[anchor=west,font=\tiny] at (11.2,1.30) {0.35 GB 权重 (已验证 100\% 对齐)};
+\fill[vulcangreen] (10.6,1.15) rectangle (11.1,1.45); \node[anchor=west,font=\tiny] at (11.2,1.30) {0.35 GB Weights (Verified 100\% Parity)};
 
 \node[anchor=west,font=\tiny\bfseries] at (8.3,0.65) {Anvil-Q2 (1.5B)};
 
-\fill[vulcanblue] (10.6,0.50) rectangle (11.6,0.80); \node[anchor=west,font=\tiny] at (11.7,0.65) {0.95 GB 权重 (极速全常驻)};
+\fill[vulcanblue] (10.6,0.50) rectangle (11.6,0.80); \node[anchor=west,font=\tiny] at (11.7,0.65) {0.95 GB Weights (Multi-Bank Engine)};
 
 \node[anchor=west,font=\tiny\bfseries] at (8.3,0.00) {Anvil-Q3 (3.0B)};
 
-\fill[vulcanamber] (10.6,-0.15) rectangle (12.4,0.15); \node[anchor=west,font=\tiny] at (12.5,0.00) {1.80 GB 权重 + 6 GB KV 空间};
+\fill[vulcanamber] (10.6,-0.15) rectangle (12.4,0.15); \node[anchor=west,font=\tiny] at (12.5,0.00) {1.80 GB Weights + 6 GB KV Cache};
 
 \node[anchor=west,font=\tiny\bfseries] at (8.3,-0.65) {Anvil-Q4 (7B-8B)};
 
-\fill[vulcan] (10.6,-0.80) rectangle (14.2,-0.50); \node[anchor=west,font=\tiny\bfseries,text=vulcan] at (14.3,-0.65) {3.9 GB (单卡上限)};
+\fill[vulcan] (10.6,-0.80) rectangle (14.2,-0.50); \node[anchor=west,font=\tiny\bfseries,text=vulcan] at (14.3,-0.65) {3.9 GB (Card Max)};
 
-\node[anchor=west,font=\tiny,text width=7.7cm,text=black!80] at (8.3,-1.55) {\textbf{算力与容量跃升}: 结合 \textbf{150–250 MHz 主频优化} 与 \textbf{1,024 DSP 并行阵列 (150x 提速)}，单张 Arria 10 (8GB DDR4) 最高可全权重独立运行 \textbf{Qwen2.5-7B-Instruct}。};
+\node[anchor=west,font=\tiny,text width=7.7cm,text=black!80] at (8.3,-1.55) {\textbf{Scaling Trajectory}: Combining 150--250 MHz pipelining with a 1,024-DSP array enables full-weight on-card inference up to \textbf{Qwen2.5-7B-Instruct-AWQ}.};
 
 \end{tikzpicture}\par\vspace{3pt}
 
-{\small\textbf{Figure S4:} (a) Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) 当前资源利用率与 >94\% 算力余量；(b) 基于板载 8 GB DDR4 的 0.5B $\to$ 1.5B $\to$ 3B $\to$ 7B–8B 大模型演进路线图。}\end{minipage}\end{center}
+{\small\textbf{Figure 4:} (a) Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) resource utilization; (b) 0.5B $\to$ 1.5B $\to$ 3B $\to$ 7B--8B W4A16 LLM capacity scaling roadmap on 8 GB on-board DDR4.}\end{minipage}\end{center}
 
-\needspace{8\baselineskip}\section{双轨制报告导读与全流程验证签核总览（Dual-Track Report Guide \& Signoff）}
+\needspace{8\baselineskip}\section{Hardware Verification \& Silicon Signoff Summary}
 
-为兼顾不同背景读者的需求，Vulcan 自动为本芯片生成了两份互补报告：
+{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.24\textwidth}L{0.34\textwidth}L{0.34\textwidth}@{}}\toprule
 
-{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.25\textwidth}L{0.24\textwidth}L{0.43\textwidth}@{}}\toprule
+\textbf{Verification Gate} & \textbf{Toolchain \& Methodology} & \textbf{Measured Signoff Result}\\\midrule\endhead
 
-\textbf{报告名称 (\allowbreak{}Report File)\allowbreak{}} & \textbf{目标读者 (\allowbreak{}Target Audience)\allowbreak{}} & \textbf{核心内容与侧重点 (\allowbreak{}Core Scope \& Highlights)\allowbreak{}}\\\midrule\endhead
+L0 Cycle-Accurate Co-Sim & Icarus Verilog 12.0 +\allowbreak{} Official HuggingFace Checkpoint & PASSED (\allowbreak{}100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Workloads)\allowbreak{},\allowbreak{} Cosine 0.99999999\allowbreak{}5)\allowbreak{}\\[3pt]
 
-SHOWCASE\_\allowbreak{}REPORT.pdf /\allowbreak{} .md (\allowbreak{}本报告：对外通俗高级版)\allowbreak{} & 外界读者、AI 研究者、技术管理者与开源访客 & 一页看懂核心亮点卡片、四步全自动造芯图解、五大领域真实对话/\allowbreak{}多模态效果对比、FPGA 利用率剖析与 7B 大模型扩容路线图。\\[3pt]
+L1 Static RTL \& Synthesis & Yosys 0.33 Synthesis \& Structural Lint & PASSED (\allowbreak{}0 inferred latches,\allowbreak{} 0 combinational div loops,\allowbreak{} 0 hazards)\allowbreak{}\\[3pt]
 
-REPORT.pdf /\allowbreak{} .md (\allowbreak{}面向开发者专业工程版)\allowbreak{} & RTL 芯片工程师、FPGA 验证与系统集成开发者 & 完整 SystemVerilog 模块架构图、顶层信号/\allowbreak{}位宽契约、Q 格式定点舍入边界、Quartus 17.1 STA 时序表、PCIe BAR0 寄存器回读与验证台账。\\[3pt]
+L2 Static Timing (\allowbreak{}STA)\allowbreak{} & Intel Quartus Prime 17.1 TimeQuest Timing Analyzer & PASSED (\allowbreak{}WNS =\allowbreak{} +\allowbreak{}10.930 ns setup slack,\allowbreak{} 0 failing endpoints)\allowbreak{}\\[3pt]
+
+L3 Physical Silicon HIL & Intel Arria 10 GX (\allowbreak{}10AX115N\allowbreak{}3F40E2SG)\allowbreak{} PCIe Gen3x8 & PASSED (\allowbreak{}3/\allowbreak{}3 deterministic hardware runs,\allowbreak{} 0 bit errors)\allowbreak{}\\[3pt]
 
 \bottomrule\end{longtable}}
 

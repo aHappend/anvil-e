@@ -10,7 +10,7 @@ This is a milestone/tool-boundary record, not a token transcript or independent 
 
 New backend tool streams: .vulcan/runtime/agent_io.jsonl. Historical records remain at their original locations.
 
-**Last event:** 631
+**Last event:** 632
 
 ## Workflow setup
 
@@ -12424,6 +12424,51 @@ Full checkpoint and selection details remain in journal.jsonl.
 > No further work in this work order. Retain original evidence and rejected candidates. Publication and external campaign credit require their own authority.
 **previous_checkpoint_event:**
 > 620
+**engineering_status:**
+> completed
+**independently_accepted:**
+> true
+**delivery_status:**
+> complete
+**report_candidate_status:**
+> reported
+**project_status:**
+> completed
+**closeout_status:**
+> completed
+**project_complete:**
+> true
+**retained_issues:**
+> [{"run": "run-0001", "id": "failure-0001", "status": "open", "current_contract": false, "evidence": ".vulcan/engineering/run-0001/state.json"}, {"run": "run-0001", "id": "failure-0002", "status": "open", "current_contract": false, "evidence": ".vulcan/engineering/run-0001/state.json"}]
+**experience_history:**
+> [{"event": 2, "action": "snapshot", "status": "imported", "ids": ["exp-0938d18e059b241a4fdfbb2d", "exp-208ec6fa84eb63aec0b37c1f", "exp-27d8629432f1196d886cbd13", "exp-4b47687e9abdfc19ff89b22e", "exp-55935ec0ae83531d6268e2a8", "exp-5dd4ad6a286d88a13fd9565b", "exp-652f89e7783eeb1726867f05", "exp-6a4baac55d8459da132c8b6a", "exp-6d5cc92e6f5a86894eaae275", "exp-83ac5285c68781b73db4a31a", "exp-9bdc09662f1b169bca2db1c4", "exp-b7f85aea8b668c87905c6e46", "exp-ccbc2b80623e40ab6ea62b21", "exp-cebb78b30dae98f7c952d565"], "snapshot": "snapshot-0001.json", "library": "/work/library", "frozen": true}]
+**attention:**
+> null
+**evidence:**
+> ["vulcan-workflow.json", ".vulcan/engineering/state.json", ".vulcan/engineering/reports/report-0011/manifest.json", ".vulcan/engineering/reports/published.json", ".vulcan/engineering/run-0002"]
+**scope:**
+> Recorded stage snapshot, not current acceptance or external issue/campaign closure. Retained failures are historical; experience history is not revalidated admission.
+Full checkpoint and selection details remain in journal.jsonl.
+
+### 0632 - Report stage checkpoint
+**UTC:** 2026-10-23T11:31:30+00:00 | **Beijing:** 2026-10-23T19:31:30+08:00
+
+**initiator:** workflow
+
+**summary:**
+> reported
+
+**Task checkpoint**
+**kind:**
+> report
+**reason:**
+> reported
+**owner:**
+> operator
+**next_action:**
+> Complete product and showcase report delivery.
+**previous_checkpoint_event:**
+> 631
 **engineering_status:**
 > completed
 **independently_accepted:**

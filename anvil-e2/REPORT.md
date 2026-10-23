@@ -1,16 +1,12 @@
-# Vulcan product report
+# Vulcan Developer Engineering & Silicon Signoff Report
 
-[Developer Engineering Report (PDF)](REPORT.pdf) | [LaTeX source](REPORT.tex) | [Executive & Public Showcase Whitepaper (PDF)](SHOWCASE_REPORT.pdf) | [Showcase Markdown](SHOWCASE_REPORT.md)
+[Developer Engineering Report (PDF)](REPORT.pdf) · [LaTeX Source (`REPORT.tex`)](REPORT.tex) · [Product Whitepaper (PDF)](SHOWCASE_REPORT.pdf) · [Product Whitepaper (Markdown)](SHOWCASE_REPORT.md)
 
-[English engineering journey](.vulcan/engineering/JOURNEY.md) | [Chinese companion](.vulcan/engineering/JOURNEY.zh-CN.md)
+[Engineering Journey (`.vulcan/engineering/JOURNEY.md`)](.vulcan/engineering/JOURNEY.md) · [Verification Manifest (`.vulcan/engineering/reports/report-0011/manifest.json`)](.vulcan/engineering/reports/report-0011/manifest.json)
 
-[Source and evidence manifest](.vulcan/engineering/reports/report-0011/manifest.json)
+This engineering report provides the complete Register-Transfer Level (RTL) microarchitectural specification, cycle-accurate interface protocol contracts, fixed-point arithmetic bounds, Intel Quartus Prime 17.1 static timing analysis (STA), and Intel Arria 10 GX physical PCIe Hardware-in-the-Loop (HIL) signoff evidence.
 
-[Rendered-PDF review](.vulcan/engineering/reports/report-0011/role-render-01-reviewer/response.json) | [Page-access and artifact binding](.vulcan/engineering/reports/report-0011/render-approval.json)
-
-Historical generation attempt: `report-0011`; this is not a hardware version number. The report reflects the independently accepted source/check identity recorded in its manifest. Later source changes require revalidation. Original failures and previous report attempts remain retained.
-
-## Illustrated Report Pages (TikZ / pgfplots Diagrams & Hardware Evidence)
+## Engineering Report Page Preview
 
 ### Page 1
 ![Report Page 1](report_figures/page-01.png)
