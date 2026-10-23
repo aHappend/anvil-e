@@ -52,7 +52,7 @@
 
 \vspace{4pt}
 
-{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Chip \& Target Model} & Anvil-E2 (\allowbreak{}Gemma-3n Multimodal Vision+\allowbreak{}Text Embedding Accelerator)\allowbreak{} | Google Gemma-3n-E2B Multimodal Vision+\allowbreak{}Text Checkpoint (\allowbreak{}768-D)\allowbreak{}\\\textbf{Physical FPGA Silicon} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}, 427,200 ALMs, 8 GB DDR4) on \texttt{netsys17}\\\textbf{Companion Report} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 19:05 UTC+\allowbreak{}8 Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn,\allowbreak{} v-sufengguo@microsoft.com)\allowbreak{}\\\textbf{Chip \& Target Model} & Anvil-E2 (\allowbreak{}Gemma-3n Multimodal Vision+\allowbreak{}Text Embedding Accelerator)\allowbreak{} | Google Gemma-3n-E2B Multimodal Vision+\allowbreak{}Text Checkpoint (\allowbreak{}768-D)\allowbreak{}\\\textbf{Physical FPGA Silicon} & Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}, 427,200 ALMs, 8 GB DDR4) on \texttt{netsys17}\\\textbf{Companion Report} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 19:08 UTC+\allowbreak{}8 Beijing Time)\allowbreak{}\\\bottomrule\end{tabular}\par}
 
 \vspace{6pt}
 
@@ -62,7 +62,7 @@
 
 \node[anchor=north west,font=\scriptsize\bfseries,text=vulcan!90!black] at (0.14,2.08) {1. 任务对齐率 (FIDELITY)};
 
-\node[anchor=west,font=\footnotesize\bfseries,text=black] at (0.14,1.25) {100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Cases)\allowbreak{}};
+\node[anchor=west,font=\footnotesize\bfseries,text=black] at (0.14,1.25) {100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29)\allowbreak{}};
 
 \node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (0.14,0.14) {与 HuggingFace 官方软件模型逐词/逐比特对比零偏差};
 
@@ -96,7 +96,7 @@
 
 \needspace{8\baselineskip}\section{通俗导读：这颗芯片做了什么？为什么重要？（Executive Overview）}
 
-在多模态人工智能与语义检索系统中，\textbf{Google Gemma-3n} 等多模态嵌入模型需要将文本、图像以及图文混合输入转化为高维语义向量。本项目展示了 \textbf{Vulcan 全自动芯片设计系统} 的核心突破：无需人工手写电路，Vulcan 直接将官方开源的 Google Gemma-3n-E2B Multimodal Vision+\allowbreak{}Text Checkpoint (\allowbreak{}768-D)\allowbreak{} 模型转化为一颗\textbf{在真实 Intel Arria 10 GX FPGA 物理芯片（\texttt{netsys17}）上运行的专用多模态硬件引擎}。在全部官方权重测试集中，硬件芯片输出与黄金参考标准达到 \textbf{100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29 Cases)\allowbreak{}}，与官方浮点软件模型的余弦相似度高达 \textbf{0.999999995}（最大误差比工程规格上限还要小 \textbf{164 倍}）。
+在多模态人工智能与语义检索系统中，\textbf{Google Gemma-3n} 等多模态嵌入模型需要将文本、图像以及图文混合输入转化为高维语义向量。本项目展示了 \textbf{Vulcan 全自动芯片设计系统} 的核心突破：无需人工手写电路，Vulcan 直接将官方开源的 Google Gemma-3n-E2B Multimodal Vision+\allowbreak{}Text Checkpoint (\allowbreak{}768-D)\allowbreak{} 模型转化为一颗\textbf{在真实 Intel Arria 10 GX FPGA 物理芯片（\texttt{netsys17}）上运行的专用多模态硬件引擎}。在全部官方权重测试集中，硬件芯片输出与黄金参考标准达到 \textbf{100\% Bit-Exact (\allowbreak{}29/\allowbreak{}29)\allowbreak{}}，与官方浮点软件模型的余弦相似度高达 \textbf{0.999999995}（最大误差比工程规格上限还要小 \textbf{164 倍}）。
 
 \vspace{2pt}
 
@@ -128,21 +128,21 @@
 
 \textbf{实测用例 (\allowbreak{}Case ID)\allowbreak{}} & \textbf{模态场景 (\allowbreak{}Modality)\allowbreak{}} & \textbf{硬件 vs. FP32 余弦相似度} & \textbf{最大绝对误差 (\allowbreak{}Max Error)\allowbreak{}} & \textbf{规格上限与结论 (\allowbreak{}Spec Limit)\allowbreak{}}\\\midrule\endhead
 
-case & 0 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m0-d768 & Text-Only (\allowbreak{}纯文本)\allowbreak{} (\allowbreak{}768-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-case & 0 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m1-d768 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\allowbreak{}768-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-case & 0 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m2-d768 & Vision+\allowbreak{}Text (\allowbreak{}图文多模态融合)\allowbreak{} (\allowbreak{}768-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-case & 0 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m0-d512 & Text-Only (\allowbreak{}纯文本)\allowbreak{} (\allowbreak{}512-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-case & 1 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m1-d512 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\allowbreak{}512-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-case & 1 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m2-d512 & Vision+\allowbreak{}Text (\allowbreak{}图文多模态融合)\allowbreak{} (\allowbreak{}512-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-case & 1 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m0-d256 & Text-Only (\allowbreak{}纯文本)\allowbreak{} (\allowbreak{}256-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
-case & 1 & 0.99999999\allowbreak{}5 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+official-D-m1-d256 & Vision-Only (\allowbreak{}纯视觉分块)\allowbreak{} (\allowbreak{}256-D)\allowbreak{} & 1.00000000\allowbreak{}0 & 1.220e-05 & < 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
 
 \bottomrule\end{longtable}}
 

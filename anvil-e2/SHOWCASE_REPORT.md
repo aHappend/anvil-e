@@ -6,7 +6,7 @@
 
 | 核心指标维度 | 实测成果数据 | 通俗解读与工程意义 |
 | :--- | :--- | :--- |
-| **任务与输出对齐率 (Fidelity)** | **100% Bit-Exact (29/29 Cases)** | 0 output-word mismatches vs. golden integer & FP32 oracle |
+| **任务与输出对齐率 (Fidelity)** | **100% Bit-Exact (29/29)** | 0 output-word mismatches vs. golden integer & FP32 oracle |
 | **数值余弦相似度 (Cosine Sim)** | **0.999999995** | Ultra-high cosine similarity vs. FP32 software |
 | **真实物理芯片上板 (Real FPGA)** | **Intel Arria 10 (`netsys17`)** | PCIe Gen3x8 物理板卡实测 **0 比特错误**，Quartus 17.1 建立时间裕量 **+10.930 ns** |
 | **FPGA 资源占用与扩容潜力** | **仅占 17.78% ALMs / 26.28% DSPs** | 剩余 **>82.2%** 算力可实现 **150x+** 并行提速，8GB 板载 DDR4 最大可常驻运行 **7B–8B 大模型** |
