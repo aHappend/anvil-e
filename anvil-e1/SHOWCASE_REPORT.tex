@@ -52,7 +52,7 @@
 
 \vspace{4pt}
 
-{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn)\allowbreak{}\\\textbf{Accelerator \& Model} & Anvil-E1 | Google EmbeddingGemma-2 (\allowbreak{}24-Layer 5:1 Hybrid GQA,\allowbreak{} PLE Per-Layer Embeddings,\allowbreak{} 768D Matryoshka)\allowbreak{}\\\textbf{Target Silicon Platform} & Intel Arria 10 GX (\allowbreak{}10AX115N3F40E2SG)\allowbreak{} PCIe Gen3x8 (427,200 ALMs, 8 GB DDR4)\\\textbf{Companion Datasheet} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 22:20 UTC+\allowbreak{}8)\allowbreak{}\\\bottomrule\end{tabular}\par}
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.24\textwidth}L{0.72\textwidth}@{}}\toprule\textbf{Author \& Contact} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn)\allowbreak{}\\\textbf{Accelerator \& Model} & Anvil-E1 | Google EmbeddingGemma-2 (\allowbreak{}24-Layer 5:1 Hybrid GQA,\allowbreak{} PLE Per-Layer Embeddings,\allowbreak{} 768D Matryoshka)\allowbreak{}\\\textbf{Target Silicon Platform} & Intel Arria 10 GX (\allowbreak{}10AX115N3F40E2SG)\allowbreak{} PCIe Gen3x8 (427,200 ALMs, 8 GB DDR4)\\\textbf{Companion Datasheet} & Paired with \texttt{REPORT.pdf} (Developer Engineering Signoff Report) \textperiodcentered{} 23 October 2026 (\allowbreak{}2026-10-23 22:25 UTC+\allowbreak{}8)\allowbreak{}\\\bottomrule\end{tabular}\par}
 
 \vspace{6pt}
 
@@ -62,7 +62,7 @@
 
 \node[anchor=north west,font=\scriptsize\bfseries,text=vulcan!90!black] at (0.14,2.08) {1. OUTPUT FIDELITY};
 
-\node[anchor=west,font=\footnotesize\bfseries,text=black] at (0.14,1.25) {100\% Bit-Exact (\allowbreak{}16/\allowbreak{}16 Workloads)\allowbreak{}};
+\node[anchor=west,font=\scriptsize\bfseries,text width=3.75cm,text=black] at (0.14,1.25) {100\% Bit-Exact (\allowbreak{}16/\allowbreak{}16 Workloads)\allowbreak{}};
 
 \node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (0.14,0.14) {Zero word mismatches against golden fixed-point reference};
 
@@ -78,7 +78,7 @@
 
 \node[anchor=north west,font=\scriptsize\bfseries,text=vulcangreen] at (8.74,2.08) {3. PHYSICAL FPGA HIL};
 
-\node[anchor=west,font=\footnotesize\bfseries,text=black] at (8.74,1.25) {Intel Arria 10 GX};
+\node[anchor=west,font=\scriptsize\bfseries,text=black] at (8.74,1.25) {Intel Arria 10 GX};
 
 \node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (8.74,0.14) {PCIe Gen3x8 hardware execution with 0 bit errors, WNS +7.92 ns};
 
@@ -86,7 +86,7 @@
 
 \node[anchor=north west,font=\scriptsize\bfseries,text=vulcanamber!90!black] at (13.04,2.08) {4. SILICON SCALABILITY};
 
-\node[anchor=west,font=\footnotesize\bfseries,text=black] at (13.04,1.25) {4.31\% ALMs | 8.43\% DSPs};
+\node[anchor=west,font=\scriptsize\bfseries,text width=3.75cm,text=black] at (13.04,1.25) {4.31\% ALMs | 8.43\% DSPs};
 
 \node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (13.04,0.14) {>85\% fabric headroom \& 8 GB DDR4 scales up to 7B--8B AWQ LLMs};
 
@@ -212,9 +212,9 @@ On-Board DDR4 Capacity & 0.35 GB (\allowbreak{}0.5B W4A16)\allowbreak{} & 8.0 GB
 
 \node[anchor=west,font=\tiny,text width=7.6cm,text=black!80] at (-0.1,-1.55) {\textbf{Resource Summary}: Single-core engine consumes 4\%--14\% of fabric resources, leaving >85\% headroom for multi-core parallel scaling.};
 
-\draw[draw=black!25,fill=vulcangreen!3,rounded corners=3pt] (8.1,-2.20) rectangle (16.3,2.25);
+\draw[draw=black!25,fill=vulcangreen!3,rounded corners=3pt] (8.1,-2.20) rectangle (16.5,2.25);
 
-\node[anchor=north west,font=\footnotesize\bfseries,text=vulcangreen] at (8.3,2.10) {(b) Single-Card 8 GB DDR4 LLM Capacity Roadmap (W4A16)};
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcangreen] at (8.3,2.10) {(b) Single-Card 8 GB DDR4 LLM Capacity Roadmap (W4A16)};
 
 \node[anchor=west,font=\tiny\bfseries] at (8.3,1.30) {Anvil-Q1 (0.5B)};
 
