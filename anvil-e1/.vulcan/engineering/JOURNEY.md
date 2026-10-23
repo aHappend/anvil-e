@@ -10,7 +10,7 @@ This is a milestone/tool-boundary record, not a token transcript or independent 
 
 New backend tool streams: .vulcan/runtime/agent_io.jsonl. Historical records remain at their original locations.
 
-**Last event:** 734
+**Last event:** 735
 
 ## Workflow setup
 
@@ -18434,4 +18434,50 @@ Full checkpoint and selection details remain in journal.jsonl.
 > ["vulcan-workflow.json", ".vulcan/engineering"]
 **scope:**
 > Failure observation only. Current acceptance and delivery are not re-evaluated: their status reader may have caused this failure. Null fields are unavailable, not approval.
+Full checkpoint and selection details remain in journal.jsonl.
+
+### 0735 - Report stage checkpoint
+**UTC:** 2026-10-23T11:31:13+00:00 | **Beijing:** 2026-10-23T19:31:13+08:00
+
+**initiator:** workflow
+
+**summary:**
+> reported
+
+**Task checkpoint**
+**kind:**
+> report
+**reason:**
+> reported
+**owner:**
+> operator
+**next_action:**
+> Complete product and showcase report delivery.
+**previous_checkpoint_event:**
+> 734
+**engineering_status:**
+> completed
+**independently_accepted:**
+> true
+**delivery_status:**
+> complete
+**report_candidate_status:**
+> reported
+**project_status:**
+> completed
+**closeout_status:**
+> completed
+**project_complete:**
+> true
+**retained_issues:**
+> [{"run": "run-0002", "id": "failure-0001", "status": "open", "current_contract": false, "evidence": ".vulcan/engineering/run-0002/state.json"}, {"run": "run-0003", "id": "failure-0001", "status": "resolved", "current_contract": true, "evidence": ".vulcan/engineering/run-0003/state.json"}, {"run": "run-0003", "id": "failure-0002", "status": "resolved", "current_contract": true, "evidence": ".vulcan/engineering/run-0003/state.json"}, {"run": "run-0003", "id": "failure-0003", "status": "resolved", "current_contract": true, "evidence": ".vulcan/engineering/run-0003/state.json"}]
+**experience_history:**
+> [{"event": 2, "action": "snapshot", "status": "imported", "ids": ["exp-0938d18e059b241a4fdfbb2d", "exp-208ec6fa84eb63aec0b37c1f", "exp-27d8629432f1196d886cbd13", "exp-4b47687e9abdfc19ff89b22e", "exp-55935ec0ae83531d6268e2a8", "exp-5dd4ad6a286d88a13fd9565b", "exp-652f89e7783eeb1726867f05", "exp-6a4baac55d8459da132c8b6a", "exp-6d5cc92e6f5a86894eaae275", "exp-83ac5285c68781b73db4a31a", "exp-9bdc09662f1b169bca2db1c4", "exp-b7f85aea8b668c87905c6e46", "exp-ccbc2b80623e40ab6ea62b21", "exp-cebb78b30dae98f7c952d565"], "snapshot": "snapshot-0001.json", "library": "/work/library", "frozen": true}, {"event": 198, "action": "propose", "status": "candidate", "ids": ["exp-b41a135b648490932b868ead"]}, {"event": 214, "action": "propose", "status": "candidate", "ids": ["exp-57943423ad364a442322f306"]}, {"event": 216, "action": "reproduce", "status": "reproduced", "ids": ["exp-57943423ad364a442322f306"], "reproduction": {"path": ".vulcan/experience/exp-57943423ad364a442322f306/reproduction-7a8021fbc1d7e7f58eafad35/reproduction.json", "sha256": "1f8ee26d51420209b33dfdd24bfe5ae4a88f789129c25d07c8882b0c4fee3af7", "bytes": 2467}}, {"event": 222, "action": "review", "status": "admitted", "ids": ["exp-57943423ad364a442322f306"], "admission": {"path": ".vulcan/experience/exp-57943423ad364a442322f306/admission.json", "sha256": "258082115017002544d2ef00740f9f79263daff9c1cac4f378d1a66d7043b162", "bytes": 779}}, {"event": 230, "action": "publish", "status": "published", "ids": ["exp-57943423ad364a442322f306"], "library": "/work/library", "reused": false}, {"event": 437, "action": "propose", "status": "candidate", "ids": ["exp-dd97a5e29681bb767b968cd1"]}, {"event": 439, "action": "reproduce", "status": "reproduced", "ids": ["exp-dd97a5e29681bb767b968cd1"], "reproduction": {"path": ".vulcan/experience
+> [Summary shortened; inspect the linked original record.]
+**attention:**
+> null
+**evidence:**
+> ["vulcan-workflow.json", ".vulcan/engineering/state.json", ".vulcan/engineering/reports/report-0008/manifest.json", ".vulcan/engineering/reports/published.json", ".vulcan/engineering/run-0003"]
+**scope:**
+> Recorded stage snapshot, not current acceptance or external issue/campaign closure. Retained failures are historical; experience history is not revalidated admission.
 Full checkpoint and selection details remain in journal.jsonl.

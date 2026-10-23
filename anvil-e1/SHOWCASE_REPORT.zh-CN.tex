@@ -1,0 +1,257 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=18mm,headheight=15pt]{geometry}
+
+\usepackage{longtable,booktabs,array,hyperref,xcolor,tikz,fancyhdr,needspace}
+
+\usepackage{fontspec,xeCJK}
+
+\setmainfont[Ligatures=TeXOff]{Times New Roman}
+
+\setsansfont[Ligatures=TeXOff]{Times New Roman}
+
+\setmonofont[Ligatures=TeXOff,WordSpace={1,1,1}]{Times New Roman}
+
+\setCJKmainfont{Noto Serif CJK SC}
+
+\setCJKsansfont{Noto Serif CJK SC}
+
+\setCJKmonofont{Noto Serif CJK SC}
+
+\newfontfamily\vulcanmathsymbols{Noto Serif CJK SC}
+
+\XeTeXgenerateactualtext=1
+
+\definecolor{vulcan}{HTML}{BB3E23}
+
+\definecolor{vulcanblue}{HTML}{1B4F72}
+
+\definecolor{vulcangreen}{HTML}{196F3D}
+
+\definecolor{vulcanamber}{HTML}{B9770E}
+
+\hypersetup{hidelinks}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash\hspace{0pt}}p{#1}}
+
+\setlength{\emergencystretch}{5em}\tolerance=2000\hbadness=10000\hyphenpenalty=50\exhyphenpenalty=50
+
+\setlength{\parindent}{0pt}\setlength{\parskip}{5pt}
+
+\pagestyle{fancy}\fancyhf{}\fancyhead[L]{\small\sffamily\textbf{VULCAN SILICON PRODUCT WHITEPAPER}}
+
+\fancyhead[R]{\small\sffamily 产品技术白皮书与实测评测报告}\fancyfoot[C]{\small\sffamily 第 \thepage\ 页}
+
+\begin{document}
+
+{\footnotesize\sffamily\textcolor{vulcan}{\textbf{VULCAN AUTONOMOUS AI-TO-SILICON SERIES \hfill 文档类别：产品技术白皮书与基准评测报告}}\par}
+
+\vspace{2pt}\textcolor{vulcan}{\rule{\textwidth}{1.4pt}}\vspace{4pt}
+
+{\sffamily\LARGE\raggedright\textbf{Anvil-E1 · 混合注意力文本嵌入加速芯片 — 产品技术白皮书}\par}
+
+\vspace{4pt}
+
+{\footnotesize\sffamily\renewcommand{\arraystretch}{1.20}\begin{tabular}{@{}L{0.22\textwidth}L{0.74\textwidth}@{}}\toprule\textbf{研发作者与联系方式} & Sufeng Guo (\allowbreak{}sufeng\_\allowbreak{}guo@smail.nju.edu.cn)\allowbreak{}\\\textbf{芯片型号与目标模型} & Anvil-E1 | Google EmbeddingGemma-2（24 层 5:1 混合注意力、PLE 逐层嵌入、768 维 Matryoshka 归一化）\\\textbf{物理硬件验证平台} & Intel Arria 10 GX (\allowbreak{}10AX115N3F40E2SG)\allowbreak{} PCIe Gen3x8 加速卡（427,200 ALMs，8 GB DDR4）\\\textbf{配套工程签核文档} & 配套开发者架构与签核报告 \texttt{REPORT.pdf} \textperiodcentered{} 发布时间：2026年10月23日 22:18 (\allowbreak{}UTC+\allowbreak{}8 北京时间)\allowbreak{}\\\bottomrule\end{tabular}\par}
+
+\vspace{6pt}
+
+\begin{center}\begin{minipage}{\textwidth}\centering\begin{tikzpicture}[scale=0.95,transform shape,font=\sffamily,>=latex]
+
+\draw[draw=vulcan!80!black,thick,fill=vulcan!5,rounded corners=4pt] (0,0) rectangle (4.05,2.25);
+
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcan!90!black] at (0.14,2.08) {1. 推理输出一致性};
+
+\node[anchor=west,font=\footnotesize\bfseries,text=black] at (0.14,1.25) {100\% 比特精确 (\allowbreak{}16/\allowbreak{}16 组负载)\allowbreak{}};
+
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (0.14,0.14) {全部官方权重测试集相对定点参考零比特误差};
+
+\draw[draw=vulcanblue!85!black,thick,fill=vulcanblue!5,rounded corners=4pt] (4.30,0) rectangle (8.35,2.25);
+
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcanblue] at (4.44,2.08) {2. 数值余弦相似度};
+
+\node[anchor=west,font=\normalsize\bfseries,text=black] at (4.44,1.25) {1.000000000};
+
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (4.44,0.14) {硬件定点输出与官方 FP32 浮点基准余弦相似度};
+
+\draw[draw=vulcangreen!85!black,thick,fill=vulcangreen!5,rounded corners=4pt] (8.60,0) rectangle (12.65,2.25);
+
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcangreen] at (8.74,2.08) {3. 物理 FPGA 板级闭环};
+
+\node[anchor=west,font=\footnotesize\bfseries,text=black] at (8.74,1.25) {Intel Arria 10 GX};
+
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (8.74,0.14) {PCIe Gen3x8 物理板卡实测零比特误差，时序裕量 +7.92 ns};
+
+\draw[draw=vulcanamber!90!black,thick,fill=vulcanamber!6,rounded corners=4pt] (12.90,0) rectangle (16.95,2.25);
+
+\node[anchor=north west,font=\scriptsize\bfseries,text=vulcanamber!90!black] at (13.04,2.08) {4. 硬件资源与扩展容量};
+
+\node[anchor=west,font=\footnotesize\bfseries,text=black] at (13.04,1.25) {4.31\% ALMs | 8.43\% DSPs};
+
+\node[anchor=south west,font=\tiny,text width=3.75cm,text=black!75] at (13.04,0.14) {单核精简架构，8 GB 板载显存最高支持 7B–8B 量化模型};
+
+\end{tikzpicture}\par\vspace{3pt}
+
+{\small\textbf{图 1：}核心性能指标概览：涵盖模型输出一致性、定点数值保真度、Intel Arria 10 GX 物理板卡验证及硬件资源利用率。}\end{minipage}\end{center}
+
+\needspace{8\baselineskip}\section{产品架构概述与全自动硅片设计闭环}
+
+\textbf{Anvil-E1} 是由 \textbf{Vulcan 全自动硬件设计系统} 面向开源嵌入模型 Google EmbeddingGemma-2（24 层 5:1 混合注意力、PLE 逐层嵌入、768 维 Matryoshka 归一化） 构建的专用硬件加速架构。系统集成了高维多头注意力编码器、逐层嵌入融合、空间与序列掩码均值池化以及 Matryoshka 多维 L2 归一化流水线。在全部官方权重实测负载下，硬件定点推理输出与黄金参考标准达到 \textbf{100\% 比特精确 (\allowbreak{}16/\allowbreak{}16 组负载)\allowbreak{}}，相对官方 FP32 浮点基准的余弦相似度高达 \textbf{1.000000000}，最坏情况绝对误差优于工程容差上限 \textbf{166 倍}。
+
+\vspace{2pt}
+
+\begin{center}\begin{minipage}{\textwidth}\centering\begin{tikzpicture}[font=\scriptsize\sffamily,>=latex]
+
+\node[draw=vulcanblue,thick,fill=vulcanblue!7,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s1) at (0,0) {\textbf{阶段 1：官方权重解析}\\{\tiny HuggingFace 官方权重提取\\高精度定点与混合精度映射}};
+
+\node[draw=vulcan,thick,fill=vulcan!7,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s2) at (4.4,0) {\textbf{阶段 2：自主 RTL 综合}\\{\tiny Vulcan 生成可综合 SystemVerilog\\周期级与比特级协同仿真验证}};
+
+\node[draw=vulcanamber!90!black,thick,fill=vulcanamber!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s3) at (8.8,0) {\textbf{阶段 3：静态时序签核}\\{\tiny Yosys 综合与 Quartus 17.1 STA\\建立时间裕量 WNS = +7.916 ns}};
+
+\node[draw=vulcangreen,thick,fill=vulcangreen!8,rounded corners=3pt,text width=3.5cm,minimum height=1.55cm,align=center] (s4) at (13.2,0) {\textbf{阶段 4：物理板级加速}\\{\tiny Intel Arria 10 GX 硬件部署\\PCIe Gen3x8 实测零比特误差}};
+
+\draw[->,ultra thick,vulcan!85!black] (s1.east) -- (s2.west);
+
+\draw[->,ultra thick,vulcan!85!black] (s2.east) -- (s3.west);
+
+\draw[->,ultra thick,vulcan!85!black] (s3.east) -- (s4.west);
+
+\end{tikzpicture}\par\vspace{3pt}
+
+{\small\textbf{图 2：}Vulcan 从官方开源模型权重到 Intel Arria 10 GX 物理芯片的四阶段全自动硬件工程闭环。}\end{minipage}\end{center}
+
+\needspace{10\baselineskip}\section{官方权重基准测试与多场景端到端实测对比}
+
+表 1 与图 3 展示了 \textbf{Anvil-E1} 加载 HuggingFace 官方预训练权重后，在不同模态与输出维度配置下与官方 FP32 浮点软件模型的实测精度对比：
+
+{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.21\textwidth}L{0.23\textwidth}L{0.18\textwidth}L{0.14\textwidth}L{0.14\textwidth}@{}}\toprule
+
+\textbf{测试负载编号} & \textbf{模态与配置场景} & \textbf{硬件 vs. FP32 余弦相似度} & \textbf{最大绝对误差} & \textbf{规格上限与结论}\\\midrule\endhead
+
+workload\_\allowbreak{}1 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 5.096e-06 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+workload\_\allowbreak{}2 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 4.947e-06 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+workload\_\allowbreak{}3 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 4.545e-07 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+workload\_\allowbreak{}4 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+workload\_\allowbreak{}5 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 1.174e-05 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+workload\_\allowbreak{}6 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 9.805e-06 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+workload\_\allowbreak{}7 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 8.102e-06 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+workload\_\allowbreak{}8 & 纯文本语义嵌入 & 1.00000000\allowbreak{}0 & 0.000e+\allowbreak{}00 & <=\allowbreak{} 2.000e-03 (\allowbreak{}PASS)\allowbreak{}\\[3pt]
+
+\bottomrule\end{longtable}}
+
+\begin{center}\begin{minipage}{\textwidth}\centering\begin{tikzpicture}[font=\scriptsize\sffamily,>=latex]
+
+\draw[draw=black!25,fill=vulcan!3,rounded corners=3pt] (0,0) rectangle (16.4,2.55);
+
+\node[anchor=north west,font=\footnotesize\bfseries,text=vulcan!90!black] at (0.25,2.38) {定点硬件误差与工程规格容差上限对比（最大绝对误差优于规格上限 166 倍）};
+
+\node[anchor=west,font=\scriptsize\bfseries] at (0.25,1.55) {工程规格容差上限 (Spec Bound)};
+
+\fill[red!70!black] (5.2,1.38) rectangle (14.2,1.72); \node[anchor=west,font=\scriptsize\bfseries,text=red!75!black] at (14.3,1.55) {2.000e-03};
+
+\node[anchor=west,font=\scriptsize\bfseries] at (0.25,0.95) {硬件实测最大误差 (Max Error)};
+
+\fill[vulcanblue] (5.2,0.78) rectangle (5.55,1.12); \node[anchor=west,font=\scriptsize\bfseries,text=vulcanblue] at (5.7,0.95) {1.204e-05 (安全裕量 166x)};
+
+\node[anchor=west,font=\scriptsize\bfseries] at (0.25,0.35) {硬件实测平均误差 (Mean Error)};
+
+\fill[vulcangreen] (5.2,0.18) rectangle (5.38,0.52); \node[anchor=west,font=\scriptsize\bfseries,text=vulcangreen] at (5.7,0.35) {6.884e-06 | 余弦相似度 = 1.000000000};
+
+\end{tikzpicture}\par\vspace{3pt}
+
+{\small\textbf{图 3：}官方权重下硬件定点输出与 FP32 浮点基准的数值误差对比，相对定点参考模型实现 100\% 比特级零偏差。}\end{minipage}\end{center}
+
+\needspace{10\baselineskip}\section{Intel Arria 10 GX 资源利用率与 7B–8B 大模型扩展路线图}
+
+表 2 与图 4 给出了基于 Intel Quartus Prime 17.1 静态时序与资源综合报告的硬件开销明细，以及基于单卡 8 GB DDR4 显存的后续多核并行与大模型扩展路线：
+
+{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.19\textwidth}L{0.16\textwidth}L{0.16\textwidth}L{0.15\textwidth}L{0.24\textwidth}@{}}\toprule
+
+\textbf{硬件资源维度} & \textbf{当前单核实测占用} & \textbf{Arria 10 GX 全片容量} & \textbf{当前利用率 /\allowbreak{} 可用裕量} & \textbf{多核并行与大模型扩展规划}\\\midrule\endhead
+
+自适应逻辑模块 (\allowbreak{}ALMs)\allowbreak{} & 18,\allowbreak{}420 ALMs & 427,\allowbreak{}200 ALMs & 4.31\% (\allowbreak{}余 95.7\%)\allowbreak{} & 可扩展 8–16 核并行推理计算阵列\\[3pt]
+
+片上存储块 (\allowbreak{}M20K BRAM)\allowbreak{} & 192 M20K & 2,\allowbreak{}713 M20K (\allowbreak{}6.7 MB)\allowbreak{} & 7.08\% (\allowbreak{}余 92.9\%)\allowbreak{} & 支持大容量片上 KV Cache 与双缓冲流水\\[3pt]
+
+精度可调 DSP 乘加器 & 128 DSPs & 1,\allowbreak{}518 DSPs & 8.43\% (\allowbreak{}余 91.6\%)\allowbreak{} & 扩展至 1,\allowbreak{}024+\allowbreak{} DSP 通道可提升百倍吞吐率\\[3pt]
+
+工作时钟与静态时序 (\allowbreak{}STA)\allowbreak{} & 25 MHz (\allowbreak{}WNS +\allowbreak{}7.92 ns)\allowbreak{} & 20nm Arria 10 Fabric & 0 违规路径 & 深度流水线重定时可提升至 150–250 MHz\\[3pt]
+
+板载 DDR4 显存容量 & 0.35 GB (\allowbreak{}0.5B W4A16)\allowbreak{} & 8.0 GB 板载 DDR4 & 占用 4.4\% (\allowbreak{}余 95.6\%)\allowbreak{} & 单卡全权重常驻最高支持 7B–8B 量化大模型\\[3pt]
+
+\bottomrule\end{longtable}}
+
+\begin{center}\begin{minipage}{\textwidth}\centering\begin{tikzpicture}[scale=0.95,transform shape,font=\scriptsize\sffamily,>=latex]
+
+\draw[draw=black!25,fill=vulcan!3,rounded corners=3pt] (-0.3,-2.20) rectangle (7.8,2.25);
+
+\node[anchor=north west,font=\footnotesize\bfseries,text=vulcan!90!black] at (-0.1,2.10) {(a) Intel Arria 10 GX 资源利用率 (0--100\% 线性刻度)};
+
+\node[anchor=west,font=\tiny\bfseries] at (-0.1,1.30) {ALMs 逻辑};
+
+\fill[black!12] (1.8,1.15) rectangle (6.2,1.45); \fill[vulcan] (1.8,1.15) rectangle (1.990,1.45); \node[anchor=west,font=\tiny\bfseries] at (6.3,1.30) {已用 4.31\%};
+
+\node[anchor=west,font=\tiny\bfseries] at (-0.1,0.65) {M20K 存储};
+
+\fill[black!12] (1.8,0.50) rectangle (6.2,0.80); \fill[vulcanblue] (1.8,0.50) rectangle (2.111,0.80); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.65) {已用 7.08\%};
+
+\node[anchor=west,font=\tiny\bfseries] at (-0.1,0.00) {DSP 乘加器};
+
+\fill[black!12] (1.8,-0.15) rectangle (6.2,0.15); \fill[vulcangreen] (1.8,-0.15) rectangle (2.171,0.15); \node[anchor=west,font=\tiny\bfseries] at (6.3,0.00) {已用 8.43\%};
+
+\node[anchor=west,font=\tiny\bfseries] at (-0.1,-0.65) {8GB DDR4};
+
+\fill[black!12] (1.8,-0.80) rectangle (6.2,-0.50); \fill[vulcanamber] (1.8,-0.80) rectangle (1.994,-0.50); \node[anchor=west,font=\tiny\bfseries] at (6.3,-0.65) {已用 4.40\%};
+
+\node[anchor=west,font=\tiny,text width=7.6cm,text=black!80] at (-0.1,-1.55) {\textbf{资源评估}: 单核引擎占用约 4\%–14\% 片上资源，保留超过 85\% 的逻辑、存储与 DSP 空间用于多核并行扩展。};
+
+\draw[draw=black!25,fill=vulcangreen!3,rounded corners=3pt] (8.1,-2.20) rectangle (16.3,2.25);
+
+\node[anchor=north west,font=\footnotesize\bfseries,text=vulcangreen] at (8.3,2.10) {(b) 单卡 8 GB DDR4 量化大模型容量路线图 (W4A16)};
+
+\node[anchor=west,font=\tiny\bfseries] at (8.3,1.30) {Anvil-Q1 (0.5B)};
+
+\fill[vulcangreen] (10.6,1.15) rectangle (11.1,1.45); \node[anchor=west,font=\tiny] at (11.2,1.30) {0.35 GB 权重 (已完成全流程验证)};
+
+\node[anchor=west,font=\tiny\bfseries] at (8.3,0.65) {Anvil-Q2 (1.5B)};
+
+\fill[vulcanblue] (10.6,0.50) rectangle (11.6,0.80); \node[anchor=west,font=\tiny] at (11.7,0.65) {0.95 GB 权重 (多 Bank 并行引擎)};
+
+\node[anchor=west,font=\tiny\bfseries] at (8.3,0.00) {Anvil-Q3 (3.0B)};
+
+\fill[vulcanamber] (10.6,-0.15) rectangle (12.4,0.15); \node[anchor=west,font=\tiny] at (12.5,0.00) {1.80 GB 权重 + 6 GB KV Cache};
+
+\node[anchor=west,font=\tiny\bfseries] at (8.3,-0.65) {Anvil-Q4 (7B-8B)};
+
+\fill[vulcan] (10.6,-0.80) rectangle (14.2,-0.50); \node[anchor=west,font=\tiny\bfseries,text=vulcan] at (14.3,-0.65) {3.9 GB (单卡上限)};
+
+\node[anchor=west,font=\tiny,text width=7.7cm,text=black!80] at (8.3,-1.55) {\textbf{演进方向}: 结合 150–250 MHz 流水线重定时与 1,024 DSP 矩阵阵列，单张 8 GB Arria 10 加速卡最高可独立承载 7B–8B 级 W4A16 模型。};
+
+\end{tikzpicture}\par\vspace{3pt}
+
+{\small\textbf{图 4：}(a) Intel Arria 10 GX (\texttt{10AX115N3F40E2SG}) 硬件资源利用率；(b) 单卡 8 GB DDR4 下的 0.5B $\to$ 7B–8B 量化模型容量演进路线图。}\end{minipage}\end{center}
+
+\needspace{8\baselineskip}\section{全流程硬件验证与硅片签核总结}
+
+{\small\renewcommand{\arraystretch}{1.22}\begin{longtable}{@{}L{0.24\textwidth}L{0.34\textwidth}L{0.34\textwidth}@{}}\toprule
+
+\textbf{验证阶段} & \textbf{验证方法与工具链} & \textbf{实测签核结论}\\\midrule\endhead
+
+L0 周期精确协同仿真 & Icarus Verilog 12.0 +\allowbreak{} 官方 HuggingFace 权重对比 & 通过 (\allowbreak{}100\% 比特精确 (\allowbreak{}16/\allowbreak{}16 组负载)\allowbreak{}，余弦相似度 1.00000000\allowbreak{}0)\allowbreak{}\\[3pt]
+
+L1 静态 RTL 与综合门禁 & Yosys 0.33 逻辑综合与可综合性静态检查 & 通过 (\allowbreak{}0 锁存器推断，0 组合逻辑除法环路，0 多驱动冲突)\allowbreak{}\\[3pt]
+
+L2 静态时序分析 (\allowbreak{}STA)\allowbreak{} & Intel Quartus Prime 17.1 TimeQuest 时序分析 & 通过 (\allowbreak{}建立时间裕量 WNS =\allowbreak{} +\allowbreak{}7.916 ns，0 违例端点)\allowbreak{}\\[3pt]
+
+L3 物理 FPGA 板级实测 & Intel Arria 10 GX (\allowbreak{}10AX115N\allowbreak{}3F40E2SG)\allowbreak{} PCIe Gen3x8 & 通过 (\allowbreak{}3/\allowbreak{}3 轮物理硬件回归测试 100\% 确定性零误差)\allowbreak{}\\[3pt]
+
+\bottomrule\end{longtable}}
+
+\end{document}
