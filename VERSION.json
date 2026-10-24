@@ -1,0 +1,32 @@
+{
+  "family": "Anvil",
+  "series": "Anvil-E",
+  "current_release": "v1.1.0",
+  "versioning_policy": "vX.Y.Z where X=Architecture Paradigm, Y=Timing/Memory Milestone (0=25MHz Sim, 1=100MHz+ STA & PCIe HIL, 2=8GB DDR4 DMA), Z=Patch/Report Revision",
+  "generations": {
+    "anvil-e1": {
+      "version": "v1.1.0",
+      "target": "google/embeddinggemma-2 (Text-Only)",
+      "fmax_mhz": 107.31,
+      "wns_ns": 0.681,
+      "hw_reg0_ascii": "ANVIL_E1",
+      "status": "signed-off"
+    },
+    "anvil-e2": {
+      "version": "v1.1.0",
+      "target": "google/embeddinggemma-2 (Vision+Text)",
+      "fmax_mhz": 111.45,
+      "wns_ns": 1.027,
+      "hw_reg0_ascii": "ANVIL_E2",
+      "status": "signed-off"
+    },
+    "anvil-e3": {
+      "version": "v1.1.0",
+      "target": "google/embeddinggemma-2 (Audio+Vision+Text Trimodal)",
+      "fmax_mhz": 111.63,
+      "wns_ns": 1.042,
+      "hw_reg0_ascii": "ANVIL_E3",
+      "status": "signed-off"
+    }
+  }
+}
