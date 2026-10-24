@@ -1,42 +1,11 @@
-# Vulcan Developer Engineering & Silicon Signoff Report
+# Vulcan product report
 
-[Developer Engineering Report (PDF)](REPORT.pdf) · [LaTeX Source (`REPORT.tex`)](REPORT.tex) · [Product Whitepaper (PDF)](SHOWCASE_REPORT.pdf) · [Product Whitepaper (Markdown)](SHOWCASE_REPORT.md)
+[Product report (PDF)](REPORT.pdf) | [LaTeX source](REPORT.tex)
 
-[Engineering Journey (`.vulcan/engineering/JOURNEY.md`)](.vulcan/engineering/JOURNEY.md) · [Verification Manifest (`.vulcan/engineering/reports/report-0002/manifest.json`)](.vulcan/engineering/reports/report-0002/manifest.json)
+[English engineering journey](.vulcan/engineering/JOURNEY.md) | [Chinese companion](.vulcan/engineering/JOURNEY.zh-CN.md)
 
-This engineering report provides the complete Register-Transfer Level (RTL) microarchitectural specification, cycle-accurate interface protocol contracts, fixed-point arithmetic bounds, Intel Quartus Prime 17.1 static timing analysis (STA), and Intel Arria 10 GX physical PCIe Hardware-in-the-Loop (HIL) signoff evidence.
+[Source and evidence manifest](.vulcan/engineering/reports/report-0002/manifest.json)
 
-## Engineering Report Page Preview
+[Rendered-PDF review](.vulcan/engineering/reports/report-0002/role-render-01-reviewer/response.json) | [Page-access and artifact binding](.vulcan/engineering/reports/report-0002/render-approval.json)
 
-### Page 1
-![Report Page 1](report_figures/page-01.png)
-
-### Page 2
-![Report Page 2](report_figures/page-02.png)
-
-### Page 3
-![Report Page 3](report_figures/page-03.png)
-
-### Page 4
-![Report Page 4](report_figures/page-04.png)
-
-### Page 5
-![Report Page 5](report_figures/page-05.png)
-
-### Page 6
-![Report Page 6](report_figures/page-06.png)
-
-### Page 7
-![Report Page 7](report_figures/page-07.png)
-
-### Page 8
-![Report Page 8](report_figures/page-08.png)
-
-### Page 9
-![Report Page 9](report_figures/page-09.png)
-
-### Page 10
-![Report Page 10](report_figures/page-10.png)
-
-### Page 11
-![Report Page 11](report_figures/page-11.png)
+Historical generation attempt: `report-0002`; this is not a hardware version number. The report reflects the independently accepted source/check identity recorded in its manifest. Later source changes require revalidation. Original failures and previous report attempts remain retained.
