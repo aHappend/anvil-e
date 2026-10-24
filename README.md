@@ -21,6 +21,10 @@
     <a href="https://github.com/aHappend/billet-f">Billet-F (FIR/IIR)</a> ·
     <a href="https://github.com/aHappend/rivet-a">Rivet-A (AES-GCM)</a> ·
     <a href="https://github.com/aHappend/rivet-h">Rivet-H (SHA/HMAC)</a> ·
+    <a href="https://github.com/aHappend/swage-s">Swage-S (ISP)</a> ·
+    <a href="https://github.com/aHappend/bellows-l">Bellows-L (LZ4)</a> ·
+    <a href="https://github.com/aHappend/crucible-g">Crucible-G (3D)</a> ·
+    <a href="https://github.com/aHappend/furnace-x">Furnace-X (SoC)</a> ·
     <a href="README.zh-CN.md"><strong>中文文档</strong></a>
   </p>
 </div>
@@ -73,10 +77,10 @@
 | **Anvil** *(Primary Focus)* | Heavy forge anvil bearing core compute loads | AI & Large-Model Compute — [**Anvil-Q** (Quantized LLMs)](https://github.com/aHappend/anvil-q) · [**Anvil-E** (Multimodal Embeddings)](https://github.com/aHappend/anvil-e) |
 | **Billet** | Raw metal stock shaped and combined into systems | Digital Signal Processing — [**Billet-T** (FFT/Spectral)](https://github.com/aHappend/billet-t) · [**Billet-F** (FIR/SOS-IIR Filters)](https://github.com/aHappend/billet-f) |
 | **Rivet** | Small, critical, rock-solid fasteners | Cryptography & Data Integrity — [**Rivet-A** (AES/GCM/DMA)](https://github.com/aHappend/rivet-a) · [**Rivet-H** (SHA-256/512/HMAC)](https://github.com/aHappend/rivet-h) |
-| **Swage** | Die-forming tool shaping inputs into target forms | Image Processing & ISP — **Swage-S** (2D Scaler, 3×3 Spatial Filter, Bayer Demosaic, CSC) |
-| **Bellows** | Expanding/contracting continuous airflow | Streaming Data Compression — **Bellows-L** (LZ4 Decompressor, Hash-Table Compressor, XXH32 DMA) |
-| **Crucible** | Vessel fusing diverse materials into form | Graphics Processing & Rendering (Geometry, Texture & Lighting Fusion) |
-| **Furnace** | Industrial furnace integrating multiple stages | Heterogeneous SoCs & Complete Multi-Engine Compute Subsystems |
+| **Swage** | Die-forming tool shaping inputs into target forms | Image Processing & ISP — [**Swage-S** (2D Scaler, 3×3 Spatial Filter, Bayer Demosaic, CSC)](https://github.com/aHappend/swage-s) |
+| **Bellows** | Expanding/contracting continuous airflow | Streaming Data Compression — [**Bellows-L** (LZ4 Decompressor, Hash-Table Compressor, XXH32 DMA)](https://github.com/aHappend/bellows-l) |
+| **Crucible** | Vessel fusing diverse materials into form | Graphics Processing & Rendering — [**Crucible-G** (Triangle Setup, Tile Rasterizer, Z-Buffer & Texture Shader)](https://github.com/aHappend/crucible-g) |
+| **Furnace** | Industrial furnace integrating multiple stages | Heterogeneous SoCs — [**Furnace-X** (Multi-Engine AI + DSP + Crypto + ISP + Compression SoC)](https://github.com/aHappend/furnace-x) |
 
 ---
 <p align="center"><sub>Author: <strong>Sufeng Guo</strong> · Microsoft Research Asia · <a href="mailto:sufeng_guo@smail.nju.edu.cn">sufeng_guo@smail.nju.edu.cn</a> · <a href="LICENSE">MIT License</a></sub></p>

@@ -21,6 +21,10 @@
     <a href="https://github.com/aHappend/billet-f">Billet-F (数字滤波)</a> ·
     <a href="https://github.com/aHappend/rivet-a">Rivet-A (认证加密)</a> ·
     <a href="https://github.com/aHappend/rivet-h">Rivet-H (杂凑认证)</a> ·
+    <a href="https://github.com/aHappend/swage-s">Swage-S (视觉ISP)</a> ·
+    <a href="https://github.com/aHappend/bellows-l">Bellows-L (LZ4压缩)</a> ·
+    <a href="https://github.com/aHappend/crucible-g">Crucible-G (图形渲染)</a> ·
+    <a href="https://github.com/aHappend/furnace-x">Furnace-X (异构SoC)</a> ·
     <a href="README.md"><strong>English</strong></a>
   </p>
 </div>
@@ -73,10 +77,10 @@
 | **Anvil（铁砧）** *(当前核心重心)* | 承担核心计算任务的工坊重器 | AI 与大模型计算系列 — [**Anvil-Q**（开源量化大模型推理）](https://github.com/aHappend/anvil-q) · [**Anvil-E**（多模态向量表征）](https://github.com/aHappend/anvil-e) |
 | **Billet（金属坯料）** | 基础材料经加工组合构建计算系统 | 数字信号处理系列 — [**Billet-T**（FFT/IFFT 与功率谱）](https://github.com/aHappend/billet-t) · [**Billet-F**（FIR 与级联 SOS-IIR 滤波）](https://github.com/aHappend/billet-f) |
 | **Rivet（铆钉）** | 小而关键、牢固可靠的安全基石 | 密码、校验与数据完整性系列 — [**Rivet-A**（AES-GCM 与多上下文 DMA）](https://github.com/aHappend/rivet-a) · [**Rivet-H**（SHA-256/512 与 HMAC）](https://github.com/aHappend/rivet-h) |
-| **Swage（型锻模）** | 将输入加工成形的精密模具 | 图像处理与 ISP 系列 — **Swage-S**（双线性图像缩放、3×3 空间卷积滤波、Bayer 去马赛克、色彩空间转换） |
-| **Bellows（风箱）** | 收缩展开、连续高吞吐的数据流 | 压缩、解压与流式数据处理系列 — **Bellows-L**（流式 LZ4 解压/哈希压缩、多通道 XXH32/CRC32 DMA） |
-| **Crucible（坩埚）** | 多种材料融合成形的渲染容器 | 图形处理与渲染系列（几何变换、纹理采样与光照融合管线） |
-| **Furnace（工业炉）** | 整合多计算环节的系统级设备 | 大型异构 SoC 与完整多引擎计算系统系列 |
+| **Swage（型锻模）** | 将输入加工成形的精密模具 | 图像处理与 ISP 系列 — [**Swage-S**（双线性图像缩放、3×3 空间卷积滤波、Bayer 去马赛克、色彩空间转换）](https://github.com/aHappend/swage-s) |
+| **Bellows（风箱）** | 收缩展开、连续高吞吐的数据流 | 压缩、解压与流式数据处理系列 — [**Bellows-L**（流式 LZ4 解压/哈希压缩、多通道 XXH32/CRC32 DMA）](https://github.com/aHappend/bellows-l) |
+| **Crucible（坩埚）** | 多种材料融合成形的渲染容器 | 图形处理与渲染系列 — [**Crucible-G**（三角形建立、分块光栅化、Z-Buffer 与纹理光照着色）](https://github.com/aHappend/crucible-g) |
+| **Furnace（工业炉）** | 整合多计算环节的系统级设备 | 大型异构 SoC 系列 — [**Furnace-X**（多引擎 AI + DSP + 密码 + ISP + 压缩异构计算 SoC）](https://github.com/aHappend/furnace-x) |
 
 ---
 <p align="center"><sub>作者：<strong>Sufeng Guo</strong> · 微软亚洲研究院 (Microsoft Research Asia) · <a href="mailto:sufeng_guo@smail.nju.edu.cn">sufeng_guo@smail.nju.edu.cn</a> · <a href="LICENSE">MIT License</a></sub></p>
