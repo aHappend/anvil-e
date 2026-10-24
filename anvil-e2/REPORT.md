@@ -40,6 +40,3 @@ This engineering report provides the complete Register-Transfer Level (RTL) micr
 
 ### Page 11
 ![Report Page 11](report_figures/page-11.png)
-
-### Page 12
-![Report Page 12](report_figures/page-12.png)
