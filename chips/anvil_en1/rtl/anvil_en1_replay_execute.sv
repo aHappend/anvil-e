@@ -676,7 +676,8 @@ module anvil_en1_replay_execute #(
     wire [31:0] image_feature_projection_bytes, image_feature_source_bytes, image_feature_input_bytes;
     wire [63:0] image_feature_cmd_addr;
     anvil_en1_replay_image_feature #(.COMPACT(COMPACT)) image_feature (
-        .clk(clk), .rst_n(rst_n), .cancel(start_valid && start_ready),
+        .clk(clk), .rst_n(rst_n),
+        .cancel((start_valid && start_ready) || (done_valid && done_ready)),
         .start_valid(image_feature_selected && state == WORKER_START),
         .start_ready(image_feature_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold), .modality(modality_hold),

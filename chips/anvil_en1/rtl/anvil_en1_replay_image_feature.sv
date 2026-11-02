@@ -223,7 +223,7 @@ module anvil_en1_replay_image_feature #(
     assign done_dependency_layer = rst_n && yield_hold ? 8'd16 : 8'd0;
     assign done_dependency_token = rst_n && yield_hold ? source_patch_hold : 32'd0;
     assign done_dependency_length = rst_n && yield_hold ? 12'd768 : 12'd0;
-    assign source_read_event = rst_n && state == SOURCE_SEND && work_req_ready;
+    assign source_read_event = work_req_valid && work_req_ready && state == SOURCE_SEND;
     assign source_read_bytes = source_read_event ? 32'd4 : 32'd0;
     // Directory/coordinate traffic is input traffic; matrix traffic is counted
     // by the memory-map observer, not by relabeling all child reads as inputs.
@@ -231,7 +231,8 @@ module anvil_en1_replay_image_feature #(
     assign input_read_bytes = (map_selected && map_cmd_valid && cmd_ready ? 32'd4 : 32'd0) +
         child_input_bytes;
     assign vector_live_bytes = rst_n ? child_live : 64'd0;
-    assign vector_physical_bytes = rst_n ? 64'd6432 : 64'd0;
+    assign vector_physical_bytes = !rst_n ? 64'd0 :
+        (child_rst_n ? child_physical : 64'd6432);
     assign nested_controller_bytes = rst_n ? map_control + map_nested + divide_control +
         soft_control + bins_control + feature_control + pool_control +
         bins_div_control + pool_div_control + projection_control : 64'd0;

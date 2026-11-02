@@ -660,7 +660,7 @@ module anvil_en1_eval_schedule #(
                     state <= OUTPUT_HIGH;
                 OUTPUT_HIGH: if (output_ready) begin
                     if (output_last)
-                        state <= PUBLISH;
+                        state <= INVALIDATE_SEND;
                     else begin
                         output_component <= output_component + 32'd2;
                         state <= OUTPUT_SETUP;

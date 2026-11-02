@@ -68,7 +68,8 @@ module anvil_en1_frontier #(
         assign backing_rsp_data = 0;
         assign backing_rsp_error = 0;
     end else begin : frontier
-        localparam integer WORD_COUNT = COMPACT ? 206848 : 786432;
+        localparam integer ORDINARY_BACKING_BASE = COMPACT ? 2048 : 786432;
+        localparam integer WORD_COUNT = COMPACT ? 208896 : 1032192;
         localparam integer ADDRESS_WIDTH = $clog2(WORD_COUNT);
         localparam integer MAX_TOKENS = COMPACT ? 512 : 1024;
         localparam [31:0] CAPACITY_BYTES = COMPACT ? 32'd8192 : 32'd3145728;
@@ -121,9 +122,11 @@ module anvil_en1_frontier #(
         wire payload_write = rst_n && state == WRITING &&
             write_valid && write_ready && beat_flags_valid;
         wire [31:0] write_address = vector_base + pair_index;
-        wire backing_access_valid = bound_hold &&
+        wire backing_access_valid = (bound_hold || active) &&
             backing_generation_hold == generation_hold &&
             backing_address_hold < BACKING_WORDS;
+        wire [31:0] backing_word_address = {14'd0, backing_address_hold} +
+            (active ? 32'(ORDINARY_BACKING_BASE) : 32'd0);
 
         assign control_ready = rst_n && state == IDLE;
         assign control_rsp_valid = rst_n && state == CONTROL_RESPONSE;
@@ -141,8 +144,8 @@ module anvil_en1_frontier #(
         assign read_rsp_valid = rst_n && state == READ_RESPONSE;
         assign read_rsp_data = rst_n ? read_hold : 32'd0;
         assign read_rsp_error = rst_n ? error_hold : 4'd0;
-        assign backing_bound = rst_n && bound_hold;
-        assign backing_ready = rst_n && state == IDLE && bound_hold &&
+        assign backing_bound = rst_n && (bound_hold || active);
+        assign backing_ready = rst_n && state == IDLE && (bound_hold || active) &&
             !control_valid && !write_start_valid && !read_valid;
         assign backing_rsp_valid = rst_n && state == BACKING_RESPONSE;
         assign backing_rsp_data = rst_n ? read_hold : 32'd0;
@@ -153,12 +156,12 @@ module anvil_en1_frontier #(
                 payload[write_address[ADDRESS_WIDTH-1:0]] <= write_data;
             else if (rst_n && state == BACKING_ACCESS && backing_access_valid &&
                 backing_write_hold)
-                payload[ADDRESS_WIDTH'(backing_address_hold)] <= backing_data_hold;
+                payload[backing_word_address[ADDRESS_WIDTH-1:0]] <= backing_data_hold;
             if (rst_n && state == RAM_READ)
                 payload_q <= payload[word_address[ADDRESS_WIDTH-1:0]];
             else if (rst_n && state == BACKING_ACCESS && backing_access_valid &&
                 !backing_write_hold)
-                payload_q <= payload[ADDRESS_WIDTH'(backing_address_hold)];
+                payload_q <= payload[backing_word_address[ADDRESS_WIDTH-1:0]];
             if (rst_n && state == TAG_READ && request_in_range)
                 layer_q <= layer_tags[token_hold];
             if (rst_n && state == WRITE_COMMIT)

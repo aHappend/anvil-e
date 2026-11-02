@@ -5,7 +5,94 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: native audio placeholder-to-feature replay
+## Current saved increment: ordinary native features and disjoint backing
+
+`frontier_execute` now dispatches ordinary image/audio placeholders through
+the real Eval domain-3 feature route before embedding or per-layer PLE.
+A separate synchronous feature bank preserves the existing hidden vector
+and frontier. Exact ordered reception and actual successful completion
+precede visibility. Registered callbacks validate generation, token,
+kind, model and index; stale/partial features fail explicitly. Native
+feature values no longer come from the outward modality-response port.
+The new bank's live and physical reports are additive to existing H/P
+storage.
+
+`frontier` now provides ordinary replay backing in a physically disjoint
+tail of its one payload RAM. Production ordinary backing starts at word
+786432; compact backing starts at word 2048. Fallback still requires
+release/drain and explicit binding, then uses base zero. Generation and
+range checks precede synchronous payload access; one acknowledged RAM
+operation is outstanding. Physical reservations increase to 4128768 bytes
+production and 835584 bytes compact, disclosed separately from live bytes.
+Neither the ordinary frontier cap nor the admitted live-payload limits
+change.
+
+Saved changes: `rtl/anvil_en1_frontier.sv`,
+`rtl/anvil_en1_frontier_execute.sv`, `design/SPEC.md` and this document.
+No static check, commands, simulation, synthesis or experiments ran;
+no preparation receipt exists. Tools used: glob, view, rg and apply_patch.
+Parent, verification and runtime files remain untouched; attempt-0003
+is preserved without a claimed repair.
+
+Next concrete dependency: bind the frontier and owner requesters to the
+same real replay engine and backing, cache metadata/data interfaces and
+registered memory arbiter, then complete session/top/CSR integration.
+Whole-system live/physical overlays remain necessary, including the
+ordinary native scratch limit `min(1 MiB,floor(B/8))` and the complete
+fallback 1 MiB ceiling. Current frame-slot accounting does not establish
+these bounds; physical partitioning is not acceptance. Not ready for
+Verifier.
+
+## Prior saved increment: durable image placeholder-to-feature replay
+
+`rtl/anvil_en1_replay_image_feature.sv` connects immutable image-placeholder
+ordinal/count mapping to the real `vision_soft_token` bin mapper, pool,
+normalization and modality projection. A sequential divider checks the
+physical patches/9 pool extent. The bin mapper independently retains the
+coordinate-derived valid-bin ordering and count checks.
+
+The genuine pool's layer-16 source callbacks now yield domain-1 encoder
+dependencies through `replay_execute`. While that separate lower-rank
+worker runs, the image worker retains its literal numerical FSM, scalar
+reduction and pooled RAM. Resume validates the full retained descriptor,
+generation/position/patch/component continuation and actual completed
+768-component memo before issuing acknowledged pair reads. It neither
+restarts a partial reduction nor accepts host-produced features.
+Same-rank feature nesting is excluded by the existing rank check.
+
+The image worker emits no external or workspace request while suspended.
+Its live storage remains charged while the vision replay worker executes.
+The 6432-byte physical bin/pooled/normalized reservation is disclosed
+separately from frame/memo storage; its own and reported nested controllers
+remain separate. Actual H feature outputs are ordered and paired into
+frame bank 0, with one acknowledgment before further pair progress.
+Failures reject/drain the actual numerical child. A new accepted scheduler
+root cancels any abandoned source-stalled continuation before new dispatch.
+
+`replay_input` and `replay_text_layer` bind both image and audio callbacks
+to the matching domain-3 completed feature memo, including the immutable
+token-kind check on resumed per-layer PLE work. Image callbacks no longer
+request a host feature through the outward modality port. Real embedding,
+gated PLE, post-attention and MLP arithmetic remain connected.
+
+Saved changes: new `replay_image_feature`; updated `replay_execute`,
+`replay_input`, `replay_text_layer`, `SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+simulation, synthesis, installations or experiments ran; no preparation
+receipts exist. The reserved fast static check remains unused. Parent,
+verification and runtime files are untouched, and
+`.vulcan/engineering/run-0001/attempt-0003` remains preserved without a
+claimed repair.
+
+Next concrete dependency: ordinary frontier/native-feature routing and
+its real bounded backing allocation, then shared owner/fallback execution
+arbitration, complete live/physical overlays and compatible top/cache/CSR
+integration. In particular, ordinary modality replay cannot silently use
+RAM still occupied by the live text frontier. Primitive-state accounting,
+resource fit and timing remain unproven. Current design is not ready for
+Verifier.
+
+## Prior saved increment: native audio placeholder-to-feature replay
 
 `rtl/anvil_en1_native_token_map.sv` derives a real placeholder ordinal and
 count by scanning the entire immutable text stream. Audio mapping then

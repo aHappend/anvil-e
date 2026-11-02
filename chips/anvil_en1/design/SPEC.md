@@ -5,6 +5,66 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Ordinary native-feature routing and disjoint replay backing
+
+The ordinary frontier executor now sends a native placeholder to the same
+real Eval engine used by fallback: `eval_domain=3`, `eval_layer=1` for image
+or 2 for audio, and `eval_token` is the original text position. Text fallback
+continues to use domain 0 and its requested text layer. The Eval descriptor
+is held through request acceptance. The ordinary executor starts embedding
+only after H ascending feature values, an exact last flag and successful
+actual Eval completion have all been observed.
+
+Features have their own synchronous BF16 bank, distinct from both the
+frontier and the retained last-token hidden vector. This is necessary during
+upper shared-layer PLE reconstruction: the previous layer's hidden vector
+must survive native feature evaluation. This bank reserves 5120 bytes in
+production and 16 bytes in compact builds. `feature_live_bytes` charges the
+full selected `2*H` bytes starting at feature request acceptance, including
+partial/error reception, until failed feature completion or embedding
+completion. `feature_physical_bytes` reports the separate reservation.
+These outputs are additive, not hidden inside the H/P bank reports.
+
+Embedding's native callbacks read only this completed, generation/token/kind
+tagged bank. Every callback is captured, checked, synchronously read and
+registered before response. Bad model/kind/token/index, missing completion
+or stale generation returns an explicit source error. The response is held
+through backpressure. An actual embedding completion cancels any abandoned
+internal callback before another task is admitted. No native feature can
+arrive from the legacy outward modality response inputs; outward modality
+requests and response readiness are zero in this executor.
+
+The existing frontier payload RAM now provides **disjoint ordinary replay
+backing**, rather than trying to reuse live text words. In production,
+ordinary frontier word addresses are below 786432 and ordinary replay word
+b is physically `786432+b`. In compact builds the corresponding split is
+2048 words, matching the unchanged 8192-byte ordinary frontier cap. The
+backing request remains a relative 18-bit word index, with the same range,
+generation checks and acknowledged synchronous access as fallback.
+`backing_bound` now denotes backing availability in either valid ordinary
+mode or explicitly bound fallback mode.
+
+| Backing boundary | Registered behavior |
+| --- | --- |
+| Ordinary configure | Validate/allocate the unchanged padded frontier; only a successful allocation enables the disjoint backing |
+| Ordinary read/write | Capture relative address/data/generation; validate, then access the physical tail and publish its held response |
+| Frontier versus replay access | One RAM transaction at a time; control, vector write and vector read retain priority over backing ingress |
+| Ordinary-to-fallback | Drain accepted work, release frontier and ring, then bind op 3; fallback backing uses physical base zero |
+| New ordinary session | Release any fallback binding first; invalidation clears visibility, not payload bits |
+| Range/generation error | No payload access; acknowledged error 7 |
+| Reset | Public outputs/visibility zero; no initialization advertises payload as readable |
+
+The physical shared RAM reservation is now 1032192 words / 4128768 bytes in
+production and 208896 words / 835584 bytes in compact builds. This is one
+array, not a simultaneous copy of ordinary and fallback payload. The
+ordinary 3 MiB cap and all live-payload acceptance limits are unchanged.
+Unused physical tail capacity is not a KV-memory saving. Workspace live
+frames/memos/scalars, suspended native worker scratch and the feature bank
+still require complete phase-overlay accounting and enforcement of
+`M <= min(1 MiB,floor(B/8))`; the physical partition alone does not establish
+this bound, resource fit or 100 MHz timing. Whole-system binding and
+independent verification remain pending.
+
 ## Durable causal-convolution history layout
 
 ### Durable image placeholder-to-feature execution
@@ -1264,11 +1324,12 @@ are unused physical capacity, not occupied tensors or claimed memory savings.
 The additional domain map and two allocation totals are 96 metadata bits.
 Production-width shadow accounting and the production layout stay unchanged.
 
-The compact backing now reserves 206848 words / 827392 bytes inside the
-frontier's one 206848-word / 827392-byte physical payload RAM. Its ordinary
-frontier cap stays 8192 bytes / 512 text tokens. Mode transition must still
-release the ordinary frontier before binding this backing; no simultaneous
-old/new representation or additional payload array is introduced.
+The compact backing address space reserves 206848 words / 827392 bytes.
+The current disjoint ordinary backing physical layout is specified at the
+start of this document. The ordinary frontier cap stays 8192 bytes / 512
+text tokens. A fallback mode transition must still release the ordinary
+frontier before binding its base-zero backing; no simultaneous old/new
+representation or additional payload array is introduced.
 This is source-level layout repair, not an executed liveness/savings result.
 Native dispatch/continuations, pooling/feature source integration, audio execution,
 single-token linear replay, full allocation accounting and top integration
@@ -2055,11 +2116,13 @@ The executor exposes the bound backing channel for the real continuation/
 memo workspace. The Eval producer remains required implementation elsewhere;
 neither this transport nor binding RAM implements or certifies fallback.
 
-Two synchronous private banks reserve `2*Hmax+2*P` bytes: 5632 production,
+Two synchronous private H/P banks reserve `2*Hmax+2*P` bytes: 5632 production,
 24 compact. Live payload includes the full selected H-vector during receive
 and through its last use, and P during receive/committed layer use. Raw
 original H is not allocated during PLE-only reconstruction. All frontier,
 ring and anchor payload/reservation/metadata outputs are exposed separately.
+The separate ordinary native-feature bank and its Eval-domain routing are
+specified above; its live/physical reports are additive to these H/P banks.
 These banks and numerical child state still require integration into the
 complete phase-overlaid ledger; the executor does not claim that ledger
 or the production resource/timing bounds are already established.
@@ -3166,8 +3229,10 @@ averaging models/precisions or counting aliases as traffic.
 
 `anvil_en1_replay_workspace` is a storage/controller leaf, not the completed
 `Eval` interpreter. Its only payload transport is an on-chip backing-word
-channel; it has no DDR command port. The replay scheduler must drain and
-invalidate the ordinary frontier and local ring before enabling this channel.
+channel; it has no DDR command port. Ordinary native-feature evaluation uses
+the disjoint tail of the shared RAM specified above. For a representation
+change to fallback, the replay scheduler must first drain and invalidate the
+ordinary frontier and local ring.
 The frontier's control op 3 binds its existing payload RAM to fallback backing
 access, only from an inactive state, with zero ordinary live bytes. Op 1
 releases either representation. A new ordinary op 0 cannot acquire RAM while
@@ -3180,7 +3245,9 @@ The backing interface carries `backing_valid/ready`, `backing_write`,
 Every accepted write receives one response after the synchronous write.
 Every accepted read receives the actual synchronous RAM word. The legal
 backing range is 0..245759 in production and 0..206847 in compact mode.
-No operation is accepted before op 3 binds the RAM. Backing transport does not
+Fallback operations require op 3 binding; ordinary operations require a
+successfully allocated ordinary frontier and use the disjoint physical tail.
+Backing transport does not
 make uninitialized words readable through the workspace's public interface.
 
 | Partition | Production words / bytes | Compact words / bytes |
@@ -3198,11 +3265,13 @@ Full production slot reservations and
 compact domain-specific prefixes, including occupied padding, count as live
 payload, not merely returned components. Production
 shadow frame/memo/scalar allocations always use the production slot sizes.
-Physical reserved backing is reported separately; it is the first part of
-the existing frontier RAM, not an extra inferred payload array. Compact RAM
-reserves 206848 words / 827392 bytes to cover native vector strides and continuations;
-its ordinary frontier allocation cap remains 8192 bytes and 512 tokens.
-Production frontier RAM and the 3 MiB cap are unchanged. Unused physical words
+Physical reserved backing is reported separately; in fallback it is the
+first part of the shared frontier RAM, and in ordinary mode it is its
+disjoint tail, not an extra inferred payload array. Compact physical RAM
+reserves 208896 words / 835584 bytes to cover both its ordinary partition
+and disjoint replay backing; its ordinary frontier allocation cap remains
+8192 bytes and 512 tokens. Production physical RAM reserves 1032192 words /
+4128768 bytes; the ordinary 3 MiB allocation cap is unchanged. Unused physical words
 are not advertised as live payload or saved FPGA memory.
 The remaining 65536 production bytes of the admitted 1 MiB ceiling must cover
 **all** workspace descriptor registers, masks, returned data, resident cache,
@@ -3222,7 +3291,9 @@ equal the selected H (8 in compact mode); vision/audio lengths stay 768/1024
 in both modes.
 Text layer is 0..L, vision 0..16, audio 0..12; feature layer 1/2 identifies
 image/audio. Feature tokens are original text positions. The saved dispatcher
-currently implements audio features; image feature execution is pending.
+implements both image and audio feature workers. Image pooling retains
+its literal numerical state across lower-rank encoder dependency yields;
+its separately reported live banks remain charged during those yields.
 Token is 0..131071.
 Memo tags include every descriptor field affecting the vector
 (model, generation, domain, layer, token, length).

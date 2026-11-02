@@ -88,7 +88,7 @@ module anvil_en1_frontier_execute #(
     output wire [3:0] ring_read_rsp_error,
     output wire eval_start_valid,
     input wire eval_start_ready,
-    output wire [1:0] eval_model, eval_precision, eval_modality,
+    output wire [1:0] eval_model, eval_precision, eval_modality, eval_domain,
     output wire [31:0] eval_generation, eval_tokens, eval_token,
     output wire [7:0] eval_layer,
     output wire [63:0] eval_tokens_base, eval_weights_base,
@@ -125,6 +125,7 @@ module anvil_en1_frontier_execute #(
     output wire [17:0] logit_index,
     output wire logit_last,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire [63:0] feature_live_bytes, feature_physical_bytes,
     output wire [63:0] frontier_live_bytes, frontier_physical_bytes,
     output wire [63:0] frontier_metadata_bytes,
     output wire [63:0] ring_live_bytes, ring_physical_bytes, ring_metadata_bytes,
@@ -147,17 +148,21 @@ module anvil_en1_frontier_execute #(
         WRITE_SEND = 21, WRITE_WAIT = 22, ANCHOR_START = 23,
         ANCHOR_WAIT = 24, EVAL_START = 25, EVAL_WAIT = 26,
         LOGITS_START = 27, LOGITS_WAIT = 28, PUBLISH = 29, RESPONSE = 30,
-        TOKEN_ADDRESS = 31, TOKEN_SEND = 32, TOKEN_WAIT = 33, TOKEN_CLASSIFY = 34;
+        TOKEN_ADDRESS = 31, TOKEN_SEND = 32, TOKEN_WAIT = 33, TOKEN_CLASSIFY = 34,
+        FEATURE_START = 35, FEATURE_WAIT = 36, FEATURE_COMMIT = 37;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_LOCAL_READ = 2,
         S_LOCAL_CAPTURE = 3, S_FRONTIER_SEND = 4, S_FRONTIER_WAIT = 5,
         S_RESPONSE = 6;
     localparam [1:0] READ_IDLE = 0, READ_SEND = 1, READ_WAIT = 2,
         READ_RESPONSE = 3;
+    localparam [2:0] FEATURE_IDLE = 0, FEATURE_VALIDATE = 1,
+        FEATURE_READ = 2, FEATURE_CAPTURE = 3, FEATURE_RESPONSE = 4;
     localparam [2:0] M_NONE = 0, M_EMBED = 1, M_LAYER = 2, M_LOGITS = 3, M_TOKEN = 4;
     reg [5:0] state, frontier_return, ring_return;
     reg [2:0] operation, source_state;
     reg [1:0] model_hold, precision_hold, modality_hold, frontier_operation;
     reg [1:0] read_state;
+    reg [2:0] feature_state;
     reg [31:0] generation_hold, tokens_hold, token_hold, hidden_hold;
     reg [63:0] tokens_base_hold, weights_base_hold;
     reg [63:0] token_address_hold;
@@ -182,10 +187,18 @@ module anvil_en1_frontier_execute #(
     reg [7:0] read_layer_hold;
     reg [11:0] read_component_hold;
     reg [3:0] read_error_hold;
+    reg feature_allocated, feature_committed, feature_bad, feature_complete;
+    reg [31:0] feature_count, feature_generation, feature_token;
+    reg [1:0] feature_kind, feature_request_model, feature_request_kind;
+    reg [31:0] feature_request_token, feature_request_index;
+    reg [15:0] feature_q, feature_data_hold;
+    reg feature_error_hold;
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] hidden_payload [0:MAX_H-1];
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] ple_payload [0:P-1];
+    (* ramstyle = "M20K", nomem2reg *)
+    reg [15:0] feature_payload [0:MAX_H-1];
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -218,6 +231,8 @@ module anvil_en1_frontier_execute #(
     wire token_audio = token_id_hold == (COMPACT ? 32'd29 : 32'd258881);
     wire image_allowed = modality_hold == 1 || modality_hold == 3;
     wire audio_allowed = modality_hold == 2 || modality_hold == 3;
+    wire feature_eval = state == FEATURE_START || state == FEATURE_WAIT ||
+        state == FEATURE_COMMIT;
 
     wire frontier_control_ready, frontier_control_valid;
     wire [3:0] frontier_control_error;
@@ -330,17 +345,22 @@ module anvil_en1_frontier_execute #(
         (state == VECTOR_COMMIT && operation != 7) ? M_LAYER :
         (state == LOGITS_START || state == LOGITS_WAIT ? M_LOGITS :
         (state == TOKEN_SEND || state == TOKEN_WAIT ? M_TOKEN : M_NONE)));
+    wire embed_modality_valid, embed_modality_rsp_ready;
+    wire [1:0] embed_modality_model, embed_modality_kind;
+    wire [31:0] embed_modality_token, embed_modality_index;
     anvil_en1_embedding_ple #(.COMPACT(COMPACT)) embedding (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EMBED_START), .start_ready(embed_ready),
         .model(model_hold), .precision(precision_hold), .modality(token_modality),
         .layer(layer_hold), .token(token_hold),
         .tokens_base(tokens_base_hold), .weights_base(weights_base_hold),
-        .modality_valid(modality_valid), .modality_ready(modality_ready),
-        .modality_model(modality_model), .modality_kind(modality_kind),
-        .modality_token(modality_token), .modality_index(modality_index),
-        .modality_rsp_valid(modality_rsp_valid), .modality_rsp_ready(modality_rsp_ready),
-        .modality_rsp_data(modality_rsp_data), .modality_rsp_error(modality_rsp_error),
+        .modality_valid(embed_modality_valid),
+        .modality_ready(rst_n && state == EMBED_WAIT && feature_state == FEATURE_IDLE),
+        .modality_model(embed_modality_model), .modality_kind(embed_modality_kind),
+        .modality_token(embed_modality_token), .modality_index(embed_modality_index),
+        .modality_rsp_valid(rst_n && feature_state == FEATURE_RESPONSE),
+        .modality_rsp_ready(embed_modality_rsp_ready),
+        .modality_rsp_data(feature_data_hold), .modality_rsp_error(feature_error_hold),
         .input_valid(embed_input_valid), .input_ready(rst_n && state == EMBED_WAIT),
         .input_index(embed_input_index), .input_data(embed_input_data),
         .input_last(embed_input_last), .ple_valid(embed_ple_valid),
@@ -472,11 +492,11 @@ module anvil_en1_frontier_execute #(
     );
 
     assign control_ready = rst_n && state == IDLE && read_state == READ_IDLE &&
-        source_state == S_IDLE;
+        source_state == S_IDLE && feature_state == FEATURE_IDLE;
     assign control_rsp_valid = rst_n && state == RESPONSE && is_control;
     assign control_error = rst_n ? error_hold : 4'd0;
     assign task_ready = rst_n && state == IDLE && read_state == READ_IDLE &&
-        source_state == S_IDLE && !control_valid;
+        source_state == S_IDLE && feature_state == FEATURE_IDLE && !control_valid;
     assign task_done_valid = rst_n && state == RESPONSE && !is_control;
     assign task_done_error = rst_n ? error_hold : 4'd0;
     assign busy = rst_n && (state != IDLE || read_state != READ_IDLE || source_state != S_IDLE);
@@ -493,18 +513,29 @@ module anvil_en1_frontier_execute #(
         (h_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
         (p_allocated ? 64'(2*P) : 64'd0) : 64'd0;
     assign vector_physical_bytes = rst_n ? 64'(2*MAX_H+2*P) : 64'd0;
-    assign eval_start_valid = rst_n && state == EVAL_START;
+    assign feature_live_bytes = rst_n && feature_allocated ?
+        {32'd0, hidden_hold} << 1 : 64'd0;
+    assign feature_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
+    assign modality_valid = 1'b0;
+    assign modality_model = 2'd0;
+    assign modality_kind = 2'd0;
+    assign modality_token = 32'd0;
+    assign modality_index = 32'd0;
+    assign modality_rsp_ready = 1'b0;
+    assign eval_start_valid = rst_n && (state == EVAL_START || state == FEATURE_START);
     assign eval_model = rst_n ? model_hold : 2'd0;
     assign eval_precision = rst_n ? precision_hold : 2'd0;
     assign eval_modality = rst_n ? modality_hold : 2'd0;
+    assign eval_domain = rst_n && feature_eval ? 2'd3 : 2'd0;
     assign eval_generation = rst_n ? generation_hold : 32'd0;
     assign eval_tokens = rst_n ? tokens_hold : 32'd0;
     assign eval_token = rst_n ? token_hold : 32'd0;
-    assign eval_layer = rst_n ? layer_hold : 8'd0;
+    assign eval_layer = !rst_n ? 8'd0 :
+        (feature_eval ? {6'd0, token_modality} : layer_hold);
     assign eval_tokens_base = rst_n ? tokens_base_hold : 64'd0;
     assign eval_weights_base = rst_n ? weights_base_hold : 64'd0;
-    assign eval_output_ready = rst_n && state == EVAL_WAIT;
-    assign eval_done_ready = rst_n && state == EVAL_WAIT;
+    assign eval_output_ready = rst_n && (state == EVAL_WAIT || state == FEATURE_WAIT);
+    assign eval_done_ready = rst_n && (state == EVAL_WAIT || state == FEATURE_WAIT);
     assign cmd_valid = rst_n && (memory_owner == M_TOKEN ? state == TOKEN_SEND :
         (memory_owner == M_EMBED ? embed_cmd_valid :
         (memory_owner == M_LAYER ? layer_cmd_valid :
@@ -572,6 +603,9 @@ module anvil_en1_frontier_execute #(
     wire received_last = receive_layer ? layer_output_last : eval_output_last;
     wire h_beat_ok = !h_bad && !h_complete && h_count < hidden_hold &&
         received_index == h_count && received_last == (h_count == hidden_hold - 1'b1);
+    wire feature_beat_ok = !feature_bad && !feature_complete &&
+        feature_count < hidden_hold && eval_output_index == feature_count &&
+        eval_output_last == (feature_count == hidden_hold - 1'b1);
 
     always @(posedge clk) begin
         if (rst_n && state == EMBED_WAIT && operation == 1 &&
@@ -582,6 +616,10 @@ module anvil_en1_frontier_execute #(
             hidden_payload[received_index[H_BITS-1:0]] <= received_data;
         if (rst_n && state == EMBED_WAIT && embed_ple_valid && ple_beat_ok)
             ple_payload[embed_ple_index[P_BITS-1:0]] <= embed_ple_data;
+        if (rst_n && state == FEATURE_WAIT && eval_output_valid && feature_beat_ok)
+            feature_payload[eval_output_index[H_BITS-1:0]] <= eval_output_data;
+        if (rst_n && feature_state == FEATURE_READ)
+            feature_q <= feature_payload[feature_request_index[H_BITS-1:0]];
         if (rst_n && source_state == S_LOCAL_READ) begin
             if (source_is_ple_hold)
                 ple_q <= ple_payload[source_index_hold[P_BITS-1:0]];
@@ -591,6 +629,57 @@ module anvil_en1_frontier_execute #(
             hidden_q <= hidden_payload[write_component[H_BITS-1:0]];
         else if (rst_n && state == WRITE_HIGH_READ)
             hidden_q <= hidden_payload[H_BITS'(write_component + 32'd1)];
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            feature_state <= FEATURE_IDLE;
+            feature_request_model <= 0;
+            feature_request_kind <= 0;
+            feature_request_token <= 0;
+            feature_request_index <= 0;
+            feature_data_hold <= 0;
+            feature_error_hold <= 0;
+        end else if (state == EMBED_COMMIT) begin
+            feature_state <= FEATURE_IDLE;
+            feature_data_hold <= 0;
+            feature_error_hold <= 0;
+        end else begin
+            case (feature_state)
+                FEATURE_IDLE: if (state == EMBED_WAIT && embed_modality_valid) begin
+                    feature_request_model <= embed_modality_model;
+                    feature_request_kind <= embed_modality_kind;
+                    feature_request_token <= embed_modality_token;
+                    feature_request_index <= embed_modality_index;
+                    feature_data_hold <= 0;
+                    feature_error_hold <= 0;
+                    feature_state <= FEATURE_VALIDATE;
+                end
+                FEATURE_VALIDATE: begin
+                    if (!feature_committed || feature_generation != generation_hold ||
+                        feature_request_model != model_hold ||
+                        feature_request_kind != feature_kind ||
+                        feature_request_token != feature_token ||
+                        feature_request_index >= hidden_hold) begin
+                        feature_error_hold <= 1;
+                        feature_state <= FEATURE_RESPONSE;
+                    end else
+                        feature_state <= FEATURE_READ;
+                end
+                FEATURE_READ: feature_state <= FEATURE_CAPTURE;
+                FEATURE_CAPTURE: begin
+                    feature_data_hold <= feature_q;
+                    feature_state <= FEATURE_RESPONSE;
+                end
+                FEATURE_RESPONSE: if (embed_modality_rsp_ready)
+                    feature_state <= FEATURE_IDLE;
+                default: begin
+                    feature_error_hold <= 1;
+                    feature_data_hold <= 0;
+                    feature_state <= FEATURE_RESPONSE;
+                end
+            endcase
+        end
     end
 
     always @(posedge clk or negedge rst_n) begin
@@ -741,6 +830,14 @@ module anvil_en1_frontier_execute #(
             h_committed <= 0;
             p_allocated <= 0;
             p_committed <= 0;
+            feature_allocated <= 0;
+            feature_committed <= 0;
+            feature_bad <= 0;
+            feature_complete <= 0;
+            feature_count <= 0;
+            feature_generation <= 0;
+            feature_token <= 0;
+            feature_kind <= 0;
             vector_layer <= 0;
             vector_token <= 0;
             vector_generation <= 0;
@@ -801,6 +898,8 @@ module anvil_en1_frontier_execute #(
                         h_committed <= 0;
                         p_allocated <= 0;
                         p_committed <= 0;
+                        feature_allocated <= 0;
+                        feature_committed <= 0;
                         ordinary_configured <= 0;
                         fallback_configured <= 0;
                         frontier_frozen <= 0;
@@ -855,6 +954,8 @@ module anvil_en1_frontier_execute #(
                                 p_complete <= 0;
                                 p_allocated <= 1;
                                 p_committed <= 0;
+                                feature_allocated <= 0;
+                                feature_committed <= 0;
                                 if (operation == 1) begin
                                     h_allocated <= 1;
                                     h_committed <= 0;
@@ -876,6 +977,8 @@ module anvil_en1_frontier_execute #(
                                 h_committed <= 0;
                                 p_allocated <= 0;
                                 p_committed <= 0;
+                                feature_allocated <= 0;
+                                feature_committed <= 0;
                                 frontier_operation <= 1;
                                 frontier_return <= FRONTIER_RELEASED;
                                 state <= FRONTIER_CONTROL;
@@ -956,6 +1059,47 @@ module anvil_en1_frontier_execute #(
                         state <= PUBLISH;
                     end else begin
                         token_modality <= token_image ? 2'd1 : (token_audio ? 2'd2 : 2'd0);
+                        if (token_image || token_audio) begin
+                            feature_count <= 0;
+                            feature_bad <= 0;
+                            feature_complete <= 0;
+                            state <= FEATURE_START;
+                        end else
+                            state <= EMBED_START;
+                    end
+                end
+                FEATURE_START: if (eval_start_ready) begin
+                    feature_allocated <= 1;
+                    feature_committed <= 0;
+                    feature_generation <= generation_hold;
+                    feature_token <= token_hold;
+                    feature_kind <= token_modality;
+                    state <= FEATURE_WAIT;
+                end
+                FEATURE_WAIT: begin
+                    if (eval_output_valid && eval_output_ready) begin
+                        if (!feature_beat_ok)
+                            feature_bad <= 1;
+                        else begin
+                            feature_count <= feature_count + 1'b1;
+                            if (eval_output_last)
+                                feature_complete <= 1;
+                        end
+                    end
+                    if (eval_done_valid && eval_done_ready) begin
+                        child_error <= eval_done_error;
+                        state <= FEATURE_COMMIT;
+                    end
+                end
+                FEATURE_COMMIT: begin
+                    if (child_error != 0 || feature_bad || !feature_complete ||
+                        feature_count != hidden_hold) begin
+                        error_hold <= child_error != 0 ? child_error : 4'd7;
+                        feature_allocated <= 0;
+                        feature_committed <= 0;
+                        state <= PUBLISH;
+                    end else begin
+                        feature_committed <= 1;
                         state <= EMBED_START;
                     end
                 end
@@ -986,6 +1130,8 @@ module anvil_en1_frontier_execute #(
                     end
                 end
                 EMBED_COMMIT: begin
+                    feature_allocated <= 0;
+                    feature_committed <= 0;
                     if (child_error != 0 || input_bad || !input_complete ||
                         input_count != hidden_hold || p_bad || !p_complete || p_count != P) begin
                         error_hold <= child_error != 0 ? child_error : 4'd7;
