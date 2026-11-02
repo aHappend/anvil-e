@@ -5,6 +5,114 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Connected native vision layer and mixed-domain replay storage
+
+`anvil_en1_vision_layer` now connects the real vision attention row executor
+to the complete post-attention vision residual/MLP path. Its registered
+descriptor is model, precision, generation, patch count/grid, query patch,
+native layer 0..15 and immutable input/vision-weight bases. Native geometry
+remains H=768, I=3072, Q=12, D=64 in both text verification modes.
+Source callbacks identify the generation/model/entering layer/patch/component;
+the producer must return committed on-chip entering-layer components and
+preserve all bidirectional inputs until their consumers have finished.
+This connected leaf does not provide recursive source service or replace the
+still-required bounded native replay dispatcher.
+
+`anvil_en1_vision_attention_row` computes one genuine clipped output row
+(kind 0x1106). For each actual ascending-column callback, it executes the
+native attention head indexed by column[9:6], drains all 64 acknowledged
+components, selects column[5:0], waits for successful head completion and
+then responds to the waiting output projection. It explicitly checks
+indices, last flags, selected-component presence and full head completion.
+It does not allocate a complete concatenated attention tensor. Repeated
+head/Q/K/V/coordinate/weight computations are actual work, not cache hits or
+avoided projections. A malformed grid is rejected after a registered
+16x16 product and later comparison, before the first row memory command.
+
+Memory ownership passes to the head only while the output projection is
+waiting for an accepted source callback and its earlier memory response has
+retired. It passes back only after actual head completion. A failed head
+returns its actual error through the waiting row; the first child error is
+preserved instead of being collapsed to successful zero output. No layer
+source callback is interpreted as permission for external feature storage.
+
+`anvil_en1_native_norm` is currently a vision learned-RMS wrapper, not a
+general audio affine LayerNorm. Legal image_class is 1, vector length 768,
+layer 0..15, and kinds 0x1100/1107/1108/110c. It validates the immutable BF16
+scale descriptor through the real directory, reads every scale through the
+BF16 weight decoder, and executes `anvil_en1_norm` with epsilon 1e-6.
+Scales are BF16 in both matrix precision modes. Its source/output streams
+are individually acknowledged; the original scale-read error survives the
+norm's failed response and later completion.
+
+`anvil_en1_vision_post_layer` performs these frozen operations in order:
+load the raw entering vector and real output-projected attention branch;
+learned post-attention RMSNorm; BF16 residual add; learned pre-feedforward
+RMSNorm; every clipped GeGLU/down row through `anvil_en1_native_mlp_row`;
+learned post-feedforward RMSNorm; BF16 residual add and ordered output.
+The input attention branch is already output-projected, not a raw head.
+Each residual widens its two BF16 operands, separately rounds the binary32
+add and then RNE materializes BF16. There is no text PLE, text layer scalar,
+audio 0.5 weighting or extra final norm in this vision layer.
+
+Three synchronous 768-component BF16 banks retain the raw/residual, normalized
+attention/MLP input and MLP output vectors: 1536 bytes each, 4608 bytes total.
+The raw residual survives every MLP row. Only the norm output phase overwrites
+an already consumed component of its source bank, after full reductions.
+There is no bidirectional overwrite of another patch's entering vector.
+Input banks become readable only after all 768 components are stored.
+Norm output guards check count/index/last and reject incomplete materialization
+before subsequent work. Final output is held through backpressure, and done
+follows acceptance of component 767. Bank allocations remain charged through
+error or success completion acceptance.
+
+| Boundary | Registered behavior |
+| --- | --- |
+| Layer L0/L1/L2/L3 | Capture descriptor; validate all ranges; grid product; grid equality check; only then start post worker |
+| Raw/branch input | Capture accepted response; store on a later edge; commit only after final component |
+| Norm directory/scale | Validate directory result before scale access; register scale result before response; retire failure through norm |
+| Local bank callback | Capture index/bank; validate committed visibility; synchronous read; later capture and response |
+| Attention row callback | Capture requested column; validate; execute/drain actual head; check full output; later source response |
+| Norm transition | Check complete 768-component output on an edge after child completion before dispatching residual/MLP |
+| Residual | Synchronous bank read; capture operands; real binary32 add; BF16 conversion; store or stalled output |
+| Reset/errors | Public outputs zero; payload RAM is not reset; reset clears visibility; accepted child errors retire before explicit done |
+
+Each wrapper exposes byte-rounded declared controller-register widths, with
+all numerical/directory/weight child registers additional. Layer vector
+observations include both the post worker's 4608 bytes and the existing
+1664-byte Q/K/V tile reservation, without a second sum of the tile. Reserved
+vector capacity is not measured M20K block use. The whole-system native scratch
+limit, fallback arithmetic/control limit, resource fit and timing still
+require complete connected allocation accounting and independent evidence.
+
+Compact text replay no longer substitutes H=8 for native vector frames.
+`anvil_en1_eval_schedule` and `anvil_en1_replay_workspace` select 8 for domain
+0 only, 768 for vision and 1024 for audio. Compact physical frame strides
+are 1024 words, with two 512-word banks; memo strides are 512 words; scalar
+strides remain 32 words. Frame/memo regions are disjoint for mixed-domain
+stacks, including the upper native component and the next frame/memo slot.
+The existing generation/rank/tag/committed-vector guards remain in force.
+
+Compact live reservations count both complete vector prefixes for every
+pending/live frame: 32 text, 3072 vision or 4096 audio bytes, plus 128 scalar
+bytes per frame. Memo reservations count 16/1536/2048 bytes by domain,
+including pending writes/copies. Eviction first releases the old reservation,
+then charges the new one; its domain is retained as metadata. Push/pop/reset
+update the real domain-specific live totals. Unaddressable stride holes
+are unused physical capacity, not occupied tensors or claimed memory savings.
+The additional domain map and two allocation totals are 96 metadata bits.
+Production-width shadow accounting and the production layout stay unchanged.
+
+The compact backing now reserves 75776 words / 303104 bytes inside the
+frontier's one 131072-word / 524288-byte physical payload RAM. Its ordinary
+frontier cap stays 8192 bytes / 512 text tokens. Mode transition must still
+release the ordinary frontier before binding this backing; no simultaneous
+old/new representation or additional payload array is introduced.
+This is source-level layout repair, not an executed liveness/savings result.
+Native dispatch/continuations, pooling/modality projection, audio execution,
+single-token linear replay, full allocation accounting and top integration
+remain necessary before design readiness.
+
 ## Bidirectional native vision attention and replay boundary
 
 `anvil_en1_vision_attention_head` executes one native 64-component head over
@@ -113,9 +221,10 @@ its held 512-bit resume word and scalar operands; floating-point, exponential
 and reciprocal child state are additional. There is no vector bank in this
 head or executor. Tile live/physical vectors and controller observations are
 forwarded separately, not included twice. All tile/head numerical children
-still require whole-system accounting and phase overlay. Native layer/
-continuation dispatch, residual/GeGLU, pooling/projection and audio execution
-remain required. This interface freeze is not functional or timing evidence.
+still require whole-system accounting and phase overlay. The connected
+vision residual/GeGLU leaf is described above; durable native continuation
+dispatch, pooling/projection and audio execution remain required. This
+interface freeze is not functional or timing evidence.
 
 ## Native clipped-linear and vision-input implementation boundary
 
@@ -293,10 +402,10 @@ native replay layer dispatcher required before design readiness.
 executor to the existing workspace's acknowledged scalar operation 6/7,
 target 0. The current frame tag is native domain 1, model/generation, query
 patch, entering layer `frame_layer=vision_layer+1`, length 768 and frame slot.
-No compact native-vector substitution is made. An enclosing compact-text
-replay integration must still provide real native frames; the current
-compact workspace's 8-component-only native layout is not sufficient and
-must be integrated/repaired before claiming native replay readiness.
+No compact native-vector substitution is made. The mixed-domain compact
+workspace now supplies real native frame widths as described above; the
+enclosing native worker must still bind them and service the smaller-rank
+dependency before native replay readiness.
 
 At a real head yield, capture the complete 512-bit checkpoint and pending
 source patch, then write all 16 little-endian words to scalar indices 8..23.
@@ -1915,20 +2024,21 @@ make uninitialized words readable through the workspace's public interface.
 
 | Partition | Production words / bytes | Compact words / bytes |
 | --- | --- | --- |
-| 64 two-vector frame slots | 196608 / 786432 | 512 / 2048 |
-| 16 memo vector slots | 32768 / 131072 | 64 / 256 |
+| 64 two-vector frame slots | 196608 / 786432 | 65536 / 262144 |
+| 16 memo vector slots | 32768 / 131072 | 8192 / 32768 |
 | 64 scalar continuation slots | 16384 / 65536 | 2048 / 8192 |
-| Backing total | 245760 / 983040 | 2624 / 10496 |
+| Backing total | 245760 / 983040 | 75776 / 303104 |
 
-Frame f starts at `f*3072` production words (`f*8` compact). Each of its two
-vector banks has 1536 words (4 compact). Memo slot s starts at
-`196608+s*2048` (compact `512+s*4`). Scalar slot f starts at
-`229376+f*256` (compact `576+f*32`). Full occupied slot reservations, including
-padding, count as live payload, not merely returned components. Production
+Frame f starts at `f*3072` production words (`f*1024` compact). Each of its two
+vector banks has 1536 words (512 compact). Memo slot s starts at
+`196608+s*2048` (compact `65536+s*512`). Scalar slot f starts at
+`229376+f*256` (compact `73728+f*32`). Full production slot reservations and
+compact domain-specific prefixes, including occupied padding, count as live
+payload, not merely returned components. Production
 shadow frame/memo/scalar allocations always use the production slot sizes.
 Physical reserved backing is reported separately; it is the first part of
 the existing frontier RAM, not an extra inferred payload array. Compact RAM
-reserves 4096 words / 16384 bytes to cover the larger compact continuations;
+reserves 131072 words / 524288 bytes to cover native vector strides and continuations;
 its ordinary frontier allocation cap remains 8192 bytes and 512 tokens.
 Production frontier RAM and the 3 MiB cap are unchanged. Unused physical words
 are not advertised as live payload or saved FPGA memory.
@@ -2268,9 +2378,9 @@ across scheduler yields.
 
 `anvil_en1_frontier` provides the ordinary token-major storage, not a complete
 replay controller. COMPACT is 0/1; it reserves 3 MiB of 32-bit payload RAM
-in production and 16384 bytes in compact mode. The compact ordinary partition
+in production and 524288 bytes in compact mode. The compact ordinary partition
 is capped at 8192 bytes and holds 512 H=8 vectors, allowing ordinary 17-token cases;
-the remaining physical words cover enlarged fallback continuations. Forcing a smaller frontier
+the remaining physical words cover native fallback vectors and continuations. Forcing a smaller frontier
 is a later replay-controller partition decision, not a change to arithmetic.
 Control op 0 starts a session with captured model, generation and context
 length; op 1 invalidates; op 2 freezes all further writes. Op 3 binds the

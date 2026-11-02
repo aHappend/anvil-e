@@ -5,7 +5,61 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected bidirectional vision attention and native MLP
+## Current saved increment: complete vision layer leaf and native-width workspace
+
+`rtl/anvil_en1_vision_layer.sv` connects actual bidirectional attention,
+clipped output projection, learned post-attention norm/residual,
+pre-feedforward norm, clipped GeGLU/down and post-feedforward norm/residual.
+`rtl/anvil_en1_vision_attention_row.sv` provides a real output-projection
+source through the existing attention executor. It drains complete heads and
+selects the actual requested component, preserving ascending-column reduction
+and all clipping boundaries. Its substantial repeated work is not advertised
+as avoided computation or improved throughput.
+
+`rtl/anvil_en1_native_norm.sv` performs real directory/scale reads and learned
+vision RMSNorm, preserving original scale errors. It does not purport to
+implement audio affine LayerNorm. `rtl/anvil_en1_vision_post_layer.sv` retains
+three separately visible synchronous BF16 vectors, totaling 4608 bytes.
+The raw residual remains intact through all MLP rows, and final completion
+waits for the last output acceptance. The enclosing layer exposes their
+live/reserved bytes together with the existing 1664-byte Q/K/V tile vectors;
+all declared controller widths and numerical child state remain additional.
+No feature/KV external write path or host encoder result is added.
+
+Compact replay in `rtl/anvil_en1_replay_workspace.sv` and
+`rtl/anvil_en1_eval_schedule.sv` now keeps native vision/audio lengths 768/1024,
+instead of incorrectly assigning them the compact text length 8. Two
+512-word banks per frame, 512-word memo slots and 32-word scalar slots
+give collision-safe native strides and a 303104-byte backing reservation.
+Live domain-specific reservations include pending frames and memo writes;
+pop, replacement and reset update explicit totals. Production layout and
+production-width shadow reservations are unchanged. The 96 new domain/total
+metadata bits are included in the visibility ledger.
+
+`rtl/anvil_en1_frontier.sv` supplies that backing inside one 524288-byte
+compact physical RAM while retaining the ordinary 8192-byte allocation cap.
+Unused physical stride holes/capacity are disclosed, not claimed as occupied
+payload reduction or measured FPGA savings. Whole-system allocator limits,
+actual M20K inference and timing are still unestablished.
+
+The connected vision leaf requires immutable committed entering-layer sources;
+it is not yet the bounded replay dispatcher. The saved resumable native head
+wrapper remains the basis for drained child dependencies. Next implement the
+durable vision output-row/outer-layer continuation, bind native frame sources
+and input reconstruction to Eval, then pooling/modality projection and the
+complete audio encoder. Single-token linear replay, full liveness overlays
+and parent-compatible top/session/cache/replay/arbiter/CSR integration also
+remain. The design is **continue**, not ready for Verifier.
+
+Tools used: glob, view, rg and apply_patch. No commands, installations,
+static elaboration, functional simulation, synthesis or experiments ran;
+the reserved static check remains unused and no preparation receipts exist.
+The earlier ownership-guard failure at
+`.vulcan/engineering/run-0001/attempt-0003` remains preserved; no repair or
+acceptance of that interruption is claimed. Parent, test and runtime-owned
+files remain untouched.
+
+## Prior increment: connected bidirectional vision attention and native MLP
 
 `rtl/anvil_en1_vision_attention_head.sv` performs actual native 64-component,
 twelve-head-compatible vision attention with bidirectional key traversal,
@@ -53,10 +107,10 @@ workspace access. The pending dependency strictly decreases encoder layer.
 The enclosing native replay layer dispatcher still must bind committed
 source vectors, save its outer branch state and execute the smaller-rank
 child. This is not yet that dispatcher or a completed bidirectional encoder.
-The current compact workspace allocates only 8-component native vectors;
-the new wrapper deliberately requests real 768-component vision frames.
-Native compact-text replay therefore still requires a collision-safe native
-frame/memo layout and full accounting, not a clamped or synthetic feature.
+At that increment the compact workspace allocated only 8-component native
+vectors; the new wrapper deliberately requested real 768-component vision
+frames. The current increment corrects that layout, while native frame/worker
+binding and whole-system accounting remain required.
 The head/executor/wrapper allocate
 no new vector bank. Both held resume copies and all descriptor/scalar state
 are charged by their declared register-width observations, with all three
@@ -196,8 +250,9 @@ per-bank progress checks reject missing/out-of-order pairs. Failed writes
 invalidate destination visibility. The added progress metadata is 208 bytes,
 not another vector RAM. Compact scalar slots increase to 32 words; production
 slots stay 256 words and production-width shadow accounting is unchanged.
-Compact backing is now 10496 bytes within the one 16384-byte physical frontier
-RAM; its ordinary frontier cap remains 8192 bytes/512 tokens. No production
+At that increment compact text-only backing was 10496 bytes within one
+16384-byte physical frontier RAM. The current native-width layout supersedes
+its physical strides; its ordinary frontier cap remains 8192 bytes/512 tokens. No production
 payload reservation or threshold is changed.
 
 The text dispatcher binds the exact predecessor into raw bank 0, commits the
@@ -491,7 +546,8 @@ bind only released RAM; ordinary allocation cannot reacquire a bound backing
 without explicit release. The production backing partition is 983040 bytes,
 leaving 65536 bytes of the admitted 1 MiB ceiling for all arithmetic/control/
 resident state. The later projection-continuation increment increases compact
-backing to 10496 bytes inside one 16384-byte physical RAM, while keeping its
+text-only backing to 10496 bytes inside one 16384-byte physical RAM (now
+superseded by the native-width layout above), while keeping its
 ordinary frontier cap at 8192 bytes.
 The enclosing scheduler must first drain work and invalidate the separate
 ring. A leaf binding is not yet an implemented system-wide mode transition
