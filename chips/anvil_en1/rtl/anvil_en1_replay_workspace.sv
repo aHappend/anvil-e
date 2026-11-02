@@ -103,7 +103,7 @@ module anvil_en1_replay_workspace #(
             READ_SETUP = 20, READ_FINISH = 21, MEMO_SCAN = 22,
             MEMO_CHECK = 23, SCALAR_SETUP = 24, SCALAR_FINISH = 25,
             BACKING_SEND = 26, BACKING_WAIT = 27, PUBLISH = 28,
-            RESPONSE = 29, FAULT = 30;
+            RESPONSE = 29;
         reg [5:0] state, backing_return;
         reg active, invalidate_hold, bank_hold, pending_push, pending_memo;
         reg hit_hold, hit_pulse, eviction_pulse, new_memo;
@@ -332,12 +332,14 @@ module anvil_en1_replay_workspace #(
                     CONTROL_RESPONSE: if (control_rsp_ready)
                         state <= IDLE;
                     VALIDATE: begin
-                        if (request_tag[72:71] != model_hold ||
+                        if (request_tag[72:71] != 1 && request_tag[72:71] != 2) begin
+                            error_hold <= 6;
+                            state <= PUBLISH;
+                        end else if (request_tag[72:71] != model_hold ||
                             !request_session_valid) begin
                             error_hold <= 7;
                             state <= PUBLISH;
-                        end else if ((op_hold == 0 || op_hold == 3 ||
-                            op_hold == 4 || op_hold == 5) && !descriptor_valid) begin
+                        end else if (op_hold != 1 && !descriptor_valid) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else if (op_hold == 0 && depth == 64) begin
@@ -390,7 +392,7 @@ module anvil_en1_replay_workspace #(
                         end else if (slot_hold >= depth || !frame_occupied[slot_hold]) begin
                             error_hold <= 7;
                             state <= PUBLISH;
-                        end else if ((op_hold == 3 || op_hold == 4) &&
+                        end else if (op_hold != 1 &&
                             frame_tag_q != request_tag) begin
                             error_hold <= 7;
                             state <= PUBLISH;
@@ -616,11 +618,12 @@ module anvil_en1_replay_workspace #(
                     PUBLISH: state <= RESPONSE;
                     RESPONSE: if (rsp_ready)
                         state <= IDLE;
-                    FAULT: state <= FAULT;
                     default: begin
                         error_hold <= 7;
                         active <= 0;
-                        state <= FAULT;
+                        pending_push <= 0;
+                        pending_memo <= 0;
+                        state <= PUBLISH;
                     end
                 endcase
             end

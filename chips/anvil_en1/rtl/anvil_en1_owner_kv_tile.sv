@@ -32,7 +32,9 @@ module anvil_en1_owner_kv_tile #(
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire projection_event,
+    output wire [31:0] projection_bytes
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
@@ -51,6 +53,8 @@ module anvil_en1_owner_kv_tile #(
         assign done_valid = 0;
         assign done_data = 0;
         assign done_error = 0;
+        assign projection_event = 0;
+        assign projection_bytes = 0;
     end else begin : tile
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer MAX_D = COMPACT ? 8 : 512;
@@ -279,6 +283,9 @@ module anvil_en1_owner_kv_tile #(
         assign done_valid = rst_n && state == RESPONSE;
         assign done_data = rst_n ? output_hold : 32'd0;
         assign done_error = rst_n ? error_hold : 4'd0;
+        assign projection_event = rst_n && state == PROJECTION_WAIT &&
+            projection_valid && projection_error == 0;
+        assign projection_bytes = rst_n ? 32'd2 : 32'd0;
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin

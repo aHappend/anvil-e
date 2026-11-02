@@ -5,6 +5,83 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Owner-replay transport and vector-commit boundary
+
+`anvil_en1_owner_replay` is the session-bound owner-projection transport.
+It consumes the cache's aligned `regen_*` descriptor without deriving another
+consumer-to-owner map. A control handshake captures model, precision,
+generation, tokens, text weights base and ordinary/fallback representation.
+Control op `control_invalidate=1` releases the current representation.
+Control is accepted only while idle, after any old regen response has retired.
+A pending control request closes regen ingress. The enclosing session barrier
+must also drain the shared external arbiter, cache, frontier and ring before
+changing generation; this leaf's control acknowledgement alone is not that
+whole-system barrier.
+
+An ordinary local-anchor request first uses the ring's registered read
+channel. Only a real tagged ring hit produces a KV pair. A ring miss proceeds
+to the numerical owner tile, whose source requests read the current tagged
+frontier at the **actual owner input layer**. A missing/stale frontier vector
+is an explicit source error; there is no zero-filled answer, shared projection,
+external activation read, or assumption that a page commit filled payload.
+Other ordinary owners go directly to the owner tile. Frontier requests are
+for the even H-component; the captured low/high lane selects the BF16 response
+for each tile source request. All source descriptors are checked against the
+captured regen descriptor before any frontier access.
+
+In fallback, a miss starts the internal numerical Eval producer with
+model/precision/generation, domain 0, owner layer, token and context length.
+The producer shares the enclosing session's registered original-input,
+modality and weight descriptor; those fields are not recaptured from live
+job ports when a cache miss occurs. The producer
+must really evaluate `Eval(owner,token)` with its bounded stack/memo FSM.
+`eval_output_valid/ready/index/data/last` streams the resulting H-vector in
+ascending component order. A successful producer done is necessary **and**
+exactly H accepted beats with correct last flags are necessary to commit it.
+Until both occur, the receiving bank is unreadable. The committed vector stays
+immutable through all repeated input-norm source passes of the owner tile.
+An erroneous stream is drained until producer completion and returns error 7;
+a producer error is propagated. No tile command is issued for an incomplete
+or failed vector.
+
+The Eval start/output/done channels are internal engine connections, not a
+public host API for injecting computed hidden states. The numerical Eval
+producer is not implemented by this transport; it must be connected in RTL
+before the design is ready. In particular, a future evaluator must service
+its decreasing-layer dependencies without recursively waiting on this occupied
+root regen channel. It owns its continuation-suspended owner-projection work,
+not a second external master. This requirement is unchanged by exposing the
+transport boundary.
+
+The transport exposes its actual raw-source payload, physical reservation,
+and completed owner-projection events. One synchronous Hmax=2560 BF16 bank
+reserves 5120 bytes (16 bytes compact); fallback receiving/committed payload
+is 2H bytes, including incomplete-vector receive lifetime. Ordinary transport
+payload is zero, apart from separately accounted response/control words.
+Tile scratch is exposed separately: 2H+2D live bytes during tile execution,
+6144 physical bytes (32 compact). These and all scalar/child state must be
+included in the phase-overlaid text/fallback ledger. The owner tile emits a two-byte event
+for each successfully completed K/V projection row, totaling `2D` for a
+complete head. A failure before/during projection is not falsely counted as
+a whole computed head. This measures actual projected K/V payload, not the
+requested four-byte result and not avoided work.
+Replay weight/input accepted bytes are scored at the shared
+arbiter, including failed responses; this event is not a substitute.
+
+| Owner transport cycle/degenerate boundary | Behavior |
+| --- | --- |
+| Control B0/B1/B2 | Capture session, validate, expose held acknowledgement; release/invalidate only after old response retirement |
+| Regen G0/G1/G2 | Capture descriptor, validate against session/owner geometry, then issue ring/Eval/tile work |
+| Ring hit | Capture actual pair/error, publish held cache regen response on following edge |
+| Fallback vector | Allocate at Eval start acceptance; write only checked accepted components; commit after complete stream and successful done |
+| Source S0/S1/S2 | Capture index/lane; synchronous bank read or registered frontier request/response; publish immutable BF16 response |
+| Tile completion | Capture actual pair/error; publish on next edge; release raw vector after regen response acceptance |
+| Control concurrent with work | Close new ingress but preserve old command/response payload; control handshake waits for idle |
+| Invalid owner/head/component | Reject before Eval, frontier, ring or external weight access; no clamping |
+| Error / early done | Drain the real producer's done; no incomplete vector becomes visible |
+| Reset | Zero every public output/valid; clear all source/vector visibility, with no asynchronous RAM reset writes |
+| Stalls / one outstanding | Hold all descriptors and payloads; response creation is never response acceptance |
+
 ## Source boundary and provenance
 
 The 32 files in `anvil_e3_reference/rtl/` are immutable parent compatibility
@@ -895,6 +972,44 @@ continuation/memo fallback, encoder production, final norm/tied logits and
 session arbitration remain enclosing-engine responsibilities. This boundary
 does not authorize omitting them or using external generated-state storage.
 
+### Native tied final-logit stream
+
+`anvil_en1_final_logits` captures model, precision and text weights base.
+The caller must preserve the complete last-layer last-token H-vector until
+completion. A public indexed BF16 source channel supplies that actual vector;
+no external activation region or software-produced logit is read.
+Look up final learned RMS scale kind 0x0004 at instance 0xffff, execute
+`anvil_en1_norm` with epsilon 1e-6, and retain accepted BF16 normalized outputs
+in one synchronous H-bank. Only a successful complete normalization commits
+the bank. Lookup tied kind 0x0000, then use the genuine projection engine to
+evaluate rows 0..262143 (0..31 compact) in order. The raw matrix result is
+materialized BF16 per the frozen table, then `anvil_en1_softcap` executes
+30*tanh(raw/30), with BF16 input/output.
+
+The leaf's read-only cmd/result channels multiplex tensor validation, norm
+scales and tied matrix weights. Ownership changes after child completion,
+not while a memory response remains outstanding. One logit is buffered.
+`logit_valid/data[15:0]/index[17:0]/last` remain stable until accepted;
+done is exposed only after the last logit handshake, or an explicit retired
+child/source error. Starting another descriptor requires done retirement.
+No final embedding copy or vocabulary-sized result array is allocated.
+Normalized payload is 2H bytes (3072 E2B, 5120 E4B, 16 compact), with 5120
+production physical reservation. Child/control/scalar state and this bank
+must be included in the enclosing arithmetic phase overlay and live ledger.
+The leaf alone does not complete session, cache, native modality or replay
+integration.
+
+| Final-logit boundary | Behavior |
+| --- | --- |
+| Start J0/J1/J2 | Capture descriptor, reject illegal model/precision, then begin tensor lookup; no descriptor-derived command before J2 |
+| Norm output | Check ascending index, final flag and complete H count; commit only after actual successful norm done |
+| Tied source T0/T1/T2 | Capture index, synchronous H-bank read, register data/error; hold response until accepted |
+| Tensor/scale/projection | Registered descriptor and retained owner; error reaches done only after child's response retirement |
+| First/last logit | Rows ascend from 0 to V-1; completion follows final acceptance, not creation |
+| Logit backpressure | Held data/index/last, no next-row projection or duplicate final completion |
+| Reset | All public channels and payload-validity zero, no reset sweep of H-bank |
+| Source/weight error | Stop new work after child drains; do not emit a zero logit as successful work |
+
 ### Registered single-transaction memory arbiter
 
 `anvil_en1_memory_arbiter` multiplexes `CLIENTS=1..8` standard cmd/result
@@ -1009,8 +1124,6 @@ and attention reads with successful responses and a nonzero denominator.
 Require candidate external KV bytes <0.45*baseline bytes separately, never by
 averaging models/precisions or counting aliases as traffic.
 
-### Ordinary frontier storage boundary
-
 ### Bounded replay workspace backing contract
 
 `anvil_en1_replay_workspace` is a storage/controller leaf, not the completed
@@ -1075,7 +1188,9 @@ must request the correct child. Pop reads the top continuation from backing
 RAM, then releases both frame and scalar slots. Update writes only the top
 frame's continuation. Additional scalar words are individually valid only
 after acknowledged writes; unfilled scalar reads error rather than return
-RAM initialization. Only live frame handles are accessible.
+RAM initialization. Only live frame handles with the complete matching
+descriptor tag are accessible for updates, vector and scalar operations.
+Pop always addresses the current top of the captured session.
 
 Vector store target 0 is a frame bank and target 1 a memo slot. It accepts
 exactly length/2 aligned 32-bit beats, checking first/last. The existing target
@@ -1099,7 +1214,7 @@ an eviction. Returned handles do not pin memo slots against later replacement.
 | First released edge | Idle control/request readiness; no old-generation data becomes visible |
 | Control versus request | Control wins at ingress; neither bypasses a stalled result |
 | Request W0/W1 | Capture all fields, then validate before backing access |
-| Backing B0/B1/B2 | Capture request, synchronous RAM access, register actual response; no same-edge response consumption |
+| Backing B0/B1/B2/B3 | Capture request, validate, synchronous RAM access, register actual response; no same-edge response consumption |
 | Frame depth 0/64 | Empty pop and 65th push error before RAM access; no depth wrap |
 | Dependency push | Strictly smaller registered rank; primitive iterations use no vector frame |
 | Vector first/last | Final beat's acknowledged write precedes visibility; malformed beat is not issued |
@@ -1111,6 +1226,8 @@ an eviction. Returned handles do not pin memo slots against later replacement.
 The workspace is required infrastructure for the genuine continuation/memo
 fallback, not evidence that fallback inference, regeneration, termination,
 full-system allocation or any acceptance case has executed.
+
+### Ordinary frontier storage boundary
 
 `anvil_en1_frontier` provides the ordinary token-major storage, not a complete
 replay controller. COMPACT is 0/1; it reserves 3 MiB of 32-bit payload RAM

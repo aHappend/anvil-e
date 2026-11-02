@@ -5,6 +5,57 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
+## Saved sixth increment: overlaid replay storage and tied logits
+
+`rtl/anvil_en1_replay_workspace.sv` implements a bounded 64-slot continuation
+stack store and 16-slot complete-vector memo store. Push/pop/update really
+transfer continuation words through the on-chip backing channel; rank checks
+enforce decreasing dependency depth. Frame banks and memo vectors are invisible
+until a complete, flag-checked, acknowledged stream commits. Memo lookup scans
+the actual tags, replacement uses a deterministic cursor, and stale handles
+require the entire matching generation/vector tag. Failed writes leave targets
+unreadable. Scalar words have acknowledged-write visibility, including the
+eight continuation words. Live counters include pending frame/memo stores,
+full occupied slot padding, and scalar slots, with a separate production-width
+shadow ledger. Metadata and remaining arithmetic state are not hidden inside
+the payload count.
+
+The workspace does not infer another fallback payload RAM. The changed
+`rtl/anvil_en1_frontier.sv` exposes a bounded, generation-checked raw backing
+word channel over its existing synchronous payload array. Control op 3 can
+bind only released RAM; ordinary allocation cannot reacquire a bound backing
+without explicit release. The production backing partition is 983040 bytes,
+leaving 65536 bytes of the admitted 1 MiB ceiling for all arithmetic/control/
+resident state. Compact backing occupies 6400 of the existing 8192 bytes.
+The enclosing scheduler must first drain work and invalidate the separate
+ring. A leaf binding is not yet an implemented system-wide mode transition
+or proof that all connected state fits.
+
+`rtl/anvil_en1_final_logits.sv` connects final learned RMS normalization,
+one synchronous normalized H-bank, the actual tied embedding-row projection
+and 30*tanh softcap. It streams vocabulary rows in ascending order with a
+single held logit, propagates actual source/tensor/weight errors, and finishes
+only after final output acceptance. It has no external activation command or
+vocabulary-sized result allocation. Its bank and child state remain subject
+to the final arithmetic phase overlay/liveness integration.
+
+This increment updates the matching interfaces, partition addresses,
+registered stages and degenerate/error boundaries in SPEC. The supplied
+GENERATIONAL_HANDOFF was read; its N/A fields establish no historical STA/PPA.
+No static elaboration, simulation, synthesis, mutation, timing or HIL command
+has run in this increment. The reserved static elaboration remains unused.
+No preparation receipt was created; no acceptance result or repair of
+failure-0001 is claimed. Parent RTL, tests and runtime metadata are unchanged.
+
+Still required: the substantive `anvil_en1_owner_replay` evaluator and its
+ordinary descending-token schedule, local-anchor materialization, preserved
+global frontier, numerical continuation save/restore, memo regeneration,
+linear single-token path, real fallback transition and complete allocator;
+native vision/audio encoders and placeholder mapping; session/CSR/arbitration
+and compatible literal top integration. The storage stack is not a substitute
+for neural Eval execution, and the final-logit leaf is not a complete inference
+job. This is a saved partial continuation, not a ready Verifier handoff.
+
 ## Connected design target
 
 `anvil_en1_top` must select the immutable parent top for model 0 and the native
