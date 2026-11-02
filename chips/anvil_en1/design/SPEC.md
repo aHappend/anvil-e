@@ -5,6 +5,77 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Native audio relative-attention boundaries
+
+The next connected attention increment uses native Ha=1024, eight heads
+and Da=128, including compact text builds. Its tile source is the actual
+BF16 `norm_pre_attn(clamp(feed_forward1(...)))` vector; it is not an
+original audio input, a finished attention answer or a normalized K/V
+vector. The conformer/replay producer must reconstruct this boundary for
+each requested token. Selector 0/1/2/3 denotes Q/K/V/relative K.
+Q/K/V use clipped matrix kinds 0x2105/2106/2107. Relative K uses the
+unclipped 0x2108 matrix and locally generated sinusoidal inputs, never
+an external positional-embedding tensor. All matrix rows materialize
+BF16 before subsequent scaling.
+
+Relative inputs have concatenated sine/cosine layout over 512 timescales.
+For input column c, i=c[8:0]; inverse timescale is
+exp(-i*ln(10000)/511). Generate binary32 ln(10000) as 0x41135d8e,
+divide by binary32 511 with the sequential divider, multiply by converted
+i, execute the existing exp engine and multiply by converted distance
+0..12. Sine/cosine use the existing range-reduced engine and narrow to
+BF16. These are implemented transcendental approximations subject to the
+unchanged numerical/attention tolerances, not claims of bit-exact libm.
+Every projection multiply/add and every format conversion retains the
+exact primitive contract and ascending-column order.
+
+Q is widened from its BF16 clipped projection, multiplied by binary32
+Da^-0.5/log(2)=0x3e0293ee, then by the widened BF16 result of
+softplus(per_dim_scale[c]). K is widened and multiplied by
+binary32 log(1+e)/log(2)=0x3ff28370. V and relative K are only widened.
+The actual BF16 scale vector 0x2109 is independently validated/read.
+Softplus uses the pinned threshold x>20 -> x, otherwise the stable
+max(x,0)+log1p(exp(-abs(x))) expression. Its log1p engine evaluates
+2*y*sum(j=0..11,y^(2*j)/(2*j+1)), y=z/(2+z), in ascending j order
+with separately rounded binary32 operations. Negative underflow
+produces positive zero; NaN is canonical and +infinity remains infinity.
+The BF16 softplus boundary is retained before Q multiplication.
+
+The attention head enumerates every one of the 24 blocked context
+columns, including left/right padding, using a sequential divide-by-12
+to obtain the block start. Permitted unmasked keys satisfy
+0<=query-key<12 and the original subsampled key-valid mask. Out-of-range
+columns are masked and supply padded +0 V. For an unmasked key at
+distance d, the actual blocked relative shift selects relative input
+position 12-d, whose descending positional ID is d. Content and relative
+dot products reduce independently in ascending component order;
+their binary32 sum passes through 50*tanh(score/50).
+Masked logits are binary32 -1e9 (0xce6e6b28), not negative infinity.
+Therefore an all-masked row still executes its 24-way stable softmax
+and value reduction; it must not become an error or an invented zero
+answer. Probabilities and value accumulation remain binary32 until
+the final head output narrows to BF16.
+
+| Attention boundary | Cycle/ownership rule |
+| --- | --- |
+| Start/reset | Pre-edge acceptance captures all tags; active reset zeroes public outputs; first released edge has no unsolicited valid |
+| Tile pair | Aligned component pairs 0..126; both actual rows finish before the stable 64-bit binary32 pair response becomes valid |
+| Source/mask | Accept request, register response on a later edge, then use registered response; hold valid/payload under backpressure |
+| Projection memory | Only the selected directory/matrix/scale reader owns cmd/result; ownership changes only after accepted completion |
+| Replay need | Yield only immediately before a Q/K/V/relative request, after prior memory/arithmetic responses have retired |
+| Continuation | A tagged 1024-bit checkpoint preserves the complete scalar reduction state; resume validates descriptor, phase, selector, key and bounds before dispatch |
+| Output/done | Emit ascending 0..127; final BF16 acceptance precedes completion; no response is consumed on its creation edge |
+| Padding/all masked | All 24 columns participate; padded V is +0, and masked real V still executes the actual projection/value multiply |
+| Error/reset | Preserve first concrete child error; no new work after failure; reset cancels visibility and continuation validity |
+
+The pair tile owns no hidden-vector archive. Its live/physical payload is
+controller/scalar state plus connected arithmetic and directory/decoder
+state; all of these still need the final whole-system allocation overlay.
+The head preserves one bounded scalar continuation, not a 24x128 KV tensor.
+These boundaries do not authorize same-layer replay recursion, a native
+feature spill or host-supplied Q/K/V. Full conformer frame dispatch remains
+an implementation dependency, not an acceptance result.
+
 ## Native causal audio light-convolution increment
 
 ### Durable native vision replay dispatch
