@@ -10,9 +10,10 @@ engineering acceptance or a claim that every described engine exists.
 The 32 files in `anvil_e3_reference/rtl/` are immutable parent compatibility
 references. Model 0 must instantiate the parent top with every named parameter,
 port width, and signedness unchanged. Parent fixed-point multimodal execution
-is not a substitute for either native model's BF16 computation. The supplied
-tree contains no historical `design/GENERATIONAL_HANDOFF.md`. No parent timing,
-resource, throughput, or quality result is asserted here.
+is not a substitute for either native model's BF16 computation. The current `design/GENERATIONAL_HANDOFF.md` lists the inherited modules but
+reports all historical STA/PPA/HIL quantities as N/A. It supplies no numerical
+parent signoff evidence. No parent timing, resource, throughput, or quality
+result is asserted here.
 
 Immutable public semantic sources:
 
@@ -689,6 +690,79 @@ intermediate. This increases actual weight/replay work and cannot be counted
 as avoided computation. Stage order is descriptor capture/validation,
 gate projection, selected up source, activation/materialization, down read,
 binary32 multiply/add, bounded j advance, BF16 narrow, registered completion.
+
+### Owner projection/rematerialization tile boundary
+
+`anvil_en1_owner_kv_tile` is a read-only numerical leaf below owner_replay,
+not a replacement for Eval, the resident cache, or a native layer controller.
+Its captured descriptor is model[1:0], precision[1:0], owner[7:0],
+token[31:0], is_value, kv_head[1:0], component[9:0], and weights_base[63:0].
+Component must be even and less than the owner's head dimension; the result
+is the aligned adjacent BF16 components (component,component+1), low lane
+first. Only actual owners 0..14/0..23 are legal. Passing a shared consumer
+instead of the cache's owner response rejects with error 7 before memory
+access. This leaf does not implement another logical-to-anchor alias map.
+
+Source requests carry the captured model, owner and token and an H-component
+index. The caller supplies the BF16 hidden vector **entering** that owner
+layer, immutable for the whole operation. An ordinary caller reads the
+correct tagged frontier; fallback must really evaluate that vector. A
+precomputed normalized vector or KV answer is not a native source substitute.
+The leaf validates the text image and looks up the owner's input-layernorm
+kind 0x0100, then RMS-normalizes the entering vector with its learned H scale
+and epsilon 0x358637bd (binary32 1e-6). It materializes the normalized H
+vector in synchronous on-chip scratch.
+
+Look up the distinct owner K or V matrix (0x0103/0x0105). Project all D rows
+for the selected KV head, row kv_head*D+i, in ascending i; each row is a
+complete ascending-H-column binary32 reduction with BF16 output. Normalize
+that complete head with epsilon 1e-6. K looks up and applies the shared
+D-dimensional learned scale 0x0104; V never looks up that tensor and never
+issues a head-scale request. Both paths perform the input learned norm.
+The normalized head overwrites its projection scratch only in the norm
+output pass, after the full reduction has finished. Norm reads a component
+and retires it before accepting the write to that component.
+
+For K, obtain each requested component by rotating the true half-head pair
+(i,i+D/2), where i=component modulo D/2, through the connected rotary leaf.
+Perform this independently for the two adjacent result components; select
+the correct lower/upper result lane. Thus cache aligned pairs are not confused
+with RoPE half-head pairs. Local owners use mode 0 and global owners mode 1.
+V returns the two normalized adjacent components directly, without rotary.
+All projection/scale/directory reads go through the standard cmd/result
+channel and the future sole external arbiter; the leaf emits no writes.
+Lookup, projection and scale-reader ownership changes only after completion
+and memory-response retirement. Accepted failures count as weight traffic.
+
+Production scratch reservations are one 2560-component BF16 input bank and
+one 512-component BF16 head bank (6144 bytes total); compact reservations are
+H=8 and D=8 (32 bytes total). Actual live vector payload is 2H+2D bytes after
+the head is filled, plus scalar/child arithmetic and returned words. These
+are part of, not additions to, the complete text/replay workspace ledger.
+Unused physical bank capacity is disclosed separately. No full K*D tensor,
+extra normalized-head copy, score array, or external activation archive is
+allocated. These scratch reservations must ultimately be phase-overlaid
+with the controller workspace; simply instantiating private banks beside
+other complete workspace banks is not proof of the admitted full ledger.
+
+| Owner tile cycle/degenerate boundary | Required behavior |
+| --- | --- |
+| Start T0 / T1 / T2 | Pre-edge acceptance captures descriptor; T1 validates geometry; no memory command before T2 |
+| Source/scale request S0 | Descriptor/index stable until pre-edge handshake; one response outstanding |
+| Internal scratch read S0/S1/S2 | Capture index, synchronous RAM read, register payload; valid after S2 and hold through acceptance |
+| External read M0/M1/M2 | Child records command acceptance, registers response, then starts dependent arithmetic; no fabricated same-edge response |
+| Norm output | Write only accepted output; finish reduction before any in-place head write; final beat acceptance precedes done |
+| Completion | Publish registered adjacent pair/error; hold through backpressure; next start only on the edge following response retirement |
+| Compact/global head | D=4/8, full production owner schedules; last even component pairs remain in bounds |
+| Owner/head/component rejection | Shared owner, head past K-1, odd or out-of-head component rejects before tensor access; no clamping |
+| Reset/cancellation | Active reset zeroes public outputs/valids and prevents RAM writes; caller drains external work before generation reuse |
+| Concurrent RAM read/write | Serialized source read and corresponding output write; other-bank projection writes cannot collide |
+
+The caller must not use reset as a substitute for retiring an already accepted
+external transaction. Session invalidation/cancellation is owned by the
+generation-aware replay/arbiter barrier, still required above this leaf.
+This connected tile does not certify the repeated-root RoPE approximation,
+normalization arithmetic, production-width thresholds, or full inference.
 
 ## Cache, replay, and storage
 

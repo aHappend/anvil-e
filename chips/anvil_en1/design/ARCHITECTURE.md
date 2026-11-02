@@ -90,11 +90,11 @@ and long-context shared-KV. Synthetic fixtures measure hardware behavior, not
 checkpoint quality. No timing, synthesis, hardware, functional, numerical,
 mutation, benchmark, or engineering-acceptance result is presently claimed.
 
-## Current source increment
+## Preserved source increments
 
 The saved first increment remains intact: canonical geometry helpers,
 resident/metadata cache, binary32 add/multiply/format primitive, and CSR.
-This continuation adds these design-owned leaves:
+The saved second increment also remains intact:
 
 | Source | Implemented role |
 | --- | --- |
@@ -129,22 +129,85 @@ but introduce quadratic immutable-input/weight work. The weight reader also
 rereads Q4 scales/packed words. Count every accepted read; no total-traffic or
 latency improvement is asserted.
 
-The remaining sin/cos and frequency/rotary arithmetic, stable attention,
-GeGLU/PLE/layer controller, owner replay/frontier/ring/continuation-stack/memo
-allocator, native vision/audio execution, generation-safe memory arbitration,
-actual allocation accounting, and parent-compatible top remain to be
-implemented and connected. The pinned global proportional and vision
-multidimensional RoPE formulas are frozen in SPEC before their RTL.
+## Current third increment
 
-The parent RTL remains unchanged. No verification source exists in this
-increment and none was authored by Designer. Independent Verifier owns
-`tests/*`, including all six unchanged suites. The single optional Designer
-static elaboration check has not been used. There are no preparation probes,
-receipts, functional execution, numerical comparisons, simulation results,
-or synthesis results from either design increment. The new leaves have not
-yet been statically elaborated; the optional single check is reserved for
-the complete design handoff. There are no retained diagnostic failures to
-repair in this continuation, and no physical timing/resource result.
+This continuation freezes the new scalar, attention, gated-row and ordinary
+storage interfaces/stages in SPEC and adds these design-owned leaves:
+
+| Source | Implemented role |
+| --- | --- |
+| `rtl/anvil_en1_rope_frequency.sv` | Bounded descending-bit theta root/product/reciprocal evaluation, proportional global zero-frequency selection |
+| `rtl/anvil_en1_sincos.sv` | Q44 range reduction, quadrant selection, iterative RNE conversion and separately rounded sine/cosine Horner arithmetic |
+| `rtl/anvil_en1_rotary_pair.sv` | Connected frequency/position/trigonometric computation and separately materialized BF16 rotary pair |
+| `rtl/anvil_en1_geglu_pair.sv` | Connected GELU_tanh/SiLU/sigmoid, BF16 activation materialization, gated multiply and BF16 product |
+| `rtl/anvil_en1_softcap.sv` | Actual divide/tanh/multiply for cap 30/50, selectable BF16 or binary32 boundaries |
+| `rtl/anvil_en1_attention_head.sv` | Full permitted-key maximum/sum/value passes, real canonical metadata/fetch channels, stable softmax and streamed BF16 head output |
+| `rtl/anvil_en1_gated_projection.sv` | Full gate/up and down-row traversal with streamed regenerated intermediates; matrix/vector/unit up for GeGLU/PLE/audio FFN |
+| `rtl/anvil_en1_frontier.sv` | Ordinary padded token-major RAM, complete-vector write commits, entering-layer validity, freeze and explicit capacity-selection response |
+| `rtl/anvil_en1_local_ring.sv` | Normalized/rotated local-owner head storage with token/generation visibility, wrapped-slot invalidation and real hit/miss data |
+
+Rotary pair computation consumes actual position and vector inputs, not supplied
+trigonometric answers. Global proportional pairs select the prescribed separate
+half-head components. The sine/cosine polynomial and finite frequency evaluation
+order are documented for independent comparison. In particular, repeated-root
+frequency generation is not claimed bit-exact to a host power-library result;
+the unchanged production-width rotary comparisons remain mandatory.
+
+The text attention leaf does not allocate a score or probability array.
+It scans legal keys for a maximum, recomputes scores for the exponential sum,
+then recomputes scores/probabilities per output component before actual V
+fetches. Both K and V use the cache's response owner and native address space;
+the leaf never reconstructs the logical owner alias map or issues external KV
+transactions. Q and masks come from caller-owned immutable on-chip vectors.
+Masked keys issue no K/V reads. Child numerical/cache errors retire their
+response and stop the head. Completion waits for the accepted final component.
+The increased work is deliberately exposed, not counted as avoided computation.
+
+Gated projection recomputes every j intermediate for each down output row.
+Its single projection instance executes complete gate/up rows, its GeGLU leaf
+materializes the activation/product, and its reader decodes the actual down
+weight. PLE uses the same gate/product path with the combined PLE vector rather
+than an ungated additive embedding. Construction of that combined PLE vector
+and the layer's post norms/residuals remain controller work. Audio's unit-up
+SiLU mode is an arithmetic building block, not an implemented audio encoder.
+
+The frontier physically reserves 3 MiB in production. It counts the full
+padded occupied allocation, accepts only complete ordered vector writes,
+and keeps padding/stale/unfilled vectors unreadable. Layer-tag advancement
+stops at the preserved final-global-owner input. A frozen frontier remains
+readable and cannot be overwritten. Capacity selection first releases ordinary
+visibility/allocation before reporting fallback_needed. That flag is not a
+fallback job or a numerical completion.
+
+The local ring reserves 1 MiB in production and accounts E2B/E4B live head
+payload separately. A slot wrap clears all its lane visibility before retagging;
+each K/V/head lane commits only after a complete ordered head write. Invalid,
+stale or unfilled data never turns into a successful payload: legal ring misses
+return hit=0 and require actual owner replay. Neither storage leaf has external
+memory commands. Their dedicated synchronous RAM processes do not reset payload
+words. Per-token visibility/tag storage and physical reservation are separately
+disclosed; returned words and arithmetic temporaries still belong in the
+complete controller's future workspace ledger.
+
+These leaves are connected internally but not yet a complete accelerator.
+Remaining work is owner K/V projection plus learned/unscaled normalization and
+rotary tile integration, original embedding/combined PLE reconstruction,
+the full attention/PLE/layer controller, frontier/ring scheduling, the explicit
+continuation stack and bounded memo/eviction engine, ordinary/fallback RAM
+overlay, native vision/audio execution, actual complete allocation accounting,
+generation-safe shared memory arbitration, and parent-compatible top integration.
+The required literal `anvil_en1_asym_attn_ple`, `anvil_en1_owner_replay`, and
+`anvil_en1_top` are not present yet.
+
+The parent RTL remains unchanged. No verification source was authored or
+modified by Designer. Independent Verifier owns `tests/*`, including all six
+unchanged suites. Actual tools in this increment were view, glob and apply_patch;
+no tool installation or execution probe occurred. The single optional Designer
+static elaboration check has not been used and remains reserved for the complete
+connected design. There are no preparation receipts, functional executions,
+numerical comparisons, simulation/synthesis results, or physical timing/resource
+results from this continuation. Newly added leaves have not been statically
+elaborated. No retained diagnostic failure was overwritten or repaired.
 
 Do not hand this increment to verification as a ready design. Continue from
 these saved sources under an independently admitted continuation; never
