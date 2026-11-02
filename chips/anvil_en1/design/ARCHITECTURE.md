@@ -5,7 +5,51 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: durable audio heads with actual frame/memo inputs
+## Current saved increment: connected durable audio attention residual
+
+`rtl/anvil_en1_replay_audio_residual.sv` now connects the literal durable
+eight-head worker to the genuine post-attention residual execution. The
+existing `audio_attention_residual` gains a default-preserving
+`FRAME_HEADS=1` option: reconstruct real query FF1 from the entering frame,
+read real committed head components for the clipped post projection, apply
+the existing clamp/learned post norm and BF16 residual addition. Its new
+tagged source-kind output separates entering-vector and head-vector reads.
+Default `FRAME_HEADS=0` still computes heads itself.
+
+The compound worker reads frame bank 0/1 through acknowledged workspace
+callbacks, not host attention answers. Actual post outputs replace bank 0
+only after query FF1 and all head projections finish. Every output pair
+waits for its concrete workspace acknowledgment before another output
+is accepted. Head yields retain the existing tagged checkpoints and
+partial bank-1 outputs; post work starts only after actual successful
+head-stage completion. Errors drain active post/source responses before
+failure completion. A successful result is the attention residual in bank
+0, not norm_out or a completed encoder layer.
+
+Both literal workers' live/physical vector reports and reported controllers
+remain connected. Their separate physical banks are summed rather than
+claimed as shared storage; durable frame vectors remain in the existing
+workspace ledger. Accepted immutable-weight commands and on-chip source
+callbacks are separately counted, including commands whose responses fail.
+Whole-system scratch overlays, primitive-state accounting and actual M20K
+inference remain unproven.
+
+Next concrete dependency: durable historical attention-residual reconstruction
+inside causal light convolution, preserving the query residual and partial
+convolution output across lower-layer dependency yields without same-rank
+Eval or uncounted retained banks. Then connect real FF2/clamp/norm_out and
+higher-layer audio replay. Modality/session routing, owner/frontier/fallback
+binding, whole-system allocation overlays and parent-compatible
+top/cache/arbiter/CSR integration still remain. Not ready for Verifier.
+
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+simulation, synthesis, installation or experiments ran; no preparation
+receipt exists and the reserved static check remains unused. Parent,
+verification and runtime metadata remain untouched. The original
+`.vulcan/engineering/run-0001/attempt-0003` interruption remains preserved
+without a claimed repair.
+
+## Prior saved increment: durable audio heads with actual frame/memo inputs
 
 `rtl/anvil_en1_replay_audio_attention.sv` now connects its real
 REPLAY=1 executor to the literal FF1/clamp/learned pre-attention norm,

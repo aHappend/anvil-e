@@ -5,6 +5,84 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Durable audio attention-residual/frame binding
+
+`anvil_en1_replay_audio_residual` connects the saved genuine eight-head
+worker to `anvil_en1_audio_attention_residual #(.FRAME_HEADS(1))`.
+This is a completed **attention-residual stage**, not a completed conformer
+layer or Eval result. The outer descriptor, predecessor/memo binding,
+head checkpoints and dependency continuations remain those of
+`replay_audio_heads`. No domain-2 higher-layer dispatch is enabled by this
+increment.
+
+`FRAME_HEADS` is an elaboration-time choice, legal only at 0 or 1.
+Its default 0 preserves the existing complete attention-residual worker:
+entering-vector callbacks, genuine FF1/pre-attention and all eight numerical
+heads, post projection, clamp, learned post norm and residual. The added
+`source_kind` is 0 for entering-layer callbacks. With `FRAME_HEADS=1`,
+the worker reconstructs the same actual query FF1 residual through the
+literal pre-attention worker, checking both complete streams; it does not
+execute heads again or store the discarded normalized stream. Instead,
+source_kind 1 supplies the actual committed head concatenation for the
+clipped 0x210a projection. Generation/model/layer/query/index accompany
+both kinds. The production frame wrapper supplies only acknowledged
+reads of its genuine frame banks, not a host attention answer.
+
+The head stage first commits bank 1 while leaving entering-vector bank 0
+immutable. The post stage then reconstructs query FF1 from bank 0 into
+its own synchronous 2048-byte residual bank. It projects from bank 1
+into a separate synchronous 2048-byte working bank, applies the existing
+BF16 +/-1e10 clamp and learned 0x210b RMSNorm, and executes
+BF16_RNE(binary32_add(FF1_residual,normalized_post_attention)).
+No extra 0.5 weighting, norm_out or second residual is inserted.
+
+Only after all entering-vector and head source reads finish does the post
+stage emit outputs. Its wrapper replaces frame bank 0 with the actual
+attention residual using ordered operation 6/target 2 pairs. The first
+pair invalidates its old visibility, and each pair waits for a concrete
+workspace response; the final pair acknowledgment and actual successful
+post completion are both required before returning successful bank 0.
+Bank 1 remains the head vector until the later enclosing conformer stage
+explicitly reuses it. No additional durable output archive is allocated.
+The wrapper rejects any outward frame source callback after output begins.
+
+| Compound residual boundary | Registered cycle and degenerate behavior |
+| --- | --- |
+| Start/reset | Register the full descriptor before validation; zero all public outputs and cancel validity during reset |
+| Head dispatch | Start only after validation; wait for real child done before checking bank/yield/error and selecting post work |
+| Head yield | Forward the unchanged tagged head/input continuation and strictly lower-layer dependency only after accepted head-stage completion |
+| Resume | Restore through the same literal head worker; finished head pairs remain in frame bank 1; do not rerun completed heads |
+| Post source | Capture kind/full tag/index, validate, issue an aligned frame-bank read, register the actual response, select the BF16 lane, then hold the callback response |
+| Post memory | Own immutable directory/weight commands only during post execution; all head work has retired before ownership changes |
+| Output pair | Capture low then high lane; keep descriptor/data stable through workspace backpressure; acknowledge before accepting another output |
+| In-place safety | No bank-0 replacement before query FF1 reconstruction and every bank-1 projection read retire |
+| Completion | Require 1024 ascending outputs, correct last, no unpaired lane, all accepted writes acknowledged and real successful post done |
+| Error | Preserve first source/write/child error, drain the still-live post/source worker, and return failure rather than a completed vector |
+
+The compound worker sums both literal children's live and physical vector
+reports and exposes all their reported controller groups separately.
+Its own registers include descriptor, source-response and partial-pair state
+in `controller_bytes`. `FRAME_HEADS=1` reserves only its two outer vector
+banks (4096 bytes), plus the literal pre-attention's physical reservation;
+the unused head/cache arrays have no enabled payload accesses. The two
+workers are separate RTL instances: their physical reservations are summed,
+not falsely advertised as a phase overlay. Durable frame-bank allocation
+remains charged by `replay_workspace`, not again as a private vector.
+Primitive arithmetic state and whole-system scratch partitioning still need
+complete integrated accounting and source-matched synthesis observations.
+
+Accepted post directory/weight commands count four bytes even when their
+responses fail. Accepted entering/head callbacks count two on-chip source
+bytes. The real head worker's original-mask, weight, projection and
+intermediate events remain connected. All of these events are advisory DUT
+observations; independent handshake/address classification remains mandatory.
+
+Full historical light-convolution continuations, FF2/norm_out, higher-layer
+audio replay, modality/session routing and whole-system integration remain
+unfinished. The compound attention residual must not be dispatched or
+memoized as Eval(frame_layer,query) before those operations are connected.
+No functional, numerical, synthesis or timing check has run for this binding.
+
 ## Complete native conformer and durable audio-head binding
 
 `anvil_en1_audio_layer` connects one complete native 1024-component conformer

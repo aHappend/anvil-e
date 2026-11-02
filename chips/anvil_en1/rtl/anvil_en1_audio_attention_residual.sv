@@ -1,4 +1,6 @@
-module anvil_en1_audio_attention_residual (
+module anvil_en1_audio_attention_residual #(
+    parameter integer FRAME_HEADS = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -8,6 +10,7 @@ module anvil_en1_audio_attention_residual (
     input wire [63:0] audio_base, audio_weights_base,
     output wire source_valid,
     input wire source_ready,
+    output wire source_kind,
     output wire [1:0] source_model,
     output wire [7:0] source_layer,
     output wire [31:0] source_generation, source_token, source_index,
@@ -74,9 +77,14 @@ module anvil_en1_audio_attention_residual (
     (* ramstyle = "M20K", nomem2reg *) reg [15:0] normalized_source [0:1023];
     (* ramstyle = "M20K", nomem2reg *) reg [15:0] working [0:1023];
 
+    initial begin
+        if (FRAME_HEADS != 0 && FRAME_HEADS != 1)
+            $fatal(1, "PARAMETER ERROR: FRAME_HEADS must be 0 or 1");
+    end
     wire pre_selected = rst_n && (state == PRE_START || state == PRE_WAIT ||
         (state == HEAD_WAIT && (source_state == REBUILD_START || source_state == REBUILD_WAIT)));
-    wire head_selected = rst_n && (state == HEAD_START || state == HEAD_WAIT) && !pre_selected;
+    wire head_selected = rst_n && !FRAME_HEADS &&
+        (state == HEAD_START || state == HEAD_WAIT) && !pre_selected;
     wire projection_selected = rst_n && (state == PROJECTION_START || state == PROJECTION_WAIT);
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT ||
         state == RESIDUAL_READ || state == RESIDUAL_CAPTURE || state == RESIDUAL_ADD ||
@@ -84,6 +92,10 @@ module anvil_en1_audio_attention_residual (
         state == OUTPUT_ADVANCE || state == FP_START || state == FP_WAIT);
     wire pre_ready, pre_valid, pre_output_valid, pre_output_last, pre_output_kind;
     wire pre_cmd_valid, pre_result_ready;
+    wire pre_source_valid, pre_source_rsp_ready;
+    wire [1:0] pre_source_model;
+    wire [7:0] pre_source_layer;
+    wire [31:0] pre_source_generation, pre_source_token, pre_source_index;
     wire [31:0] pre_output_index;
     wire [15:0] pre_output_data;
     wire [63:0] pre_addr, pre_live, pre_physical;
@@ -100,11 +112,12 @@ module anvil_en1_audio_attention_residual (
         .start_ready(pre_ready), .model(model_hold), .precision(precision_hold),
         .layer(layer_hold), .generation(generation_hold), .token(pre_token),
         .audio_weights_base(weights_hold),
-        .source_valid(source_valid), .source_ready(pre_selected && source_ready),
-        .source_model(source_model), .source_layer(source_layer),
-        .source_generation(source_generation), .source_token(source_token), .source_index(source_index),
+        .source_valid(pre_source_valid), .source_ready(pre_selected && source_ready),
+        .source_model(pre_source_model), .source_layer(pre_source_layer),
+        .source_generation(pre_source_generation), .source_token(pre_source_token),
+        .source_index(pre_source_index),
         .source_rsp_valid(pre_selected && source_rsp_valid),
-        .source_rsp_ready(source_rsp_ready), .source_rsp_data(source_rsp_data),
+        .source_rsp_ready(pre_source_rsp_ready), .source_rsp_data(source_rsp_data),
         .source_rsp_error(source_rsp_error),
         .cmd_valid(pre_cmd_valid), .cmd_ready(pre_selected && cmd_ready),
         .cmd_write(), .cmd_addr(pre_addr), .cmd_wdata(),
@@ -145,7 +158,7 @@ module anvil_en1_audio_attention_residual (
     wire [31:0] head_projection_bytes;
     anvil_en1_audio_attention_execute attention (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == HEAD_START), .start_ready(head_ready),
+        .start_valid(rst_n && !FRAME_HEADS && state == HEAD_START), .start_ready(head_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),
         .frames(frames_hold), .query_token(token_hold), .layer(layer_hold), .head(head_hold),
         .audio_base(audio_hold), .audio_weights_base(weights_hold),
@@ -180,7 +193,7 @@ module anvil_en1_audio_attention_residual (
         .clipped_controller_bytes(clipped_control), .clamp_controller_bytes(tile_clamp_control),
         .position_controller_bytes(position_control), .softplus_controller_bytes(softplus_control)
     );
-    assign head_controller_bytes = !rst_n ? 64'd0 :
+    assign head_controller_bytes = !rst_n || FRAME_HEADS ? 64'd0 :
         executor_control + arithmetic_head_control + block_control + input_control + tile_control +
         clipped_control + tile_clamp_control + position_control + softplus_control;
     wire projection_ready, projection_valid, projection_source_valid, projection_source_rsp_ready;
@@ -195,11 +208,14 @@ module anvil_en1_audio_attention_residual (
         .image_base(weights_hold), .tensor_kind(16'h210a),
         .tensor_layer({8'd0, layer_hold}), .row_index(row_hold),
         .source_valid(projection_source_valid),
-        .source_ready(rst_n && state == PROJECTION_WAIT && source_state == S_IDLE),
+        .source_ready(rst_n && state == PROJECTION_WAIT &&
+            (FRAME_HEADS ? source_ready : source_state == S_IDLE)),
         .source_index(projection_source_index),
-        .source_rsp_valid(rst_n && state == PROJECTION_WAIT && source_state == S_RESPONSE),
+        .source_rsp_valid(rst_n && state == PROJECTION_WAIT &&
+            (FRAME_HEADS ? source_rsp_valid : source_state == S_RESPONSE)),
         .source_rsp_ready(projection_source_rsp_ready),
-        .source_rsp_data(source_data_hold), .source_rsp_error(source_error_hold != 0),
+        .source_rsp_data(FRAME_HEADS ? source_rsp_data : source_data_hold),
+        .source_rsp_error(FRAME_HEADS ? source_rsp_error : source_error_hold != 0),
         .cmd_valid(projection_cmd_valid), .cmd_ready(projection_selected && cmd_ready),
         .cmd_write(), .cmd_addr(projection_addr), .cmd_wdata(),
         .result_valid(projection_selected && result_valid), .result_ready(projection_result_ready),
@@ -282,17 +298,18 @@ module anvil_en1_audio_attention_residual (
         if (pre_selected && pre_output_valid && pre_beat_good) begin
             if (!pre_output_kind && state == PRE_WAIT)
                 residual[pre_output_index[9:0]] <= pre_output_data;
-            if (pre_output_kind)
+            if (pre_output_kind && !FRAME_HEADS)
                 normalized_source[pre_output_index[9:0]] <= pre_output_data;
         end
-        if (rst_n && state == HEAD_WAIT && head_output_valid && !receive_bad && head_beat_good)
+        if (rst_n && !FRAME_HEADS && state == HEAD_WAIT &&
+            head_output_valid && !receive_bad && head_beat_good)
             heads[{head_hold, head_output_index[6:0]}] <= head_output_data;
         if (rst_n && state == STORE)
             working[row_hold[9:0]] <= clamped_hold;
         if (rst_n && source_state == S_READ) begin
-            if (source_bank == 0)
+            if (source_bank == 0 && !FRAME_HEADS)
                 cache_q <= normalized_source[source_index_hold[9:0]];
-            else if (source_bank == 1)
+            else if (source_bank == 1 && !FRAME_HEADS)
                 head_q <= heads[source_index_hold[9:0]];
             else
                 working_q <= working[source_index_hold[9:0]];
@@ -301,6 +318,22 @@ module anvil_en1_audio_attention_residual (
             residual_q <= residual[output_index_hold[9:0]];
     end
     assign start_ready = rst_n && state == IDLE;
+    wire frame_source = rst_n && FRAME_HEADS && state == PROJECTION_WAIT;
+    assign source_valid = (pre_selected && pre_source_valid) ||
+        (frame_source && projection_source_valid);
+    assign source_kind = frame_source;
+    assign source_model = !rst_n ? 2'd0 :
+        (pre_selected ? pre_source_model : (frame_source ? model_hold : 2'd0));
+    assign source_layer = !rst_n ? 8'd0 :
+        (pre_selected ? pre_source_layer : (frame_source ? layer_hold : 8'd0));
+    assign source_generation = !rst_n ? 32'd0 :
+        (pre_selected ? pre_source_generation : (frame_source ? generation_hold : 32'd0));
+    assign source_token = !rst_n ? 32'd0 :
+        (pre_selected ? pre_source_token : (frame_source ? token_hold : 32'd0));
+    assign source_index = !rst_n ? 32'd0 :
+        (pre_selected ? pre_source_index : (frame_source ? projection_source_index : 32'd0));
+    assign source_rsp_ready = (pre_selected && pre_source_rsp_ready) ||
+        (frame_source && projection_source_rsp_ready);
     assign cmd_valid = pre_selected ? pre_cmd_valid : (head_selected ? head_cmd_valid :
         (projection_selected ? projection_cmd_valid : (norm_selected && norm_cmd_valid)));
     assign cmd_write = 0;
@@ -323,7 +356,8 @@ module anvil_en1_audio_attention_residual (
     assign vector_live_bytes = !rst_n ? 64'd0 :
         (raw_allocated ? 64'd2048 : 64'd0) + (head_allocated ? 64'd2048 : 64'd0) +
         (cache_allocated ? 64'd2048 : 64'd0) + (working_allocated ? 64'd2048 : 64'd0) + pre_live;
-    assign vector_physical_bytes = rst_n ? 64'd8192 + pre_physical : 64'd0;
+    assign vector_physical_bytes = rst_n ?
+        (FRAME_HEADS ? 64'd4096 : 64'd8192) + pre_physical : 64'd0;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) + $bits(model_hold) +
         $bits(precision_hold) + $bits(source_bank) + $bits(layer_hold) + $bits(head_hold) +
@@ -354,7 +388,8 @@ module anvil_en1_audio_attention_residual (
             if (state == IDLE && start_valid && start_ready)
                 first_source_error <= 0;
             case (source_state)
-                S_IDLE: if ((state == HEAD_WAIT || state == PROJECTION_WAIT || state == NORM_WAIT) &&
+                S_IDLE: if ((state == HEAD_WAIT ||
+                    (!FRAME_HEADS && state == PROJECTION_WAIT) || state == NORM_WAIT) &&
                     callback_valid) begin
                     source_bank <= state == HEAD_WAIT ? 2'd0 :
                         (state == PROJECTION_WAIT ? 2'd1 : 2'd2);
@@ -471,7 +506,7 @@ module anvil_en1_audio_attention_residual (
             end
             if (cache_miss) begin
                 cache_visible <= 0;
-                cache_allocated <= 1;
+                cache_allocated <= !FRAME_HEADS;
             end
             if (rebuilding_start) begin
                 raw_received <= 0;
@@ -545,9 +580,15 @@ module anvil_en1_audio_attention_residual (
                         state <= PUBLISH;
                     end else begin
                         raw_visible <= 1;
-                        cache_visible <= 1;
-                        head_allocated <= 1;
-                        state <= HEAD_START;
+                        if (FRAME_HEADS) begin
+                            working_allocated <= 1;
+                            row_hold <= 0;
+                            state <= PROJECTION_START;
+                        end else begin
+                            cache_visible <= 1;
+                            head_allocated <= 1;
+                            state <= HEAD_START;
+                        end
                     end
                 end
                 HEAD_START: if (head_ready) begin
