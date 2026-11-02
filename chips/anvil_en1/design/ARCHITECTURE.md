@@ -5,7 +5,80 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: valid image ordinals and connected audio subsampling
+## Current saved increment: causal audio light convolution and output features
+
+`rtl/anvil_en1_audio_glu_component.sv` computes one genuine
+light-convolution GLU input channel from the attention-residual vector.
+It executes the learned 1024-channel pre_layer_norm, collects the complete
+successful BF16 vector in synchronous RAM, computes both actual clipped
+linear_start rows, and uses the saved sigmoid/product arithmetic with the
+second half as gate and first half as multiplicand. There is no pre-norm
+gradient clamp, GeGLU substitution or host-generated GLU source.
+
+`rtl/anvil_en1_audio_depthwise_row.sv` executes all five actual causal
+depthwise OIW terms in ascending kernel order, with the same channel
+at token-4+j. A registered distance check distinguishes left padding
+before subtraction; padding still participates in weight multiplication
+and reduction. The native BF16/Q4 reader preserves five-column partial
+row boundaries. Actual historical GLU callbacks, directory validation
+and successful external responses supply the result; no mask, bias,
+clipped depthwise weight or generated-feature write is inserted.
+
+`rtl/anvil_en1_audio_lightconv.sv` connects those leaves into the full
+light-convolution sublayer. It preserves the unclipped attention residual,
+computes all depthwise channels, applies the pinned stability clamp,
+learned conv_norm, BF16 SiLU and clipped linear_end, then emits the actual
+unweighted residual sum. Historical dependencies dispatch real complete
+GLU computation and retain the first concrete child error. Parent memory
+ownership pauses only after its weight response has retired and returns
+after the GLU child completes. RAM reads, response creation and response
+acceptance are separate edges; no partially filled bank becomes readable.
+All 1024 outputs must retire before successful completion. Two outer
+2048-byte banks and the child's 2048-byte bank give a 6144-byte physical
+vector reservation and up to 6144 live vector bytes, with scalar/numerical
+state additional.
+
+`rtl/anvil_en1_audio_output.sv` validates the actual 1536x1024 output
+matrix and independent BF16 bias vector, performs each genuine matrix row,
+then reads/adds its actual bias and materializes BF16. It streams all
+1536 native output components with held backpressure and no extra norm,
+clipping, activation or residual weighting.
+
+`rtl/anvil_en1_audio_feature.sv` captures the complete successful native
+output in a 3072-byte synchronous bank before connecting the saved real
+unscaled modality RMSNorm and H projection. It validates ordered indices,
+last, native completion and source tags before visibility. It checks every
+H output, including compact H=8 while retaining native encoder widths.
+Both collection and normalized banks can be live (6144 vector bytes);
+all scalar/arithmetic state remains additional. Its public source is the
+actual layer-12 audio vector, not a finished host modality feature.
+
+SPEC freezes these numerical boundaries, public descriptors, causal
+padding, allocation lifetimes and registered ownership rules. Actual
+accepted directory/matrix/bias transfers are reported as weight bytes;
+GLU reconstruction is additional owner/native work, never avoided
+projection traffic. These paths have deliberately high recomputation
+cost and establish neither practical throughput nor reduced total DDR.
+
+Remaining: native audio relative attention and complete conformer dispatch;
+durable native text/vision/audio replay continuations and frame dispatch;
+original-token ordinal/placeholder/session validation; linear single-token
+text replay; complete arithmetic/control liveness and allocation overlays;
+parent-compatible top/session/cache/replay/arbiter/CSR integration. The
+design is not ready for independent Verifier.
+
+Tools used in this increment: glob, view, rg, web_fetch and apply_patch.
+Pinned public model inspection confirmed light-convolution RMSNorm,
+linear_start/GLU half order, causal padding, depthwise groups/no bias,
+clamp/conv_norm/SiLU/linear_end and unweighted residual semantics.
+No command, installation, static elaboration, functional simulation,
+synthesis or experiment ran. The reserved static check remains unused;
+no preparation receipt exists. Parent, tests and runtime-owned sources
+remain untouched. The original ownership-guard interruption at
+`.vulcan/engineering/run-0001/attempt-0003` remains preserved without an
+interruption repair or acceptance claim.
+
+## Prior increment: valid image ordinals and connected audio subsampling
 
 `rtl/anvil_en1_vision_bins.sv` derives the actual true-bin map from the
 immutable coordinate tensor. It performs the same max-x/floor mapping as

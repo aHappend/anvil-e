@@ -5,6 +5,120 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Native causal audio light-convolution increment
+
+`anvil_en1_audio_glu_component` reconstructs one channel of the pinned
+light-convolution input. Its descriptor captures model, precision, generation,
+audio layer 0..11, token 0..131071, channel 0..1023 and aligned immutable
+audio-weight base. Its source callback supplies the actual hidden vector
+after that layer's attention residual, at the captured token; it is not an
+encoder-output or host GLU-answer boundary. Execute learned pre_layer_norm
+0x210c over all 1024 channels with no stability clamp before this norm.
+Collect every ordered BF16 norm output in one 2048-byte synchronous bank,
+and expose that bank to projections only after successful complete norm.
+Execute clipped linear_start 0x210d rows channel and channel+1024 in that
+order. The first half is the multiplicand; the second half is the sigmoid
+gate. Existing `geglu_pair` operation 2 implements BF16 sigmoid
+materialization, separately rounded binary32 multiplication with the first
+half and final BF16 materialization. No GeGLU/GELU or SiLU replaces GLU.
+Every reconstruction performs actual norm-scale and matrix reads.
+
+`anvil_en1_audio_depthwise_row` validates tensor 0x210e as 1024 rows by
+5 flattened OIW columns. It executes all five multiply/add terms in
+ascending kernel order, starting from binary32 +0 and materializing BF16
+only after the complete reduction. Kernel j addresses token-4+j at the
+same channel. Determine left padding by token < 4-j before subtraction;
+padding supplies BF16 +0 without a source request, but still executes the
+actual weight multiply/add, including exceptional weights. There is no
+right padding, bias, validity-mask multiplication, cross-channel sum,
+clipped depthwise weight, or external activation archive. The callback
+must reconstruct an actual completed GLU component, not a raw hidden
+component. Tensor directory, BF16/Q4 partial-row layout and address overflow
+validation precede accesses.
+
+`anvil_en1_audio_lightconv` connects these two leaves into the complete
+light-convolution residual at one token. Capture the 1024-channel unclipped
+attention residual in one 2048-byte synchronous bank. Execute each genuine
+depthwise row; each historical callback dispatches `audio_glu_component`
+and waits for its actual successful completion. Store all 1024 depthwise
+results in a second 2048-byte bank before applying the pinned BF16 +/-1e10
+stability clamp, learned conv_norm 0x210f and BF16 SiLU. Execute clipped
+linear_end 0x2110 for every output row, add the corresponding original
+residual using binary32 addition and BF16 materialization, and stream in
+ascending order. This residual has no 0.5 weighting or additional norm.
+It does not skip false audio validity positions; pinned light convolution
+does not apply the attention mask.
+
+| Light-convolution boundary | Registered behavior |
+| --- | --- |
+| Start/reset | Pre-edge acceptance captures descriptors; active reset zeroes public outputs and discards bank visibility |
+| Norm collection | Accept all 1024 ordered components/last; check actual successful done before projection visibility |
+| GLU rows | First-half projection completes before second-half projection; both complete before sigmoid/product |
+| Depthwise coordinates | Capture j, classify padding, then subtract; kernel 0..4 visits once even at token 0 |
+| Historical callback | Capture/validate model, generation, layer, token and channel; dispatch genuine GLU only on a later edge |
+| External ownership | Parent projection is paused after its weight response retires; GLU owns memory until its done retires |
+| RAM callback | Capture address; synchronous read; separate capture and held response; never read partial/unfilled vectors |
+| Conv norm/SiLU | Complete clamped vector before norm; complete norm before in-place unary SiLU traversal |
+| Output | Capture actual row result; separately add/narrow residual; hold index/data/last until accepted |
+| Completion/error | Drain accepted child responses, preserve first concrete child failure, and wait for final output acceptance |
+| Live allocation | Charge partial/error banks from accepted start through accepted done; no release at result creation |
+
+Physical vector reservation is 6144 bytes: residual 2048, convolution/working
+2048, and the GLU child's normalized bank 2048. The two outer banks remain
+live throughout the task; the child's bank is additionally live during
+historical reconstruction, including partially filled/failed norm work.
+Every retained scalar, directory/projection/norm/clamp/arithmetic state and
+response reservation is additional. Public allocation outputs expose outer
+and child vector occupancy separately through their sum and physical sum;
+controller outputs include connected child controller reports. Final system
+overlay/replay accounting must also charge arithmetic leaf state not already
+included by those reports. Reprojection increases weight and native-source
+reads and is not avoided computation. No practical latency claim is made.
+
+These modules supply an actual light-convolution sublayer, not complete
+audio attention, a complete conformer, durable native replay or system
+integration. Functional/numerical/synthesis evidence belongs to the
+independent Verifier.
+
+### Native audio output projection
+
+`anvil_en1_audio_output` accepts one actual completed layer-12 audio token
+vector through its source callback, at native width 1024. Capture model,
+precision, generation, token and immutable audio-weight base; validate
+0x2200 at layer 0xffff as 1536x1024 and 0x2201 as one BF16 vector of
+1536 components before numerical execution. Compute each output_proj row
+with the genuine BF16/Q4 matrix reader and ascending-column binary32
+multiply/add reduction, followed by BF16 projection materialization.
+Read its actual BF16 bias component, add in binary32 and materialize
+BF16 again. No clamp, SiLU, residual, learned norm or 0.5 weighting belongs
+to output_proj. Stream all 1536 components in ascending order, with held
+last and completion only after the last output is accepted.
+
+Directory validation, row start, projection completion capture, bias read,
+bias completion capture, add/narrow, output creation, output acceptance and
+done acceptance are distinct registered events. BF16 bias format is
+independent of matrix precision. All accepted directory/matrix/bias reads,
+including failed responses, are weight bytes; source callbacks are logical
+native reads and are not advertised as external KV transfers. The leaf has
+no vector bank; its scalar reductions/reservations and every child arithmetic
+or directory state still belong to the native live ledger.
+
+`anvil_en1_audio_feature` collects that complete successful 1536-component
+output vector in one 3072-byte synchronous bank before dispatching the
+saved modality projection in audio mode. Enforce index/last and complete
+done before source visibility; malformed/partial/error output cannot be
+used by normalization. Its synchronous callback supplies the stored vector
+to actual unscaled RMSNorm followed by the native H projection (0x2202),
+with no embedding-scale multiply, learned scale or projection bias. All
+H outputs must be ordered and last must agree before successful completion.
+The outer collection bank and the modality normalized bank can both be
+live (6144 bytes total). Include both in physical reservations and occupancy
+through completion acceptance, plus all scalar/child state. Source callbacks
+remain real layer-12 native dependencies for the replay dispatcher; the
+wrapper does not provide a finished host audio answer. Complete audio
+attention, conformer dispatch, placeholder mapping, bounded replay and
+whole-system allocation/compatibility integration remain required.
+
 ## Native vision pooling and modality projection increment
 
 ### Valid-bin ordinals and native subsampling boundaries
