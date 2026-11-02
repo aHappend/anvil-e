@@ -1,0 +1,485 @@
+module anvil_en1_replay_execute #(
+    parameter integer COMPACT = 0
+) (
+    input wire clk, rst_n,
+    input wire start_valid,
+    output wire start_ready,
+    input wire [1:0] model, precision, modality,
+    input wire [31:0] generation, tokens, token,
+    input wire [7:0] layer,
+    input wire [63:0] tokens_base, weights_base,
+    output wire modality_valid,
+    input wire modality_ready,
+    output wire [1:0] modality_model, modality_kind,
+    output wire [31:0] modality_token, modality_index,
+    input wire modality_rsp_valid,
+    output wire modality_rsp_ready,
+    input wire [15:0] modality_rsp_data,
+    input wire modality_rsp_error,
+    output wire mask_valid,
+    input wire mask_ready,
+    output wire [31:0] mask_token,
+    input wire mask_rsp_valid,
+    output wire mask_rsp_ready,
+    input wire mask_rsp_data, mask_rsp_error,
+    output wire req_valid,
+    input wire req_ready,
+    output wire [2:0] req_op,
+    output wire [1:0] req_model,
+    output wire [7:0] req_layer,
+    output wire [31:0] req_token,
+    output wire req_is_value,
+    output wire [1:0] req_kv_head,
+    output wire [9:0] req_component,
+    output wire [63:0] req_base,
+    input wire rsp_valid,
+    output wire rsp_ready,
+    input wire [63:0] rsp_addr,
+    input wire [7:0] rsp_owner,
+    input wire rsp_alias,
+    input wire [3:0] rsp_error,
+    input wire [1:0] rsp_space,
+    output wire cmd_valid,
+    input wire cmd_ready,
+    output wire cmd_write,
+    output wire [63:0] cmd_addr,
+    output wire [31:0] cmd_wdata,
+    input wire result_valid,
+    output wire result_ready,
+    input wire [31:0] result_data,
+    input wire result_error,
+    output wire output_valid,
+    input wire output_ready,
+    output wire [31:0] output_index,
+    output wire [15:0] output_data,
+    output wire output_last,
+    output wire done_valid,
+    input wire done_ready,
+    output wire [3:0] done_error,
+    output wire backing_valid,
+    input wire backing_ready,
+    output wire [31:0] backing_generation,
+    output wire backing_write,
+    output wire [17:0] backing_addr,
+    output wire [31:0] backing_wdata,
+    input wire backing_rsp_valid,
+    output wire backing_rsp_ready,
+    input wire [31:0] backing_rsp_data,
+    input wire [3:0] backing_rsp_error,
+    output wire [6:0] frame_depth,
+    output wire [63:0] live_payload_bytes, production_shadow_bytes,
+    output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
+    output wire [63:0] scheduler_state_bytes, dispatcher_state_bytes,
+    output wire [63:0] selected_worker_state_bytes,
+    output wire [63:0] binding_controller_bytes, projection_controller_bytes,
+    output wire [63:0] executor_controller_bytes, checkpoint_controller_bytes,
+    output wire [63:0] tile_controller_bytes, tile_live_bytes, tile_physical_bytes,
+    output wire [63:0] ple_live_bytes, ple_physical_bytes,
+    output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
+    output wire [63:0] post_vector_live_bytes, post_vector_physical_bytes,
+    output wire memo_hit_event, memo_eviction_event,
+    output wire owner_reprojection_event,
+    output wire [31:0] owner_reprojection_bytes,
+    output wire query_projection_event,
+    output wire [31:0] query_projection_bytes,
+    output wire source_read_event,
+    output wire [31:0] source_read_bytes,
+    output wire busy
+);
+    localparam [2:0] IDLE = 0, VALIDATE = 1, WORKER_START = 2,
+        WORKER_WAIT = 3, PUBLISH = 4, RESPONSE = 5;
+    reg [2:0] state;
+    reg [1:0] model_hold, precision_hold, modality_hold, mode_hold, domain_hold;
+    reg [31:0] token_hold, tokens_hold, dependency_token_hold;
+    reg [7:0] layer_hold, dependency_layer_hold;
+    reg [11:0] length_hold, dependency_length_hold;
+    reg [5:0] frame_hold, dependency_slot_hold;
+    reg [63:0] tokens_base_hold, weights_base_hold;
+    reg [159:0] continuation_hold, done_continuation_hold;
+    reg dependency_valid_hold, input_worker, done_dependency_hold, done_bank_hold;
+    reg [1:0] dependency_domain_hold, done_domain_hold;
+    reg [7:0] done_layer_hold;
+    reg [31:0] done_token_hold;
+    reg [11:0] done_length_hold;
+    reg [3:0] error_hold;
+
+    initial begin
+        if (COMPACT != 0 && COMPACT != 1)
+            $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+    end
+
+    wire task_valid, task_ready;
+    wire [1:0] task_model, task_precision, task_modality, task_domain, task_mode;
+    wire [31:0] task_generation, task_tokens, task_token;
+    wire [7:0] task_layer;
+    wire [11:0] task_length;
+    wire [5:0] task_frame;
+    wire [63:0] task_tokens_base, task_weights_base;
+    wire [159:0] task_continuation;
+    wire task_dependency_valid;
+    wire [1:0] task_dependency_domain;
+    wire [7:0] task_dependency_layer;
+    wire [31:0] task_dependency_token;
+    wire [11:0] task_dependency_length;
+    wire [5:0] task_dependency_slot;
+    wire task_done_ready;
+    wire work_valid, work_ready, work_rsp_valid, work_rsp_ready;
+    wire [2:0] work_op;
+    wire [1:0] work_domain, work_target;
+    wire [31:0] work_token, work_data, work_rsp_data;
+    wire [7:0] work_layer, work_scalar_index;
+    wire [11:0] work_length, work_component;
+    wire [5:0] work_slot;
+    wire work_bank, write_valid, write_ready, write_first, write_last, write_abort;
+    wire [31:0] write_data;
+    wire [3:0] work_rsp_error;
+    anvil_en1_eval_schedule #(.COMPACT(COMPACT)) scheduler (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(start_valid), .start_ready(start_ready),
+        .model(model), .precision(precision), .modality(modality), .domain(2'd0),
+        .generation(generation), .tokens(tokens), .token(token), .layer(layer),
+        .tokens_base(tokens_base), .weights_base(weights_base),
+        .task_valid(task_valid), .task_ready(task_ready),
+        .task_model(task_model), .task_precision(task_precision),
+        .task_modality(task_modality), .task_domain(task_domain),
+        .task_mode(task_mode), .task_generation(task_generation),
+        .task_tokens(task_tokens), .task_token(task_token), .task_layer(task_layer),
+        .task_length(task_length), .task_frame(task_frame),
+        .task_tokens_base(task_tokens_base), .task_weights_base(task_weights_base),
+        .task_continuation(task_continuation),
+        .task_dependency_valid(task_dependency_valid),
+        .task_dependency_domain(task_dependency_domain),
+        .task_dependency_layer(task_dependency_layer),
+        .task_dependency_token(task_dependency_token),
+        .task_dependency_length(task_dependency_length),
+        .task_dependency_slot(task_dependency_slot),
+        .task_done_valid(rst_n && state == RESPONSE),
+        .task_done_ready(task_done_ready), .task_done_error(error_hold),
+        .task_done_dependency(done_dependency_hold), .task_done_bank(done_bank_hold),
+        .task_done_dependency_domain(done_domain_hold),
+        .task_done_dependency_layer(done_layer_hold),
+        .task_done_dependency_token(done_token_hold),
+        .task_done_dependency_length(done_length_hold),
+        .task_done_continuation(done_continuation_hold),
+        .work_req_valid(work_valid), .work_req_ready(work_ready),
+        .work_req_op(work_op), .work_req_domain(work_domain),
+        .work_req_target(work_target), .work_req_token(work_token),
+        .work_req_layer(work_layer), .work_req_length(work_length),
+        .work_req_component(work_component), .work_req_slot(work_slot),
+        .work_req_bank(work_bank), .work_req_scalar_index(work_scalar_index),
+        .work_req_data(work_data),
+        .work_write_valid(write_valid), .work_write_ready(write_ready),
+        .work_write_data(write_data), .work_write_first(write_first),
+        .work_write_last(write_last), .work_write_abort(write_abort),
+        .work_rsp_valid(work_rsp_valid), .work_rsp_ready(work_rsp_ready),
+        .work_rsp_error(work_rsp_error), .work_rsp_data(work_rsp_data),
+        .output_valid(output_valid), .output_ready(output_ready),
+        .output_index(output_index), .output_data(output_data), .output_last(output_last),
+        .done_valid(done_valid), .done_ready(done_ready), .done_error(done_error),
+        .frame_depth(frame_depth), .scheduler_state_bytes(scheduler_state_bytes),
+        .live_payload_bytes(live_payload_bytes), .production_shadow_bytes(production_shadow_bytes),
+        .backing_reserved_bytes(backing_reserved_bytes),
+        .visibility_metadata_bytes(visibility_metadata_bytes),
+        .memo_hit_event(memo_hit_event), .memo_eviction_event(memo_eviction_event),
+        .backing_valid(backing_valid), .backing_ready(backing_ready),
+        .backing_generation(backing_generation), .backing_write(backing_write),
+        .backing_addr(backing_addr), .backing_wdata(backing_wdata),
+        .backing_rsp_valid(backing_rsp_valid), .backing_rsp_ready(backing_rsp_ready),
+        .backing_rsp_data(backing_rsp_data), .backing_rsp_error(backing_rsp_error),
+        .busy(busy)
+    );
+
+    wire input_selected = rst_n && input_worker &&
+        (state == WORKER_START || state == WORKER_WAIT);
+    wire text_selected = rst_n && !input_worker &&
+        (state == WORKER_START || state == WORKER_WAIT);
+    wire input_ready, input_valid;
+    wire [3:0] input_error;
+    wire input_bank_result;
+    wire input_modality_valid, input_modality_rsp_ready;
+    wire [1:0] input_modality_model, input_modality_kind;
+    wire [31:0] input_modality_token, input_modality_index;
+    wire input_work_valid, input_work_rsp_ready;
+    wire [2:0] input_work_op;
+    wire [1:0] input_work_domain, input_work_target;
+    wire [31:0] input_work_token, input_work_data;
+    wire [7:0] input_work_layer, input_work_scalar_index;
+    wire [11:0] input_work_length, input_work_component;
+    wire [5:0] input_work_slot;
+    wire input_work_bank;
+    wire input_write_valid, input_write_first, input_write_last, input_write_abort;
+    wire [31:0] input_write_data;
+    wire input_cmd_valid, input_result_ready;
+    wire [63:0] input_cmd_addr;
+    wire [63:0] input_state_bytes, input_embedding_live, input_embedding_physical;
+    anvil_en1_replay_input #(.COMPACT(COMPACT)) original_input (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(input_selected && state == WORKER_START), .start_ready(input_ready),
+        .model(model_hold), .precision(precision_hold), .modality(modality_hold),
+        .tokens(tokens_hold), .token(token_hold), .frame_layer(layer_hold),
+        .frame_slot(frame_hold), .tokens_base(tokens_base_hold), .weights_base(weights_base_hold),
+        .modality_valid(input_modality_valid), .modality_ready(input_selected && modality_ready),
+        .modality_model(input_modality_model), .modality_kind(input_modality_kind),
+        .modality_token(input_modality_token), .modality_index(input_modality_index),
+        .modality_rsp_valid(input_selected && modality_rsp_valid),
+        .modality_rsp_ready(input_modality_rsp_ready), .modality_rsp_data(modality_rsp_data),
+        .modality_rsp_error(modality_rsp_error),
+        .work_req_valid(input_work_valid), .work_req_ready(input_selected && work_ready),
+        .work_req_op(input_work_op), .work_req_domain(input_work_domain),
+        .work_req_target(input_work_target), .work_req_token(input_work_token),
+        .work_req_layer(input_work_layer), .work_req_length(input_work_length),
+        .work_req_component(input_work_component), .work_req_slot(input_work_slot),
+        .work_req_bank(input_work_bank), .work_req_scalar_index(input_work_scalar_index),
+        .work_req_data(input_work_data),
+        .work_write_valid(input_write_valid), .work_write_ready(input_selected && write_ready),
+        .work_write_data(input_write_data), .work_write_first(input_write_first),
+        .work_write_last(input_write_last), .work_write_abort(input_write_abort),
+        .work_rsp_valid(input_selected && work_rsp_valid),
+        .work_rsp_ready(input_work_rsp_ready), .work_rsp_error(work_rsp_error),
+        .cmd_valid(input_cmd_valid), .cmd_ready(input_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(input_cmd_addr), .cmd_wdata(),
+        .result_valid(input_selected && result_valid), .result_ready(input_result_ready),
+        .result_data(result_data), .result_error(result_error),
+        .done_valid(input_valid), .done_ready(input_selected && state == WORKER_WAIT),
+        .done_error(input_error), .done_bank(input_bank_result),
+        .embedding_live_bytes(input_embedding_live),
+        .embedding_physical_bytes(input_embedding_physical),
+        .controller_state_bytes(input_state_bytes), .busy()
+    );
+
+    wire text_ready, text_valid, text_yield, text_bank_result;
+    wire [3:0] text_error;
+    wire [159:0] text_continuation;
+    wire [1:0] text_dependency_domain;
+    wire [7:0] text_dependency_layer;
+    wire [31:0] text_dependency_token;
+    wire [11:0] text_dependency_length;
+    wire text_modality_valid, text_modality_rsp_ready;
+    wire [1:0] text_modality_model, text_modality_kind;
+    wire [31:0] text_modality_token, text_modality_index;
+    wire text_work_valid, text_work_rsp_ready;
+    wire [2:0] text_work_op;
+    wire [1:0] text_work_domain, text_work_target;
+    wire [31:0] text_work_token, text_work_data;
+    wire [7:0] text_work_layer, text_work_scalar_index;
+    wire [11:0] text_work_length, text_work_component;
+    wire [5:0] text_work_slot;
+    wire text_work_bank, text_cmd_valid, text_result_ready;
+    wire [63:0] text_cmd_addr, text_state_bytes, text_embedding_live, text_embedding_physical;
+    anvil_en1_replay_text_layer #(.COMPACT(COMPACT)) text_layer (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(text_selected && state == WORKER_START), .start_ready(text_ready),
+        .model(model_hold), .precision(precision_hold), .modality(modality_hold), .mode(mode_hold),
+        .frame_layer(layer_hold), .token(token_hold), .tokens(tokens_hold),
+        .tokens_base(tokens_base_hold), .weights_base(weights_base_hold), .frame_slot(frame_hold),
+        .continuation(continuation_hold), .dependency_valid(dependency_valid_hold),
+        .dependency_domain(dependency_domain_hold), .dependency_layer(dependency_layer_hold),
+        .dependency_token(dependency_token_hold), .dependency_length(dependency_length_hold),
+        .dependency_slot(dependency_slot_hold),
+        .modality_valid(text_modality_valid), .modality_ready(text_selected && modality_ready),
+        .modality_model(text_modality_model), .modality_kind(text_modality_kind),
+        .modality_token(text_modality_token), .modality_index(text_modality_index),
+        .modality_rsp_valid(text_selected && modality_rsp_valid),
+        .modality_rsp_ready(text_modality_rsp_ready), .modality_rsp_data(modality_rsp_data),
+        .modality_rsp_error(modality_rsp_error),
+        .mask_valid(mask_valid), .mask_ready(text_selected && mask_ready), .mask_token(mask_token),
+        .mask_rsp_valid(text_selected && mask_rsp_valid), .mask_rsp_ready(mask_rsp_ready),
+        .mask_rsp_data(mask_rsp_data), .mask_rsp_error(mask_rsp_error),
+        .req_valid(req_valid), .req_ready(text_selected && req_ready), .req_op(req_op),
+        .req_model(req_model), .req_layer(req_layer), .req_token(req_token),
+        .req_is_value(req_is_value), .req_kv_head(req_kv_head), .req_component(req_component),
+        .req_base(req_base), .rsp_valid(text_selected && rsp_valid), .rsp_ready(rsp_ready),
+        .rsp_addr(rsp_addr), .rsp_owner(rsp_owner), .rsp_alias(rsp_alias),
+        .rsp_error(rsp_error), .rsp_space(rsp_space),
+        .work_req_valid(text_work_valid), .work_req_ready(text_selected && work_ready),
+        .work_req_op(text_work_op), .work_req_domain(text_work_domain),
+        .work_req_target(text_work_target), .work_req_token(text_work_token),
+        .work_req_layer(text_work_layer), .work_req_length(text_work_length),
+        .work_req_component(text_work_component), .work_req_slot(text_work_slot),
+        .work_req_bank(text_work_bank), .work_req_scalar_index(text_work_scalar_index),
+        .work_req_data(text_work_data), .work_rsp_valid(text_selected && work_rsp_valid),
+        .work_rsp_ready(text_work_rsp_ready), .work_rsp_data(work_rsp_data),
+        .work_rsp_error(work_rsp_error),
+        .cmd_valid(text_cmd_valid), .cmd_ready(text_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(text_cmd_addr), .cmd_wdata(),
+        .result_valid(text_selected && result_valid), .result_ready(text_result_ready),
+        .result_data(result_data), .result_error(result_error),
+        .done_valid(text_valid), .done_ready(text_selected && state == WORKER_WAIT),
+        .done_error(text_error), .done_yield(text_yield), .done_bank(text_bank_result),
+        .done_continuation(text_continuation), .done_dependency_domain(text_dependency_domain),
+        .done_dependency_layer(text_dependency_layer), .done_dependency_token(text_dependency_token),
+        .done_dependency_length(text_dependency_length),
+        .owner_reprojection_event(owner_reprojection_event),
+        .owner_reprojection_bytes(owner_reprojection_bytes),
+        .query_projection_event(query_projection_event), .query_projection_bytes(query_projection_bytes),
+        .source_read_event(source_read_event), .source_read_bytes(source_read_bytes),
+        .controller_state_bytes(text_state_bytes), .binding_controller_bytes(binding_controller_bytes),
+        .projection_controller_bytes(projection_controller_bytes),
+        .executor_controller_bytes(executor_controller_bytes),
+        .checkpoint_controller_bytes(checkpoint_controller_bytes),
+        .tile_controller_bytes(tile_controller_bytes), .tile_live_bytes(tile_live_bytes),
+        .tile_physical_bytes(tile_physical_bytes), .ple_live_bytes(ple_live_bytes),
+        .ple_physical_bytes(ple_physical_bytes), .embedding_live_bytes(text_embedding_live),
+        .embedding_physical_bytes(text_embedding_physical),
+        .post_vector_live_bytes(post_vector_live_bytes),
+        .post_vector_physical_bytes(post_vector_physical_bytes), .busy()
+    );
+
+    assign task_ready = rst_n && state == IDLE;
+    assign work_valid = (input_selected && input_work_valid) ||
+        (text_selected && text_work_valid);
+    assign work_op = input_worker ? input_work_op : text_work_op;
+    assign work_domain = input_worker ? input_work_domain : text_work_domain;
+    assign work_target = input_worker ? input_work_target : text_work_target;
+    assign work_token = input_worker ? input_work_token : text_work_token;
+    assign work_layer = input_worker ? input_work_layer : text_work_layer;
+    assign work_length = input_worker ? input_work_length : text_work_length;
+    assign work_component = input_worker ? input_work_component : text_work_component;
+    assign work_slot = input_worker ? input_work_slot : text_work_slot;
+    assign work_bank = input_worker ? input_work_bank : text_work_bank;
+    assign work_scalar_index = input_worker ? input_work_scalar_index : text_work_scalar_index;
+    assign work_data = input_worker ? input_work_data : text_work_data;
+    assign write_valid = input_selected && input_write_valid;
+    assign write_data = input_write_data;
+    assign write_first = input_selected && input_write_first;
+    assign write_last = input_selected && input_write_last;
+    assign write_abort = input_selected && input_write_abort;
+    assign work_rsp_ready = (input_selected && input_work_rsp_ready) ||
+        (text_selected && text_work_rsp_ready);
+    assign modality_valid = (input_selected && input_modality_valid) ||
+        (text_selected && text_modality_valid);
+    assign modality_model = !rst_n ? 2'd0 :
+        (input_worker ? input_modality_model : text_modality_model);
+    assign modality_kind = !rst_n ? 2'd0 :
+        (input_worker ? input_modality_kind : text_modality_kind);
+    assign modality_token = !rst_n ? 32'd0 :
+        (input_worker ? input_modality_token : text_modality_token);
+    assign modality_index = !rst_n ? 32'd0 :
+        (input_worker ? input_modality_index : text_modality_index);
+    assign modality_rsp_ready = (input_selected && input_modality_rsp_ready) ||
+        (text_selected && text_modality_rsp_ready);
+    assign cmd_valid = (input_selected && input_cmd_valid) || (text_selected && text_cmd_valid);
+    assign cmd_write = 0;
+    assign cmd_addr = !rst_n ? 64'd0 : (input_worker ? input_cmd_addr : text_cmd_addr);
+    assign cmd_wdata = 0;
+    assign result_ready = (input_selected && input_result_ready) || (text_selected && text_result_ready);
+    assign embedding_live_bytes = input_worker ? input_embedding_live : text_embedding_live;
+    assign embedding_physical_bytes = rst_n ? input_embedding_physical + text_embedding_physical : 64'd0;
+    assign selected_worker_state_bytes = !rst_n ? 64'd0 :
+        (input_worker ? input_state_bytes : text_state_bytes);
+    localparam integer DISPATCHER_BITS =
+        $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
+        $bits(mode_hold) + $bits(domain_hold) + $bits(token_hold) + $bits(tokens_hold) +
+        $bits(dependency_token_hold) + $bits(layer_hold) + $bits(dependency_layer_hold) +
+        $bits(length_hold) + $bits(dependency_length_hold) + $bits(frame_hold) +
+        $bits(dependency_slot_hold) + $bits(tokens_base_hold) + $bits(weights_base_hold) +
+        $bits(continuation_hold) + $bits(done_continuation_hold) + $bits(dependency_valid_hold) +
+        $bits(input_worker) + $bits(done_dependency_hold) + $bits(done_bank_hold) +
+        $bits(dependency_domain_hold) + $bits(done_domain_hold) + $bits(done_layer_hold) +
+        $bits(done_token_hold) + $bits(done_length_hold) + $bits(error_hold);
+    assign dispatcher_state_bytes = rst_n ? 64'((DISPATCHER_BITS + 7) >> 3) : 64'd0;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            model_hold <= 0;
+            precision_hold <= 0;
+            modality_hold <= 0;
+            mode_hold <= 0;
+            domain_hold <= 0;
+            token_hold <= 0;
+            tokens_hold <= 0;
+            dependency_token_hold <= 0;
+            layer_hold <= 0;
+            dependency_layer_hold <= 0;
+            length_hold <= 0;
+            dependency_length_hold <= 0;
+            frame_hold <= 0;
+            dependency_slot_hold <= 0;
+            tokens_base_hold <= 0;
+            weights_base_hold <= 0;
+            continuation_hold <= 0;
+            done_continuation_hold <= 0;
+            dependency_valid_hold <= 0;
+            input_worker <= 0;
+            done_dependency_hold <= 0;
+            done_bank_hold <= 0;
+            dependency_domain_hold <= 0;
+            done_domain_hold <= 0;
+            done_layer_hold <= 0;
+            done_token_hold <= 0;
+            done_length_hold <= 0;
+            error_hold <= 0;
+        end else begin
+            case (state)
+                IDLE: if (task_valid && task_ready) begin
+                    model_hold <= task_model;
+                    precision_hold <= task_precision;
+                    modality_hold <= task_modality;
+                    mode_hold <= task_mode;
+                    domain_hold <= task_domain;
+                    token_hold <= task_token;
+                    tokens_hold <= task_tokens;
+                    layer_hold <= task_layer;
+                    length_hold <= task_length;
+                    frame_hold <= task_frame;
+                    tokens_base_hold <= task_tokens_base;
+                    weights_base_hold <= task_weights_base;
+                    continuation_hold <= task_continuation;
+                    dependency_valid_hold <= task_dependency_valid;
+                    dependency_domain_hold <= task_dependency_domain;
+                    dependency_layer_hold <= task_dependency_layer;
+                    dependency_token_hold <= task_dependency_token;
+                    dependency_length_hold <= task_dependency_length;
+                    dependency_slot_hold <= task_dependency_slot;
+                    input_worker <= task_layer == 0;
+                    error_hold <= 0;
+                    done_dependency_hold <= 0;
+                    done_bank_hold <= 0;
+                    done_continuation_hold <= 0;
+                    done_domain_hold <= 0;
+                    done_layer_hold <= 0;
+                    done_token_hold <= 0;
+                    done_length_hold <= 0;
+                    state <= VALIDATE;
+                end
+                VALIDATE: begin
+                    if (domain_hold != 0 || length_hold != (COMPACT ? 12'd8 :
+                        (model_hold == 1 ? 12'd1536 : 12'd2560)) ||
+                        (input_worker && mode_hold != 0)) begin
+                        error_hold <= 7;
+                        state <= PUBLISH;
+                    end else
+                        state <= WORKER_START;
+                end
+                WORKER_START: if (input_worker ? input_ready : text_ready)
+                    state <= WORKER_WAIT;
+                WORKER_WAIT: begin
+                    if (input_worker && input_valid) begin
+                        error_hold <= input_error;
+                        done_bank_hold <= input_bank_result;
+                        state <= PUBLISH;
+                    end else if (!input_worker && text_valid) begin
+                        error_hold <= text_error;
+                        done_bank_hold <= text_bank_result;
+                        done_dependency_hold <= text_yield;
+                        done_continuation_hold <= text_continuation;
+                        done_domain_hold <= text_dependency_domain;
+                        done_layer_hold <= text_dependency_layer;
+                        done_token_hold <= text_dependency_token;
+                        done_length_hold <= text_dependency_length;
+                        state <= PUBLISH;
+                    end
+                end
+                PUBLISH: state <= RESPONSE;
+                RESPONSE: if (task_done_ready)
+                    state <= IDLE;
+                default: begin
+                    error_hold <= 7;
+                    done_dependency_hold <= 0;
+                    state <= PUBLISH;
+                end
+            endcase
+        end
+    end
+endmodule

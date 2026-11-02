@@ -5,7 +5,74 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: real Q/dependency responder and predecessor binding
+## Current saved increment: connected resumable text Eval execution
+
+`rtl/anvil_en1_replay_execute.sv` connects the bounded Eval scheduler/workspace
+to genuine input reconstruction and the new
+`rtl/anvil_en1_replay_text_layer.sv`. Registered task descriptors select Eval(0,t)
+input reconstruction or positive-layer numerical execution. Root results still
+come from committed memo reads; the scheduler owns dependency lookup, smaller-
+rank child execution, memo eviction/regeneration, copy and frame release.
+Neither dispatcher supplies a synthetic worker completion or hidden-vector
+answer. Native modality feature production and external/backing integration
+remain missing, so this is not a complete fallback/top implementation.
+
+`rtl/anvil_en1_replay_attention_projection.sv` executes the real output
+projection in ascending head/component reduction order. It recomputes attention
+heads for each H output row instead of allocating another global attention
+tensor. Its unfinished output pairs live in the actual parent frame; the row
+sum, pending low BF16 value and traversal indices survive child work through
+the scheduler's outer continuation. The inner head's lower checkpoint is
+acknowledged into scalar words 15..19 before yield, supplementing the existing
+8..14 words. Resume restores the checkpoint and real arithmetic, not a fresh
+sum or a precomputed answer. Actual additional owner/Q projections and weight
+transactions remain genuine work, not avoided traffic.
+
+The workspace's operation-6 pair assembly/patch additions are guarded by the
+current frame tag. An unfinished assembled bank is unreadable until its final
+acknowledged pair. Inter-pair transaction release permits raw-input reads and
+child replay without the deadlock of an open streamed destination. Explicit
+per-bank progress checks reject missing/out-of-order pairs. Failed writes
+invalidate destination visibility. The added progress metadata is 208 bytes,
+not another vector RAM. Compact scalar slots increase to 32 words; production
+slots stay 256 words and production-width shadow accounting is unchanged.
+Compact backing is now 10496 bytes within the one 16384-byte physical frontier
+RAM; its ordinary frontier cap remains 8192 bytes/512 tokens. No production
+payload reservation or threshold is changed.
+
+The text dispatcher binds the exact predecessor into raw bank 0, commits the
+real attention branch into bank 1, and reconstructs the actual layer's combined
+PLE from immutable original inputs. A checked PLE bank adds 512 production
+bytes / 8 compact bytes. `anvil_en1_asym_attn_ple` adds default-disabled
+`POST_ONLY`, using the existing post-attention norm/residual/FF/GeGLU/gated-PLE/
+scalar stages without duplicating their mathematics. It reads committed
+raw/branch pairs and the reconstructed PLE, then its complete output overwrites
+bank 1 through acknowledged pair assembly. Completion waits for the final
+pair response. The ordinary frontier instance retains POST_ONLY=0.
+
+The head executor adds default-disabled PAUSABLE at the drained component
+boundary. The folded output-weight callback completes before the next head
+request can be accepted. A failed callback rejects subsequent source/owner
+requests without starting a new tile, then retires the actual head failure.
+This is not cancellation of an already outstanding tile or a general-purpose
+withdrawal of stalled valid.
+
+Controller widths for the new dispatchers/projection are derived from the
+declared register widths, and vector live/reserved observations distinguish
+frame, PLE, reconstruction, projection tile and post-only scratch. Complete
+child arithmetic/control accounting, collision-safe physical phase overlay,
+native vision/audio encoders, native session/mask handling and parent-compatible
+literal top/cache/replay/arbiter/CSR integration remain unfinished. The design
+is **continue**, not ready for independent Verifier.
+
+Tools used in this increment: glob, view, rg and apply_patch. No command,
+installation, static elaboration, simulation, synthesis or experiment ran.
+The reserved static check remains unused; there are no preparation receipts.
+The supplied GENERATIONAL_HANDOFF was read and provides only N/A STA/PPA.
+Parent/test/runtime sources and retained failure-0001/attempt-0003 evidence
+remain unchanged; no ownership-guard repair or hardware acceptance is claimed.
+
+## Prior increment: real Q/dependency responder and predecessor binding
 
 `rtl/anvil_en1_replay_attention_execute.sv` connects the saved resumable head
 to real Q generation and owner projection. One folded workspace tile serves
@@ -263,7 +330,9 @@ word channel over its existing synchronous payload array. Control op 3 can
 bind only released RAM; ordinary allocation cannot reacquire a bound backing
 without explicit release. The production backing partition is 983040 bytes,
 leaving 65536 bytes of the admitted 1 MiB ceiling for all arithmetic/control/
-resident state. Compact backing occupies 6400 of the existing 8192 bytes.
+resident state. The later projection-continuation increment increases compact
+backing to 10496 bytes inside one 16384-byte physical RAM, while keeping its
+ordinary frontier cap at 8192 bytes.
 The enclosing scheduler must first drain work and invalidate the separate
 ring. A leaf binding is not yet an implemented system-wide mode transition
 or proof that all connected state fits.

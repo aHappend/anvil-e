@@ -143,6 +143,23 @@ this worker does not implement that encoder or authorize a host feature answer.
 This dispatcher is a text-layer implementation, not yet a connected complete
 root Eval/native/session/top system.
 
+`anvil_en1_replay_execute` connects the existing Eval scheduler/workspace to
+the real input reconstruction and text-layer workers. Its root is text domain
+0, with the full production layer count and compact numerical geometry
+selected only by COMPACT. A scheduler task is captured into a registered
+descriptor before dispatch. Layer 0 uses native input reconstruction; positive
+layers use the resumable text dispatcher. Task completion is returned only
+from the real selected worker, with its bank/dependency/continuation. Workspace
+stream writes from reconstruction and pair/scalar requests from layer execution
+use the same scheduler-guarded channel. Root output comes only from the
+scheduler's acknowledged completed memo reads, not from a bypass stream.
+Backpressure is preserved through every selected memory/work/modality/cache
+channel. The external original-input/weight command port still must connect
+through the one shared arbiter, and backing through the drained frontier RAM.
+Native modality feature production, session/reset integration, complete live
+allocation accounting and the parent-compatible literal top remain required;
+this connected text Eval increment does not claim those missing surfaces.
+
 ## Replay Q, historical fetch and frame-input increment
 
 The optional `ALLOW_QUERY=0/1` capability on `anvil_en1_owner_kv_tile`
@@ -1919,8 +1936,9 @@ across scheduler yields.
 
 `anvil_en1_frontier` provides the ordinary token-major storage, not a complete
 replay controller. COMPACT is 0/1; it reserves 3 MiB of 32-bit payload RAM
-in production and 8192 bytes in compact mode. The compact reservation holds
-512 H=8 vectors, allowing ordinary 17-token cases; forcing a smaller frontier
+in production and 16384 bytes in compact mode. The compact ordinary partition
+is capped at 8192 bytes and holds 512 H=8 vectors, allowing ordinary 17-token cases;
+the remaining physical words cover enlarged fallback continuations. Forcing a smaller frontier
 is a later replay-controller partition decision, not a change to arithmetic.
 Control op 0 starts a session with captured model, generation and context
 length; op 1 invalidates; op 2 freezes all further writes. Op 3 binds the
