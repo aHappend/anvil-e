@@ -172,8 +172,14 @@ module anvil_en1_replay_workspace #(
             {26'd0, copy_source_slot} << 3 :
             ({26'd0, copy_source_slot} << 11) +
                 ({26'd0, copy_source_slot} << 10);
-        wire [31:0] copy_source_base = copy_frame_base +
-            (bank_hold ? 32'(BANK_WORDS) : 32'd0);
+        wire [31:0] copy_source_base = target_hold == 3 ?
+            32'(MEMO_BASE) + ({26'd0, copy_source_slot} << (COMPACT ? 2 : 11)) :
+            copy_frame_base + (bank_hold ? 32'(BANK_WORDS) : 32'd0);
+        wire [31:0] copy_destination_base = target_hold == 3 ? vector_base : memo_base;
+        wire [TAG_BITS-1:0] copy_memo_tag = {model_hold, generation_hold,
+            domain_hold, request_data[25:18], request_data[16:0], length_hold};
+        wire copy_descriptor_valid = copy_source_slot < 16 &&
+            !request_data[17] && request_data[25:18] < layer_hold;
         wire flags_valid = write_first == (pair_index == 0) &&
             write_last == (pair_index == (length_hold >> 1) - 1'b1);
         wire [7:0] allocated_frames = {1'b0, depth} + {7'd0, pending_push};
@@ -228,7 +234,8 @@ module anvil_en1_replay_workspace #(
                 memo_tag_q <= memo_tags[scan_index];
             if (rst_n && state == PUSH_COMMIT)
                 frame_tags[slot_hold] <= request_tag;
-            if (rst_n && state == VECTOR_COMMIT && target_hold != 0)
+            if (rst_n && state == VECTOR_COMMIT &&
+                (target_hold == 1 || target_hold == 2))
                 memo_tags[slot_hold[3:0]] <= request_tag;
         end
 
@@ -304,7 +311,8 @@ module anvil_en1_replay_workspace #(
                             length_hold <= req_length;
                             component_hold <= req_component;
                             slot_hold <= req_slot;
-                            copy_source_slot <= req_slot;
+                            copy_source_slot <= req_op == 3 && req_target == 3 ?
+                                req_data[31:26] : req_slot;
                             bank_hold <= req_bank;
                             scalar_index_hold <= req_scalar_index;
                             request_data <= req_data;
@@ -361,8 +369,7 @@ module anvil_en1_replay_workspace #(
                         end else if ((op_hold == 1 || op_hold == 2) && depth == 0) begin
                             error_hold <= 7;
                             state <= PUBLISH;
-                        end else if ((op_hold == 3 && target_hold > 2) ||
-                            (op_hold == 4 && target_hold > 1)) begin
+                        end else if (op_hold == 4 && target_hold > 1) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else if (op_hold == 4 && (component_hold[0] ||
@@ -419,6 +426,15 @@ module anvil_en1_replay_workspace #(
                                     state <= PUBLISH;
                                 end else begin
                                     scan_index <= 0;
+                                    state <= MEMO_SCAN;
+                                end
+                            end else if (target_hold == 3) begin
+                                if (!copy_descriptor_valid ||
+                                    !memo_occupied[copy_source_slot[3:0]]) begin
+                                    error_hold <= 7;
+                                    state <= PUBLISH;
+                                end else begin
+                                    scan_index <= copy_source_slot[3:0];
                                     state <= MEMO_SCAN;
                                 end
                             end else
@@ -507,7 +523,18 @@ module anvil_en1_replay_workspace #(
                     end
                     MEMO_SCAN: state <= MEMO_CHECK;
                     MEMO_CHECK: begin
-                        if (memo_occupied[scan_index] && memo_tag_q == request_tag) begin
+                        if (op_hold == 3 && target_hold == 3) begin
+                            if (!memo_occupied[scan_index] ||
+                                memo_tag_q != copy_memo_tag) begin
+                                error_hold <= 7;
+                                state <= PUBLISH;
+                            end else begin
+                                hit_hold <= 1;
+                                hit_pulse <= 1;
+                                state <= VECTOR_SETUP;
+                            end
+                        end else if (memo_occupied[scan_index] &&
+                            memo_tag_q == request_tag) begin
                             response_slot <= {2'd0, scan_index};
                             if (op_hold == 5) begin
                                 hit_hold <= 1;
@@ -540,7 +567,7 @@ module anvil_en1_replay_workspace #(
                     VECTOR_SETUP: begin
                         pair_index <= 0;
                         response_slot <= slot_hold;
-                        if (target_hold == 0)
+                        if (target_hold == 0 || target_hold == 3)
                             vector_occupied[vector_bit_index] <= 0;
                         else begin
                             pending_memo <= 1;
@@ -550,7 +577,7 @@ module anvil_en1_replay_workspace #(
                             end
                             memo_occupied[slot_hold[3:0]] <= 0;
                         end
-                        if (target_hold == 2)
+                        if (target_hold == 2 || target_hold == 3)
                             state <= COPY_READ;
                         else
                             state <= STREAM;
@@ -573,7 +600,7 @@ module anvil_en1_replay_workspace #(
                             state <= VECTOR_COMMIT;
                         else begin
                             pair_index <= pair_index + 1'b1;
-                            if (target_hold == 2)
+                            if (target_hold == 2 || target_hold == 3)
                                 state <= COPY_READ;
                             else
                                 state <= STREAM;
@@ -591,14 +618,14 @@ module anvil_en1_replay_workspace #(
                         state <= COPY_WRITE;
                     end
                     COPY_WRITE: begin
-                        backing_address_hold <= 18'(memo_base + pair_index);
+                        backing_address_hold <= 18'(copy_destination_base + pair_index);
                         backing_write_hold <= 1;
                         backing_data_hold <= copy_data;
                         backing_return <= STREAM_ADVANCE;
                         state <= BACKING_SEND;
                     end
                     VECTOR_COMMIT: begin
-                        if (target_hold == 0)
+                        if (target_hold == 0 || target_hold == 3)
                             vector_occupied[vector_bit_index] <= 1;
                         else begin
                             memo_occupied[slot_hold[3:0]] <= 1;

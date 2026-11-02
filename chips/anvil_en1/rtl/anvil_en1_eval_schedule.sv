@@ -172,8 +172,14 @@ module anvil_en1_eval_schedule #(
         work_req_domain == dependency_domain &&
         work_req_layer == dependency_layer && work_req_token == dependency_token &&
         work_req_length == dependency_length && work_req_slot == dependency_slot;
+    wire dependency_copy_tag = dependency_valid_hold &&
+        dependency_domain == current_domain && dependency_length == current_length &&
+        dependency_layer < current_layer && dependency_slot < 16 &&
+        work_req_data == {dependency_slot, dependency_layer, dependency_token[17:0]};
     wire work_operation_valid =
         (work_req_op == 3 && work_req_target == 0 && current_work_tag) ||
+        (work_req_op == 3 && work_req_target == 3 && current_work_tag &&
+            dependency_copy_tag) ||
         (work_req_op == 4 &&
             ((work_req_target == 0 && current_work_tag) ||
              (work_req_target == 1 && dependency_work_tag))) ||

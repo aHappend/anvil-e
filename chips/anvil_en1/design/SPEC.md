@@ -5,6 +5,119 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Replay Q, historical fetch and frame-input increment
+
+The optional `ALLOW_QUERY=0/1` capability on `anvil_en1_owner_kv_tile`
+and its workspace adapter defaults to disabled. With it disabled, root
+owner replay remains strictly K/V-only and explicitly ties off the new
+`is_query` and four-bit `query_head` inputs. With it enabled, a registered
+`is_query=1` descriptor projects the **logical layer's own Q**, including
+upper shared layers, using tensors 0x0101/0x0102. It never uses that layer
+as a K/V owner. Both paths use the same learned input RMS, genuine projection,
+BF16 materialization and paired RoPE arithmetic. Q has 2/8 heads in compact/
+production geometry, with learned D-dimensional Q RMS. K/V retains its
+1/2-head validation, owner-only matrices, learned K RMS and unscaled V RMS.
+`is_query && is_value` is illegal. Actual Q row events are separate from
+owner-reprojection events; they must not inflate avoided K/V work.
+
+`anvil_en1_replay_attention_execute` connects the resumable head, Q source
+and dependency projection responder. Its descriptor includes the current
+Eval(layer+1,position) frame, the already committed raw-input bank, and
+optionally the scheduler's one completed dependency memo handle. Q and K/V
+time-share **one** workspace tile and its H/D banks. A transient Q pair
+can serve its two adjacent component reads within this descriptor; it is
+invalidated on every start, yield and completion. No tensor answer is
+injected externally. Q pair regeneration intentionally recomputes a full
+normalized head; no latency or weight-traffic improvement is claimed.
+
+Every historical fetch first consumes real canonical metadata from the
+cache, without a second alias map. The post-metadata need decision permits
+the current frame only for owner=layer and token=position. Otherwise it
+requires an exact completed Eval(owner,token) memo tag. Missing dependencies
+yield the actual saved numerical checkpoint after acknowledged scalar writes.
+On resume, the head reobtains metadata; the supplied dependency handle is
+validated again before projection. The allowed fetch descriptor is captured
+and must match every subsequent fetch field. Real owner computation uses
+the workspace tile, not the cache's occupied root regen channel. This
+inner BF16 responder is not a resident root-cache hit and does not fabricate
+such telemetry. Actual source reads and projected owner rows are reported.
+Masks remain the caller's real immutable-input/mask response channel.
+
+Head outputs may precede a later yield. The enclosing layer worker must
+retain every accepted component/partial reduction in its actual live frame
+before handing off a dependency; it must not copy an unfinished vector to
+memo or restart a saved reduction. This executor does not implement those
+residual/PLE/MLP/whole-layer continuation stages or dispatch.
+
+| Q/dependency executor boundary | Required behavior |
+| --- | --- |
+| Start D0/D1/D2 | Capture the complete descriptor, validate model/precision/frame/memo, then start the registered numerical head |
+| Q pair | Read tagged current raw input, execute learned input/Q norms and actual Q projection/RoPE; select only the requested BF16 lane |
+| Tile ownership | Q and historical projection are mutually exclusive; retain workspace/memory routing until real source and tile responses retire |
+| Need/fetch | Need follows canonical metadata; allow captures the exact owner descriptor, yield issues no fetch, mismatch returns error 7 |
+| Historical dependency | Missing memo requests smaller-rank Eval, never a recursive wait on root regen or an external activation read |
+| Component/done stalls | Hold the actual component/checkpoint/error; done cannot retire on creation or before service responses |
+| Q source error | Retire the numerical tile and head source response, preserving the actual tile error instead of losing it through the head's one-bit source-error channel |
+| Reset | Zero public outputs, invalidate Q/authorization/checkpoint state and cancel the internal numerical generation |
+
+The executor has 796 explicitly declared register bits, including both
+pair registers and both held 160-bit continuations: 100 byte-rounded bytes.
+`pair_live_bytes` is a **subset observation**, not additional RAM to add
+again to controller bytes. The adapter now has 419 register bits / 53
+byte-rounded bytes. Checkpoint bridge state is separately exposed, as is
+the one 2H+2D tile-bank allocation; every child arithmetic register remains
+additional whole-system accounting. The optional projection mode adds
+three controller bits in the numerical tile. These numbers do not establish
+the final fallback/ordinary physical or live-allocation bounds.
+
+### Acknowledged predecessor-vector binding
+
+Before layer attention, the worker must commit the completed preceding Eval
+vector to its current frame's raw-input bank. Opening a streamed vector write
+and then requesting memo reads through the same single-outstanding workspace
+would deadlock. Internal store target 3 therefore means **memo-to-frame copy**,
+not a streamed write and not an external activation ingress. Existing targets
+0/1/2 and operation identities remain unchanged. The public request descriptor
+identifies the destination live frame/bank with its complete tag; `req_data`
+encodes source memo slot in bits 31:26, source layer in 25:18 and source token
+in 17:0. Token bit 17 must be zero. Model/generation/domain/length are inherited
+from the destination/session. The source layer must be strictly smaller than
+the destination layer. The scheduler authorizes this request only if **every**
+source field equals its one returned dependency, with identical domain/length.
+Other target-3 requests reject before backing access.
+
+The workspace checks the destination frame tag, then synchronously reads the
+specified occupied memo tag and compares its full source identity. Only then
+does it invalidate the destination bank and copy ascending 32-bit pairs through
+its existing acknowledged backing read/write FSM and one-word copy register.
+No second vector RAM, new frame, memo allocation, eviction or external transfer
+is introduced. Destination visibility commits only after every read and write
+response succeeds. A failed backing response leaves the destination unreadable
+and the source memo unchanged. Successful copy has a real memo-hit event, not
+an alias hit. The existing complete-vector-to-memo target 2 still checks its
+own complete source bank and retains its existing replacement behavior.
+
+| Frame-input/copy boundary | Required behavior |
+| --- | --- |
+| Fresh predecessor absent | Request Eval(frame_layer-1,token) as a real scheduler dependency; do not construct a zero input |
+| Linear single-token input | Consume the scheduler's actual returned predecessor memo using the same complete-tag copy path |
+| Copy request/response stall | Hold source encoding and destination descriptor; complete only after the final acknowledged write and response |
+| Source/destination tags | Reject stale generation, wrong layer/token/length/domain/slot or uncommitted bank before access |
+| Source lifetime | Keep source occupied and unchanged until all copy reads retire; no memo replacement during the transaction |
+| Failed copy | Stop after the failed accepted backing response; never expose a partial destination as an input |
+| Reset | Clear controller/copy visibility, not RAM payload; no successful completion survives reset |
+
+This is a required internal data-movement addition, not execution of a complete
+layer. The whole-layer numerical worker, native encoders, final liveness ledger
+and compatible top/session/arbiter/CSR integration remain unfinished.
+`anvil_en1_replay_frame_input` implements that predecessor-binding subtask:
+it validates a text Eval frame and either requests the exact preceding Eval
+dependency or issues target-3 copy from the supplied matching memo. Done
+follows the real copy response and an additional registered error stage;
+it is not whole-layer completion. Its 166 declared controller bits occupy
+21 byte-rounded bytes, with no private vector RAM. The copy extension adds
+no new workspace registers or backing reservation.
+
 ## Owner-replay transport and vector-commit boundary
 
 `anvil_en1_owner_replay` is the session-bound owner-projection transport.
@@ -1386,6 +1499,11 @@ DDR command is used. Destination visibility commits only after every pair,
 and `rsp_slot` returns the new memo handle. The source frame is released only
 by a subsequent pop. Backing failure leaves the memo destination unreadable.
 
+Target 3 is the acknowledged memo-to-frame copy described in the predecessor
+binding table above. It copies only an occupied, fully matching, smaller-layer
+memo into the specified live frame/bank. It does not enter the streamed-write
+state, allocate/replace a memo, or alter any backing partition.
+
 Memo lookup scans 16 occupied tags sequentially and returns a slot/hit, not a
 fabricated vector. Complete-vector memo stores first scan for an existing tag.
 An existing-tag replacement preserves the round-robin cursor. A new tag uses
@@ -1434,6 +1552,9 @@ channel for frame vector/scalar storage and dependency memo reads. It cannot
 push/pop frames, store memo entries, change a parent's continuation, or write
 the scheduler's scalar words 0..7. It must serialize/drain all primitive,
 memory and workspace work before completing or yielding a task.
+The sole additional data-movement request is store target 3, guarded by both
+the current frame tag and the exact returned dependency's packed source
+identity. It cannot access an arbitrary memo or another frame.
 
 A yielded task captures the required dependency identity and the worker
 continuation. The scheduler first looks up its complete memo tag. A hit resumes
@@ -1595,8 +1716,9 @@ not trigger a memo copy of an unfinished layer vector.
 | Reset | Cancel checkpoint/read visibility and zero every public output without clearing backing payload |
 
 This defines a resumable numerical attention subtask, not a complete Eval
-text layer. The layer worker's normalized Q generation, dependency projection
-responder, frame-vector residual/PLE/MLP stages and dispatch are still required.
+text layer. Q generation and the dependency projection responder are connected
+in `anvil_en1_replay_attention_execute`; the enclosing frame-vector
+residual/PLE/MLP stages, whole-layer continuation and dispatch remain required.
 Independent functional/numerical/eviction/reset verification remains pending.
 
 `anvil_en1_replay_kv_tile` is the owner-projection source adapter for nested
@@ -1640,13 +1762,15 @@ tile completion path after the outstanding response retires.
 Tile H/D banks retain their existing maximum 6144-byte production reservation
 (32 compact); scalar/control/child registers and returned words remain
 additional live accounting. The adapter itself has only bounded registers.
-Its 414 explicitly declared register bits occupy 52 byte-rounded controller
+Its 419 explicitly declared register bits occupy 53 byte-rounded controller
 bytes, including its pair/source response registers. The tile and all child
 numerical registers are additional, not included in that controller figure.
 Accepted internal source reads are disclosed separately from external
 original-input bytes, which only the shared arbiter can count.
-Connecting this subtask to dependency completion and the replay attention
-data responder remains the enclosing numerical worker's responsibility.
+`anvil_en1_replay_attention_execute` connects this subtask to the registered
+dependency handle and actual replay attention data responder. The enclosing
+whole-layer worker must still dispatch it and persist partial layer results
+across scheduler yields.
 
 ### Ordinary frontier storage boundary
 

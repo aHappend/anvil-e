@@ -5,7 +5,65 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: resumable numerical attention and memo-backed owner tiles
+## Current saved increment: real Q/dependency responder and predecessor binding
+
+`rtl/anvil_en1_replay_attention_execute.sv` connects the saved resumable head
+to real Q generation and owner projection. One folded workspace tile serves
+both operations, rather than allocating separate Q/K/V numerical banks.
+Q uses the logical layer's own Q matrix and learned Q RMS, including shared
+layers; K/V still uses only the canonical metadata response's actual owner.
+The numerical tile's optional query capability defaults off, and root owner
+replay explicitly ties it off. The existing input/K/V numerical path is
+retained. Actual query rows have separate events from owner reprojection.
+
+The executor authorizes a fetch only from the committed current raw frame
+when owner/token exactly match the logical layer/current token, or from
+the scheduler's matching completed dependency memo. Other legal requests
+yield after the acknowledged attention checkpoint. An allow decision captures
+every fetch descriptor field; the following fetch must match. Inner data
+comes from the real workspace projection, never recursive root cache regen
+or an external generated-state region. A transient Q pair serves adjacent
+components and is discarded at descriptor/yield/completion boundaries.
+Regeneration can be expensive and is not claimed as avoided owner work.
+
+`rtl/anvil_en1_replay_frame_input.sv` implements the preceding hidden-vector
+binding subtask. Missing predecessor data requests the exact smaller-layer
+Eval dependency. A returned matching memo is copied to the current raw frame
+only through the actual acknowledged workspace transport. The workspace adds
+internal memo-to-frame store target 3, with complete source/destination tag
+checks, serialized backing reads/writes and final-write-before-visibility.
+`rtl/anvil_en1_eval_schedule.sv` permits that request only for its exact
+returned dependency and current frame. No second vector RAM, additional frame,
+memo eviction or external activation transaction is introduced. Opening an
+ordinary stream store and reading memo through the same single-outstanding
+workspace would deadlock; the internal copy avoids that unimplemented shortcut.
+
+SPEC freezes this source encoding, registered stage/degenerate/error table
+and telemetry. Executor/controller state is 100 bytes, frame-input state
+21 bytes, and the extended workspace source adapter 53 bytes. The one H/D
+tile-bank reservation is unchanged. Pair bytes are a subset of controller
+state, not an extra allocation to count twice. All numerical child registers
+still require whole-system accounting; these local figures do not prove
+the final live ledger, FPGA fit or timing.
+
+These are implemented numerical subtasks, not a complete layer or system.
+Remaining: dispatch reconstruction/predecessor binding, retain partial
+attention/layer outputs and exact outer continuations across child work,
+complete frame-backed residual/norm/PLE/MLP execution, native vision/audio
+encoders, whole-system liveness and compatible literal top/session/arbiter/CSR
+integration. The accepted output of a head may precede a later yield; the
+whole-layer worker must persist it before yielding, not memo-copy an incomplete
+layer. The design is **continue**, not ready for independent Verifier.
+
+Actual tools used were glob, view, rg and apply_patch. No command, installation,
+static elaboration, simulation, synthesis or experiment ran. The one reserved
+static check remains unused and there are no preparation receipts.
+Parent RTL, tests and runtime-owned metadata/evidence were preserved, including
+failure-0001 and `.vulcan/engineering/run-0001/attempt-0003`; no repair or
+acceptance of the earlier ownership-guard interruption is claimed. The
+supplied GENERATIONAL_HANDOFF was read; its N/A entries provide no STA/PPA.
+
+## Prior increment: resumable numerical attention and memo-backed owner tiles
 
 `rtl/anvil_en1_attention_head.sv` adds an optional, default-disabled replay
 boundary without changing the ordinary numerical operation/reduction order.

@@ -461,8 +461,9 @@ module anvil_en1_replay_attention_execute #(
                     state <= ATTENTION_RUN;
                 ATTENTION_RUN: if (attention_valid &&
                     service_state == SERVICE_IDLE && !authorized) begin
-                    error_hold <= attention_error;
-                    yield_hold <= attention_yield && attention_error == 0;
+                    if (error_hold == 0)
+                        error_hold <= attention_error;
+                    yield_hold <= attention_yield && attention_error == 0 && error_hold == 0;
                     done_continuation_hold <= attention_continuation;
                     done_owner_hold <= attention_owner;
                     done_token_hold <= attention_token;
@@ -505,6 +506,7 @@ module anvil_en1_replay_attention_execute #(
                 QUERY_VALIDATE: begin
                     if (service_component >= dimension) begin
                         service_error <= 5;
+                        error_hold <= 5;
                         service_state <= QUERY_PUBLISH;
                     end else if (query_pair_valid &&
                         query_pair_component == {service_component[9:1], 1'b0}) begin
@@ -518,6 +520,8 @@ module anvil_en1_replay_attention_execute #(
                 QUERY_RUN: if (tile_valid) begin
                     service_pair <= tile_data;
                     service_error <= tile_error;
+                    if (tile_error != 0)
+                        error_hold <= tile_error;
                     query_pair_valid <= tile_error == 0;
                     if (tile_error == 0) begin
                         query_pair <= tile_data;
