@@ -73,6 +73,7 @@ module anvil_en1_replay_execute #(
     input wire [3:0] backing_rsp_error,
     output wire [6:0] frame_depth,
     output wire [63:0] live_payload_bytes, production_shadow_bytes,
+    output wire [63:0] native_payload_bytes, native_production_shadow_bytes,
     output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
     output wire [63:0] scheduler_state_bytes, dispatcher_state_bytes,
     output wire [63:0] selected_worker_state_bytes,
@@ -117,6 +118,7 @@ module anvil_en1_replay_execute #(
     output wire source_read_event,
     output wire [31:0] source_read_bytes,
     output wire [63:0] reported_controller_bytes,
+    output wire [63:0] native_reconstruction_controller_bytes,
     output wire [3:0] attention_activity,
     output wire avoided_projection_event,
     output wire [31:0] avoided_projection_bytes,
@@ -220,6 +222,8 @@ module anvil_en1_replay_execute #(
         .frame_depth(frame_depth), .scheduler_state_bytes(scheduler_state_bytes),
         .workspace_controller_bytes(workspace_controller_bytes),
         .live_payload_bytes(live_payload_bytes), .production_shadow_bytes(production_shadow_bytes),
+        .native_payload_bytes(native_payload_bytes),
+        .native_production_shadow_bytes(native_production_shadow_bytes),
         .backing_reserved_bytes(backing_reserved_bytes),
         .visibility_metadata_bytes(visibility_metadata_bytes),
         .memo_hit_event(memo_hit_event), .memo_eviction_event(memo_eviction_event),
@@ -858,6 +862,9 @@ module anvil_en1_replay_execute #(
     wire [63:0] audio_reported_controllers = audio_input_controller_bytes +
         audio_layer_controller_bytes + audio_nested_controller_bytes +
         audio_feature_controller_bytes + audio_feature_nested_controller_bytes;
+    assign native_reconstruction_controller_bytes = !rst_n ? 64'd0 :
+        input_state_bytes + vision_reported_controllers + audio_reported_controllers +
+        image_feature_controller_bytes + image_feature_nested_controller_bytes;
     assign reported_controller_bytes = !rst_n ? 64'd0 :
         scheduler_state_bytes + dispatcher_state_bytes + workspace_controller_bytes +
         text_reported_controllers + vision_reported_controllers +

@@ -69,7 +69,7 @@ dispatch leaves the prior successful session descriptor intact.
 | Native dispatch | Advance nonzero generation after successful full scan, then offer a stable captured descriptor until native start acceptance |
 | Memory | Parent has its own unchanged bridge; positions/native share a second literal registered bridge; only the selected bridge drives public DDR |
 | Last logit | Native completion cannot precede acceptance of the final ascending-vocabulary logit |
-| Child completion | Accept actual child done, retain its error, publish outer completion on a later edge |
+| Child completion | Accept actual child done; parent publishes later, native additionally drains the allocation pipeline before publishing |
 | Stalled outer completion | Hold done/error and close job ingress; no second job may switch memory ownership |
 | C=1/3/64 | Identical top sequencing; the real cache handles explicit non-power-of-two replacement wrap |
 | Single token | Position[0] must be 0; prefill and final-logit acceptance remain real handshakes |
@@ -140,7 +140,7 @@ No projected-output count is a weight-bandwidth measurement.
 
 `anvil_en1_allocation_ledger` samples the native 25-field component vector,
 four metadata fields and the top integration reservation each native
-execution cycle. Three independent 32-term balanced adder trees each
+execution cycle. Four independent 32-term balanced adder trees each
 have five register stages and one 64-bit addition per stage. The model
 and observation-valid tags traverse those same stages. A report therefore
 corresponds to one coherent input cycle, not a mixture of five successive
@@ -152,12 +152,13 @@ of idle physical SRAM capacity supplies these totals.
 | Payload | Fields 0..15 and 18..21 | Metric 15, current allocated payload gauge |
 | Replay reservation | Fields 5..16 and 22, plus workspace visibility metadata | Metric 20, saturating-session-independent maximum |
 | KV-equivalent reservation | All 25 component fields, all four metadata fields and integration reservation | Metric 24, maximum |
+| Native scratch | Native workspace subset, fields 3/9/10/12..15/19 and native reconstruction controllers | Allocation failure guard; not an additional contribution to metric 24 |
 
 Integration reservation includes the enclosing top's complete declared
 descriptor/session/traffic registers, the immutable native bridge's
 132 register bits (state/write/address/write-data/read-data/error), the
 CSR engine's complete two 29-metric counter/snapshot banks and controller/atomic
-readback state, and the ledger's own pipeline registers. Arrays already
+readback state, the allocation guard and the ledger's own pipeline registers. Arrays already
 charged in payload or metadata fields are not added as primitive state.
 The inactive immutable parent datapath is not native cache-equivalent
 state; its physical FPGA cost still belongs in whole-top synthesis.
@@ -170,14 +171,83 @@ If both event channels target one of those metrics in the same bank,
 the dedicated allocation report has priority. Clear still wins over
 both channels; snapshot still captures the pre-update counter value.
 The last reports can retire after the job leaves native execution, so
-completion does not silently drop the pipeline tail.
+completion does not silently drop the pipeline tail. Native completion now
+also waits eight drain edges and a subsequent allocation-check edge before
+committing a successful session.
 
 These are connected conservative reservations, including held copies
 and idle controllers, not independently accepted allocation completeness
 or storage savings. Actual mode-overlap, short-context native scratch,
-ordinary workspace and full fallback limits still need enforcement.
+ordinary workspace and full production-width compact-shadow limits still
+need enforcement. The completion guard below now reports actual scratch,
+fallback-ceiling, overlap and equivalent-payload violations.
 Physical reserved payload and metadata remain separately exposed by
 their owning leaves; a live subtotal is not a Quartus resource report.
+
+### Native-workspace domain census
+
+The replay workspace additionally reports `native_payload_bytes` and
+`native_production_shadow_bytes`. These are subsets of the existing
+workspace totals, not new allocations. Domain 0 is text; domains 1, 2
+and 3 are vision, audio and reconstructed native features. Charge both
+vector banks and the complete 128-byte scalar reservation of every live
+or pending native frame, and every live or pending native memo vector.
+Keep ordinary and production-shadow vector widths separate. The native
+parent frame remains charged while a dependency executes, even if the
+dispatcher currently selects text work.
+
+| Workspace event | Native subset update |
+| --- | --- |
+| Frame reserve | Include the pending frame's vectors and scalars before the first continuation write |
+| Frame commit | Transfer the pending reservation to committed totals without a zero or double-counted cycle |
+| Pop | Remove the actual popped frame's domain/width, not the incoming request's domain |
+| Memo replacement | Remove the victim's stored domain and width; add the pending new vector before its first backing write |
+| Memo commit | Transfer pending to committed, retaining the new memo domain |
+| Aborted copy or backing error | Release pending storage; keep surviving committed frames/memos charged until invalidation |
+| Reset/session invalidation | Clear both domain subtotals and native-frame count with the existing visibility state |
+
+Native-subtotal underflow or inconsistency is a cache-state error (7),
+not unsigned wraparound. These subsets traverse the existing schedule,
+executor and binding interfaces without altering numerical scheduling,
+backing addresses, memo replacement or external memory traffic. They are
+required inputs to the remaining whole-system native-scratch limiter;
+by themselves they do not establish its bound or the complete compact
+production-shadow ledger.
+
+### Completion-time allocation failure guard
+
+The allocation ledger adds a fourth, identically registered sum for
+native reconstruction scratch: workspace native payload, fields 3, 9,
+10, 12..15 and 19, and the reported native reconstruction controllers.
+This deliberately also reserves the embedding/PLE controllers and banks
+when not currently selected; idle dispatcher selection cannot erase a
+surviving allocation. Scratch is a subset of equivalent bytes, not a
+second contribution to that total.
+
+The top's allocation guard checks actual equivalent bytes against
+`20*P < 9*B`, checks fallback equivalent bytes against 1 MiB, and checks
+ordinary native scratch against `min(1 MiB,B>>3)`. B is always the
+production-geometry padded baseline, also in compact builds. Comparison
+uses widened shift/add operands and a separately registered comparison
+stage, never division or a truncating percentage calculation. It also
+rejects simultaneous fallback and live ordinary frontier/ring reservations.
+This is an allocation-failure observer: it neither grants excess storage
+nor changes the admitted operation to an error-return fallback.
+
+| Completion boundary | Behavior |
+| --- | --- |
+| New accepted job | Clear only this guard's sticky failure and invalidate comparison pipeline |
+| Native execution | Sample coherent allocation and mode observations; retain any failed limit |
+| Native done | Retire the real worker response, close native ingress and preserve its error |
+| Allocation drain | Wait for the ledger and comparison tail before considering success |
+| Allocation check | Preserve an earlier error; otherwise report error 7 on an allocation failure |
+| Session commit | Establish the decode session only after both native execution and allocation checks succeeded |
+| Reset | Clear guard and pipeline, with no manufactured allocation reports |
+
+These connected actual-allocation checks do not certify completeness of
+the allocation census, full production-width compact shadow limits or
+FPGA resource fit. The full compact-shadow limiter and remaining physical
+phase overlays still must be completed before the design handoff.
 
 ### Matched-unshared payload gauge
 

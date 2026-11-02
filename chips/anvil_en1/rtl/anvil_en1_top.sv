@@ -49,7 +49,8 @@ module anvil_en1_top #(
 );
     localparam [3:0] IDLE=0, VALIDATE=1, PARENT_START=2, PARENT_WAIT=3,
         POSITION_SEND=4, POSITION_WAIT=5, POSITION_CHECK=6,
-        NATIVE_START=7, NATIVE_WAIT=8, PUBLISH=9, RESPONSE=10;
+        NATIVE_START=7, NATIVE_WAIT=8, PUBLISH=9, RESPONSE=10,
+        ALLOCATION_DRAIN=11, ALLOCATION_CHECK=12;
     reg [3:0] state, error_hold;
     reg [1:0] model_hold, precision_hold;
     reg [2:0] mode_hold;
@@ -71,6 +72,9 @@ module anvil_en1_top #(
     reg [14:0] baseline_local_units;
     reg [20:0] baseline_global_units;
     reg [31:0] baseline_payload;
+    reg [14:0] production_local_units;
+    reg [31:0] production_baseline_payload;
+    reg [3:0] allocation_wait;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -116,6 +120,11 @@ module anvil_en1_top #(
     wire [21:0] baseline_units = {7'd0, baseline_local_units} +
         {1'b0, baseline_global_units};
     wire [31:0] baseline_units_wide = {10'd0, baseline_units};
+    wire [9:0] production_window = padded_context > 32'd512 ?
+        10'd512 : padded_context[9:0];
+    wire [21:0] production_units = {7'd0, production_local_units} +
+        {1'b0, baseline_global_units};
+    wire [31:0] production_units_wide = {10'd0, production_units};
     assign job_ready = rst_n && state == IDLE;
     assign busy = rst_n && state != IDLE;
     assign done_valid = rst_n && state == RESPONSE;
@@ -187,6 +196,9 @@ module anvil_en1_top #(
     wire [1599:0] live_bytes, physical_bytes;
     wire [255:0] metadata_bytes;
     wire [63:0] shadow_bytes, reserved_bytes;
+    wire [63:0] native_workspace_bytes, native_workspace_shadow_bytes;
+    wire [63:0] native_reconstruction_controller_bytes;
+    wire native_allocation_check_valid, native_allocation_fallback;
     wire resident_hit, resident_miss, alias_hit, memo_hit, memo_eviction, ring_hit;
     wire owner_event, replay_owner_event, replay_input_event, replay_projection_event;
     wire replay_intermediate_event, native_fault;
@@ -197,10 +209,13 @@ module anvil_en1_top #(
     wire [63:0] avoided_projection_bytes;
     wire bridge_ready, bridge_valid, bridge_error;
     wire [31:0] bridge_data;
-    wire [63:0] csr_controller_bytes, ledger_controller_bytes;
+    wire [63:0] csr_controller_bytes, ledger_controller_bytes, guard_controller_bytes;
     wire allocation_report_valid;
+    wire allocation_report_check_valid, allocation_report_fallback, allocation_report_overlap;
+    wire allocation_failed;
     wire [1:0] allocation_report_model;
     wire [63:0] allocation_payload_bytes, allocation_replay_bytes, allocation_equivalent_bytes;
+    wire [63:0] native_scratch_bytes;
     localparam integer TOP_CONTROLLER_BITS = $bits({
         state, error_hold, model_hold, precision_hold, mode_hold, decode_hold,
         tokens_hold, rows_hold, columns_hold, frames_hold, position_hold, output_hold,
@@ -210,20 +225,36 @@ module anvil_en1_top #(
         session_precision, session_mode, session_weights, session_vision_weights,
         session_audio_weights, session_image, session_audio, session_ids, session_positions,
         session_masks, session_rows, session_columns, session_frames, baseline_local_units,
-        baseline_global_units, baseline_payload, bridge_input, bridge_replay
+        baseline_global_units, baseline_payload, bridge_input, bridge_replay,
+        production_local_units, production_baseline_payload, allocation_wait
     });
     // Immutable anvil_e2_memory: state, write, address, write/read data, error.
     localparam integer NATIVE_BRIDGE_BITS = 2+1+64+32+32+1;
     wire [63:0] integration_bytes = !rst_n ? 64'd0 :
         64'((TOP_CONTROLLER_BITS+7) >> 3) + 64'((NATIVE_BRIDGE_BITS+7) >> 3) +
-        csr_controller_bytes + ledger_controller_bytes;
+        csr_controller_bytes + ledger_controller_bytes + guard_controller_bytes;
     anvil_en1_allocation_ledger allocations (
         .clk(clk), .rst_n(rst_n), .observation_valid(native_selected),
         .observation_model(model_hold), .component_live_bytes(live_bytes),
         .metadata_bytes(metadata_bytes), .integration_bytes(integration_bytes),
+        .native_workspace_bytes(native_workspace_bytes),
+        .native_controller_bytes(native_reconstruction_controller_bytes),
+        .observation_check_valid(native_allocation_check_valid),
+        .observation_fallback(native_allocation_fallback),
         .report_valid(allocation_report_valid), .report_model(allocation_report_model),
+        .report_check_valid(allocation_report_check_valid),
+        .report_fallback(allocation_report_fallback), .report_overlap(allocation_report_overlap),
         .payload_bytes(allocation_payload_bytes), .replay_bytes(allocation_replay_bytes),
+        .native_scratch_bytes(native_scratch_bytes),
         .equivalent_bytes(allocation_equivalent_bytes), .controller_bytes(ledger_controller_bytes)
+    );
+    anvil_en1_allocation_guard allocation_limits (
+        .clk(clk), .rst_n(rst_n), .clear(job_valid && job_ready),
+        .report_valid(allocation_report_check_valid),
+        .report_fallback(allocation_report_fallback), .report_overlap(allocation_report_overlap),
+        .equivalent_bytes(allocation_equivalent_bytes), .native_scratch_bytes(native_scratch_bytes),
+        .matched_payload_bytes({32'd0, production_baseline_payload}),
+        .failed(allocation_failed), .controller_bytes(guard_controller_bytes)
     );
     anvil_en1_native #(.COMPACT(COMPACT), .RESIDENT_ENTRIES(RESIDENT_ENTRIES)) native (
         .clk(clk), .rst_n(rst_n),
@@ -251,6 +282,11 @@ module anvil_en1_top #(
         .fallback_active(fallback_active), .frame_depth(frame_depth),
         .allocation_live_bytes(live_bytes), .allocation_physical_bytes(physical_bytes),
         .allocation_metadata_bytes(metadata_bytes), .workspace_shadow_bytes(shadow_bytes),
+        .native_workspace_bytes(native_workspace_bytes),
+        .native_workspace_shadow_bytes(native_workspace_shadow_bytes),
+        .native_reconstruction_controller_bytes(native_reconstruction_controller_bytes),
+        .allocation_check_valid(native_allocation_check_valid),
+        .allocation_fallback(native_allocation_fallback),
         .workspace_reserved_bytes(reserved_bytes), .resident_hit_event(resident_hit),
         .resident_miss_event(resident_miss), .alias_event(alias_hit),
         .memo_hit_event(memo_hit), .memo_eviction_event(memo_eviction),
@@ -359,16 +395,22 @@ module anvil_en1_top #(
             baseline_local_units <= 0;
             baseline_global_units <= 0;
             baseline_payload <= 0;
+            production_local_units <= 0;
+            production_baseline_payload <= 0;
         end else if (job_valid && job_ready) begin
             baseline_local_units <= 0;
             baseline_global_units <= 0;
             baseline_payload <= 0;
+            production_local_units <= 0;
+            production_baseline_payload <= 0;
         end else if (state == VALIDATE && model_hold != 0 &&
             model_hold != 3 && precision_hold <= 1 &&
             !native_descriptor_bad && !native_session_bad) begin
             baseline_local_units <= {5'd0, baseline_window} *
                 (model_hold == 1 ? 15'd28 : 15'd35);
             baseline_global_units <= {3'd0, padded_context[17:0]} * 21'd14;
+            production_local_units <= {5'd0, production_window} *
+                (model_hold == 1 ? 15'd28 : 15'd35);
         end else if (state == POSITION_SEND) begin
             if (COMPACT)
                 baseline_payload <= baseline_units_wide << 4;
@@ -376,6 +418,8 @@ module anvil_en1_top #(
                 baseline_payload <= baseline_units_wide << 10;
             else
                 baseline_payload <= baseline_units_wide << 11;
+            production_baseline_payload <= model_hold == 1 ?
+                production_units_wide << 10 : production_units_wide << 11;
         end
     end
     always @(posedge clk or negedge rst_n) begin
@@ -450,6 +494,7 @@ module anvil_en1_top #(
             session_rows <= 0;
             session_columns <= 0;
             session_frames <= 0;
+            allocation_wait <= 0;
         end else begin
             case (state)
                 IDLE: if (job_valid && job_ready) begin
@@ -526,8 +571,19 @@ module anvil_en1_top #(
                 NATIVE_START: if (native_ready)
                     state <= NATIVE_WAIT;
                 NATIVE_WAIT: if (native_done) begin
-                    error_hold <= native_error;
-                    if (native_error == 0 && !native_fault) begin
+                    error_hold <= native_error != 0 ? native_error :
+                        (native_fault ? 4'd7 : 4'd0);
+                    allocation_wait <= 0;
+                    state <= ALLOCATION_DRAIN;
+                end
+                ALLOCATION_DRAIN: begin
+                    if (allocation_wait == 7)
+                        state <= ALLOCATION_CHECK;
+                    else
+                        allocation_wait <= allocation_wait + 1'b1;
+                end
+                ALLOCATION_CHECK: begin
+                    if (error_hold == 0 && !allocation_failed) begin
                         session_valid <= 1;
                         session_tokens <= tokens_hold;
                         session_model <= model_hold;
@@ -546,7 +602,7 @@ module anvil_en1_top #(
                         session_frames <= frames_hold;
                     end else begin
                         session_valid <= 0;
-                        if (native_error == 0)
+                        if (error_hold == 0)
                             error_hold <= 7;
                     end
                     state <= PUBLISH;

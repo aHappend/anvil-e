@@ -40,6 +40,7 @@ module anvil_en1_replay_workspace #(
     output wire [11:0] rsp_length,
     output wire [6:0] frame_depth,
     output wire [63:0] live_payload_bytes, production_shadow_bytes,
+    output wire [63:0] native_payload_bytes, native_production_shadow_bytes,
     output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
     output wire [63:0] controller_bytes,
     output wire memo_hit_event, memo_eviction_event,
@@ -76,6 +77,8 @@ module anvil_en1_replay_workspace #(
         assign frame_depth = 0;
         assign live_payload_bytes = 0;
         assign production_shadow_bytes = 0;
+        assign native_payload_bytes = 0;
+        assign native_production_shadow_bytes = 0;
         assign backing_reserved_bytes = 0;
         assign visibility_metadata_bytes = 0;
         assign controller_bytes = 0;
@@ -141,6 +144,9 @@ module anvil_en1_replay_workspace #(
         reg [31:0] memo_domains;
         reg [31:0] frame_payload_bytes, memo_payload_bytes;
         reg [31:0] shadow_frame_payload_bytes, shadow_memo_payload_bytes;
+        reg [31:0] native_frame_payload_bytes, native_memo_payload_bytes;
+        reg [31:0] native_shadow_frame_bytes, native_shadow_memo_bytes;
+        reg [6:0] native_depth;
         reg [32:0] allocation_candidate, shadow_candidate;
         reg [64*SCALAR_WORDS-1:0] scalar_occupied;
         (* ramstyle = "MLAB", nomem2reg *)
@@ -172,6 +178,9 @@ module anvil_en1_replay_workspace #(
             $bits(vector_present_q) + $bits(pair_active_q) + $bits(pair_component_q) +
             $bits(frame_payload_bytes) + $bits(memo_payload_bytes) +
             $bits(shadow_frame_payload_bytes) + $bits(shadow_memo_payload_bytes) +
+            $bits(native_frame_payload_bytes) + $bits(native_memo_payload_bytes) +
+            $bits(native_shadow_frame_bytes) + $bits(native_shadow_memo_bytes) +
+            $bits(native_depth) +
             $bits(allocation_candidate) + $bits(shadow_candidate);
 
         wire [TAG_BITS-1:0] incoming_tag = {req_model, req_generation,
@@ -274,6 +283,29 @@ module anvil_en1_replay_workspace #(
         wire [63:0] shadow_scalars = {56'd0, allocated_frames} << 7;
         wire [63:0] shadow_memos = {32'd0, shadow_memo_payload_bytes} +
             (pending_memo ? {32'd0, request_shadow_vector_bytes} : 64'd0);
+        wire native_request = domain_hold != 0;
+        wire native_pop = response_tag[38:37] != 0;
+        wire native_victim = memo_occupied[slot_hold[3:0]] &&
+            replaced_memo_domain != 0;
+        wire [7:0] native_allocated_frames = {1'b0, native_depth} +
+            {7'd0, pending_push && native_request};
+        wire [63:0] native_scalars = {56'd0, native_allocated_frames} << 7;
+        wire [63:0] native_frames = {32'd0, native_frame_payload_bytes} +
+            (pending_push && native_request ? {32'd0, request_frame_bytes} : 64'd0);
+        wire [63:0] native_shadow_frames = {32'd0, native_shadow_frame_bytes} +
+            (pending_push && native_request ?
+                {32'd0, request_shadow_frame_bytes} : 64'd0);
+        wire [63:0] native_memos = {32'd0, native_memo_payload_bytes} +
+            (pending_memo && native_request ? {32'd0, request_vector_bytes} : 64'd0);
+        wire [63:0] native_shadow_memos = {32'd0, native_shadow_memo_bytes} +
+            (pending_memo && native_request ?
+                {32'd0, request_shadow_vector_bytes} : 64'd0);
+        wire native_pop_valid = !native_pop ||
+            (native_depth != 0 && native_frame_payload_bytes >= popped_frame_bytes &&
+                native_shadow_frame_bytes >= popped_shadow_frame_bytes);
+        wire native_victim_valid = !native_victim ||
+            (native_memo_payload_bytes >= replaced_memo_bytes &&
+                native_shadow_memo_bytes >= replaced_shadow_memo_bytes);
         wire [31:0] continuation_word =
             continuation_hold[32*continuation_index+:32];
         wire [31:0] replaced_live_bytes = memo_occupied[slot_hold[3:0]] ?
@@ -306,6 +338,10 @@ module anvil_en1_replay_workspace #(
         assign live_payload_bytes = rst_n ? live_frames + live_scalars + live_memos : 64'd0;
         assign production_shadow_bytes = rst_n ?
             shadow_frames + shadow_scalars + shadow_memos : 64'd0;
+        assign native_payload_bytes = rst_n ?
+            native_frames + native_scalars + native_memos : 64'd0;
+        assign native_production_shadow_bytes = rst_n ?
+            native_shadow_frames + native_scalars + native_shadow_memos : 64'd0;
         assign backing_reserved_bytes = rst_n ? 64'(TOTAL_WORDS * 4) : 64'd0;
         assign visibility_metadata_bytes = rst_n ?
             64'((METADATA_BITS + 7) >> 3) : 64'd0;
@@ -395,6 +431,11 @@ module anvil_en1_replay_workspace #(
                 memo_payload_bytes <= 0;
                 shadow_frame_payload_bytes <= 0;
                 shadow_memo_payload_bytes <= 0;
+                native_frame_payload_bytes <= 0;
+                native_memo_payload_bytes <= 0;
+                native_shadow_frame_bytes <= 0;
+                native_shadow_memo_bytes <= 0;
+                native_depth <= 0;
                 allocation_candidate <= 0;
                 shadow_candidate <= 0;
                 scalar_occupied <= 0;
@@ -460,6 +501,11 @@ module anvil_en1_replay_workspace #(
                             memo_payload_bytes <= 0;
                             shadow_frame_payload_bytes <= 0;
                             shadow_memo_payload_bytes <= 0;
+                            native_frame_payload_bytes <= 0;
+                            native_memo_payload_bytes <= 0;
+                            native_shadow_frame_bytes <= 0;
+                            native_shadow_memo_bytes <= 0;
+                            native_depth <= 0;
                             scalar_occupied <= 0;
                         end
                         state <= CONTROL_PUBLISH;
@@ -633,11 +679,21 @@ module anvil_en1_replay_workspace #(
                         frame_payload_bytes <= frame_payload_bytes + request_frame_bytes;
                         shadow_frame_payload_bytes <= shadow_frame_payload_bytes +
                             request_shadow_frame_bytes;
+                        if (native_request) begin
+                            native_frame_payload_bytes <= native_frame_payload_bytes +
+                                request_frame_bytes;
+                            native_shadow_frame_bytes <= native_shadow_frame_bytes +
+                                request_shadow_frame_bytes;
+                            native_depth <= native_depth + 1'b1;
+                        end
                         pending_push <= 0;
                         state <= PUBLISH;
                     end
                     POP_SETUP: begin
-                        if (scalar_occupied[32'(slot_hold)*SCALAR_WORDS+:8] != 8'hff) begin
+                        if (scalar_occupied[32'(slot_hold)*SCALAR_WORDS+:8] != 8'hff ||
+                            frame_payload_bytes < popped_frame_bytes ||
+                            shadow_frame_payload_bytes < popped_shadow_frame_bytes ||
+                            !native_pop_valid || native_depth > depth) begin
                             error_hold <= 7;
                             state <= PUBLISH;
                         end else begin
@@ -671,6 +727,13 @@ module anvil_en1_replay_workspace #(
                         frame_payload_bytes <= frame_payload_bytes - popped_frame_bytes;
                         shadow_frame_payload_bytes <= shadow_frame_payload_bytes -
                             popped_shadow_frame_bytes;
+                        if (native_pop) begin
+                            native_frame_payload_bytes <= native_frame_payload_bytes -
+                                popped_frame_bytes;
+                            native_shadow_frame_bytes <= native_shadow_frame_bytes -
+                                popped_shadow_frame_bytes;
+                            native_depth <= native_depth - 1'b1;
+                        end
                         state <= PUBLISH;
                     end
                     MEMO_SCAN: state <= MEMO_CHECK;
@@ -728,7 +791,8 @@ module anvil_en1_replay_workspace #(
                             else
                                 state <= STREAM;
                         end else if (memo_payload_bytes < replaced_live_bytes ||
-                            shadow_memo_payload_bytes < replaced_shadow_bytes) begin
+                            shadow_memo_payload_bytes < replaced_shadow_bytes ||
+                            !native_victim_valid) begin
                             error_hold <= 7;
                             state <= PUBLISH;
                         end else begin
@@ -757,6 +821,12 @@ module anvil_en1_replay_workspace #(
                                 memo_payload_bytes <= memo_payload_bytes - replaced_memo_bytes;
                                 shadow_memo_payload_bytes <= shadow_memo_payload_bytes -
                                     replaced_shadow_memo_bytes;
+                                if (native_victim) begin
+                                    native_memo_payload_bytes <= native_memo_payload_bytes -
+                                        replaced_memo_bytes;
+                                    native_shadow_memo_bytes <= native_shadow_memo_bytes -
+                                        replaced_shadow_memo_bytes;
+                                end
                                 eviction_pulse <= new_memo;
                             end
                             memo_occupied[slot_hold[3:0]] <= 0;
@@ -817,6 +887,12 @@ module anvil_en1_replay_workspace #(
                             memo_payload_bytes <= memo_payload_bytes + request_vector_bytes;
                             shadow_memo_payload_bytes <= shadow_memo_payload_bytes +
                                 request_shadow_vector_bytes;
+                            if (native_request) begin
+                                native_memo_payload_bytes <= native_memo_payload_bytes +
+                                    request_vector_bytes;
+                                native_shadow_memo_bytes <= native_shadow_memo_bytes +
+                                    request_shadow_vector_bytes;
+                            end
                             memo_domains[2*slot_hold[3:0]+:2] <= domain_hold;
                             pending_memo <= 0;
                             if (new_memo) begin

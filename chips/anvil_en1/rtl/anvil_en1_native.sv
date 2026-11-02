@@ -37,6 +37,9 @@ module anvil_en1_native #(
     output wire [1599:0] allocation_live_bytes, allocation_physical_bytes,
     output wire [255:0] allocation_metadata_bytes,
     output wire [63:0] workspace_shadow_bytes, workspace_reserved_bytes,
+    output wire [63:0] native_workspace_bytes, native_workspace_shadow_bytes,
+    output wire [63:0] native_reconstruction_controller_bytes,
+    output wire allocation_check_valid, allocation_fallback,
     output wire resident_hit_event, resident_miss_event, alias_event,
     output wire memo_hit_event, memo_eviction_event, ring_hit_event,
     output wire owner_reprojection_event, replay_owner_reprojection_event,
@@ -118,6 +121,9 @@ module anvil_en1_native #(
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
     assign busy = rst_n && !core_idle;
+    assign allocation_check_valid = rst_n &&
+        state >= SCHEDULE_SEND && state <= RESPONSE;
+    assign allocation_fallback = rst_n && selected_fallback;
     reg vector_ram_fault;
     assign protocol_error = rst_n && (memory_fault || binding_fault || vector_ram_fault);
 
@@ -480,6 +486,8 @@ module anvil_en1_native #(
         .frame_depth(frame_depth),
         .workspace_live_bytes(allocation_live_bytes[64*5+:64]),
         .workspace_shadow_bytes(workspace_shadow_bytes),
+        .native_workspace_bytes(native_workspace_bytes),
+        .native_workspace_shadow_bytes(native_workspace_shadow_bytes),
         .workspace_reserved_bytes(workspace_reserved_bytes),
         .workspace_metadata_bytes(allocation_metadata_bytes[64*2+:64]),
         .owner_source_live_bytes(allocation_live_bytes[64*6+:64]),
@@ -504,6 +512,7 @@ module anvil_en1_native #(
         .image_feature_physical_bytes(allocation_physical_bytes[64*15+:64]),
         .binding_state_bytes(allocation_live_bytes[64*16+:64]),
         .reported_controller_bytes(allocation_live_bytes[64*22+:64]),
+        .native_reconstruction_controller_bytes(native_reconstruction_controller_bytes),
         .memo_hit_event(memo_hit_event), .memo_eviction_event(memo_eviction_event),
         .ring_hit_event(ring_hit_event), .owner_reprojection_event(owner_reprojection_event),
         .replay_owner_reprojection_event(replay_owner_reprojection_event),

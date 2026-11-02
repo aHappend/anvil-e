@@ -110,6 +110,7 @@ module anvil_en1_replay_binding #(
     input wire result_error,
     output wire [6:0] frame_depth,
     output wire [63:0] workspace_live_bytes, workspace_shadow_bytes,
+    output wire [63:0] native_workspace_bytes, native_workspace_shadow_bytes,
     output wire [63:0] workspace_reserved_bytes, workspace_metadata_bytes,
     output wire [63:0] owner_source_live_bytes, owner_source_physical_bytes,
     output wire [63:0] owner_tile_live_bytes, owner_tile_physical_bytes,
@@ -127,6 +128,7 @@ module anvil_en1_replay_binding #(
     output wire [63:0] image_feature_live_bytes, image_feature_physical_bytes,
     output wire [63:0] binding_state_bytes,
     output wire [63:0] reported_controller_bytes,
+    output wire [63:0] native_reconstruction_controller_bytes,
     output wire memo_hit_event, memo_eviction_event, ring_hit_event,
     output wire owner_reprojection_event, replay_owner_reprojection_event,
     output wire [31:0] owner_reprojection_bytes, replay_owner_reprojection_bytes,
@@ -333,6 +335,8 @@ module anvil_en1_replay_binding #(
         .backing_rsp_data(backing_rsp_data), .backing_rsp_error(backing_rsp_error),
         .frame_depth(frame_depth), .live_payload_bytes(workspace_live_bytes),
         .production_shadow_bytes(workspace_shadow_bytes),
+        .native_payload_bytes(native_workspace_bytes),
+        .native_production_shadow_bytes(native_workspace_shadow_bytes),
         .backing_reserved_bytes(workspace_reserved_bytes),
         .visibility_metadata_bytes(workspace_metadata_bytes),
         .tile_live_bytes(text_tile_live_bytes), .tile_physical_bytes(text_tile_physical_bytes),
@@ -358,6 +362,7 @@ module anvil_en1_replay_binding #(
         .native_intermediate_event(replay_intermediate_event),
         .native_intermediate_bytes(replay_intermediate_bytes),
         .reported_controller_bytes(replay_controller_bytes),
+        .native_reconstruction_controller_bytes(native_reconstruction_controller_bytes),
         .busy(replay_busy)
     );
 

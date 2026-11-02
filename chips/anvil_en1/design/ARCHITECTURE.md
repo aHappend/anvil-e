@@ -5,7 +5,66 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: integrated text banks and final-head overlay
+## Current saved increment: native scratch census and allocation failure retirement
+
+The bounded workspace now maintains actual and production-shadow native
+frame/memo subtotals independently from text. Pending allocations count
+before the first backing write. Frame pop uses the stored popped domain;
+memo replacement uses the victim's stored domain. Both banks and the
+complete scalar reservation remain charged while dependencies execute.
+Commit transfers pending to committed without a gap; abort releases only
+pending storage. New cache-state guards prevent unsigned frame/native/memo
+subtotal underflow. Reset and invalidation clear the new counters with
+existing visibility. Numerical scheduling, memo replacement, tensor
+addresses and external traffic are unchanged.
+
+The subsets pass through schedule, replay executor, binding and native
+assembly. Replay also reports the continuously reserved native encoder/
+feature/input reconstruction controllers. The allocation ledger adds a
+fourth five-stage balanced sum for native scratch, with its own coherent
+mode/check/overlap tags. Scratch is a subset, never double-counted in
+equivalent payload. The new registers and adder-tree stage enter the
+existing controller census.
+
+`anvil_en1_allocation_guard` now observes actual allocations against the
+strict `20*P < 9*B` production-payload limit, the 1 MiB fallback ceiling,
+the ordinary native-scratch ceiling and forbidden fallback/frontier-ring
+overlap. Widened registered shift/add operands precede the comparison;
+zero B is a failure, not a savings pass. B uses production padding/window/
+KV geometry even in compact builds and is not an external-traffic
+denominator. Guard checking starts after native configuration releases
+the previous representation; allocations made during current execution
+and their pipeline tail remain covered.
+
+The top retains the worker error, drains eight edges plus a check edge,
+and converts an otherwise successful job to error 7 if the guard failed.
+Only that final successful check establishes the decode session. Parent
+completion, public ports, CSR offsets and mandatory checks are unchanged.
+This is failure visibility, not proof that all legal workloads fit, an
+allocator strategy that permits excess storage, or a complete compact
+production-shadow guard.
+
+Changed `rtl/anvil_en1_replay_workspace.sv`,
+`rtl/anvil_en1_eval_schedule.sv`, `rtl/anvil_en1_replay_execute.sv`,
+`rtl/anvil_en1_replay_binding.sv`, `rtl/anvil_en1_native.sv`,
+`rtl/anvil_en1_allocation_ledger.sv`, `rtl/anvil_en1_top.sv`;
+added `rtl/anvil_en1_allocation_guard.sv`; updated `design/SPEC.md`
+and this document. Tools used: glob, view, rg and apply_patch only.
+No static elaboration, simulation, synthesis, installation or experiment
+ran; no preparation receipt exists. Parent, verification and runtime
+sources were not edited. Attempt-0003 remains preserved without a
+claimed repair.
+
+Remaining: finish physical phase overlays and grant-time whole-system
+limits; complete production-shadow accounting for every compact text/
+arithmetic/controller bank (not only workspace frames/memos), connect
+that complete shadow to the same guard, and integrate matched-baseline
+traffic telemetry without replacing the independent public-handshake
+baseline. Then run the reserved static elaboration check and hand off
+to independent Verifier. No correctness, savings, FPGA-fit or timing
+result is claimed. Not ready for Verifier.
+
+## Prior saved increment: integrated text banks and final-head overlay
 
 The native assembly now owns one synchronous residual/work/branch/PLE
 bank set shared by ordinary full text and replay POST_ONLY execution.
