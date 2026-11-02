@@ -465,6 +465,65 @@ module anvil_en1_top #(
     end
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            traffic_local_write_units <= 0;
+            traffic_global_write_units <= 0;
+            traffic_local_span <= 0;
+            traffic_global_span <= 0;
+            traffic_local_read_units <= 0;
+            traffic_global_read_units <= 0;
+            traffic_local_read_bytes <= 0;
+            traffic_global_read_bytes <= 0;
+            traffic_read_step <= 0;
+            matched_traffic_bytes <= 0;
+        end else if (job_valid && job_ready) begin
+            traffic_local_write_units <= 0;
+            traffic_global_write_units <= 0;
+            traffic_local_span <= 0;
+            traffic_global_span <= 0;
+            traffic_local_read_units <= 0;
+            traffic_global_read_units <= 0;
+            traffic_local_read_bytes <= 0;
+            traffic_global_read_bytes <= 0;
+            traffic_read_step <= 0;
+            matched_traffic_bytes <= 0;
+        end else begin
+            case (state)
+                VALIDATE: if (model_hold == 1 || model_hold == 2) begin
+                    traffic_local_write_units <= model_hold == 1 ?
+                        (padded_context << 5) - (padded_context << 2) :
+                        (padded_context << 5) + (padded_context << 1) + padded_context;
+                    traffic_global_write_units <= (padded_context << 3) - padded_context;
+                end
+                POSITION_SEND: if (scan_index == 0)
+                    matched_traffic_bytes <= traffic_local_writes + traffic_global_writes;
+                MASK_SCAN_CHECK: begin
+                    traffic_local_span <= scan_data[0] ? local_query_span : 32'd0;
+                    traffic_global_span <= scan_data[0] ? remaining_queries : 32'd0;
+                end
+                BASELINE_COUNTS: begin
+                    traffic_local_read_units <= model_hold == 1 ?
+                        (traffic_local_span << 5) - (traffic_local_span << 2) :
+                        (traffic_local_span << 5) + (traffic_local_span << 1) +
+                            traffic_local_span;
+                    traffic_global_read_units <=
+                        (traffic_global_span << 3) - traffic_global_span;
+                end
+                BASELINE_SCALE: begin
+                    traffic_local_read_bytes <= {32'd0, traffic_local_read_units} <<
+                        (COMPACT ? 4 : (model_hold == 1 ? 10 : 11));
+                    traffic_global_read_bytes <= {32'd0, traffic_global_read_units} <<
+                        (COMPACT ? 5 : (model_hold == 1 ? 11 : 12));
+                end
+                BASELINE_SUM:
+                    traffic_read_step <= traffic_local_read_bytes + traffic_global_read_bytes;
+                SCAN_ADVANCE:
+                    matched_traffic_bytes <= matched_traffic_bytes + traffic_read_step;
+                default: begin end
+            endcase
+        end
+    end
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
             bridge_input <= 0;
             bridge_replay <= 0;
         end else if (bridge_command && bridge_ready) begin

@@ -1,6 +1,7 @@
 module anvil_en1_frontier_execute #(
     parameter integer COMPACT = 0,
-    parameter integer EXTERNAL_VECTOR_RAM = 0
+    parameter integer EXTERNAL_VECTOR_RAM = 0,
+    parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire control_valid,
@@ -139,6 +140,10 @@ module anvil_en1_frontier_execute #(
     output wire [47:0] vector_ram_waddr, vector_ram_raddr,
     output wire [63:0] vector_ram_wdata,
     input wire [63:0] vector_ram_rdata,
+    output wire [1:0] embedding_ram_write, embedding_ram_read,
+    output wire [63:0] embedding_ram_waddr, embedding_ram_raddr,
+    output wire [31:0] embedding_ram_wdata,
+    input wire [31:0] embedding_ram_rdata,
     output wire [63:0] reported_controller_bytes,
     output wire [3:0] attention_activity,
     output wire avoided_projection_event,
@@ -252,6 +257,8 @@ module anvil_en1_frontier_execute #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (EXTERNAL_EMBEDDING_RAM != 0 && EXTERNAL_EMBEDDING_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_EMBEDDING_RAM must be 0 or 1");
     end
 
     wire native_model;
@@ -403,7 +410,12 @@ module anvil_en1_frontier_execute #(
     wire embed_modality_valid, embed_modality_rsp_ready;
     wire [1:0] embed_modality_model, embed_modality_kind;
     wire [31:0] embed_modality_token, embed_modality_index;
-    anvil_en1_embedding_ple #(.COMPACT(COMPACT)) embedding (
+    anvil_en1_embedding_ple #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_EMBEDDING_RAM)
+    ) embedding (
+        .vector_ram_write(embedding_ram_write), .vector_ram_read(embedding_ram_read),
+        .vector_ram_waddr(embedding_ram_waddr), .vector_ram_raddr(embedding_ram_raddr),
+        .vector_ram_wdata(embedding_ram_wdata), .vector_ram_rdata(embedding_ram_rdata),
         .controller_bytes(embed_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EMBED_START), .start_ready(embed_ready),

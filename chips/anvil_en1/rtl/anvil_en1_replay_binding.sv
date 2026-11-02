@@ -1,6 +1,7 @@
 module anvil_en1_replay_binding #(
     parameter integer COMPACT = 0,
-    parameter integer EXTERNAL_VECTOR_RAM = 0
+    parameter integer EXTERNAL_VECTOR_RAM = 0,
+    parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire control_valid,
@@ -123,6 +124,10 @@ module anvil_en1_replay_binding #(
     output wire [47:0] vector_ram_waddr, vector_ram_raddr,
     output wire [63:0] vector_ram_wdata,
     input wire [63:0] vector_ram_rdata,
+    output wire [1:0] embedding_ram_write, embedding_ram_read,
+    output wire [63:0] embedding_ram_waddr, embedding_ram_raddr,
+    output wire [31:0] embedding_ram_wdata,
+    input wire [31:0] embedding_ram_rdata,
     output wire [63:0] vision_live_bytes, vision_physical_bytes,
     output wire [63:0] audio_live_bytes, audio_physical_bytes,
     output wire [63:0] audio_feature_live_bytes, audio_feature_physical_bytes,
@@ -164,6 +169,8 @@ module anvil_en1_replay_binding #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (EXTERNAL_EMBEDDING_RAM != 0 && EXTERNAL_EMBEDDING_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_EMBEDDING_RAM must be 0 or 1");
     end
 
     wire owner_control_ready, owner_control_valid;
@@ -288,8 +295,12 @@ module anvil_en1_replay_binding #(
     );
 
     anvil_en1_replay_execute #(
-        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
+        .EXTERNAL_EMBEDDING_RAM(EXTERNAL_EMBEDDING_RAM)
     ) replay (
+        .embedding_ram_write(embedding_ram_write), .embedding_ram_read(embedding_ram_read),
+        .embedding_ram_waddr(embedding_ram_waddr), .embedding_ram_raddr(embedding_ram_raddr),
+        .embedding_ram_wdata(embedding_ram_wdata), .embedding_ram_rdata(embedding_ram_rdata),
         .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
         .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
         .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),

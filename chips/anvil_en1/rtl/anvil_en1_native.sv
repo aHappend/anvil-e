@@ -291,8 +291,14 @@ module anvil_en1_native #(
     wire [47:0] ordinary_vector_waddr, ordinary_vector_raddr;
     wire [47:0] replay_vector_waddr, replay_vector_raddr;
     wire [63:0] ordinary_vector_wdata, replay_vector_wdata, shared_vector_rdata;
+    wire [1:0] ordinary_embedding_write, ordinary_embedding_read;
+    wire [1:0] replay_embedding_write, replay_embedding_read, embedding_access_fault;
+    wire [63:0] ordinary_embedding_waddr, ordinary_embedding_raddr;
+    wire [63:0] replay_embedding_waddr, replay_embedding_raddr;
+    wire [31:0] ordinary_embedding_wdata, replay_embedding_wdata, shared_embedding_rdata;
     wire [191:0] executor_physical_bytes;
-    assign allocation_physical_bytes[64*19+:64] = executor_physical_bytes[0+:64];
+    assign allocation_physical_bytes[64*19+:64] = executor_physical_bytes[0+:64] +
+        (rst_n ? (COMPACT ? 64'd24 : 64'd5632) : 64'd0);
     assign allocation_physical_bytes[64*20+:64] = executor_physical_bytes[64+:64] +
         (rst_n ? (COMPACT ? 64'd56 : 64'd15872) : 64'd0);
     assign allocation_physical_bytes[64*21+:64] = executor_physical_bytes[128+:64];
@@ -335,17 +341,63 @@ module anvil_en1_native #(
             end
         end
     end endgenerate
+    genvar embedding_bank;
+    generate for (embedding_bank=0; embedding_bank<2; embedding_bank=embedding_bank+1) begin : embedding_banks
+        localparam integer BANK_WORDS = embedding_bank == 0 ?
+            (COMPACT ? 8 : 2560) : (COMPACT ? 4 : 256);
+        localparam integer BANK_BITS = $clog2(BANK_WORDS);
+        wire ordinary_access = ordinary_embedding_write[embedding_bank] ||
+            ordinary_embedding_read[embedding_bank];
+        wire replay_access = replay_embedding_write[embedding_bank] ||
+            replay_embedding_read[embedding_bank];
+        wire write_enable = replay_access ? replay_embedding_write[embedding_bank] :
+            ordinary_embedding_write[embedding_bank];
+        wire read_enable = replay_access ? replay_embedding_read[embedding_bank] :
+            ordinary_embedding_read[embedding_bank];
+        wire [31:0] waddr = replay_access ?
+            replay_embedding_waddr[32*embedding_bank+:32] :
+            ordinary_embedding_waddr[32*embedding_bank+:32];
+        wire [31:0] raddr = replay_access ?
+            replay_embedding_raddr[32*embedding_bank+:32] :
+            ordinary_embedding_raddr[32*embedding_bank+:32];
+        wire [15:0] wdata = replay_access ?
+            replay_embedding_wdata[16*embedding_bank+:16] :
+            ordinary_embedding_wdata[16*embedding_bank+:16];
+        assign embedding_access_fault[embedding_bank] = rst_n &&
+            ((ordinary_access && replay_access) ||
+                (write_enable && waddr >= BANK_WORDS) ||
+                (read_enable && raddr >= BANK_WORDS));
+        (* ramstyle = "M20K", nomem2reg *)
+        reg [15:0] payload [0:BANK_WORDS-1];
+        reg [15:0] read_q;
+        assign shared_embedding_rdata[16*embedding_bank+:16] = read_q;
+        always @(posedge clk) begin
+            if (rst_n && !embedding_access_fault[embedding_bank]) begin
+                if (write_enable)
+                    payload[waddr[BANK_BITS-1:0]] <= wdata;
+                if (read_enable)
+                    read_q <= payload[raddr[BANK_BITS-1:0]];
+            end
+        end
+    end endgenerate
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             vector_ram_fault <= 0;
-        else if (|vector_access_fault ||
-            (|allocation_live_bytes[64*11+:64] && |allocation_live_bytes[64*20+:64]))
+        else if (|vector_access_fault || |embedding_access_fault ||
+            (|allocation_live_bytes[64*11+:64] && |allocation_live_bytes[64*20+:64]) ||
+            (|allocation_live_bytes[64*10+:64] && |allocation_live_bytes[64*19+:64]))
             vector_ram_fault <= 1;
     end
 
     anvil_en1_frontier_execute #(
-        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1)
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
     ) frontier (
+        .embedding_ram_write(ordinary_embedding_write),
+        .embedding_ram_read(ordinary_embedding_read),
+        .embedding_ram_waddr(ordinary_embedding_waddr),
+        .embedding_ram_raddr(ordinary_embedding_raddr),
+        .embedding_ram_wdata(ordinary_embedding_wdata),
+        .embedding_ram_rdata(shared_embedding_rdata),
         .vector_ram_write(ordinary_vector_write), .vector_ram_read(ordinary_vector_read),
         .vector_ram_waddr(ordinary_vector_waddr), .vector_ram_raddr(ordinary_vector_raddr),
         .vector_ram_wdata(ordinary_vector_wdata), .vector_ram_rdata(shared_vector_rdata),
@@ -444,8 +496,14 @@ module anvil_en1_native #(
     );
 
     anvil_en1_replay_binding #(
-        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1)
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
     ) binding (
+        .embedding_ram_write(replay_embedding_write),
+        .embedding_ram_read(replay_embedding_read),
+        .embedding_ram_waddr(replay_embedding_waddr),
+        .embedding_ram_raddr(replay_embedding_raddr),
+        .embedding_ram_wdata(replay_embedding_wdata),
+        .embedding_ram_rdata(shared_embedding_rdata),
         .vector_ram_write(replay_vector_write), .vector_ram_read(replay_vector_read),
         .vector_ram_waddr(replay_vector_waddr), .vector_ram_raddr(replay_vector_raddr),
         .vector_ram_wdata(replay_vector_wdata), .vector_ram_rdata(shared_vector_rdata),
@@ -599,7 +657,7 @@ module anvil_en1_native #(
         $bits(mask_state) + $bits(meta_owner) + $bits(meta_request) +
         $bits(meta_response) + $bits(mask_owner) + $bits(mask_value) +
         $bits(mask_error) + $bits(mask_token_hold) + $bits(mask_address) +
-        $bits(vector_ram_fault) + 64;
+        $bits(vector_ram_fault) + 96;
     assign allocation_live_bytes[64*17+:64] = rst_n ?
         64'((STATE_BITS+7) >> 3) : 64'd0;
     assign allocation_physical_bytes[64*5+:64] = 64'd0;

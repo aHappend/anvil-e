@@ -5,7 +5,125 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: production shadow observations and replay embedding overlay
+## Current saved increment: replay vision projection/branch physical overlay
+
+`rtl/anvil_en1_replay_vision_layer.sv` now physically reuses its
+768-component projection-staging bank as the post worker's branch bank.
+Projection staging is copied into the replay frame with real acknowledged
+pair writes before post start, so post input still comes from the frame.
+The post worker's raw residual and MLP-output banks remain independent;
+they are simultaneously needed during MLP execution.
+
+`rtl/anvil_en1_vision_post_layer.sv` exposes an optional
+`EXTERNAL_BRANCH_RAM=0/1` port, defaulting to its existing standalone local
+storage. The replay wrapper selects external storage and preserves the
+original synchronous enabled-edge accesses. Full-address, concurrent-owner,
+wrong-phase and overlapping-live-reservation guards suppress invalid
+accesses and retain error 7 without overwriting earlier child errors.
+The shared read register is counted once in the wrapper.
+
+The connected declaration now reserves 4608 bytes for staging/post storage
+rather than 6144, excluding the unchanged tile; actual and shadow live
+reservations still use their original separate lifetime flags. This closes
+one physical duplication, not grant-time allocation limiting or measured
+savings, M20K inference, resource fit or timing.
+
+Changed those two RTL files, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch only. No command, static check,
+simulation, synthesis, installation or experiment ran; there is no new
+preparation receipt. Parent, verification and runtime files remain untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+Remaining: whole-system grant-time ordinary/native-scratch/fallback limits
+with eviction/recomputation, including forced-short-context production-shadow
+limits; remaining physical phase overlays; then the reserved fast static
+elaboration check and immediate independent Verifier handoff. Completion-time
+allocation guards remain observers, not storage grants. Not ready.
+
+## Prior saved increment: ordinary/replay embedding physical overlay
+
+The native assembly now owns one synchronous hidden/PLE embedding bank pair
+shared by the ordinary frontier embedding worker and the replay executor's
+serialized input/text embedding workers. The three wrappers
+frontier_execute, replay_execute and replay_binding expose an optional
+`EXTERNAL_EMBEDDING_RAM=0/1` interface; standalone default storage and timing
+are unchanged. Native selects external storage on both paths and performs
+the original enabled-edge reads/writes without an arbitration-cycle change.
+
+This sharing follows the connected schedule: native feature reconstruction
+completes before ordinary embedding starts, and ordinary text's nested
+owner replay does not use the ordinary embedding bank. Simultaneously live
+feature, retained text, frontier, frame and anchor payloads remain disjoint.
+Full component addresses are checked before array indexing. Concurrent
+ordinary/replay port requests suppress the affected access; port/range faults
+and overlapping live embedding reservations latch the native protocol fault.
+Reset disables access without a payload initialization sweep.
+
+Physical field 19 discloses the single 5632-byte production / 24-byte compact
+pair; external children no longer declare duplicate payload arrays. Live
+and production-shadow fields 10 and 19 retain their independent original
+lifetime flags. Shared read-register accounting moves into native controller
+state and is removed from the external replay dispatcher and ordinary child.
+This closes that specific physical duplication, not grant-time allocation
+limits, measured live savings, M20K inference, resource fit or timing.
+
+Changed `rtl/anvil_en1_frontier_execute.sv`,
+`rtl/anvil_en1_replay_execute.sv`, `rtl/anvil_en1_replay_binding.sv`,
+`rtl/anvil_en1_native.sv`, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch only. No command, static
+elaboration, simulation, synthesis, installation or experiment ran; there is
+no new preparation receipt. Parent, verification and runtime files remain
+untouched. Attempt-0003 remains preserved without a claimed repair.
+
+Remaining: whole-system grant-time ordinary/native-scratch/fallback limits
+with eviction/recomputation rather than legal-work rejection; remaining
+physical phase overlays; then the reserved fast static elaboration check
+and immediate independent Verifier handoff. In particular, completion-time
+allocation guards remain observers, not storage grants. Not ready.
+
+## Prior saved increment: matched-traffic telemetry and immutable mask scan
+
+`rtl/anvil_en1_top.sv` now connects CSR metric 6 to a registered
+nominal matched-unshared traffic calculation. The comparison materializes
+distinct correct-owner K/V copies for every logical layer and every padded
+token slot. Its masked causal/window read schedule loads each adjacent BF16
+pair once per visible source/query/logical layer and KV head, reusing it
+across grouped Q heads. Production E2B/E4B and compact geometry use their
+actual dimensions and head counts; both weight precisions retain BF16 KV.
+`SPEC.md` freezes the exact byte formula and distinguishes cumulative local
+ring writes from live ring allocation.
+
+The top interleaves an actual immutable mask read with each existing
+position validation. Boolean source visibility drives separately registered
+span, layer-count, byte-scale, sum and accumulation stages. Memory errors
+return 2 and malformed mask words return 5 before native dispatch. These
+extra original-input reads remain included in the real public traffic
+census. Native attention still reads its actual masks; no numerical answer
+or cached activation enters through the scan. Native generation advances
+only after the complete successful scan and final byte accumulation.
+The parent path, public ports, CSR offsets and mandatory commands are
+unchanged. Added state enters the existing integration reservation.
+
+Metric 6 adds once at accepted successful outer completion and remains
+stable through stalls. It is calculated nominal telemetry, **not measured
+baseline traffic or an acceptance denominator**. Independent Verifier must
+still author and execute its separate public-handshake baseline and
+scoreboards. No savings, numerical, FPGA-fit or timing result is claimed.
+
+Changed `rtl/anvil_en1_top.sv`, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch only. No command, static
+elaboration, simulation, synthesis, installation or experiment ran; there
+is no new preparation receipt. Parent, verification and runtime files
+remain untouched. Attempt-0003 remains preserved without a claimed repair.
+
+Remaining: whole-system grant-time ordinary/native-scratch/fallback limits
+with eviction/recomputation rather than legal-work rejection; remaining
+physical phase overlays; then the reserved fast static elaboration check
+and immediate independent Verifier handoff. The nominal traffic counter
+is connected, but independent actual baseline traffic remains a Verifier
+obligation. This saved increment is not ready for Verifier.
+
+## Prior saved increment: production shadow observations and replay embedding overlay
 
 The native assembly now provides a complete 25-field production-width
 counterpart to its actual live component observations. Hidden/PLE and

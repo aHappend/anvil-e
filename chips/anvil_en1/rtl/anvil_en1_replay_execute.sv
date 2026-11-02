@@ -1,6 +1,7 @@
 module anvil_en1_replay_execute #(
     parameter integer COMPACT = 0,
-    parameter integer EXTERNAL_VECTOR_RAM = 0
+    parameter integer EXTERNAL_VECTOR_RAM = 0,
+    parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -88,6 +89,10 @@ module anvil_en1_replay_execute #(
     output wire [47:0] vector_ram_waddr, vector_ram_raddr,
     output wire [63:0] vector_ram_wdata,
     input wire [63:0] vector_ram_rdata,
+    output wire [1:0] embedding_ram_write, embedding_ram_read,
+    output wire [63:0] embedding_ram_waddr, embedding_ram_raddr,
+    output wire [31:0] embedding_ram_wdata,
+    input wire [31:0] embedding_ram_rdata,
     output wire [63:0] vision_vector_live_bytes, vision_vector_physical_bytes,
     output wire [63:0] vision_binding_controller_bytes, vision_patch_controller_bytes,
     output wire [63:0] vision_replay_controller_bytes, vision_executor_controller_bytes,
@@ -149,6 +154,8 @@ module anvil_en1_replay_execute #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (EXTERNAL_EMBEDDING_RAM != 0 && EXTERNAL_EMBEDDING_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_EMBEDDING_RAM must be 0 or 1");
     end
 
     wire task_valid, task_ready;
@@ -298,16 +305,31 @@ module anvil_en1_replay_execute #(
             ((input_access && text_access) ||
                 (write_enable && waddr >= BANK_WORDS) ||
                 (read_enable && raddr >= BANK_WORDS));
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] payload [0:BANK_WORDS-1];
-        reg [15:0] read_q;
-        assign embedding_rdata[16*embedding_bank+:16] = read_q;
-        always @(posedge clk) begin
-            if (rst_n && !embedding_access_fault[embedding_bank]) begin
-                if (write_enable)
-                    payload[waddr[BANK_BITS-1:0]] <= wdata;
-                if (read_enable)
-                    read_q <= payload[raddr[BANK_BITS-1:0]];
+        assign embedding_ram_write[embedding_bank] = rst_n && EXTERNAL_EMBEDDING_RAM &&
+            !embedding_access_fault[embedding_bank] && write_enable;
+        assign embedding_ram_read[embedding_bank] = rst_n && EXTERNAL_EMBEDDING_RAM &&
+            !embedding_access_fault[embedding_bank] && read_enable;
+        assign embedding_ram_waddr[32*embedding_bank+:32] =
+            rst_n && EXTERNAL_EMBEDDING_RAM ? waddr : 32'd0;
+        assign embedding_ram_raddr[32*embedding_bank+:32] =
+            rst_n && EXTERNAL_EMBEDDING_RAM ? raddr : 32'd0;
+        assign embedding_ram_wdata[16*embedding_bank+:16] =
+            rst_n && EXTERNAL_EMBEDDING_RAM ? wdata : 16'd0;
+        if (EXTERNAL_EMBEDDING_RAM == 1) begin : external_bank
+            assign embedding_rdata[16*embedding_bank+:16] =
+                embedding_ram_rdata[16*embedding_bank+:16];
+        end else begin : local_bank
+            (* ramstyle = "M20K", nomem2reg *)
+            reg [15:0] payload [0:BANK_WORDS-1];
+            reg [15:0] read_q;
+            assign embedding_rdata[16*embedding_bank+:16] = read_q;
+            always @(posedge clk) begin
+                if (rst_n && !embedding_access_fault[embedding_bank]) begin
+                    if (write_enable)
+                        payload[waddr[BANK_BITS-1:0]] <= wdata;
+                    if (read_enable)
+                        read_q <= payload[raddr[BANK_BITS-1:0]];
+                end
             end
         end
     end endgenerate
@@ -900,7 +922,8 @@ module anvil_en1_replay_execute #(
     assign embedding_shadow_bytes = input_embedding_shadow + text_embedding_shadow;
     assign embedding_physical_bytes = rst_n ?
         input_embedding_physical + text_embedding_physical +
-            (COMPACT ? 64'd24 : 64'd5632) : 64'd0;
+            (EXTERNAL_EMBEDDING_RAM ? 64'd0 :
+                (COMPACT ? 64'd24 : 64'd5632)) : 64'd0;
     assign selected_worker_state_bytes = !rst_n ? 64'd0 :
         (domain_hold == 3 ? (layer_hold == 1 ? image_feature_controller_bytes : audio_feature_controller_bytes) :
         (domain_hold == 2 ? (input_worker ? audio_input_controller_bytes : audio_layer_controller_bytes) :
@@ -918,7 +941,7 @@ module anvil_en1_replay_execute #(
         $bits(input_worker) + $bits(done_dependency_hold) + $bits(done_bank_hold) +
         $bits(dependency_domain_hold) + $bits(done_domain_hold) + $bits(done_layer_hold) +
         $bits(done_token_hold) + $bits(done_length_hold) + $bits(error_hold) +
-        $bits(embedding_ram_fault) + 32;
+        $bits(embedding_ram_fault) + (EXTERNAL_EMBEDDING_RAM ? 0 : 32);
     assign dispatcher_state_bytes = rst_n ? 64'((DISPATCHER_BITS + 7) >> 3) : 64'd0;
     wire [63:0] text_reported_controllers = input_state_bytes + text_state_bytes +
         binding_controller_bytes + projection_controller_bytes +

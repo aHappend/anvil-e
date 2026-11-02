@@ -41,10 +41,12 @@ but have no native spill/embedding-output semantics.
 
 All native positions are checked through actual public memory reads:
 unsigned32 position[t] must equal t for every t in the complete context,
-in ascending order. The top checks the complete text/position/mask byte
+in ascending order. After each position check, an actual public read checks
+mask[t] as unsigned32 zero or one and supplies the source-visibility bit to
+the matched-traffic calculation described below. The top checks the complete text/position/mask byte
 ranges, native position/context bounds, enabled-modality geometry and
 alignment before starting that scan. A failed position read returns 2,
-a mismatched position returns 5, and an invalid append/session returns 7.
+a mismatched position or nonboolean mask returns 5, and an invalid append/session returns 7.
 No native worker starts after such a failure. The worker's immutable
 tensor-directory validation remains responsible for complete native
 image/audio/weight image bounds before their tensor accesses.
@@ -66,7 +68,9 @@ dispatch leaves the prior successful session descriptor intact.
 | Job E0 | Capture every descriptor field, clear current error, leave IDLE |
 | E1 | Validate registered model/session/ranges; select parent start or registered native position-scan request |
 | Position request | Offer registered address to the literal memory bridge; no next scan element until its accepted response has been registered and checked |
-| Native dispatch | Advance nonzero generation after successful full scan, then offer a stable captured descriptor until native start acceptance |
+| Mask request | After position validation, offer the captured mask address on the same registered bridge; register and validate its response before counting source reuse |
+| Traffic calculation | Register local/global reuse spans, layer-weighted counts, byte scaling, their sum and the running total on separate edges |
+| Native dispatch | Advance nonzero generation after successful full position/mask scan and traffic accumulation, then offer a stable captured descriptor until native start acceptance |
 | Memory | Parent has its own unchanged bridge; positions/native share a second literal registered bridge; only the selected bridge drives public DDR |
 | Last logit | Native completion cannot precede acceptance of the final ascending-vocabulary logit |
 | Child completion | Accept actual child done; parent publishes later, native additionally drains the allocation pipeline before publishing |
@@ -91,13 +95,13 @@ Event-model 3 updates neither bank.
 
 Accepted native requests now drive dedicated KV-equivalent and
 input/weight/output/total traffic observations, as specified below.
-**Remaining integration, not a zero-valued measurement:** matched-baseline
-traffic metric 6 is not yet wired; its unchanged zero is not a measured result.
+Matched-baseline traffic metric 6 now accumulates the explicit nominal
+padded-write/masked-read schedule below for successful, accepted native jobs.
+It is a calculated comparison counter, not measured baseline traffic.
 Projection-output-byte events must not be relabeled weight-read bytes.
 Avoided shared projections, local/global component issue/availability,
 and allocation gauges/peaks now have the connected event definitions below.
-Complete whole-system allocation/overlay enforcement and the remaining
-traffic telemetry connections remain required before handoff.
+Complete whole-system allocation/overlay enforcement remains required before handoff.
 No static elaboration, simulation, synthesis, timing or hardware result is
 claimed for the top.
 
@@ -262,9 +266,83 @@ are counted once in dispatcher state, not again in each external child.
 | Reset | Invalidate controller/handshake state, with no payload initialization sweep |
 | New dispatcher task | Clear the previous task's overlay fault only after that task retired |
 
-This overlay does not combine the ordinary frontier embedding banks with
-replay banks, or overlay simultaneously live feature/frame storage. It is
+### Ordinary/replay embedding physical overlay
+
+The integrated native assembly owns one synchronous hidden/PLE embedding
+bank pair shared by the ordinary embedding worker and the replay executor's
+already serialized input/text workers. `EXTERNAL_EMBEDDING_RAM` is a legal
+0/1 parameter, default 0, on frontier_execute, replay_execute and
+replay_binding. At 0, existing standalone storage is retained. At 1, the
+wrapper exports the existing two-bank enabled-edge interface; it does not
+add an arbitration cycle. The native assembly selects 1 on both paths.
+
+Ordinary feature reconstruction completes before ordinary embedding starts.
+Ordinary text can request owner replay, but that text worker uses the
+separate retained full-text banks, not the ordinary embedding banks.
+Replay input/text embedding reservations do not survive a yielded worker.
+Thus no correctly scheduled ordinary embedding payload must coexist with
+replay embedding payload. Surviving feature, frontier, frame, text and
+anchor storage are not aliased into this pair.
+
+| Shared embedding boundary | Behavior |
+| --- | --- |
+| Pre-edge read/write enable | Select the requesting path's full component address and BF16 data; execute the same enabled-edge synchronous access |
+| Address check | Compare the full address before indexing the physical array; suppress out-of-range access |
+| Both paths request a bank | Suppress that bank access and latch the existing native protocol fault |
+| Both paths retain embedding payload | Latch the same fault even without current port enables |
+| Reset | Disable all bank enables and exported payloads; do not initialize payload RAM |
+| Read response | Preserve the registered read word until the next enabled read; charge this register once in native state |
+| Physical disclosure | Charge the single 5632-byte production / 24-byte compact pair once in field 19; external child payload reservations are zero |
+| Live/shadow disclosure | Keep fields 10 and 19 and their original lifetime flags separately; do not subtract nominal overlap from live totals |
+
+The two read registers move from replay dispatcher accounting into native
+controller accounting, while the ordinary embedding child no longer counts
+its removed local read registers. Default standalone instances keep their
+original register/physical counts, and their external bank outputs are zero.
+
+This removes a duplicate declared physical pair, not a simultaneous live
+reservation. It does not complete grant-time whole-system limiting and is
 not a measured M20K inference or resource-fit result.
+
+### Replay vision projection/branch physical overlay
+
+The replay vision layer owns a single synchronous 768-word BF16 bank for
+output-projection staging and the post worker's normalized attention/MLP
+input branch. These representations are phase-disjoint: projection staging
+is completely copied into the current replay frame, including the final
+acknowledged pair write, before the post worker can accept start. The
+post worker obtains its input from that frame, not from stale staging.
+Its raw residual and MLP output banks remain separate and simultaneously
+live during MLP execution; neither can alias the branch.
+
+`anvil_en1_vision_post_layer.EXTERNAL_BRANCH_RAM` accepts 0/1, default 0.
+The default keeps all three local banks. At 1, its branch RAM port exports
+full 32-bit component addresses, BF16 write data and independent read/write
+enables; the owner supplies the same enabled-edge synchronous read register.
+Only the replay vision wrapper selects this external bank. No descriptor,
+numerical operation, source callback latency or output handshake changes.
+
+| Projection/branch boundary | Behavior |
+| --- | --- |
+| Projection store | Write the current checked row into the shared bank |
+| Frame copy | Read synchronously, capture later, assemble an adjacent pair, and wait for its actual workspace response |
+| Final copy response | Register/check that response before reaching post start; a failed write cannot transfer ownership |
+| Post start acceptance | Release projection visibility/allocation; the post worker subsequently reserves its raw and branch banks |
+| Post branch access | Preserve its existing synchronous read/write edge and read-before-write behavior |
+| Address/ownership conflict | Check full addresses before indexing; suppress the affected access on an out-of-range address, concurrent owners, or a request outside the post phase |
+| Live overlap | Latch an error if projection allocation coexists with post vector allocation, even without current port enables |
+| Fault retirement | Retire the active child normally, preserve any earlier specific error, otherwise publish error 7 |
+| Reset/new task | Disable payload accesses on reset, without an initialization sweep; clear the prior fault only at a new accepted task |
+
+The shared payload is 1536 bytes, counted once by the replay vision wrapper.
+The external post worker declares only its remaining 3072 local bytes.
+Together these declare 4608 bytes, rather than the previous 6144-byte sum
+of staging and three post banks, excluding the unchanged Q/K/V tile.
+Its shared 16-bit read register is counted once in wrapper controller state,
+not again in the external post worker. The original independent projection
+and post lifetime flags still determine actual and production-shadow live
+reservations. This is physical declaration sharing, not an observed M20K,
+live-savings, resource-fit or timing result.
 
 ### Native-workspace domain census
 
@@ -351,9 +429,74 @@ the CSR gauge. A CSR clear simultaneous with the native-start event still
 wins through the unchanged CSR engine.
 
 This gauge is a model-geometry calculation, not an observed external
-traffic baseline or an allocation/savings pass. Metric 6 remains unconnected.
+traffic baseline or an allocation/savings pass.
 The independent executable baseline must still handshake and scoreboard
 its real writes/reads; it cannot take its traffic denominator from metric 16.
+
+### Matched-unshared nominal traffic counter
+
+Metric 6 (`matched_unshared_kv_bytes`, low/high 0x050/0x054) adds the
+following calculated traffic for each successfully completed native job.
+It updates only when the outer successful completion is accepted, once
+per job, not when a cache request repeats, a replay frame resumes or a
+stalled completion is observed. Parent mode does not produce this event.
+CSR clear, saturation, snapshot and atomic-pair rules are unchanged.
+
+Let L=28/35, G=7, K=1/2 for production E2B/E4B, respectively;
+Dl=256, Dg=512 and W=512. In compact builds K=1, Dl=4, Dg=8 and W=4,
+retaining both complete logical layer maps. Let m[s] be the validated
+immutable boolean source mask and p=16*ceil(N/16). The nominal producer
+materializes the correct owner K and V into each logical layer's private
+copy, including shared consumers; it does not invent private shared
+projection tensors.
+
+```
+writes = 4*K*p*(L*Dl + G*Dg)
+reads  = 4*K*sum(s=0..N-1,
+          m[s]*(L*Dl*min(W,N-s) + G*Dg*(N-s)))
+metric-6 job increment = writes + reads
+```
+
+Each four-byte transfer contains two adjacent BF16 components.
+Writes include all padded token slots, including local slots that are
+subsequently replaced in the window ring. Live local payload still
+occupies only min(p,W) slots; cumulative writes and live allocation are
+different quantities. Reads have no padded or future sources. A visible
+source s participates in exactly N-s global queries and min(W,N-s) local
+queries. The read schedule reuses the loaded K/V pair across grouped Q
+heads and counts each pair once per visible source/query/logical layer.
+It is a conservative nominal schedule, not the candidate's repeated
+softmax-phase reads or owner-rematerialization work. Both precision modes
+use BF16 cache words, so they have identical nominal byte counts.
+Native decode rebuilds the complete context, and this counter likewise
+describes that job's full-context matched computation, not an incremental
+baseline with a retained previous job.
+
+The top's existing position scan now interleaves one mask read per source.
+These are real additional immutable-input transactions, included in actual
+read/input/total counters, never baseline KV traffic. An unsuccessful read
+returns error 2; a nonboolean mask returns error 5 before native dispatch.
+Native attention still reads its real masks; this scan supplies neither
+hidden states nor numerical answers. The immutable-session rule prevents
+the scan and later attention from observing different masks.
+
+Byte calculation has registered count/scale/sum/accumulation stages and
+bounded shift/add constant coefficients, with no division, modulo,
+unbounded combinational loop or dynamic cache-data inspection. All added
+state is charged in the integration controller reservation. The private
+calculation resets at each accepted job and remains stable through native
+execution and outer completion stalls. Clear during a running job clears
+the CSR total; subsequent successful job completion still contributes that
+job's complete nominal increment, just as jobs_completed counts at completion.
+
+**This is not the acceptance denominator.** Verifier must independently
+execute its public-interface baseline producer and memory responder with
+the same padding, masks, BF16 packing and correct owner values, require
+successful responses and complete scoreboards, and use its actual accepted
+bytes for each savings comparison. A metric-6 value, formula agreement,
+alias count or zero candidate KV count cannot replace those transactions.
+Any baseline implementation's additional transfers must be reported
+explicitly rather than silently attributed to this nominal counter.
 
 ### Accepted replay traffic classification
 
@@ -382,7 +525,7 @@ events.
 The outer native arbiter retains that binding's input attribute at its
 own command acceptance. Ordinary text commands are not tagged replay.
 The immutable-mask client is tagged replay only when its registered
-request owner is the Eval path. Position scanning is an original-input
+request owner is the Eval path. Position/mask scanning is an original-input
 read but is not replay. Finally the top captures command attributes at
 the literal memory bridge's command acceptance and increments CSR bytes
 only when the corresponding **public** 32-bit memory request is accepted.
@@ -414,7 +557,7 @@ claiming that input/weight reads are free, or substituting software KV data.
 The top sends every accepted public 32-bit memory request to a separate
 model-tagged CSR traffic channel. It uses the bridge's registered provenance,
 not the current leaf's command wires. Every native read is classified as an
-original immutable input (including positions) or immutable weight-image read.
+original immutable input (including positions and scanned masks) or immutable weight-image read.
 Any accepted native write is conservatively KV-equivalent, never reclassified
 as an innocuous output; the read-only arbiters normally prevent such a write.
 Metric 4/5 receive accepted external cache-equivalent reads/writes. Native
@@ -448,8 +591,8 @@ Allocation-report priority, clear-over-all-events, pre-update snapshots,
 saturation, held atomic high halves and invalid-bank rejection are unchanged.
 0x108 and all higher non-control addresses reject. The enlarged counter/snapshot
 reservation is included in controller_bytes and therefore the whole-system ledger.
-Metric 6 still requires matched-baseline traffic integration; none of these
-candidate counters supplies the independently executed baseline denominator.
+Metric 6 is the separately calculated nominal matched schedule above; none
+of these candidate counters supplies the independently executed baseline denominator.
 
 ## Connected native execution assembly
 
@@ -2082,6 +2225,10 @@ audio 0.5 weighting or extra final norm in this vision layer.
 
 Three synchronous 768-component BF16 banks retain the raw/residual, normalized
 attention/MLP input and MLP output vectors: 1536 bytes each, 4608 bytes total.
+Standalone instances own all three. The replay wrapper shares the branch's
+physical bank with its earlier, completely consumed projection staging,
+as specified in the projection/branch overlay table above; the post worker's
+live reservation still includes that branch.
 The raw residual survives every MLP row. Only the norm output phase overwrites
 an already consumed component of its source bank, after full reductions.
 There is no bidirectional overwrite of another patch's entering vector.
@@ -2104,8 +2251,10 @@ error or success completion acceptance.
 
 Each wrapper exposes byte-rounded declared controller-register widths, with
 all numerical/directory/weight child registers additional. Layer vector
-observations include both the post worker's 4608 bytes and the existing
-1664-byte Q/K/V tile reservation, without a second sum of the tile. Reserved
+live observations include the post worker's up to 4608 bytes and the existing
+1664-byte Q/K/V tile reservation, without a second sum of the tile.
+Replay physical observations count the 1536-byte shared staging/branch bank,
+3072-byte private post banks and 1664-byte tile once each. Reserved
 vector capacity is not measured M20K block use. The whole-system native scratch
 limit, fallback arithmetic/control limit, resource fit and timing still
 require complete connected allocation accounting and independent evidence.

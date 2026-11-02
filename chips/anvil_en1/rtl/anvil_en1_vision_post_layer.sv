@@ -1,4 +1,6 @@
-module anvil_en1_vision_post_layer (
+module anvil_en1_vision_post_layer #(
+    parameter integer EXTERNAL_BRANCH_RAM = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -36,6 +38,10 @@ module anvil_en1_vision_post_layer (
     output wire intermediate_event,
     output wire [31:0] intermediate_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire branch_ram_write, branch_ram_read,
+    output wire [31:0] branch_ram_waddr, branch_ram_raddr,
+    output wire [15:0] branch_ram_wdata,
+    input wire [15:0] branch_ram_rdata,
     output wire [63:0] controller_bytes, norm_controller_bytes, mlp_controller_bytes,
     output wire [63:0] down_controller_bytes, down_clamp_controller_bytes,
     output wire [63:0] inner_controller_bytes, inner_clamp_controller_bytes
@@ -59,16 +65,19 @@ module anvil_en1_vision_post_layer (
     reg loading_branch, raw_allocated, branch_allocated, mlp_allocated;
     reg raw_committed, branch_committed, mlp_committed, norm_bad, norm_complete;
     reg src_mlp, src_error_hold, load_error_hold;
-    reg [15:0] load_hold, src_hold, raw_q, branch_q, mlp_q, residual_raw;
+    reg [15:0] load_hold, src_hold, raw_q, mlp_q, residual_raw;
+    wire [15:0] branch_q;
     reg [15:0] residual_branch, residual_hold;
     reg [31:0] sum_hold;
     reg [3:0] error_hold;
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] raw_payload [0:767];
     (* ramstyle = "M20K", nomem2reg *)
-    reg [15:0] branch_payload [0:767];
-    (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] mlp_payload [0:767];
+    initial begin
+        if (EXTERNAL_BRANCH_RAM != 0 && EXTERNAL_BRANCH_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_BRANCH_RAM must be 0 or 1");
+    end
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     wire mlp_selected = rst_n && (state == MLP_START || state == MLP_WAIT);
     wire [15:0] norm_kind = phase == 0 ? 16'h1107 :
@@ -180,7 +189,8 @@ module anvil_en1_vision_post_layer (
         (raw_allocated ? 64'd1536 : 64'd0) +
         (branch_allocated ? 64'd1536 : 64'd0) +
         (mlp_allocated ? 64'd1536 : 64'd0) : 64'd0;
-    assign vector_physical_bytes = rst_n ? 64'd4608 : 64'd0;
+    assign vector_physical_bytes = rst_n ?
+        (EXTERNAL_BRANCH_RAM ? 64'd3072 : 64'd4608) : 64'd0;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(src_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(phase) + $bits(src_bank) + $bits(layer_hold) + $bits(generation_hold) +
@@ -190,36 +200,59 @@ module anvil_en1_vision_post_layer (
         $bits(branch_committed) + $bits(mlp_committed) + $bits(norm_bad) +
         $bits(norm_complete) + $bits(src_mlp) + $bits(src_error_hold) +
         $bits(load_error_hold) + $bits(load_hold) + $bits(src_hold) + $bits(raw_q) +
-        $bits(branch_q) + $bits(mlp_q) + $bits(residual_raw) +
+        (EXTERNAL_BRANCH_RAM ? 0 : 16) + $bits(mlp_q) + $bits(residual_raw) +
         $bits(residual_branch) + $bits(residual_hold) + $bits(sum_hold) + $bits(error_hold);
     assign controller_bytes = !rst_n ? 64'd0 :
         64'((CONTROLLER_BITS + 7) >> 3) + primitive_fp_bytes;
 
+    wire branch_write = (load_store && loading_branch) ||
+        (norm_accept && norm_well_formed && phase != 2);
+    wire branch_read = rst_n &&
+        ((state == RESIDUAL_READ && phase == 0) ||
+         (src_state == SRC_READ && state != RESIDUAL_READ && src_bank == 1));
+    wire [31:0] branch_waddr = load_store && loading_branch ?
+        index : norm_output_index;
+    wire [31:0] branch_raddr = state == RESIDUAL_READ ? index : src_index_hold;
+    wire [15:0] branch_wdata = load_store && loading_branch ?
+        load_hold : norm_output_data;
+    assign branch_ram_write = rst_n && EXTERNAL_BRANCH_RAM && branch_write;
+    assign branch_ram_read = rst_n && EXTERNAL_BRANCH_RAM && branch_read;
+    assign branch_ram_waddr = rst_n && EXTERNAL_BRANCH_RAM ? branch_waddr : 32'd0;
+    assign branch_ram_raddr = rst_n && EXTERNAL_BRANCH_RAM ? branch_raddr : 32'd0;
+    assign branch_ram_wdata = rst_n && EXTERNAL_BRANCH_RAM ? branch_wdata : 16'd0;
+    generate if (EXTERNAL_BRANCH_RAM == 1) begin : external_branch
+        assign branch_q = branch_ram_rdata;
+    end else begin : local_branch
+        (* ramstyle = "M20K", nomem2reg *)
+        reg [15:0] payload [0:767];
+        reg [15:0] read_q;
+        assign branch_q = read_q;
+        always @(posedge clk) begin
+            if (rst_n) begin
+                if (branch_write && branch_waddr < 768)
+                    payload[branch_waddr[9:0]] <= branch_wdata;
+                if (branch_read && branch_raddr < 768)
+                    read_q <= payload[branch_raddr[9:0]];
+            end
+        end
+    end endgenerate
     always @(posedge clk) begin
         if (load_store && !loading_branch)
             raw_payload[index[9:0]] <= load_hold;
         else if (rst_n && state == RESIDUAL_STORE)
             raw_payload[index[9:0]] <= residual_hold;
-        if (load_store && loading_branch)
-            branch_payload[index[9:0]] <= load_hold;
-        else if (norm_accept && norm_well_formed && phase != 2)
-            branch_payload[norm_output_index[9:0]] <= norm_output_data;
         if (rst_n && state == MLP_STORE)
             mlp_payload[index[9:0]] <= residual_hold;
         else if (norm_accept && norm_well_formed && phase == 2)
             mlp_payload[norm_output_index[9:0]] <= norm_output_data;
         if (rst_n && state == RESIDUAL_READ) begin
             raw_q <= raw_payload[index[9:0]];
-            if (phase == 0)
-                branch_q <= branch_payload[index[9:0]];
-            else
+            if (phase != 0)
                 mlp_q <= mlp_payload[index[9:0]];
         end else if (rst_n && src_state == SRC_READ) begin
             if (src_bank == 0)
                 raw_q <= raw_payload[src_index_hold[9:0]];
-            else if (src_bank == 1)
-                branch_q <= branch_payload[src_index_hold[9:0]];
-            else
+            else if (src_bank != 1)
                 mlp_q <= mlp_payload[src_index_hold[9:0]];
         end
     end

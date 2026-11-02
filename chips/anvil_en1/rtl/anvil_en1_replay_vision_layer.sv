@@ -100,6 +100,7 @@ module anvil_en1_replay_vision_layer #(
     reg [15:0] low_hold, copy_low, projected_q, source_data_hold;
     reg [3:0] head_hold, child_error_hold, error_hold, work_error_hold, source_error_hold;
     reg [31:0] yielded_patch;
+    reg branch_ram_fault;
     (* ramstyle = "M20K", nomem2reg *) reg [15:0] projected [0:767];
 
     initial begin
@@ -294,7 +295,10 @@ module anvil_en1_replay_vision_layer #(
     wire [15:0] post_output_data;
     wire [63:0] post_addr, post_live, post_physical;
     wire [3:0] post_error;
-    anvil_en1_vision_post_layer post (
+    wire post_branch_write, post_branch_read;
+    wire [31:0] post_branch_waddr, post_branch_raddr;
+    wire [15:0] post_branch_wdata;
+    anvil_en1_vision_post_layer #(.EXTERNAL_BRANCH_RAM(1)) post (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POST_START && error_hold == 0), .start_ready(post_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),
@@ -319,6 +323,9 @@ module anvil_en1_replay_vision_layer #(
         .done_error(post_error), .intermediate_event(intermediate_event),
         .intermediate_bytes(intermediate_bytes),
         .vector_live_bytes(post_live), .vector_physical_bytes(post_physical),
+        .branch_ram_write(post_branch_write), .branch_ram_read(post_branch_read),
+        .branch_ram_waddr(post_branch_waddr), .branch_ram_raddr(post_branch_raddr),
+        .branch_ram_wdata(post_branch_wdata), .branch_ram_rdata(projected_q),
         .controller_bytes(post_controller_bytes), .norm_controller_bytes(norm_controller_bytes),
         .mlp_controller_bytes(mlp_controller_bytes), .down_controller_bytes(down_controller_bytes),
         .down_clamp_controller_bytes(down_clamp_controller_bytes),
@@ -358,11 +365,39 @@ module anvil_en1_replay_vision_layer #(
             stream_last == (received == 767));
     wire stream_accept = stream_valid && (state == PATCH_WAIT || state == HEAD_WAIT ||
         (state == POST_WAIT && source_state == S_IDLE));
+    wire projection_access = state == PROJECTION_STORE || state == COPY_READ;
+    wire post_branch_access = post_branch_write || post_branch_read;
+    wire branch_access_fault = rst_n &&
+        ((projection_access && post_branch_access) ||
+         (state == PROJECTION_STORE && row_hold >= 768) ||
+         (state == COPY_READ && received >= 768) ||
+         (post_branch_access && !post_selected) ||
+         (post_branch_write && post_branch_waddr >= 768) ||
+         (post_branch_read && post_branch_raddr >= 768) ||
+         (projected_allocated && |post_live));
+    wire shared_branch_write = state == PROJECTION_STORE || post_branch_write;
+    wire shared_branch_read = state == COPY_READ || post_branch_read;
+    wire [31:0] shared_branch_waddr = state == PROJECTION_STORE ?
+        row_hold : post_branch_waddr;
+    wire [31:0] shared_branch_raddr = state == COPY_READ ?
+        received : post_branch_raddr;
+    wire [15:0] shared_branch_wdata = state == PROJECTION_STORE ?
+        projected_hold[15:0] : post_branch_wdata;
     always @(posedge clk) begin
-        if (rst_n && state == PROJECTION_STORE)
-            projected[row_hold[9:0]] <= projected_hold[15:0];
-        if (rst_n && state == COPY_READ)
-            projected_q <= projected[received[9:0]];
+        if (rst_n && !branch_access_fault) begin
+            if (shared_branch_write)
+                projected[shared_branch_waddr[9:0]] <= shared_branch_wdata;
+            if (shared_branch_read)
+                projected_q <= projected[shared_branch_raddr[9:0]];
+        end
+    end
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            branch_ram_fault <= 0;
+        else if (start_valid && start_ready)
+            branch_ram_fault <= 0;
+        else if (branch_access_fault)
+            branch_ram_fault <= 1;
     end
 
     assign start_ready = rst_n && state == IDLE;
@@ -483,7 +518,8 @@ module anvil_en1_replay_vision_layer #(
         $bits(projected_hold) + $bits(restored_head_word) +
         $bits(low_hold) + $bits(copy_low) + $bits(projected_q) +
         $bits(source_data_hold) + $bits(head_hold) + $bits(child_error_hold) +
-        $bits(error_hold) + $bits(work_error_hold) + $bits(source_error_hold) + $bits(yielded_patch);
+        $bits(error_hold) + $bits(work_error_hold) + $bits(source_error_hold) +
+        $bits(yielded_patch) + $bits(branch_ram_fault);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
 
     always @(posedge clk or negedge rst_n) begin
@@ -711,7 +747,7 @@ module anvil_en1_replay_vision_layer #(
                     if (error_hold == 0) begin
                         if (child_error_hold != 0)
                             error_hold <= child_error_hold;
-                        else if (receive_bad || received != 768)
+                        else if (receive_bad || received != 768 || branch_ram_fault)
                             error_hold <= 7;
                     end
                     state <= PUBLISH;
@@ -881,7 +917,11 @@ module anvil_en1_replay_vision_layer #(
                     child_error_hold <= post_error;
                     state <= POST_CHECK;
                 end
-                PUBLISH: state <= RESPONSE;
+                PUBLISH: begin
+                    if (error_hold == 0 && branch_ram_fault)
+                        error_hold <= 7;
+                    state <= RESPONSE;
+                end
                 RESPONSE: if (done_ready) begin
                     projected_allocated <= 0;
                     projected_visible <= 0;
