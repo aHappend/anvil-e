@@ -45,9 +45,20 @@ module anvil_en1_native_norm (
     reg [63:0] weights_hold, base_hold, bytes_hold;
     reg [15:0] scale_hold;
     reg [3:0] error_hold, scale_error_hold;
-    wire legal_kind = class_hold == 1 && layer_hold < 16 &&
+    wire vision_norm = class_hold == 1 && layer_hold < 16 &&
         (kind_hold == 16'h1100 || kind_hold == 16'h1107 ||
          kind_hold == 16'h1108 || kind_hold == 16'h110c);
+    wire audio_layer_norm = class_hold == 2 && layer_hold == 16'hffff &&
+        (kind_hold == 16'h2001 || kind_hold == 16'h2003);
+    wire audio_rms_norm = class_hold == 2 && layer_hold < 12 &&
+        (kind_hold == 16'h2100 || kind_hold == 16'h2103 ||
+         kind_hold == 16'h2104 || kind_hold == 16'h210b ||
+         kind_hold == 16'h210c || kind_hold == 16'h210f ||
+         kind_hold == 16'h2111 || kind_hold == 16'h2114 ||
+         kind_hold == 16'h2115);
+    wire legal_kind = vision_norm || audio_layer_norm || audio_rms_norm;
+    wire [31:0] expected_length = vision_norm ? 32'd768 :
+        (audio_layer_norm ? (kind_hold == 16'h2001 ? 32'd128 : 32'd32) : 32'd1024);
     wire lookup_selected = rst_n && (state == LOOKUP_START || state == LOOKUP_WAIT);
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     wire lookup_ready, lookup_valid, lookup_cmd_valid, lookup_result_ready;
@@ -77,7 +88,7 @@ module anvil_en1_native_norm (
     anvil_en1_norm norm (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
-        .layer_norm(1'b0), .learned_scale(1'b1),
+        .layer_norm(audio_layer_norm), .learned_scale(1'b1),
         .vector_length(length_hold), .epsilon(32'h358637bd),
         .source_valid(norm_source_valid), .source_ready(norm_selected && source_ready),
         .source_index(norm_source_index),
@@ -199,7 +210,7 @@ module anvil_en1_native_norm (
                     if ((model_hold != 1 && model_hold != 2) || precision_hold > 1) begin
                         error_hold <= 6;
                         state <= PUBLISH;
-                    end else if (!legal_kind || length_hold != 768 ||
+                    end else if (!legal_kind || length_hold != expected_length ||
                         weights_hold[1:0] != 0) begin
                         error_hold <= 5;
                         state <= PUBLISH;

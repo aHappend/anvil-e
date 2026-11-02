@@ -5,6 +5,137 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Native vision pooling and modality projection increment
+
+The pooling leaf accepts one physical pooled-bin index, not a host-generated
+feature or a text placeholder index. For the pinned kernel 3, patch_count
+must equal 9*pool_count; patch_rows*patch_columns must equal patch_count.
+The immutable original-input directory supplies kind 0x3001 signed x/y
+coordinates. Scan all patches first to find max(clamp(x,0))+1, as in the
+pinned pooler; use floor(max_x/3) as the pooled-row stride. For every patch,
+the exact pooled index is floor(clamp(x,0)/3) +
+stride*floor(clamp(y,0)/3). Validate every such index before source access.
+Only (-1,-1) is padding; malformed or out-of-grid coordinates reject.
+An all-padding image rejects before division or generated-source access.
+
+Bin mask is **weight presence**, including clamped padding in bin zero,
+not merely presence of a nonpadding patch. Padding contributes positive zero
+without reading its encoder output. Each component sums separately rounded
+binary32 products BF16(hidden)*weight in ascending patch order, with weight
+binary32(1/9) for matching bins and positive zero otherwise. Nonpadding
+nonmatching patches still supply their real encoder component: this preserves
+zero-times-infinity/NaN semantics instead of assuming all features are finite.
+The complete pooled component is RNE narrowed to BF16, then widened,
+multiplied by the RNE binary32 sqrt(768), and narrowed again to BF16.
+Pinned standardize=false introduces no bias/scale tensor. All 768 components
+are streamed; a false-mask physical bin is explicit and cannot count as a
+valid soft token. The enclosing native producer still must enumerate true
+bins in ascending order, strip false bins and validate placeholder counts.
+The configured 280-token input therefore has 2520 padded patches; bounded
+fixtures can use fewer groups without shrinking the native vector width.
+
+`anvil_en1_uint_div` is a registered 32-digit restoring unsigned divider,
+with separate comparison and subtraction edges for every digit.
+It has no combinational divider, modulo, or data-dependent unbounded loop.
+Divide-by-zero returns error 5 after registered classification.
+Pool integer quotients and floating reciprocal/root use real iterative RTL.
+No division is inferred from an RTL expression.
+
+The modality projection leaf accepts image_class 1/2 and an immutable
+vision/audio weight-image directory. Source width is 768 for vision,
+1536 for completed native audio. Execute unscaled RMSNorm with epsilon 1e-6,
+materialize the complete BF16 normalized vector, and compute ascending H
+output rows through the real
+BF16/Q4 decoder and projection primitive. It is neither a clipped linear
+nor an additive text-embedding substitution. COMPACT changes H to 8 only;
+source width remains native. No learned norm scale, bias or extra sqrt(H)
+is applied. Matrix 0x1200/2202 at layer 0xffff is validated before starting
+the normalization, so malformed weight images cannot consume source work.
+One 1536-component synchronous BF16 bank reserves 3072 bytes;
+live bytes are 1536/3072 from norm start through completion acceptance,
+including partially received vectors. Complete ordered norm output and
+successful done are necessary before bank visibility. Final completion
+follows the final accepted projected component.
+
+| Pool/projection boundary | Registered behavior |
+| --- | --- |
+| Start P0/P1/P2 | Capture descriptor; validate ranges; register grid products before comparing; only then access the directory |
+| Coordinate read | Separate row offset, address sum, bounds comparison, accepted response and coordinate validation stages |
+| Integer quotient | Capture operands; classify; 32 two-edge restoring digits; publish; stable result until accepted |
+| Bin mapping | Divide x and y separately; register stride*y; later add x; validate pooled index |
+| Pool source | Capture accepted BF16 component/error; multiply then add through separate real binary32 operations |
+| Pool arithmetic | BF16 pooled materialization precedes sqrt(768) scaling; final BF16 output held until accepted |
+| Modality norm | Validate projection directory first; preserve exact count/index/last and actual child error; commit only after complete successful norm |
+| Projection source | Capture column, synchronous bank read, later response; no external generated-feature read |
+| Error/reset | Explicit held error after accepted responses retire; reset zeroes public outputs and clears visibility, never resets payload RAM |
+
+These leaves supply downstream numerical operations, not native Eval
+dispatch, source-vector production, the complete audio encoder or top-level
+inference. Whole-system native scratch and fallback limits remain to be
+connected and independently measured. No numerical, synthesis or physical
+acceptance is claimed.
+
+`anvil_en1_vision_feature` connects a real physical-bin pool to the real
+vision modality norm/projection. Its public source requests entering vision
+layer 16 from the native producer, never a projected host feature. It captures
+model/precision/generation, the entire patch/grid/bin descriptor and both
+immutable image/weight bases. One 768-component synchronous BF16 bank receives
+the pool result. Its complete indices/last and consistent bin mask, together
+with actual successful pool done, are required before source visibility.
+False bins drain all components and complete successfully with done_mask=0,
+emitting no text-space vector. True bins emit all H projected components in
+order and complete with done_mask=1 only after the last acceptance.
+
+The raw pool bank is live from accepted pool start through completion
+acceptance, including false-bin and failed receives: 1536 bytes. It remains
+live during unscaled normalization, concurrently with the projection leaf's
+1536-byte vision normalized vector. Their total live vector peak is 3072
+bytes, their physical reservation is 4608 bytes, and all scalar/child state
+is additional. The normalized bank is not charged before real norm start.
+No controller may silently reuse or externally spill either bank. Source
+callbacks use synchronous reads and delayed stable responses. Memory routing
+stays with the selected pool or projection until actual child completion,
+not a combinational change in live descriptor ports. Whole-system phase
+overlay still must place these leaves inside the native scratch ceiling.
+Physical-bin enumeration/valid-ordinal mapping remains the native session
+producer's responsibility; done_mask is not a placeholder-count certificate.
+
+### Native audio feed-forward residual
+
+`anvil_en1_audio_feedforward` selects native feed_forward1/2 with modes 1/2,
+layer 0..11 and a registered model/precision/generation/token/weight descriptor.
+It loads all 1024 actual input components, retaining the unclipped residual.
+Clamp a separate working vector to BF16 bounds -0x5015..0x5015: these are
+BF16_RNE(-1e10)..BF16_RNE(1e10), matching the pinned scalar gradient_clipping.
+Apply learned pre-RMSNorm kind 0x2100/2111; execute every real clipped
+FF1/SiLU/FF2 output row through `anvil_en1_native_mlp_row` mode 1/2; clamp that
+branch again; learned post-RMSNorm kind 0x2103/2114; separately rounded
+binary32 multiplication by 0.5 and BF16 materialization; binary32 addition
+of the unclipped residual and BF16 materialization. Stream all 1024 results.
+Do not apply 0.5 to the residual or invent a GeGLU up matrix for audio.
+
+The three synchronous 1024-component BF16 banks (residual, normalized working
+input, output branch) reserve 6144 bytes. Charge their complete padded
+allocation from accepted job start through done acceptance, even during
+receive, errors and output stalls. Inputs and branch become readable only
+after their entire vectors are received; norms overwrite only a component
+already consumed during the output pass, after full scalar reductions.
+This is local-vector reuse, not causal overwrite of another encoder token.
+The connected native encoder still owns historical/chunk/conv dependencies.
+
+| Audio FF boundary | Registered behavior |
+| --- | --- |
+| Descriptor F0/F1/F2 | Capture full job; validate mode/model/precision/layer/token before input or weight requests |
+| Input/MLP receive | Register accepted result; write on a later edge; complete vector before norm visibility |
+| Clamp | Synchronous read and later capture; real BF16 interval check; write only after acknowledged clamp result |
+| Norm | Actual directory/scales/RMS; check complete ordered index/last and done before next stage |
+| MLP callback | Tagged requested component; synchronous working-bank read; later stable response |
+| Final residual | Read both banks; register operands; multiply, BF16 narrow, widen, add and BF16 narrow in distinct registered calls |
+| Error/reset | Drain child result, preserve original error, no new work after failure; zero reset outputs without payload RAM reset writes |
+
+This completes each audio FF sublayer, not audio attention, light convolution,
+subsampling, output projection, durable native replay or complete inference.
+
 ## Connected native vision layer and mixed-domain replay storage
 
 `anvil_en1_vision_layer` now connects the real vision attention row executor
@@ -36,9 +167,15 @@ returns its actual error through the waiting row; the first child error is
 preserved instead of being collapsed to successful zero output. No layer
 source callback is interpreted as permission for external feature storage.
 
-`anvil_en1_native_norm` is currently a vision learned-RMS wrapper, not a
-general audio affine LayerNorm. Legal image_class is 1, vector length 768,
-layer 0..15, and kinds 0x1100/1107/1108/110c. It validates the immutable BF16
+`anvil_en1_native_norm` is a learned native normalization wrapper. Vision
+uses image_class 1, vector length 768, layer 0..15, and kinds
+0x1100/1107/1108/110c. Audio image_class 2 permits LayerNorm for subsampling
+kinds 0x2001/2003 at layer 0xffff, lengths 128/32, and learned RMSNorm for
+layer 0..11 kinds 0x2100/2103/2104/210b/210c/210f/2111/2114/2115,
+length 1024. Audio head per_dim_scale 0x2109 is not a norm descriptor.
+LayerNorm subtracts the real ascending-component mean and uses centered
+variance; its learned affine scale has no bias. Native vector lengths never
+shrink in compact text builds. The wrapper validates the immutable BF16
 scale descriptor through the real directory, reads every scale through the
 BF16 weight decoder, and executes `anvil_en1_norm` with epsilon 1e-6.
 Scales are BF16 in both matrix precision modes. Its source/output streams
