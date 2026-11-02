@@ -74,6 +74,7 @@ module anvil_en1_asym_attn_ple #(
     input wire done_ready,
     output wire [3:0] done_error,
     output wire [63:0] live_payload_bytes, physical_payload_bytes,
+    output wire [63:0] production_shadow_bytes,
     output wire [3:0] vector_ram_write, vector_ram_read,
     output wire [47:0] vector_ram_waddr, vector_ram_raddr,
     output wire [63:0] vector_ram_wdata,
@@ -129,6 +130,7 @@ module anvil_en1_asym_attn_ple #(
         assign done_valid = 0;
         assign done_error = 0;
         assign live_payload_bytes = 0;
+        assign production_shadow_bytes = 0;
         assign physical_payload_bytes = 0;
         assign vector_ram_write = 0;
         assign vector_ram_read = 0;
@@ -565,6 +567,18 @@ module anvil_en1_asym_attn_ple #(
             {32'd0, dimension_hold} << (COMPACT ? 2 : 4) : 64'd0;
         assign live_payload_bytes = rst_n ?
             (live_residual_work + live_branch_ple) + live_attention : 64'd0;
+        wire [63:0] shadow_hidden = model_hold == 1 ? 64'd3072 : 64'd5120;
+        wire [63:0] shadow_head = global_hold ? 64'd1024 : 64'd512;
+        wire [63:0] shadow_residual_work =
+            (residual_allocated ? shadow_hidden : 64'd0) +
+            (work_allocated ? shadow_hidden : 64'd0);
+        wire [63:0] shadow_branch_ple =
+            (branch_allocated ? shadow_hidden :
+                (query_allocated ? shadow_head : 64'd0)) +
+            (ple_allocated ? 64'd512 : 64'd0);
+        assign production_shadow_bytes = rst_n ?
+            (shadow_residual_work + shadow_branch_ple) +
+                (attention_allocated ? shadow_head << 3 : 64'd0) : 64'd0;
         assign physical_payload_bytes = rst_n ?
             64'(2*((EXTERNAL_VECTOR_RAM ? 0 : 3*MAX_H+P) +
                 (POST_ONLY ? 0 : MAX_A))) : 64'd0;

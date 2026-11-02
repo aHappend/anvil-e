@@ -1,6 +1,7 @@
 module anvil_en1_replay_text_layer #(
     parameter integer COMPACT = 0,
-    parameter integer EXTERNAL_VECTOR_RAM = 0
+    parameter integer EXTERNAL_VECTOR_RAM = 0,
+    parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -95,6 +96,11 @@ module anvil_en1_replay_text_layer #(
     output wire [63:0] ple_live_bytes, ple_physical_bytes,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
     output wire [63:0] post_vector_live_bytes, post_vector_physical_bytes,
+    output wire [63:0] tile_shadow_bytes, embedding_shadow_bytes, post_vector_shadow_bytes,
+    output wire [1:0] embedding_ram_write, embedding_ram_read,
+    output wire [63:0] embedding_ram_waddr, embedding_ram_raddr,
+    output wire [31:0] embedding_ram_wdata,
+    input wire [31:0] embedding_ram_rdata,
     output wire [3:0] vector_ram_write, vector_ram_read,
     output wire [47:0] vector_ram_waddr, vector_ram_raddr,
     output wire [63:0] vector_ram_wdata,
@@ -146,8 +152,9 @@ module anvil_en1_replay_text_layer #(
     reg [15:0] ple_payload [0:P-1];
 
     initial begin
-        if (COMPACT != 0 && COMPACT != 1)
-            $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if ((COMPACT != 0 && COMPACT != 1) ||
+            (EXTERNAL_EMBEDDING_RAM != 0 && EXTERNAL_EMBEDDING_RAM != 1))
+            $fatal(1, "PARAMETER ERROR: COMPACT and EXTERNAL_EMBEDDING_RAM must be 0 or 1");
     end
 
     wire native_model = model_hold == 1 || model_hold == 2;
@@ -287,6 +294,7 @@ module anvil_en1_replay_text_layer #(
         .executor_controller_bytes(executor_controller_bytes),
         .checkpoint_controller_bytes(checkpoint_controller_bytes),
         .tile_controller_bytes(tile_controller_bytes), .tile_live_bytes(tile_live_bytes),
+        .tile_shadow_bytes(tile_shadow_bytes),
         .tile_physical_bytes(tile_physical_bytes), .busy()
     );
 
@@ -306,7 +314,12 @@ module anvil_en1_replay_text_layer #(
     wire embed_ple_correct = embed_ple_index == ple_count && ple_count < P &&
         embed_ple_last == (ple_count + 1'b1 == P);
     wire [63:0] embedding_controller_bytes, post_controller_bytes;
-    anvil_en1_embedding_ple #(.COMPACT(COMPACT)) layer_embedding (
+    anvil_en1_embedding_ple #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_EMBEDDING_RAM)
+    ) layer_embedding (
+        .vector_ram_write(embedding_ram_write), .vector_ram_read(embedding_ram_read),
+        .vector_ram_waddr(embedding_ram_waddr), .vector_ram_raddr(embedding_ram_raddr),
+        .vector_ram_wdata(embedding_ram_wdata), .vector_ram_rdata(embedding_ram_rdata),
         .controller_bytes(embedding_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EMBED_START), .start_ready(embed_ready),
@@ -334,6 +347,7 @@ module anvil_en1_replay_text_layer #(
         .result_ready(embed_result_ready), .result_data(result_data), .result_error(result_error),
         .done_valid(embed_valid), .done_ready(rst_n && state == EMBED_WAIT),
         .done_error(embed_error), .live_payload_bytes(embedding_live_bytes),
+        .production_shadow_bytes(embedding_shadow_bytes),
         .physical_payload_bytes(embedding_physical_bytes)
     );
 
@@ -393,6 +407,7 @@ module anvil_en1_replay_text_layer #(
         .done_ready(rst_n && state == POST_WAIT && !post_output_valid &&
             source_state == SOURCE_IDLE), .done_error(post_error),
         .live_payload_bytes(post_vector_live_bytes),
+        .production_shadow_bytes(post_vector_shadow_bytes),
         .physical_payload_bytes(post_vector_physical_bytes)
     );
 

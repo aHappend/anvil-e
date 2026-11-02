@@ -81,6 +81,7 @@ module anvil_en1_replay_attention_projection #(
     output wire [63:0] controller_state_bytes,
     output wire [63:0] executor_controller_bytes, checkpoint_controller_bytes,
     output wire [63:0] tile_controller_bytes, tile_live_bytes, tile_physical_bytes,
+    output wire [63:0] tile_shadow_bytes,
     output wire [3:0] attention_activity,
     output wire busy
 );
@@ -294,6 +295,7 @@ module anvil_en1_replay_attention_projection #(
         .controller_state_bytes(executor_controller_bytes),
         .checkpoint_controller_bytes(checkpoint_controller_bytes),
         .tile_controller_bytes(tile_controller_bytes), .tile_live_bytes(tile_live_bytes),
+        .tile_shadow_bytes(tile_shadow_bytes),
         .tile_physical_bytes(tile_physical_bytes), .pair_live_bytes(), .busy()
     );
 

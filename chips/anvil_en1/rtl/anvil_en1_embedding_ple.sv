@@ -1,5 +1,6 @@
 module anvil_en1_embedding_ple #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -40,10 +41,16 @@ module anvil_en1_embedding_ple #(
     input wire done_ready,
     output wire [3:0] done_error,
     output wire [63:0] live_payload_bytes, physical_payload_bytes,
+    output wire [63:0] production_shadow_bytes,
+    output wire [1:0] vector_ram_write, vector_ram_read,
+    output wire [63:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [31:0] vector_ram_wdata,
+    input wire [31:0] vector_ram_rdata,
     output wire [63:0] controller_bytes
 );
-    generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+    generate if ((COMPACT != 0 && COMPACT != 1) ||
+        (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT and EXTERNAL_VECTOR_RAM must be 0 or 1");
         assign start_ready = 0;
         assign modality_valid = 0;
         assign modality_model = 0;
@@ -68,8 +75,14 @@ module anvil_en1_embedding_ple #(
         assign done_valid = 0;
         assign done_error = 0;
         assign live_payload_bytes = 0;
+        assign production_shadow_bytes = 0;
         assign physical_payload_bytes = 0;
         assign controller_bytes = 0;
+        assign vector_ram_write = 0;
+        assign vector_ram_read = 0;
+        assign vector_ram_waddr = 0;
+        assign vector_ram_raddr = 0;
+        assign vector_ram_wdata = 0;
     end else begin : frontend
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer P = COMPACT ? 4 : 256;
@@ -116,7 +129,7 @@ module anvil_en1_embedding_ple #(
         reg [2:0] fp_op;
         reg [3:0] error_hold;
         reg input_allocated, ple_allocated;
-        reg [15:0] input_q, ple_q;
+        wire [15:0] input_q, ple_q;
         localparam integer CONTROLLER_BITS = $bits({
             state, return_state, src_state, scale_state, model_hold, precision_hold,
             modality_hold, memory_owner, layer_hold, token_hold, token_id,
@@ -128,7 +141,7 @@ module anvil_en1_embedding_ple #(
             scale_data_hold, scale_error_hold, lookup_kind, descriptor_base,
             descriptor_bytes, descriptor_rows, descriptor_columns, descriptor_stride,
             fp_op, error_hold, input_allocated, ple_allocated, input_q, ple_q
-        });
+        }) - (EXTERNAL_VECTOR_RAM ? 32 : 0);
         wire [63:0] lookup_controller_bytes, weight_controller_bytes;
         wire [63:0] projection_controller_bytes, norm_controller_bytes;
         wire [63:0] div_controller_bytes, fp_controller_bytes;
@@ -136,10 +149,6 @@ module anvil_en1_embedding_ple #(
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             weight_controller_bytes + projection_controller_bytes +
             norm_controller_bytes + div_controller_bytes + fp_controller_bytes;
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] input_payload [0:MAX_H-1];
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] ple_payload [0:P-1];
 
         wire native_model;
         wire [7:0] layer_count;
@@ -294,17 +303,38 @@ module anvil_en1_embedding_ple #(
             state == COMBINE_READ || state == PLE_READ);
         wire [31:0] input_read_index = src_state == SRC_READ ? src_index_hold : index;
         wire [31:0] ple_read_index = src_state == SRC_READ ? src_index_hold : index;
-        always @(posedge clk) begin
-            if (input_write)
-                input_payload[index[H_BITS-1:0]] <= value_hold[15:0];
-            if (norm_write)
-                ple_payload[normalized_index[P_BITS-1:0]] <= normalized_data;
-            else if (context_write || combine_write)
-                ple_payload[index[P_BITS-1:0]] <= value_hold[15:0];
-            if (input_read)
-                input_q <= input_payload[input_read_index[H_BITS-1:0]];
-            if (ple_read)
-                ple_q <= ple_payload[ple_read_index[P_BITS-1:0]];
+        wire [1:0] bank_write = {norm_write || context_write || combine_write, input_write};
+        wire [1:0] bank_read = {ple_read, input_read};
+        wire [63:0] bank_waddr = {norm_write ? normalized_index : index, index};
+        wire [63:0] bank_raddr = {ple_read_index, input_read_index};
+        wire [31:0] bank_wdata =
+            {norm_write ? normalized_data : value_hold[15:0], value_hold[15:0]};
+        assign vector_ram_write = EXTERNAL_VECTOR_RAM ? bank_write : 2'd0;
+        assign vector_ram_read = EXTERNAL_VECTOR_RAM ? bank_read : 2'd0;
+        assign vector_ram_waddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_waddr : 64'd0;
+        assign vector_ram_raddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_raddr : 64'd0;
+        assign vector_ram_wdata = rst_n && EXTERNAL_VECTOR_RAM ? bank_wdata : 32'd0;
+        if (EXTERNAL_VECTOR_RAM) begin : external_vectors
+            assign {ple_q, input_q} = vector_ram_rdata;
+        end else begin : internal_vectors
+            genvar bank;
+            for (bank=0; bank<2; bank=bank+1) begin : banks
+                localparam integer BANK_WORDS = bank == 0 ? MAX_H : P;
+                localparam integer BANK_BITS = bank == 0 ? H_BITS : P_BITS;
+                (* ramstyle = "M20K", nomem2reg *)
+                reg [15:0] payload [0:BANK_WORDS-1];
+                reg [15:0] read_q;
+                if (bank == 0)
+                    assign input_q = read_q;
+                else
+                    assign ple_q = read_q;
+                always @(posedge clk) begin
+                    if (bank_write[bank])
+                        payload[bank_waddr[32*bank+:BANK_BITS]] <= bank_wdata[16*bank+:16];
+                    if (bank_read[bank])
+                        read_q <= payload[bank_raddr[32*bank+:BANK_BITS]];
+                end
+            end
         end
 
         assign start_ready = rst_n && state == IDLE;
@@ -341,7 +371,11 @@ module anvil_en1_embedding_ple #(
         assign live_payload_bytes = !rst_n ? 64'd0 :
             (input_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
             (ple_allocated ? 64'(2*P) : 64'd0);
-        assign physical_payload_bytes = rst_n ? 64'(2*(MAX_H+P)) : 64'd0;
+        assign production_shadow_bytes = !rst_n ? 64'd0 :
+            (input_allocated ? (model_hold == 1 ? 64'd3072 : 64'd5120) : 64'd0) +
+            (ple_allocated ? 64'd512 : 64'd0);
+        assign physical_payload_bytes = rst_n && !EXTERNAL_VECTOR_RAM ?
+            64'(2*(MAX_H+P)) : 64'd0;
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin

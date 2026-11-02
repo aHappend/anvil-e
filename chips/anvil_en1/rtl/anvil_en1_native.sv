@@ -35,6 +35,7 @@ module anvil_en1_native #(
     output wire fallback_active,
     output wire [6:0] frame_depth,
     output wire [1599:0] allocation_live_bytes, allocation_physical_bytes,
+    output wire [1599:0] allocation_shadow_bytes,
     output wire [255:0] allocation_metadata_bytes,
     output wire [63:0] workspace_shadow_bytes, workspace_reserved_bytes,
     output wire [63:0] native_workspace_bytes, native_workspace_shadow_bytes,
@@ -89,6 +90,36 @@ module anvil_en1_native #(
         (model_hold == 1 ?
             ({32'd0, padded} << 11) + ({32'd0, padded} << 10) :
             ({32'd0, padded} << 12) + ({32'd0, padded} << 10));
+    wire [63:0] production_frontier_bytes = model_hold == 1 ?
+        ({32'd0, padded} << 11) + ({32'd0, padded} << 10) :
+        ({32'd0, padded} << 12) + ({32'd0, padded} << 10);
+    wire [63:0] production_hidden_bytes = model_hold == 1 ? 64'd3072 : 64'd5120;
+    wire [31:0] production_window = padded > 512 ? 32'd512 : padded;
+    genvar shadow_component;
+    generate for (shadow_component=0; shadow_component<25;
+        shadow_component=shadow_component+1) begin : production_allocations
+        if (shadow_component==0)
+            assign allocation_shadow_bytes[64*shadow_component+:64] =
+                |allocation_live_bytes[0+:64] ? production_frontier_bytes : 64'd0;
+        else if (shadow_component==1)
+            assign allocation_shadow_bytes[64*shadow_component+:64] =
+                |allocation_live_bytes[64+:64] ?
+                    {32'd0, production_window} << (model_hold == 1 ? 10 : 11) : 64'd0;
+        else if (shadow_component==3 || shadow_component==6)
+            assign allocation_shadow_bytes[64*shadow_component+:64] =
+                |allocation_live_bytes[64*shadow_component+:64] ?
+                    production_hidden_bytes : 64'd0;
+        else if (shadow_component==4 || shadow_component==7 || shadow_component==9)
+            assign allocation_shadow_bytes[64*shadow_component+:64] =
+                allocation_live_bytes[64*shadow_component+:64] << (COMPACT ? 6 : 0);
+        else if (shadow_component==5)
+            assign allocation_shadow_bytes[64*shadow_component+:64] = workspace_shadow_bytes;
+        else if (shadow_component!=2 && shadow_component!=8 && shadow_component!=10 &&
+            shadow_component!=11 && shadow_component!=19 && shadow_component!=20 &&
+            shadow_component!=21)
+            assign allocation_shadow_bytes[64*shadow_component+:64] =
+                allocation_live_bytes[64*shadow_component+:64];
+    end endgenerate
     wire selected_fallback = forced_hold ||
         frontier_required > (COMPACT ? 64'd8192 : 64'd3145728);
     wire [64:0] tokens_end = {1'b0, tokens_base_hold} +
@@ -393,6 +424,7 @@ module anvil_en1_native #(
         .logit_valid(logit_valid), .logit_ready(logit_ready), .logit_data(logit_data),
         .logit_index(logit_index), .logit_last(logit_last),
         .vector_live_bytes(allocation_live_bytes[64*2+:64]),
+        .vector_shadow_bytes(allocation_shadow_bytes[64*2+:64]),
         .vector_physical_bytes(allocation_physical_bytes[64*2+:64]),
         .feature_live_bytes(allocation_live_bytes[64*3+:64]),
         .feature_physical_bytes(allocation_physical_bytes[64*3+:64]),
@@ -405,6 +437,7 @@ module anvil_en1_native #(
         .anchor_live_bytes(allocation_live_bytes[64*4+:64]),
         .anchor_physical_bytes(allocation_physical_bytes[64*4+:64]),
         .execution_live_bytes(allocation_live_bytes[64*19+:192]),
+        .execution_shadow_bytes(allocation_shadow_bytes[64*19+:192]),
         .execution_physical_bytes(executor_physical_bytes),
         .reported_controller_bytes(allocation_live_bytes[64*24+:64]),
         .busy(executor_busy)
@@ -495,12 +528,15 @@ module anvil_en1_native #(
         .owner_tile_live_bytes(allocation_live_bytes[64*7+:64]),
         .owner_tile_physical_bytes(allocation_physical_bytes[64*7+:64]),
         .text_tile_live_bytes(allocation_live_bytes[64*8+:64]),
+        .text_tile_shadow_bytes(allocation_shadow_bytes[64*8+:64]),
         .text_tile_physical_bytes(allocation_physical_bytes[64*8+:64]),
         .ple_live_bytes(allocation_live_bytes[64*9+:64]),
         .ple_physical_bytes(allocation_physical_bytes[64*9+:64]),
         .embedding_live_bytes(allocation_live_bytes[64*10+:64]),
+        .embedding_shadow_bytes(allocation_shadow_bytes[64*10+:64]),
         .embedding_physical_bytes(allocation_physical_bytes[64*10+:64]),
         .post_live_bytes(allocation_live_bytes[64*11+:64]),
+        .post_shadow_bytes(allocation_shadow_bytes[64*11+:64]),
         .post_physical_bytes(allocation_physical_bytes[64*11+:64]),
         .vision_live_bytes(allocation_live_bytes[64*12+:64]),
         .vision_physical_bytes(allocation_physical_bytes[64*12+:64]),

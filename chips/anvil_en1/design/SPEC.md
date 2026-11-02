@@ -140,7 +140,7 @@ No projected-output count is a weight-bandwidth measurement.
 
 `anvil_en1_allocation_ledger` samples the native 25-field component vector,
 four metadata fields and the top integration reservation each native
-execution cycle. Four independent 32-term balanced adder trees each
+execution cycle. Six independent 32-term balanced adder trees each
 have five register stages and one 64-bit addition per stage. The model
 and observation-valid tags traverse those same stages. A report therefore
 corresponds to one coherent input cycle, not a mixture of five successive
@@ -153,6 +153,8 @@ of idle physical SRAM capacity supplies these totals.
 | Replay reservation | Fields 5..16 and 22, plus workspace visibility metadata | Metric 20, saturating-session-independent maximum |
 | KV-equivalent reservation | All 25 component fields, all four metadata fields and integration reservation | Metric 24, maximum |
 | Native scratch | Native workspace subset, fields 3/9/10/12..15/19 and native reconstruction controllers | Allocation failure guard; not an additional contribution to metric 24 |
+| Production-shadow KV-equivalent reservation | Production-width counterpart of every component and metadata field, plus the same integration reservation | Allocation failure guard; not additional physical storage |
+| Production-shadow native scratch | Production-width counterpart of the native scratch subset | Allocation failure guard; not additional physical storage |
 
 Integration reservation includes the enclosing top's complete declared
 descriptor/session/traffic registers, the immutable native bridge's
@@ -177,12 +179,92 @@ committing a successful session.
 
 These are connected conservative reservations, including held copies
 and idle controllers, not independently accepted allocation completeness
-or storage savings. Actual mode-overlap, short-context native scratch,
-ordinary workspace and full production-width compact-shadow limits still
-need enforcement. The completion guard below now reports actual scratch,
-fallback-ceiling, overlap and equivalent-payload violations.
+or storage savings. Grant-time whole-system limiting and ordinary-workspace
+partition enforcement remain unfinished. The completion guard below reports
+actual and production-shadow scratch, fallback-ceiling, overlap and
+equivalent-payload violations; it does not authorize over-allocation.
 Physical reserved payload and metadata remain separately exposed by
 their owning leaves; a live subtotal is not a Quartus resource report.
+
+### Production-width counterpart of compact allocations
+
+The native assembly exposes `allocation_shadow_bytes`, with the same 25
+64-bit fields, sampling boundaries and live flags as `allocation_live_bytes`.
+It is a parallel reservation ledger, not another RAM allocation. For a live
+hidden vector use 3072/5120 bytes for E2B/E4B; for a live PLE vector use
+512 bytes. Mixed hidden/PLE banks are computed from their individual owning
+flags, never by multiplying a mixed compact subtotal by a guessed ratio.
+The full-text and POST_ONLY workers likewise use separate residual, work,
+branch/query, PLE and attention lifetimes. Query components use the selected
+production 256/512 dimension, and retained attention has eight query heads.
+The replay projection tile separately charges its hidden and head vectors.
+
+| Component fields | Production-shadow rule |
+| --- | --- |
+| 0, frontier | While allocated, production hidden bytes times the full padded context |
+| 1, local anchor ring | While allocated, `min(p,512)` times 1024/2048 bytes |
+| 2, retained hidden/PLE | Owning hidden and PLE lifetime flags, independently |
+| 3, 6, feature and owner source | Production hidden vector while the corresponding bank is allocated |
+| 4, 7, 9, anchor transfer, owner head and PLE | Compact allocated byte count times 64; production count unchanged |
+| 5, bounded workspace | Existing domain-aware frame, scalar and memo shadow, including pending reservations |
+| 8, replay projection tile | Production hidden plus selected local/global head vector while the tile is live |
+| 10, replay embedding | Sum of the input and text embedding workers' separately flagged production hidden/PLE reservations |
+| 11, replay post | POST_ONLY worker's independently flagged production reservations |
+| 19, ordinary embedding | Embedding worker's independently flagged production hidden/PLE reservations |
+| 20, ordinary text | Full-text worker's independently flagged production reservations |
+| 12..18, 21..24 | Unchanged-width native encoder, resident word, binding and controller reservations; connected final-head payload is zero |
+
+Native vision/audio feature staging remains 768/1536 components even in
+compact text builds. Modality projection stores its fixed-width encoder input,
+not a hidden-sized output bank, so these staging reservations do not scale
+with text hidden width. All arithmetic/controller registers retain their
+declared widths; compact traversal bounds do not remove them from the shadow.
+The frontier/ring metadata shadow reserves 1152/2304 bytes respectively,
+matching their production declarations. Workspace and resident metadata use
+the same declaration widths in either geometry.
+
+Actual and shadow equivalent/native-scratch sums traverse the same five
+registered addition stages and mode/model/check tags. The guard checks both
+against the same production B, strict ratio, fallback ceiling and native
+scratch ceiling. A shadow smaller than its corresponding actual subtotal is
+itself error 7. These observations prevent a small compact physical bank from
+standing in for a production-width allocation pass. They do not execute
+production-width numerical work or replace independent liveness observations,
+grant-time allocation limits, physical overlays or source-matched FPGA results.
+
+### Replay embedding physical overlay
+
+`anvil_en1_embedding_ple` has an optional `EXTERNAL_VECTOR_RAM` parameter
+(legal 0/1, default 0). Its input/PLE bank read and write enables, full
+32-bit component addresses and BF16 data are exported without changing the
+enabled-edge synchronous RAM timing. Default standalone instances retain
+their original two local banks. The wrappers
+`anvil_en1_replay_input` and `anvil_en1_replay_text_layer` expose
+`EXTERNAL_EMBEDDING_RAM` with the same legal values/default and forward this
+storage interface.
+
+The replay executor sets both wrappers to external mode and owns one shared
+hidden/PLE bank pair. The dispatcher serializes their work; any yield releases
+the embedding worker before another frame executes. Two private payload
+instances are therefore replaced by one physical instance (5632 production,
+24 compact bytes, rather than twice those amounts). Field 10 reports this
+shared physical reservation once, while actual and shadow live reservations
+continue to come from the original allocation flags. The shared read registers
+are counted once in dispatcher state, not again in each external child.
+
+| Overlay boundary | Behavior |
+| --- | --- |
+| Enabled read/write edge | Preserve the original bank address, data and registered-read edge |
+| Both workers request one bank | Suppress that bank access and latch error 7 |
+| Enabled address outside the bank | Suppress that access and latch error 7; do not truncate into a legal address |
+| Both workers retain live embedding payload | Latch error 7 even without simultaneous port enables |
+| Worker error/done | Retire the worker normally; preserve its earlier specific error, otherwise expose overlay error 7 before the dispatcher response |
+| Reset | Invalidate controller/handshake state, with no payload initialization sweep |
+| New dispatcher task | Clear the previous task's overlay fault only after that task retired |
+
+This overlay does not combine the ordinary frontier embedding banks with
+replay banks, or overlay simultaneously live feature/frame storage. It is
+not a measured M20K inference or resource-fit result.
 
 ### Native-workspace domain census
 
@@ -211,12 +293,12 @@ not unsigned wraparound. These subsets traverse the existing schedule,
 executor and binding interfaces without altering numerical scheduling,
 backing addresses, memo replacement or external memory traffic. They are
 required inputs to the remaining whole-system native-scratch limiter;
-by themselves they do not establish its bound or the complete compact
-production-shadow ledger.
+by themselves they do not establish grant-time limiting. Their production
+counterparts now enter the complete 25-field shadow observation described above.
 
 ### Completion-time allocation failure guard
 
-The allocation ledger adds a fourth, identically registered sum for
+The allocation ledger includes an identically registered sum for
 native reconstruction scratch: workspace native payload, fields 3, 9,
 10, 12..15 and 19, and the reported native reconstruction controllers.
 This deliberately also reserves the embedding/PLE controllers and banks
@@ -224,9 +306,10 @@ when not currently selected; idle dispatcher selection cannot erase a
 surviving allocation. Scratch is a subset of equivalent bytes, not a
 second contribution to that total.
 
-The top's allocation guard checks actual equivalent bytes against
-`20*P < 9*B`, checks fallback equivalent bytes against 1 MiB, and checks
-ordinary native scratch against `min(1 MiB,B>>3)`. B is always the
+The top's allocation guard checks actual and production-shadow equivalent
+bytes independently against `20*P < 9*B`, checks both fallback equivalent
+reservations against 1 MiB, and checks both ordinary native scratch
+reservations against `min(1 MiB,B>>3)`. B is always the
 production-geometry padded baseline, also in compact builds. Comparison
 uses widened shift/add operands and a separately registered comparison
 stage, never division or a truncating percentage calculation. It also
@@ -244,10 +327,9 @@ nor changes the admitted operation to an error-return fallback.
 | Session commit | Establish the decode session only after both native execution and allocation checks succeeded |
 | Reset | Clear guard and pipeline, with no manufactured allocation reports |
 
-These connected actual-allocation checks do not certify completeness of
-the allocation census, full production-width compact shadow limits or
-FPGA resource fit. The full compact-shadow limiter and remaining physical
-phase overlays still must be completed before the design handoff.
+These connected observations do not certify independently checked allocation
+completeness or FPGA resource fit. Grant-time allocation limiting and remaining
+physical phase overlays still must be completed before the design handoff.
 
 ### Matched-unshared payload gauge
 

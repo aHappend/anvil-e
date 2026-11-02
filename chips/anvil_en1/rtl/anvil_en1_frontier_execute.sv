@@ -127,12 +127,14 @@ module anvil_en1_frontier_execute #(
     output wire [17:0] logit_index,
     output wire logit_last,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire [63:0] vector_shadow_bytes,
     output wire [63:0] feature_live_bytes, feature_physical_bytes,
     output wire [63:0] frontier_live_bytes, frontier_physical_bytes,
     output wire [63:0] frontier_metadata_bytes,
     output wire [63:0] ring_live_bytes, ring_physical_bytes, ring_metadata_bytes,
     output wire [63:0] anchor_live_bytes, anchor_physical_bytes,
     output wire [191:0] execution_live_bytes, execution_physical_bytes,
+    output wire [191:0] execution_shadow_bytes,
     output wire [3:0] vector_ram_write, vector_ram_read,
     output wire [47:0] vector_ram_waddr, vector_ram_raddr,
     output wire [63:0] vector_ram_wdata,
@@ -428,6 +430,7 @@ module anvil_en1_frontier_execute #(
         .done_valid(embed_done), .done_ready(rst_n && state == EMBED_WAIT),
         .done_error(embed_error),
         .live_payload_bytes(execution_live_bytes[0+:64]),
+        .production_shadow_bytes(execution_shadow_bytes[0+:64]),
         .physical_payload_bytes(execution_physical_bytes[0+:64])
     );
     wire layer_req_valid, layer_req_value, layer_rsp_ready;
@@ -494,6 +497,7 @@ module anvil_en1_frontier_execute #(
         .output_last(layer_output_last), .done_valid(layer_done),
         .done_ready(rst_n && state == LAYER_WAIT), .done_error(layer_error),
         .live_payload_bytes(execution_live_bytes[64+:64]),
+        .production_shadow_bytes(execution_shadow_bytes[64+:64]),
         .physical_payload_bytes(execution_physical_bytes[64+:64])
     );
     wire anchor_ready, anchor_done, anchor_req_valid, anchor_req_value, anchor_rsp_ready;
@@ -589,6 +593,10 @@ module anvil_en1_frontier_execute #(
     assign vector_live_bytes = rst_n ?
         (h_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
         (p_allocated ? 64'(2*P) : 64'd0) : 64'd0;
+    assign vector_shadow_bytes = rst_n ?
+        (h_allocated ? (model_hold == 1 ? 64'd3072 : 64'd5120) : 64'd0) +
+        (p_allocated ? 64'd512 : 64'd0) : 64'd0;
+    assign execution_shadow_bytes[128+:64] = execution_live_bytes[128+:64];
     assign vector_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
     assign feature_live_bytes = rst_n && feature_allocated ?
         {32'd0, hidden_hold} << 1 : 64'd0;

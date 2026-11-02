@@ -1,5 +1,6 @@
 module anvil_en1_replay_input #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -64,6 +65,11 @@ module anvil_en1_replay_input #(
     output wire [31:0] done_dependency_token,
     output wire [11:0] done_dependency_length,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
+    output wire [63:0] embedding_shadow_bytes,
+    output wire [1:0] embedding_ram_write, embedding_ram_read,
+    output wire [63:0] embedding_ram_waddr, embedding_ram_raddr,
+    output wire [31:0] embedding_ram_wdata,
+    input wire [31:0] embedding_ram_rdata,
     output wire [63:0] controller_state_bytes,
     output wire busy
 );
@@ -100,8 +106,9 @@ module anvil_en1_replay_input #(
     reg token_error_hold, embed_active, store_open;
 
     initial begin
-        if (COMPACT != 0 && COMPACT != 1)
-            $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if ((COMPACT != 0 && COMPACT != 1) ||
+            (EXTERNAL_EMBEDDING_RAM != 0 && EXTERNAL_EMBEDDING_RAM != 1))
+            $fatal(1, "PARAMETER ERROR: COMPACT and EXTERNAL_EMBEDDING_RAM must be 0 or 1");
     end
 
     wire native_model = model_hold == 1 || model_hold == 2;
@@ -142,7 +149,12 @@ module anvil_en1_replay_input #(
         embed_input_last == (input_count + 1'b1 == {20'd0, hidden_hold});
 
     wire [63:0] embedding_controller_bytes;
-    anvil_en1_embedding_ple #(.COMPACT(COMPACT)) reconstruct (
+    anvil_en1_embedding_ple #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_EMBEDDING_RAM)
+    ) reconstruct (
+        .vector_ram_write(embedding_ram_write), .vector_ram_read(embedding_ram_read),
+        .vector_ram_waddr(embedding_ram_waddr), .vector_ram_raddr(embedding_ram_raddr),
+        .vector_ram_wdata(embedding_ram_wdata), .vector_ram_rdata(embedding_ram_rdata),
         .controller_bytes(embedding_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EMBED_START), .start_ready(embed_ready),
@@ -172,6 +184,7 @@ module anvil_en1_replay_input #(
         .done_valid(embed_valid),
         .done_ready(rst_n && state == EMBED_WAIT),
         .done_error(embed_error), .live_payload_bytes(embedding_live_bytes),
+        .production_shadow_bytes(embedding_shadow_bytes),
         .physical_payload_bytes(embedding_physical_bytes)
     );
 

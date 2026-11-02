@@ -55,6 +55,7 @@ module anvil_en1_replay_kv_tile #(
     output wire [31:0] source_read_bytes,
     output wire [63:0] controller_state_bytes,
     output wire [63:0] tile_live_bytes, tile_physical_bytes,
+    output wire [63:0] tile_shadow_bytes,
     output wire busy
 );
     localparam [2:0] IDLE = 0, VALIDATE = 1, TILE_START = 2,
@@ -175,6 +176,10 @@ module anvil_en1_replay_kv_tile #(
     assign tile_live_bytes = rst_n &&
         (state == TILE_START || state == TILE_RUN) ?
         ({52'd0, hidden_hold} + {32'd0, dimension_hold}) << 1 : 64'd0;
+    assign tile_shadow_bytes = rst_n &&
+        (state == TILE_START || state == TILE_RUN) ?
+        (model_hold == 1 ? 64'd3072 : 64'd5120) +
+            (is_global ? 64'd1024 : 64'd512) : 64'd0;
     assign tile_physical_bytes = rst_n ? 64'(2*(MAX_H+MAX_D)) : 64'd0;
     assign busy = rst_n && state != IDLE;
 

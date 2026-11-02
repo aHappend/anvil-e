@@ -93,6 +93,7 @@ module anvil_en1_replay_attention_execute #(
     output wire [63:0] controller_state_bytes,
     output wire [63:0] checkpoint_controller_bytes, tile_controller_bytes,
     output wire [63:0] tile_live_bytes, tile_physical_bytes,
+    output wire [63:0] tile_shadow_bytes,
     output wire [63:0] pair_live_bytes,
     output wire [3:0] attention_activity,
     output wire busy
@@ -318,7 +319,8 @@ module anvil_en1_replay_attention_execute #(
         .query_projection_bytes(query_projection_bytes),
         .source_read_event(source_read_event), .source_read_bytes(source_read_bytes),
         .controller_state_bytes(tile_controller_bytes),
-        .tile_live_bytes(tile_live_bytes), .tile_physical_bytes(tile_physical_bytes), .busy()
+        .tile_live_bytes(tile_live_bytes), .tile_physical_bytes(tile_physical_bytes),
+        .tile_shadow_bytes(tile_shadow_bytes), .busy()
     );
 
     assign start_ready = rst_n && state == IDLE;

@@ -47,11 +47,15 @@ module anvil_en1_top #(
     output wire [31:0] csr_rdata,
     output wire csr_error
 );
-    localparam [3:0] IDLE=0, VALIDATE=1, PARENT_START=2, PARENT_WAIT=3,
+    localparam [4:0] IDLE=0, VALIDATE=1, PARENT_START=2, PARENT_WAIT=3,
         POSITION_SEND=4, POSITION_WAIT=5, POSITION_CHECK=6,
         NATIVE_START=7, NATIVE_WAIT=8, PUBLISH=9, RESPONSE=10,
-        ALLOCATION_DRAIN=11, ALLOCATION_CHECK=12;
-    reg [3:0] state, error_hold;
+        ALLOCATION_DRAIN=11, ALLOCATION_CHECK=12,
+        MASK_SCAN_SEND=13, MASK_SCAN_WAIT=14, MASK_SCAN_CHECK=15,
+        BASELINE_COUNTS=16, BASELINE_SCALE=17, BASELINE_SUM=18,
+        SCAN_ADVANCE=19;
+    reg [4:0] state;
+    reg [3:0] error_hold;
     reg [1:0] model_hold, precision_hold;
     reg [2:0] mode_hold;
     reg decode_hold;
@@ -75,6 +79,11 @@ module anvil_en1_top #(
     reg [14:0] production_local_units;
     reg [31:0] production_baseline_payload;
     reg [3:0] allocation_wait;
+    reg [31:0] traffic_local_write_units, traffic_global_write_units;
+    reg [31:0] traffic_local_span, traffic_global_span;
+    reg [31:0] traffic_local_read_units, traffic_global_read_units;
+    reg [63:0] traffic_local_read_bytes, traffic_global_read_bytes;
+    reg [63:0] traffic_read_step, matched_traffic_bytes;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -94,6 +103,16 @@ module anvil_en1_top #(
     wire [64:0] masks_end = {1'b0, masks_hold} +
         {31'd0, tokens_hold, 2'd0} - 65'd1;
     wire [64:0] scan_address = {1'b0, positions_hold} + {31'd0, scan_index, 2'd0};
+    wire [64:0] scan_mask_address = {1'b0, masks_hold} +
+        {31'd0, scan_index, 2'd0};
+    wire [31:0] remaining_queries = tokens_hold - scan_index;
+    wire [31:0] local_query_span =
+        remaining_queries > (COMPACT ? 32'd4 : 32'd512) ?
+            (COMPACT ? 32'd4 : 32'd512) : remaining_queries;
+    wire [63:0] traffic_local_writes = {32'd0, traffic_local_write_units} <<
+        (COMPACT ? 4 : (model_hold == 1 ? 10 : 11));
+    wire [63:0] traffic_global_writes = {32'd0, traffic_global_write_units} <<
+        (COMPACT ? 5 : (model_hold == 1 ? 11 : 12));
     wire session_matches = session_valid && session_model == model_hold &&
         session_precision == precision_hold && session_mode == mode_hold &&
         session_weights == weights_hold && session_vision_weights == vision_weights_hold &&
@@ -194,7 +213,10 @@ module anvil_en1_top #(
     wire fallback_active;
     wire [6:0] frame_depth;
     wire [1599:0] live_bytes, physical_bytes;
+    wire [1599:0] production_shadow_bytes;
     wire [255:0] metadata_bytes;
+    wire [255:0] production_shadow_metadata_bytes = !rst_n ? 256'd0 :
+        {metadata_bytes[255:128], 64'd2304, 64'd1152};
     wire [63:0] shadow_bytes, reserved_bytes;
     wire [63:0] native_workspace_bytes, native_workspace_shadow_bytes;
     wire [63:0] native_reconstruction_controller_bytes;
@@ -216,6 +238,7 @@ module anvil_en1_top #(
     wire [1:0] allocation_report_model;
     wire [63:0] allocation_payload_bytes, allocation_replay_bytes, allocation_equivalent_bytes;
     wire [63:0] native_scratch_bytes;
+    wire [63:0] allocation_shadow_bytes, native_scratch_shadow_bytes;
     localparam integer TOP_CONTROLLER_BITS = $bits({
         state, error_hold, model_hold, precision_hold, mode_hold, decode_hold,
         tokens_hold, rows_hold, columns_hold, frames_hold, position_hold, output_hold,
@@ -226,7 +249,12 @@ module anvil_en1_top #(
         session_audio_weights, session_image, session_audio, session_ids, session_positions,
         session_masks, session_rows, session_columns, session_frames, baseline_local_units,
         baseline_global_units, baseline_payload, bridge_input, bridge_replay,
-        production_local_units, production_baseline_payload, allocation_wait
+        production_local_units, production_baseline_payload, allocation_wait,
+        traffic_local_write_units, traffic_global_write_units,
+        traffic_local_span, traffic_global_span,
+        traffic_local_read_units, traffic_global_read_units,
+        traffic_local_read_bytes, traffic_global_read_bytes,
+        traffic_read_step, matched_traffic_bytes
     });
     // Immutable anvil_e2_memory: state, write, address, write/read data, error.
     localparam integer NATIVE_BRIDGE_BITS = 2+1+64+32+32+1;
@@ -236,8 +264,11 @@ module anvil_en1_top #(
     anvil_en1_allocation_ledger allocations (
         .clk(clk), .rst_n(rst_n), .observation_valid(native_selected),
         .observation_model(model_hold), .component_live_bytes(live_bytes),
+        .component_shadow_bytes(production_shadow_bytes),
         .metadata_bytes(metadata_bytes), .integration_bytes(integration_bytes),
+        .shadow_metadata_bytes(production_shadow_metadata_bytes),
         .native_workspace_bytes(native_workspace_bytes),
+        .native_workspace_shadow_bytes(native_workspace_shadow_bytes),
         .native_controller_bytes(native_reconstruction_controller_bytes),
         .observation_check_valid(native_allocation_check_valid),
         .observation_fallback(native_allocation_fallback),
@@ -246,6 +277,8 @@ module anvil_en1_top #(
         .report_fallback(allocation_report_fallback), .report_overlap(allocation_report_overlap),
         .payload_bytes(allocation_payload_bytes), .replay_bytes(allocation_replay_bytes),
         .native_scratch_bytes(native_scratch_bytes),
+        .equivalent_shadow_bytes(allocation_shadow_bytes),
+        .native_scratch_shadow_bytes(native_scratch_shadow_bytes),
         .equivalent_bytes(allocation_equivalent_bytes), .controller_bytes(ledger_controller_bytes)
     );
     anvil_en1_allocation_guard allocation_limits (
@@ -253,6 +286,8 @@ module anvil_en1_top #(
         .report_valid(allocation_report_check_valid),
         .report_fallback(allocation_report_fallback), .report_overlap(allocation_report_overlap),
         .equivalent_bytes(allocation_equivalent_bytes), .native_scratch_bytes(native_scratch_bytes),
+        .equivalent_shadow_bytes(allocation_shadow_bytes),
+        .native_scratch_shadow_bytes(native_scratch_shadow_bytes),
         .matched_payload_bytes({32'd0, production_baseline_payload}),
         .failed(allocation_failed), .controller_bytes(guard_controller_bytes)
     );
@@ -281,6 +316,7 @@ module anvil_en1_top #(
         .done_ready(native_selected), .done_error(native_error),
         .fallback_active(fallback_active), .frame_depth(frame_depth),
         .allocation_live_bytes(live_bytes), .allocation_physical_bytes(physical_bytes),
+        .allocation_shadow_bytes(production_shadow_bytes),
         .allocation_metadata_bytes(metadata_bytes), .workspace_shadow_bytes(shadow_bytes),
         .native_workspace_bytes(native_workspace_bytes),
         .native_workspace_shadow_bytes(native_workspace_shadow_bytes),
@@ -307,15 +343,16 @@ module anvil_en1_top #(
     wire native_req_valid, native_req_write, native_rsp_ready;
     wire [63:0] native_req_addr;
     wire [31:0] native_req_data;
-    wire scan_send = rst_n && state == POSITION_SEND;
-    wire scan_wait = rst_n && state == POSITION_WAIT;
+    wire scan_send = rst_n && (state == POSITION_SEND || state == MASK_SCAN_SEND);
+    wire scan_wait = rst_n && (state == POSITION_WAIT || state == MASK_SCAN_WAIT);
     wire bridge_command = scan_send || (native_selected && native_cmd_valid);
     assign native_cmd_ready = native_selected && bridge_ready;
     anvil_e2_memory native_memory (
         .clk(clk), .rst_n(rst_n),
         .cmd_valid(bridge_command), .cmd_ready(bridge_ready),
         .cmd_write(native_selected && native_cmd_write),
-        .cmd_addr(scan_send ? scan_address[63:0] : native_cmd_addr),
+        .cmd_addr(state == MASK_SCAN_SEND ? scan_mask_address[63:0] :
+            (scan_send ? scan_address[63:0] : native_cmd_addr)),
         .cmd_wdata(native_selected ? native_cmd_data : 32'd0),
         .result_valid(bridge_valid),
         .result_ready(scan_wait || (native_selected && native_result_ready)),
@@ -350,6 +387,10 @@ module anvil_en1_top #(
             assign perf_mask[metric] = accepted_memory &&
                 (metric == 3 ? mem_req_write : !mem_req_write);
             assign perf_values[64*metric+:64] = 64'd4;
+        end else if (metric == 6) begin
+            assign perf_mask[metric] = completed_job && error_hold == 0 &&
+                (model_hold == 1 || model_hold == 2);
+            assign perf_values[64*metric+:64] = matched_traffic_bytes;
         end else if (metric == 7) begin
             assign perf_mask[metric] = native_selected && avoided_projection_event;
             assign perf_values[64*metric+:64] = avoided_projection_bytes;
@@ -556,7 +597,28 @@ module anvil_en1_top #(
                     if (scan_error || scan_data != scan_index) begin
                         error_hold <= scan_error ? 4'd2 : 4'd5;
                         state <= PUBLISH;
-                    end else if (scan_index + 32'd1 == tokens_hold) begin
+                    end else
+                        state <= MASK_SCAN_SEND;
+                end
+                MASK_SCAN_SEND: if (bridge_ready)
+                    state <= MASK_SCAN_WAIT;
+                MASK_SCAN_WAIT: if (bridge_valid) begin
+                    scan_data <= bridge_data;
+                    scan_error <= bridge_error;
+                    state <= MASK_SCAN_CHECK;
+                end
+                MASK_SCAN_CHECK: begin
+                    if (scan_error || |scan_data[31:1]) begin
+                        error_hold <= scan_error ? 4'd2 : 4'd5;
+                        state <= PUBLISH;
+                    end else
+                        state <= BASELINE_COUNTS;
+                end
+                BASELINE_COUNTS: state <= BASELINE_SCALE;
+                BASELINE_SCALE: state <= BASELINE_SUM;
+                BASELINE_SUM: state <= SCAN_ADVANCE;
+                SCAN_ADVANCE: begin
+                    if (scan_index + 32'd1 == tokens_hold) begin
                         if (generation == 32'hffffffff)
                             generation <= 1;
                         else

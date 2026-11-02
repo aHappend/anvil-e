@@ -83,6 +83,7 @@ module anvil_en1_replay_execute #(
     output wire [63:0] ple_live_bytes, ple_physical_bytes,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
     output wire [63:0] post_vector_live_bytes, post_vector_physical_bytes,
+    output wire [63:0] tile_shadow_bytes, embedding_shadow_bytes, post_vector_shadow_bytes,
     output wire [3:0] vector_ram_write, vector_ram_read,
     output wire [47:0] vector_ram_waddr, vector_ram_raddr,
     output wire [63:0] vector_ram_wdata,
@@ -263,7 +264,68 @@ module anvil_en1_replay_execute #(
     wire input_cmd_valid, input_result_ready, input_token_event, text_token_event;
     wire [63:0] input_cmd_addr;
     wire [63:0] input_state_bytes, input_embedding_live, input_embedding_physical;
-    anvil_en1_replay_input #(.COMPACT(COMPACT)) original_input (
+    wire [63:0] input_embedding_shadow, text_embedding_shadow;
+    wire [63:0] text_embedding_live;
+    wire [1:0] input_embedding_write, input_embedding_read;
+    wire [1:0] text_embedding_write, text_embedding_read, embedding_access_fault;
+    wire [63:0] input_embedding_waddr, input_embedding_raddr;
+    wire [63:0] text_embedding_waddr, text_embedding_raddr;
+    wire [31:0] input_embedding_wdata, text_embedding_wdata, embedding_rdata;
+    reg embedding_ram_fault;
+    genvar embedding_bank;
+    generate for (embedding_bank=0; embedding_bank<2; embedding_bank=embedding_bank+1) begin : embedding_banks
+        localparam integer BANK_WORDS = embedding_bank == 0 ?
+            (COMPACT ? 8 : 2560) : (COMPACT ? 4 : 256);
+        localparam integer BANK_BITS = $clog2(BANK_WORDS);
+        wire input_access = input_embedding_write[embedding_bank] ||
+            input_embedding_read[embedding_bank];
+        wire text_access = text_embedding_write[embedding_bank] ||
+            text_embedding_read[embedding_bank];
+        wire write_enable = text_access ? text_embedding_write[embedding_bank] :
+            input_embedding_write[embedding_bank];
+        wire read_enable = text_access ? text_embedding_read[embedding_bank] :
+            input_embedding_read[embedding_bank];
+        wire [31:0] waddr = text_access ?
+            text_embedding_waddr[32*embedding_bank+:32] :
+            input_embedding_waddr[32*embedding_bank+:32];
+        wire [31:0] raddr = text_access ?
+            text_embedding_raddr[32*embedding_bank+:32] :
+            input_embedding_raddr[32*embedding_bank+:32];
+        wire [15:0] wdata = text_access ?
+            text_embedding_wdata[16*embedding_bank+:16] :
+            input_embedding_wdata[16*embedding_bank+:16];
+        assign embedding_access_fault[embedding_bank] = rst_n &&
+            ((input_access && text_access) ||
+                (write_enable && waddr >= BANK_WORDS) ||
+                (read_enable && raddr >= BANK_WORDS));
+        (* ramstyle = "M20K", nomem2reg *)
+        reg [15:0] payload [0:BANK_WORDS-1];
+        reg [15:0] read_q;
+        assign embedding_rdata[16*embedding_bank+:16] = read_q;
+        always @(posedge clk) begin
+            if (rst_n && !embedding_access_fault[embedding_bank]) begin
+                if (write_enable)
+                    payload[waddr[BANK_BITS-1:0]] <= wdata;
+                if (read_enable)
+                    read_q <= payload[raddr[BANK_BITS-1:0]];
+            end
+        end
+    end endgenerate
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            embedding_ram_fault <= 0;
+        else if (state == IDLE && task_valid && task_ready)
+            embedding_ram_fault <= 0;
+        else if (|embedding_access_fault ||
+            (|input_embedding_live && |text_embedding_live))
+            embedding_ram_fault <= 1;
+    end
+    anvil_en1_replay_input #(
+        .COMPACT(COMPACT), .EXTERNAL_EMBEDDING_RAM(1)
+    ) original_input (
+        .embedding_ram_write(input_embedding_write), .embedding_ram_read(input_embedding_read),
+        .embedding_ram_waddr(input_embedding_waddr), .embedding_ram_raddr(input_embedding_raddr),
+        .embedding_ram_wdata(input_embedding_wdata), .embedding_ram_rdata(embedding_rdata),
         .clk(clk), .rst_n(rst_n),
         .start_valid(input_selected && state == WORKER_START), .start_ready(input_ready),
         .model(model_hold), .precision(precision_hold), .modality(modality_hold), .mode(mode_hold),
@@ -304,6 +366,7 @@ module anvil_en1_replay_execute #(
         .done_dependency_layer(input_dependency_layer), .done_dependency_token(input_dependency_token),
         .done_dependency_length(input_dependency_length),
         .embedding_live_bytes(input_embedding_live),
+        .embedding_shadow_bytes(input_embedding_shadow),
         .embedding_physical_bytes(input_embedding_physical),
         .controller_state_bytes(input_state_bytes), .busy()
     );
@@ -326,12 +389,16 @@ module anvil_en1_replay_execute #(
     wire [11:0] text_work_length, text_work_component;
     wire [5:0] text_work_slot;
     wire text_work_bank, text_cmd_valid, text_result_ready;
-    wire [63:0] text_cmd_addr, text_state_bytes, text_embedding_live, text_embedding_physical;
+    wire [63:0] text_cmd_addr, text_state_bytes, text_embedding_physical;
     wire text_owner_event, text_query_event, text_source_event;
     wire [31:0] text_owner_bytes, text_query_bytes, text_source_bytes;
     anvil_en1_replay_text_layer #(
-        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
+        .EXTERNAL_EMBEDDING_RAM(1)
     ) text_layer (
+        .embedding_ram_write(text_embedding_write), .embedding_ram_read(text_embedding_read),
+        .embedding_ram_waddr(text_embedding_waddr), .embedding_ram_raddr(text_embedding_raddr),
+        .embedding_ram_wdata(text_embedding_wdata), .embedding_ram_rdata(embedding_rdata),
         .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
         .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
         .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),
@@ -390,10 +457,13 @@ module anvil_en1_replay_execute #(
         .executor_controller_bytes(executor_controller_bytes),
         .checkpoint_controller_bytes(checkpoint_controller_bytes),
         .tile_controller_bytes(tile_controller_bytes), .tile_live_bytes(tile_live_bytes),
+        .tile_shadow_bytes(tile_shadow_bytes),
         .tile_physical_bytes(tile_physical_bytes), .ple_live_bytes(ple_live_bytes),
         .ple_physical_bytes(ple_physical_bytes), .embedding_live_bytes(text_embedding_live),
+        .embedding_shadow_bytes(text_embedding_shadow),
         .embedding_physical_bytes(text_embedding_physical),
         .post_vector_live_bytes(post_vector_live_bytes),
+        .post_vector_shadow_bytes(post_vector_shadow_bytes),
         .post_vector_physical_bytes(post_vector_physical_bytes), .busy()
     );
 
@@ -827,7 +897,10 @@ module anvil_en1_replay_execute #(
     assign source_read_bytes = text_source_bytes + vision_source_bytes +
         audio_layer_source_bytes + feature_source_bytes + image_feature_source_bytes;
     assign embedding_live_bytes = input_embedding_live + text_embedding_live;
-    assign embedding_physical_bytes = rst_n ? input_embedding_physical + text_embedding_physical : 64'd0;
+    assign embedding_shadow_bytes = input_embedding_shadow + text_embedding_shadow;
+    assign embedding_physical_bytes = rst_n ?
+        input_embedding_physical + text_embedding_physical +
+            (COMPACT ? 64'd24 : 64'd5632) : 64'd0;
     assign selected_worker_state_bytes = !rst_n ? 64'd0 :
         (domain_hold == 3 ? (layer_hold == 1 ? image_feature_controller_bytes : audio_feature_controller_bytes) :
         (domain_hold == 2 ? (input_worker ? audio_input_controller_bytes : audio_layer_controller_bytes) :
@@ -844,7 +917,8 @@ module anvil_en1_replay_execute #(
         $bits(continuation_hold) + $bits(done_continuation_hold) + $bits(dependency_valid_hold) +
         $bits(input_worker) + $bits(done_dependency_hold) + $bits(done_bank_hold) +
         $bits(dependency_domain_hold) + $bits(done_domain_hold) + $bits(done_layer_hold) +
-        $bits(done_token_hold) + $bits(done_length_hold) + $bits(error_hold);
+        $bits(done_token_hold) + $bits(done_length_hold) + $bits(error_hold) +
+        $bits(embedding_ram_fault) + 32;
     assign dispatcher_state_bytes = rst_n ? 64'((DISPATCHER_BITS + 7) >> 3) : 64'd0;
     wire [63:0] text_reported_controllers = input_state_bytes + text_state_bytes +
         binding_controller_bytes + projection_controller_bytes +
@@ -1048,7 +1122,13 @@ module anvil_en1_replay_execute #(
                         state <= PUBLISH;
                     end
                 end
-                PUBLISH: state <= RESPONSE;
+                PUBLISH: begin
+                    if (error_hold == 0 && embedding_ram_fault) begin
+                        error_hold <= 7;
+                        done_dependency_hold <= 0;
+                    end
+                    state <= RESPONSE;
+                end
                 RESPONSE: if (task_done_ready)
                     state <= IDLE;
                 default: begin

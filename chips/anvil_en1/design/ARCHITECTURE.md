@@ -5,7 +5,60 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: native scratch census and allocation failure retirement
+## Current saved increment: production shadow observations and replay embedding overlay
+
+The native assembly now provides a complete 25-field production-width
+counterpart to its actual live component observations. Hidden/PLE and
+residual/work/branch/query/attention mixtures use their owning leaf flags;
+no single scaling factor is applied to mixed subtotals. Frontier/ring
+shadows use production padded capacity/window allocations. Native encoder
+staging and scalar/controller widths remain unchanged. Production metadata
+is explicit, including the larger frontier/ring declarations.
+
+Shadow observations propagate through embedding, full-text, replay post,
+projection tile and their wrappers. The ledger now has six coherent,
+five-stage balanced sums: the previous four actual reports plus equivalent
+and native-scratch production shadows. The new registers enter its own
+controller reservation. The completion guard independently applies the
+strict ratio, scratch ceiling and fallback ceiling to actual and shadow
+reports, and rejects a shadow smaller than its corresponding actual total.
+This closes the missing compact-width observation/guard connection, not
+grant-time whole-system allocation limiting or acceptance.
+
+The replay input and text embedding workers now physically share one
+synchronous hidden/PLE bank pair owned by replay_execute. Their optional
+external bank interfaces preserve enabled-edge read/write timing and
+default standalone local storage. Per-bank port/address conflicts and
+overlapping live reservations latch error 7 before dispatcher response,
+without replacing an earlier worker error. Physical payload drops from
+two declared 5632-byte production (24-byte compact) pairs to one; live
+reservations keep the original flags. Shared read registers are charged
+once. This is a declared RTL overlay, not measured FPGA resource savings.
+
+Changed `rtl/anvil_en1_embedding_ple.sv`, `rtl/anvil_en1_asym_attn_ple.sv`,
+`rtl/anvil_en1_replay_kv_tile.sv`, `rtl/anvil_en1_replay_attention_execute.sv`,
+`rtl/anvil_en1_replay_attention_projection.sv`,
+`rtl/anvil_en1_replay_text_layer.sv`, `rtl/anvil_en1_replay_input.sv`,
+`rtl/anvil_en1_replay_execute.sv`, `rtl/anvil_en1_replay_binding.sv`,
+`rtl/anvil_en1_frontier_execute.sv`, `rtl/anvil_en1_native.sv`,
+`rtl/anvil_en1_allocation_ledger.sv`, `rtl/anvil_en1_allocation_guard.sv`,
+`rtl/anvil_en1_top.sv` and `design/SPEC.md`/this document. Tools used:
+glob, view, rg and apply_patch only. No command, static elaboration,
+simulation, synthesis, installation or experiment ran; no preparation
+receipt exists. A partially applied edit was inspected and completed;
+it was not an execution diagnostic. Parent, verification and runtime
+sources remain untouched. Attempt-0003 remains preserved without a
+claimed repair.
+
+Remaining: grant-time whole-system ordinary/native-scratch/fallback
+limits with recomputation/eviction rather than rejecting legal work;
+remaining physical phase overlays; matched-baseline traffic metric 6
+integration without substituting a computed denominator for independently
+handshaken baseline traffic. Then run the reserved static elaboration
+check and hand off to independent Verifier. No correctness, measured
+savings, FPGA-fit or timing result is claimed. Not ready for Verifier.
+
+## Prior saved increment: native scratch census and allocation failure retirement
 
 The bounded workspace now maintains actual and production-shadow native
 frame/memo subtotals independently from text. Pending allocations count
