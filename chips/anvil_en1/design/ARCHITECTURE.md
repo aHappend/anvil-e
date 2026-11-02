@@ -5,7 +5,120 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected native execution assembly
+## Current saved increment: accepted replay traffic and owned payload reports
+
+The registered arbiters now capture original-input versus weight-image
+provenance and replay-path identity with real accepted commands. These
+attributes survive arbitration and public memory stalls. The top retains
+them through the literal memory bridge and updates replay input/weight
+CSRs only on accepted public DDR requests, including requests whose
+responses subsequently fail. Internal source callbacks and projected
+result bytes are not external traffic.
+
+Original-input classification now includes both callers' token-ID reads
+and embedding reconstruction's actual repeated token reads, native
+placeholder mappings, vision input directories/pixels/coordinates and
+audio input directories/values/masks. Vision layer-zero patch input
+events, previously omitted from the replay vision event aggregation,
+are connected. Owner and Eval weight images/directories remain weight
+traffic. Ordinary text and position scanning are not relabeled replay;
+the shared text-mask client retains its actual requesting path. No
+numerical datapath or public top port changes were made for these tags.
+
+The embedding, asymmetric text and final-logit workers now own explicit
+payload reservations from legal validation to accepted completion.
+The native allocation observation vector has 22 fields: fields 19..21
+add the ordinary embedding, full attention/PLE/MLP and final normalized
+vector copies that the earlier component subtotal omitted. Replay
+embedding/post reports now come from the same real worker reservations;
+the dispatcher sums both embedding children instead of hiding one by
+selection. Reports include failures and output stalls, with physical
+declared banks separately disclosed. They do not yet include all
+arithmetic/controller state or implement the required physical overlays.
+
+Changed RTL: `anvil_en1_memory_arbiter.sv`, `anvil_en1_embedding_ple.sv`,
+`anvil_en1_vision_patch.sv`, `anvil_en1_replay_vision_layer.sv`,
+`anvil_en1_replay_input.sv`, `anvil_en1_replay_text_layer.sv`,
+`anvil_en1_replay_execute.sv`, `anvil_en1_replay_binding.sv`,
+`anvil_en1_asym_attn_ple.sv`, `anvil_en1_final_logits.sv`,
+`anvil_en1_frontier_execute.sv`, `anvil_en1_native.sv` and
+`anvil_en1_top.sv`; updated `SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch. No commands, static checks,
+simulation, synthesis, installations or diagnostic experiments ran;
+no preparation receipts exist. Parent, verification and runtime sources
+remain untouched. The original
+`.vulcan/engineering/run-0001/attempt-0003` interruption is preserved,
+without a claimed repair.
+
+Remaining: complete primitive/controller and transient allocation
+accounting, actual phase overlays and short-context/native-scratch/full
+fallback limit enforcement; connect remaining matched-baseline,
+avoided-work, local/global utilization and complete live/peak metrics.
+Then use the reserved static elaboration check before independent
+Verifier handoff. No savings, functional correctness, FPGA fit or timing
+result is claimed. Not ready for Verifier.
+
+## Prior saved increment: parent-compatible top/session/CSR boundary
+
+`rtl/anvil_en1_top.sv` now connects the immutable parent top, the real native
+assembly, a registered native memory bridge and the literal CSR engine.
+Every parent named parameter/port is retained, including signed embedding
+data. Native geometry is not changed by compatibility parameters. The
+wrapper captures every parent/native descriptor field, selects exactly one
+memory owner and holds outer completion until public acceptance.
+
+Native session validation requires prefill at position zero or a one-token
+append to the complete unchanged-prefix input arrays. Decode compares the
+successful prior session's model, precision, modality, input/weight bases
+and encoder geometry. It checks full context/range/alignment bounds before
+issuing real positions-array reads and requires position[t]=t. Every read
+passes through the registered bridge, including errors. Position memory
+errors return 2, malformed positions 5, stale/invalid appends 7 and invalid
+native model/precision 6. No native start follows a rejected scan.
+
+The native descriptor is stable through acceptance. The generation skips
+zero on wrap; the native assembly still completes its actual cache/
+frontier/ring/replay invalidation barriers before work. Successful
+completion records the next expected append position; execution failures,
+accepted prefills and accepted parent jobs invalidate the old session.
+Native decode recomputes from immutable original inputs rather than
+retaining an external hidden-state archive. Only native logits or parent
+embeddings can be valid, never both. Child completion is registered before
+the public held completion, and memory ownership cannot switch during it.
+
+CSR wiring currently records busy cycles, successful jobs, all accepted
+public read/write bytes (also failed transactions), aliases, resident hits,
+errors, actual owner/replay-owner reprojection bytes, memo hits/evictions
+and completed fallback jobs. Atomic pairs, snapshots, saturation and
+clear priority use the existing CSR implementation. Owner reprojection is
+not counted as avoided computation. Remaining metric slots are **not
+measured zeroes**: KV-equivalent traffic classification, matched-baseline
+traffic/payload, avoided work, local/global component utilization, replay
+input/weight traffic and aggregate live/peak storage events still need
+connection to their real sources. Projection result-byte events are not
+weight traffic and are deliberately not mislabeled.
+
+Complete component/primitive/controller storage accounting and actual
+phase overlay/limit enforcement remain unfinished, notably the ordinary
+short-context native scratch allowance and the complete 1 MiB fallback
+ceiling. The top's current named component reports are not a complete
+ledger and cannot establish either savings threshold or FPGA fit. These
+are remaining implementation tasks, not waived acceptance criteria.
+
+Saved changes in this increment: new `rtl/anvil_en1_top.sv`, updated
+`design/SPEC.md` and this document. Tools used: glob, view, rg and
+apply_patch. No commands, static elaboration, simulation, synthesis,
+installation or diagnostic experiments ran; no preparation receipts exist.
+The single reserved static check remains unused. Parent, verification and
+runtime sources remain untouched, and the original
+`.vulcan/engineering/run-0001/attempt-0003` interruption remains preserved
+without a claimed repair.
+
+Next: finish complete allocation overlays/limit enforcement and the
+remaining real telemetry sources; then run the reserved static elaboration
+check and hand off to independent Verifier. Not ready for Verifier.
+
+## Prior saved increment: connected native execution assembly
 
 `rtl/anvil_en1_native.sv` connects the literal frontier scheduler/executor,
 cache, real owner/replay binding and three-client memory arbiter. The
@@ -28,8 +141,8 @@ padded capacity rule selects binding and scheduler fallback modes.
 Completion waits for schedule/output completion, idle workers and routers,
 and an acknowledged memory drain. The arbiter drain request is gated by
 that same idle condition so it cannot block a worker's remaining accesses.
-Parent compatibility and public decode/session/position handling still
-belong to the pending outer top.
+Parent compatibility and public decode/session/position handling belong
+to the enclosing top described above.
 
 `kv_shared_cache` now reports actual occupied resident-pair bytes,
 physical payload, tag metadata and one-shot validated hit/miss/accepted
@@ -52,12 +165,11 @@ verification and runtime files remain untouched; the original
 `.vulcan/engineering/run-0001/attempt-0003` interruption remains preserved
 without a claimed repair.
 
-Next: complete parent-compatible `anvil_en1_top`, public session/decode
-and positions-array semantics, final parent/native memory routing and CSR
-telemetry; finish complete live/physical overlays and storage-limit
+The enclosing top/session/positions/memory routing now exists as described
+above; complete telemetry, live/physical overlays and storage-limit
 enforcement, including short-context native scratch and the fallback
-arithmetic/controller allowance. Then use the reserved static check and
-hand off immediately to independent Verifier. Not ready for Verifier.
+arithmetic/controller allowance, remain required before the reserved
+static check and independent Verifier handoff.
 
 ## Prior saved increment: shared owner/frontier replay binding
 

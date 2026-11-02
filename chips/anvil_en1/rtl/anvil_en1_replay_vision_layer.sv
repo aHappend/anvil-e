@@ -155,7 +155,8 @@ module anvil_en1_replay_vision_layer #(
 
     wire patch_selected = rst_n && (state == PATCH_START || state == PATCH_WAIT);
     wire patch_ready, patch_valid, patch_output_valid, patch_output_last;
-    wire patch_cmd_valid, patch_result_ready;
+    wire patch_cmd_valid, patch_result_ready, patch_input_event, head_input_event;
+    wire [31:0] patch_input_bytes, head_input_bytes;
     wire [31:0] patch_output_index;
     wire [15:0] patch_output_data;
     wire [63:0] patch_addr;
@@ -174,7 +175,8 @@ module anvil_en1_replay_vision_layer #(
         .output_index(patch_output_index), .output_data(patch_output_data),
         .output_last(patch_output_last), .patch_x(), .patch_y(), .patch_padding(),
         .done_valid(patch_valid), .done_ready(rst_n && state == PATCH_WAIT && !patch_output_valid),
-        .done_error(patch_error), .controller_bytes(patch_controller_bytes)
+        .done_error(patch_error), .controller_bytes(patch_controller_bytes),
+        .input_read_event(patch_input_event), .input_read_bytes(patch_input_bytes)
     );
 
     wire head_selected = rst_n && (state == HEAD_START || state == HEAD_WAIT);
@@ -247,7 +249,7 @@ module anvil_en1_replay_vision_layer #(
         .done_ready(rst_n && state == HEAD_WAIT && !head_output_valid && source_state == S_IDLE),
         .done_error(head_error), .done_yield(head_yield), .done_continuation(head_outer),
         .done_dependency_layer(head_dependency_layer), .done_dependency_patch(head_dependency_patch),
-        .input_read_event(input_read_event), .input_read_bytes(input_read_bytes),
+        .input_read_event(head_input_event), .input_read_bytes(head_input_bytes),
         .projection_event(projection_event), .projection_bytes(projection_bytes),
         .controller_bytes(replay_controller_bytes), .executor_controller_bytes(executor_controller_bytes),
         .head_controller_bytes(head_controller_bytes), .tile_controller_bytes(tile_controller_bytes),
@@ -442,6 +444,8 @@ module anvil_en1_replay_vision_layer #(
     assign cmd_valid = patch_selected ? patch_cmd_valid : (head_selected ? head_cmd_valid :
         (projection_selected ? projection_cmd_valid : (post_selected && post_cmd_valid)));
     assign cmd_write = 0;
+    assign input_read_event = patch_input_event || head_input_event;
+    assign input_read_bytes = patch_input_bytes + head_input_bytes;
     assign cmd_addr = !rst_n ? 64'd0 : (patch_selected ? patch_addr :
         (head_selected ? head_addr : (projection_selected ? projection_addr :
             (post_selected ? post_addr : 64'd0))));

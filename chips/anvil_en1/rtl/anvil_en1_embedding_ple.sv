@@ -29,6 +29,7 @@ module anvil_en1_embedding_ple #(
     output wire cmd_valid,
     input wire cmd_ready,
     output wire cmd_write,
+    output wire input_read_event,
     output wire [63:0] cmd_addr,
     output wire [31:0] cmd_wdata,
     input wire result_valid,
@@ -37,7 +38,8 @@ module anvil_en1_embedding_ple #(
     input wire result_error,
     output wire done_valid,
     input wire done_ready,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] live_payload_bytes, physical_payload_bytes
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
@@ -58,11 +60,14 @@ module anvil_en1_embedding_ple #(
         assign ple_last = 0;
         assign cmd_valid = 0;
         assign cmd_write = 0;
+        assign input_read_event = 0;
         assign cmd_addr = 0;
         assign cmd_wdata = 0;
         assign result_ready = 0;
         assign done_valid = 0;
         assign done_error = 0;
+        assign live_payload_bytes = 0;
+        assign physical_payload_bytes = 0;
     end else begin : frontend
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer P = COMPACT ? 4 : 256;
@@ -108,6 +113,7 @@ module anvil_en1_embedding_ple #(
         reg [31:0] descriptor_rows, descriptor_columns, descriptor_stride;
         reg [2:0] fp_op;
         reg [3:0] error_hold;
+        reg payload_allocated;
         reg [15:0] input_q, ple_q;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] input_payload [0:MAX_H-1];
@@ -293,6 +299,8 @@ module anvil_en1_embedding_ple #(
             (memory_owner == MEMORY_LOOKUP ? lookup_cmd_valid :
                 (memory_owner == MEMORY_WEIGHT ? weight_cmd_valid : projection_cmd_valid)));
         assign cmd_write = 0;
+        assign input_read_event = rst_n && memory_owner == MEMORY_TOKEN &&
+            state == TOKEN_COMMAND && cmd_ready;
         assign cmd_addr = !rst_n ? 64'd0 :
             (memory_owner == MEMORY_TOKEN ? token_address_hold :
                 (memory_owner == MEMORY_LOOKUP ? lookup_cmd_addr :
@@ -303,6 +311,20 @@ module anvil_en1_embedding_ple #(
                 (memory_owner == MEMORY_WEIGHT ? weight_result_ready : projection_result_ready)));
         assign done_valid = rst_n && state == RESPONSE;
         assign done_error = rst_n ? error_hold : 4'd0;
+        assign live_payload_bytes = rst_n && payload_allocated ?
+            ({32'd0, hidden_hold} << 1) + 64'(2*P) : 64'd0;
+        assign physical_payload_bytes = rst_n ? 64'(2*(MAX_H+P)) : 64'd0;
+
+        always @(posedge clk or negedge rst_n) begin
+            if (!rst_n)
+                payload_allocated <= 0;
+            else if (done_valid && done_ready)
+                payload_allocated <= 0;
+            else if (state == VALIDATE && native_model && precision_hold <= 1 &&
+                modality_hold != 3 && layer_hold < layer_count &&
+                token_hold <= 131071 && tokens_hold[1:0] == 0)
+                payload_allocated <= 1;
+        end
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin

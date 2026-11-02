@@ -19,6 +19,7 @@ module anvil_en1_native #(
     output wire [63:0] cmd_addr,
     output wire [31:0] cmd_wdata,
     output wire [2:0] cmd_owner,
+    output wire cmd_input, cmd_replay,
     input wire result_valid,
     output wire result_ready,
     input wire [31:0] result_data,
@@ -33,7 +34,7 @@ module anvil_en1_native #(
     output wire [3:0] done_error,
     output wire fallback_active,
     output wire [6:0] frame_depth,
-    output wire [1215:0] allocation_live_bytes, allocation_physical_bytes,
+    output wire [1407:0] allocation_live_bytes, allocation_physical_bytes,
     output wire [255:0] allocation_metadata_bytes,
     output wire [63:0] workspace_shadow_bytes, workspace_reserved_bytes,
     output wire resident_hit_event, resident_miss_event, alias_event,
@@ -227,6 +228,7 @@ module anvil_en1_native #(
     wire [95:0] memory_wdata, memory_rdata;
     wire [2:0] memory_rsp_valid, memory_rsp_ready, memory_error;
     wire [2:0] binding_memory_owner;
+    wire executor_input_event, binding_memory_input;
 
     anvil_en1_frontier_execute #(.COMPACT(COMPACT)) frontier (
         .clk(clk), .rst_n(rst_n),
@@ -294,6 +296,7 @@ module anvil_en1_native #(
         .backing_rsp_data(backing_data), .backing_rsp_error(backing_error),
         .cmd_valid(memory_valid[0]), .cmd_ready(memory_ready[0]),
         .cmd_write(memory_write[0]), .cmd_addr(memory_addr[0+:64]),
+        .input_read_event(executor_input_event),
         .cmd_wdata(memory_wdata[0+:32]), .result_valid(memory_rsp_valid[0]),
         .result_ready(memory_rsp_ready[0]), .result_data(memory_rdata[0+:32]),
         .result_error(memory_error[0]),
@@ -311,6 +314,8 @@ module anvil_en1_native #(
         .ring_metadata_bytes(allocation_metadata_bytes[64*1+:64]),
         .anchor_live_bytes(allocation_live_bytes[64*4+:64]),
         .anchor_physical_bytes(allocation_physical_bytes[64*4+:64]),
+        .execution_live_bytes(allocation_live_bytes[64*19+:192]),
+        .execution_physical_bytes(allocation_physical_bytes[64*19+:192]),
         .busy(executor_busy)
     );
 
@@ -376,6 +381,7 @@ module anvil_en1_native #(
         .cmd_valid(memory_valid[1]), .cmd_ready(memory_ready[1]),
         .cmd_write(memory_write[1]), .cmd_addr(memory_addr[64+:64]),
         .cmd_wdata(memory_wdata[32+:32]), .cmd_owner(binding_memory_owner),
+        .cmd_input(binding_memory_input),
         .result_valid(memory_rsp_valid[1]), .result_ready(memory_rsp_ready[1]),
         .result_data(memory_rdata[32+:32]), .result_error(memory_error[1]),
         .frame_depth(frame_depth),
@@ -426,10 +432,16 @@ module anvil_en1_native #(
         .client_cmd_valid(memory_valid), .client_cmd_ready(memory_ready),
         .client_cmd_write(memory_write), .client_cmd_addr(memory_addr),
         .client_cmd_wdata(memory_wdata), .client_result_valid(memory_rsp_valid),
+        .client_input_read_event({
+            memory_valid[2] && memory_ready[2],
+            memory_valid[1] && memory_ready[1] && binding_memory_input,
+            executor_input_event}),
+        .client_cmd_replay({mask_owner, 1'b1, 1'b0}),
         .client_result_ready(memory_rsp_ready), .client_result_data(memory_rdata),
         .client_result_error(memory_error),
         .cmd_valid(cmd_valid), .cmd_ready(cmd_ready), .cmd_write(cmd_write),
         .cmd_addr(cmd_addr), .cmd_wdata(cmd_wdata), .cmd_owner(cmd_owner),
+        .cmd_input(cmd_input), .cmd_replay(cmd_replay),
         .result_valid(result_valid), .result_ready(result_ready),
         .result_data(result_data), .result_error(result_error),
         .drain_valid(rst_n && state == DRAIN_SEND && workers_drained),

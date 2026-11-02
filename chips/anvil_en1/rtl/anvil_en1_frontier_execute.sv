@@ -113,6 +113,7 @@ module anvil_en1_frontier_execute #(
     output wire cmd_valid,
     input wire cmd_ready,
     output wire cmd_write,
+    output wire input_read_event,
     output wire [63:0] cmd_addr,
     output wire [31:0] cmd_wdata,
     input wire result_valid,
@@ -130,6 +131,7 @@ module anvil_en1_frontier_execute #(
     output wire [63:0] frontier_metadata_bytes,
     output wire [63:0] ring_live_bytes, ring_physical_bytes, ring_metadata_bytes,
     output wire [63:0] anchor_live_bytes, anchor_physical_bytes,
+    output wire [191:0] execution_live_bytes, execution_physical_bytes,
     output wire backing_bound,
     output wire busy
 );
@@ -323,6 +325,7 @@ module anvil_en1_frontier_execute #(
     wire [15:0] embed_input_data, embed_ple_data;
     wire [63:0] embed_cmd_addr;
     wire embed_cmd_write;
+    wire embed_input_event;
     wire [3:0] embed_error;
     wire layer_ready, layer_done, layer_output_valid, layer_output_last;
     wire layer_cmd_valid, layer_cmd_write, layer_result_ready;
@@ -368,10 +371,13 @@ module anvil_en1_frontier_execute #(
         .ple_data(embed_ple_data), .ple_last(embed_ple_last),
         .cmd_valid(embed_cmd_valid), .cmd_ready(memory_owner == M_EMBED && cmd_ready),
         .cmd_write(embed_cmd_write), .cmd_addr(embed_cmd_addr), .cmd_wdata(embed_cmd_wdata),
+        .input_read_event(embed_input_event),
         .result_valid(memory_owner == M_EMBED && result_valid),
         .result_ready(embed_result_ready), .result_data(result_data), .result_error(result_error),
         .done_valid(embed_done), .done_ready(rst_n && state == EMBED_WAIT),
-        .done_error(embed_error)
+        .done_error(embed_error),
+        .live_payload_bytes(execution_live_bytes[0+:64]),
+        .physical_payload_bytes(execution_physical_bytes[0+:64])
     );
     wire layer_req_valid, layer_req_value, layer_rsp_ready;
     wire [2:0] layer_req_op;
@@ -426,7 +432,9 @@ module anvil_en1_frontier_execute #(
         .output_valid(layer_output_valid), .output_ready(rst_n && state == LAYER_WAIT),
         .output_index(layer_output_index), .output_data(layer_output_data),
         .output_last(layer_output_last), .done_valid(layer_done),
-        .done_ready(rst_n && state == LAYER_WAIT), .done_error(layer_error)
+        .done_ready(rst_n && state == LAYER_WAIT), .done_error(layer_error),
+        .live_payload_bytes(execution_live_bytes[64+:64]),
+        .physical_payload_bytes(execution_physical_bytes[64+:64])
     );
     wire anchor_ready, anchor_done, anchor_req_valid, anchor_req_value, anchor_rsp_ready;
     wire [2:0] anchor_req_op;
@@ -488,7 +496,9 @@ module anvil_en1_frontier_execute #(
         .logit_valid(logit_valid), .logit_ready(logit_ready), .logit_data(logit_data),
         .logit_index(logit_index), .logit_last(logit_last),
         .done_valid(logits_done), .done_ready(rst_n && state == LOGITS_WAIT),
-        .done_error(logits_error)
+        .done_error(logits_error),
+        .live_payload_bytes(execution_live_bytes[128+:64]),
+        .physical_payload_bytes(execution_physical_bytes[128+:64])
     );
 
     assign control_ready = rst_n && state == IDLE && read_state == READ_IDLE &&
@@ -540,6 +550,8 @@ module anvil_en1_frontier_execute #(
         (memory_owner == M_EMBED ? embed_cmd_valid :
         (memory_owner == M_LAYER ? layer_cmd_valid :
         (memory_owner == M_LOGITS ? logits_cmd_valid : 1'b0))));
+    assign input_read_event = (rst_n && memory_owner == M_TOKEN &&
+        state == TOKEN_SEND && cmd_ready) || embed_input_event;
     assign cmd_write = rst_n && (memory_owner == M_EMBED ? embed_cmd_write :
         (memory_owner == M_LAYER ? layer_cmd_write :
         (memory_owner == M_LOGITS ? logits_cmd_write : 1'b0)));

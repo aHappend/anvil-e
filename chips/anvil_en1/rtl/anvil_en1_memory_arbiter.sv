@@ -7,6 +7,8 @@ module anvil_en1_memory_arbiter #(
     input wire [(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_cmd_write,
     input wire [64*(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_cmd_addr,
     input wire [32*(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_cmd_wdata,
+    input wire [(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_input_read_event,
+    input wire [(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_cmd_replay,
     output wire [(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_result_valid,
     input wire [(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_result_ready,
     output wire [32*(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_result_data,
@@ -17,6 +19,7 @@ module anvil_en1_memory_arbiter #(
     output wire [63:0] cmd_addr,
     output wire [31:0] cmd_wdata,
     output wire [2:0] cmd_owner,
+    output wire cmd_input, cmd_replay,
     input wire result_valid,
     output wire result_ready,
     input wire [31:0] result_data,
@@ -38,6 +41,8 @@ module anvil_en1_memory_arbiter #(
         assign cmd_addr = 0;
         assign cmd_wdata = 0;
         assign cmd_owner = 0;
+        assign cmd_input = 0;
+        assign cmd_replay = 0;
         assign result_ready = 0;
         assign drain_ready = 0;
         assign drain_done_valid = 0;
@@ -46,7 +51,7 @@ module anvil_en1_memory_arbiter #(
         localparam [2:0] IDLE = 0, SEND = 1, WAIT_RESULT = 2,
             CLIENT_RESPONSE = 3, DRAIN_RESPONSE = 4, FAULT = 5;
         reg [2:0] state, cursor, owner_hold;
-        reg draining, write_hold, error_hold, fault_hold;
+        reg draining, write_hold, error_hold, fault_hold, input_hold, replay_hold;
         reg [63:0] address_hold;
         reg [31:0] write_data_hold, read_data_hold;
         wire drain_accept = drain_valid && drain_ready;
@@ -58,6 +63,8 @@ module anvil_en1_memory_arbiter #(
         assign cmd_addr = rst_n ? address_hold : 64'd0;
         assign cmd_wdata = rst_n ? write_data_hold : 32'd0;
         assign cmd_owner = rst_n ? owner_hold : 3'd0;
+        assign cmd_input = rst_n && input_hold;
+        assign cmd_replay = rst_n && replay_hold;
         assign result_ready = rst_n && state == WAIT_RESULT;
         assign drain_ready = rst_n && !draining && state != DRAIN_RESPONSE && !fault_hold;
         assign drain_done_valid = rst_n && state == DRAIN_RESPONSE;
@@ -79,6 +86,8 @@ module anvil_en1_memory_arbiter #(
                 write_hold <= 0;
                 error_hold <= 0;
                 fault_hold <= 0;
+                input_hold <= 0;
+                replay_hold <= 0;
                 address_hold <= 0;
                 write_data_hold <= 0;
                 read_data_hold <= 0;
@@ -94,6 +103,8 @@ module anvil_en1_memory_arbiter #(
                             write_hold <= client_cmd_write[cursor];
                             address_hold <= client_cmd_addr[64*cursor+:64];
                             write_data_hold <= client_cmd_wdata[32*cursor+:32];
+                            input_hold <= client_input_read_event[cursor];
+                            replay_hold <= client_cmd_replay[cursor];
                             read_data_hold <= 0;
                             error_hold <= 0;
                             state <= SEND;

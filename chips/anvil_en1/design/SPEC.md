@@ -5,11 +5,147 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Connected parent-compatible top and session boundary
+
+`rtl/anvil_en1_top.sv` now preserves every named parent parameter and port,
+including signed `emb_data`, and adds the admitted native/logit/CSR ports.
+Additional verification parameters are `COMPACT=0`, `RESIDENT_ENTRIES=3`
+and `FORCE_FALLBACK=0`; COMPACT and FORCE_FALLBACK accept only 0/1.
+Parent geometry parameters affect only the literal immutable `anvil_e3_top`
+instance. Native geometry remains selected by model, not parent parameters.
+All declared original parent RTL sources are dependencies of the delivered
+top. No parent source is copied into, modified by, or replaced within RTL.
+
+The public acceptance edge captures all parent and native descriptor fields.
+Model 0 dispatches to the literal parent, preserving its validation,
+numerics, errors, embedding stream and ready/valid behavior. The wrapper
+adds dispatch/completion registers; it does not promise identical absolute
+parent job latency. Native models 1/2 dispatch to the real `anvil_en1_native`;
+model 3 and native precisions above 1 fail with 6 before external accesses.
+Parent mode ignores the added native precision/decode fields.
+
+Native `job_tokens` is the complete, currently addressable text stream
+length, including markers/placeholders, for both prefill and decode.
+A prefill requires `job_position=0`. Decode requires an established
+successful session, `job_position=previous_job_tokens`, and
+`job_tokens=previous_job_tokens+1`; it does not supply a one-element
+replacement buffer. The original arrays at the unchanged tokens,
+positions and masks bases expose the immutable prefix plus the appended
+element. The top compares model, precision, mode, all three weight bases,
+original text/mask/position/image/audio bases and encoder geometry with the
+captured successful session before accepting that append for execution.
+Native recomputation deliberately rebuilds the exact complete context;
+there is no persistent external hidden-state archive or hidden duplicate
+KV state between jobs. Scratch/kv bases and output dimension are captured
+but have no native spill/embedding-output semantics.
+
+All native positions are checked through actual public memory reads:
+unsigned32 position[t] must equal t for every t in the complete context,
+in ascending order. The top checks the complete text/position/mask byte
+ranges, native position/context bounds, enabled-modality geometry and
+alignment before starting that scan. A failed position read returns 2,
+a mismatched position returns 5, and an invalid append/session returns 7.
+No native worker starts after such a failure. The worker's immutable
+tensor-directory validation remains responsible for complete native
+image/audio/weight image bounds before their tensor accesses.
+
+Mode 0 is native text, 1/2 enable image, 3/4 enable audio and 5/6 enable
+both; mode 7 rejects. Unlike the parent fusion path, every native mode
+supplies its explicit marker/placeholder text stream and requires
+`job_tokens>0`. Native modes always return last-token logits, not parent
+embeddings. Only the matching parent/native output stream can assert
+valid. Successful native completion establishes the next append position.
+Accepted parent work or a new prefill invalidates the old public session.
+Native execution failure invalidates it. A rejected decode before native
+dispatch leaves the prior successful session descriptor intact.
+
+| Top boundary | Pre-edge handshake / post-edge state |
+| --- | --- |
+| Reset | All public outputs zero, both children reset, session invalid; payload RAM remains governed by child visibility tags |
+| First released edge | IDLE may accept one job; no request-derived memory valid before E2 |
+| Job E0 | Capture every descriptor field, clear current error, leave IDLE |
+| E1 | Validate registered model/session/ranges; select parent start or registered native position-scan request |
+| Position request | Offer registered address to the literal memory bridge; no next scan element until its accepted response has been registered and checked |
+| Native dispatch | Advance nonzero generation after successful full scan, then offer a stable captured descriptor until native start acceptance |
+| Memory | Parent has its own unchanged bridge; positions/native share a second literal registered bridge; only the selected bridge drives public DDR |
+| Last logit | Native completion cannot precede acceptance of the final ascending-vocabulary logit |
+| Child completion | Accept actual child done, retain its error, publish outer completion on a later edge |
+| Stalled outer completion | Hold done/error and close job ingress; no second job may switch memory ownership |
+| C=1/3/64 | Identical top sequencing; the real cache handles explicit non-power-of-two replacement wrap |
+| Single token | Position[0] must be 0; prefill and final-logit acceptance remain real handshakes |
+| Limit | Context 131072 is legal with positions through 131071; append at position 131072 rejects before position access |
+| Generation wrap | Full internal invalidation on every native job precedes work; generation wraps from 0xffffffff to 1, never 0 |
+
+The literal `anvil_en1_csr_perf` is connected to public requests and the
+captured model/busy/error state. Existing atomic pair, snapshot, saturation
+and clear-priority behavior is unchanged. Current connected event metrics
+are busy cycles, successful jobs, accepted public read/write bytes
+(including failed transactions), accepted alias responses, resident hits,
+failed jobs, real owner/replay-owner reprojection bytes, memo hits/evictions
+and completed fallback jobs. Replay original-input and weight-image bytes
+now update metrics 18/19 on accepted public memory requests, not on
+projection results or internal source callbacks. Owner work is not
+advertised as avoided work.
+Event-model 3 updates neither bank.
+
+**Remaining integration, not zero-valued measurements:** KV-equivalent
+traffic classification, matched-baseline traffic/payload, avoided work,
+local/global utilization and aggregate live/
+peak allocation events are not yet wired. Their target CSR slots remain
+unmodified by this partial top; zero does not establish a measured result.
+Projection-output-byte events must not be relabeled weight-read bytes.
+Complete whole-system allocation/overlay enforcement, primitive/controller
+accounting and these telemetry connections remain required before handoff.
+No static elaboration, simulation, synthesis, timing or hardware result is
+claimed for the top.
+
+### Accepted replay traffic classification
+
+The two memory arbiters now retain input/weight and replay provenance with
+the accepted command. `client_input_read_event[i]` is an acceptance event,
+not a ready/valid payload: the selected producer asserts it only on an
+accepted original-input command. `client_cmd_replay[i]` identifies the
+selected execution path. The arbiter samples both only with that client's
+command handshake; its outward `cmd_input` and `cmd_replay` are registered
+command attributes, stable through command stalls and response retirement.
+Client routing IDs do not classify tensor traffic.
+
+The owner/replay binding classifies all of its commands as owner/replay
+work. Its owner projection client reads only weight images; the Eval
+client classifies original text token IDs, native placeholder maps,
+vision pixels/coordinates/input directories and original audio
+values/masks/input directories as inputs. Embedding reconstruction's
+additional real token-ID reads are included, not just its caller's token
+read. Vision layer-zero patch reconstruction reports its actual original
+input reads separately from patch-matrix and position-weight reads.
+Every other read on these connected native paths reads an immutable
+weight image, including its validated tensor directory. On-chip frame,
+memo, source-vector and feature callbacks do not create external-input
+events.
+
+The outer native arbiter retains that binding's input attribute at its
+own command acceptance. Ordinary text commands are not tagged replay.
+The immutable-mask client is tagged replay only when its registered
+request owner is the Eval path. Position scanning is an original-input
+read but is not replay. Finally the top captures command attributes at
+the literal memory bridge's command acceptance and increments CSR bytes
+only when the corresponding **public** 32-bit memory request is accepted.
+An internal command cancelled by reset before public acceptance therefore
+does not add traffic; a publicly accepted command with a failed response
+still does. Reset clears both classification registers. No tag adds a
+memory request, changes arbitration or supplies any numerical answer.
+
+`replay_weight_bytes` reports actual weight-image traffic through the
+owner/replay path, not an analytically subtracted excess over the matched
+baseline. Replay may increase total DDR traffic. Independent public-address
+scoreboards and the executable matched baseline remain mandatory; these
+CSR events alone do not certify the no-spill or savings requirements.
+
 ## Connected native execution assembly
 
 `rtl/anvil_en1_native.sv` connects the existing frontier scheduler, frontier
 executor, owner/replay binding, shared cache and registered memory arbiter.
-This is the native execution assembly below the still-pending compatible
+This is the native execution assembly below the compatible
 top/session/CSR wrapper. It is not a substitute top or an accepted design.
 Its start descriptor is a complete immutable native context, not a decode
 append descriptor; only the outer top may authorize a decode/session change.
@@ -74,13 +210,13 @@ Draining cannot close the memory arbiter while a worker still needs to
 finish: both the drain request and its state transition use the same
 worker/router-idle condition. Configuration and execution errors retain
 their real child error and follow the drain boundary. A descriptor rejected
-before dispatch issues no child or memory request. This assembly does not
-yet implement public prefill/decode session validation, positions-array
-validation or parent mode routing.
+before dispatch issues no child or memory request. Public prefill/decode session validation, positions-array validation and
+parent mode routing belong to the enclosing top described above, not to
+this complete-context execution interface.
 
 ### Allocation observation vector
 
-`allocation_live_bytes` and `allocation_physical_bytes` contain 19 unsigned
+`allocation_live_bytes` and `allocation_physical_bytes` contain 22 unsigned
 64-bit fields, field i at `[64*i+:64]`. These are named component reports,
 not a complete accepted live ledger. No aggregate savings or allocator
 success is inferred from them.
@@ -106,6 +242,24 @@ success is inferred from them.
 | 16 | Binding's own controller registers |
 | 17 | Native assembly's own descriptor/router/controller registers |
 | 18 | Occupied resident KV pairs |
+| 19 | Ordinary embedding reconstruction's input/PLE payload |
+| 20 | Ordinary text attention/PLE/MLP payload |
+| 21 | Final-logit head's normalized hidden vector |
+
+Fields 19..21 now originate at the payload owners rather than being
+silently omitted by the ordinary executor. Legal descriptor validation
+reserves each worker's full logical vector extent; it remains charged
+through arithmetic, output stalls and accepted completion, including
+failure completion. Reset or actual completion acceptance releases it.
+The embedding extent is `2H+2P`, full text extent is
+`6H+2D+2Q*D+2P`, and final-head extent is `2H`. The POST_ONLY worker never
+uses query/attention banks and charges `6H+2P`; its physical report still
+discloses all declared banks. These reservations are conservative
+phase-local payload charges, not exact scalar/controller accounting.
+Replay input and text workers now forward these same embedding/post
+owner reports instead of deriving visibility from the caller's current
+worker selection. Both embedding instances are summed, so a retained
+child allocation cannot disappear merely because dispatch changed.
 
 Physical field 5 is zero **only because** the actual backing RAM is
 physically counted once in field 0. `workspace_reserved_bytes` separately

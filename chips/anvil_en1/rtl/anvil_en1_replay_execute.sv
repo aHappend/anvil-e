@@ -245,7 +245,7 @@ module anvil_en1_replay_execute #(
     wire input_work_bank;
     wire input_write_valid, input_write_first, input_write_last, input_write_abort;
     wire [31:0] input_write_data;
-    wire input_cmd_valid, input_result_ready;
+    wire input_cmd_valid, input_result_ready, input_token_event, text_token_event;
     wire [63:0] input_cmd_addr;
     wire [63:0] input_state_bytes, input_embedding_live, input_embedding_physical;
     anvil_en1_replay_input #(.COMPACT(COMPACT)) original_input (
@@ -279,6 +279,7 @@ module anvil_en1_replay_execute #(
         .work_rsp_data(work_rsp_data),
         .cmd_valid(input_cmd_valid), .cmd_ready(input_selected && cmd_ready),
         .cmd_write(), .cmd_addr(input_cmd_addr), .cmd_wdata(),
+        .input_read_event(input_token_event),
         .result_valid(input_selected && result_valid), .result_ready(input_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(input_valid), .done_ready(input_selected && state == WORKER_WAIT),
@@ -349,6 +350,7 @@ module anvil_en1_replay_execute #(
         .work_rsp_error(work_rsp_error),
         .cmd_valid(text_cmd_valid), .cmd_ready(text_selected && cmd_ready),
         .cmd_write(), .cmd_addr(text_cmd_addr), .cmd_wdata(),
+        .input_read_event(text_token_event),
         .result_valid(text_selected && result_valid), .result_ready(text_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(text_valid), .done_ready(text_selected && state == WORKER_WAIT),
@@ -783,9 +785,10 @@ module anvil_en1_replay_execute #(
         (vision_selected && vision_result_ready) || (audio_active && audio_result_ready) ||
         (feature_selected && feature_result_ready) || (image_feature_selected && image_feature_result_ready);
     assign native_input_read_event = vision_input_event || audio_input_event ||
-        feature_input_event || image_feature_input_event;
+        feature_input_event || image_feature_input_event || input_token_event || text_token_event;
     assign native_input_read_bytes = vision_input_bytes + audio_input_bytes +
-        feature_input_bytes + image_feature_input_bytes;
+        feature_input_bytes + image_feature_input_bytes +
+        (input_token_event ? 32'd4 : 32'd0) + (text_token_event ? 32'd4 : 32'd0);
     assign native_projection_event = vision_projection_event || audio_projection_event ||
         feature_projection_event || image_feature_projection_event;
     assign native_projection_bytes = vision_projection_bytes + audio_projection_bytes +
@@ -800,7 +803,7 @@ module anvil_en1_replay_execute #(
         audio_layer_source_event || feature_source_event || image_feature_source_event;
     assign source_read_bytes = text_source_bytes + vision_source_bytes +
         audio_layer_source_bytes + feature_source_bytes + image_feature_source_bytes;
-    assign embedding_live_bytes = input_worker ? input_embedding_live : text_embedding_live;
+    assign embedding_live_bytes = input_embedding_live + text_embedding_live;
     assign embedding_physical_bytes = rst_n ? input_embedding_physical + text_embedding_physical : 64'd0;
     assign selected_worker_state_bytes = !rst_n ? 64'd0 :
         (domain_hold == 3 ? (layer_hold == 1 ? image_feature_controller_bytes : audio_feature_controller_bytes) :

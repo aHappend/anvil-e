@@ -46,6 +46,7 @@ module anvil_en1_replay_input #(
     output wire cmd_valid,
     input wire cmd_ready,
     output wire cmd_write,
+    output wire input_read_event,
     output wire [63:0] cmd_addr,
     output wire [31:0] cmd_wdata,
     input wire result_valid,
@@ -128,7 +129,7 @@ module anvil_en1_replay_input #(
     wire [31:0] embed_input_index;
     wire [15:0] embed_input_data;
     wire embed_input_last;
-    wire embed_cmd_valid, embed_result_ready;
+    wire embed_cmd_valid, embed_result_ready, embed_input_event;
     wire [63:0] embed_cmd_addr;
     wire premature_failure = embed_valid && embed_error != 0;
     wire stream_position = state == INPUT_LOW || state == INPUT_HIGH;
@@ -162,12 +163,14 @@ module anvil_en1_replay_input #(
         .cmd_valid(embed_cmd_valid),
         .cmd_ready(rst_n && embed_active && cmd_ready),
         .cmd_write(), .cmd_addr(embed_cmd_addr), .cmd_wdata(),
+        .input_read_event(embed_input_event),
         .result_valid(rst_n && embed_active && result_valid),
         .result_ready(embed_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(embed_valid),
         .done_ready(rst_n && state == EMBED_WAIT),
-        .done_error(embed_error)
+        .done_error(embed_error), .live_payload_bytes(embedding_live_bytes),
+        .physical_payload_bytes(embedding_physical_bytes)
     );
 
     assign start_ready = rst_n && state == IDLE;
@@ -203,6 +206,8 @@ module anvil_en1_replay_input #(
     assign cmd_valid = rst_n &&
         (state == TOKEN_SEND || (embed_active && embed_cmd_valid));
     assign cmd_write = 0;
+    assign input_read_event = (rst_n && state == TOKEN_SEND && cmd_ready) ||
+        embed_input_event;
     assign cmd_addr = !rst_n ? 64'd0 :
         (embed_active ? embed_cmd_addr : token_address_hold);
     assign cmd_wdata = 0;
@@ -217,9 +222,6 @@ module anvil_en1_replay_input #(
     assign done_dependency_layer = rst_n && yield_hold ? {6'd0, selected_modality} : 8'd0;
     assign done_dependency_token = rst_n && yield_hold ? token_hold : 32'd0;
     assign done_dependency_length = rst_n && yield_hold ? hidden_hold : 12'd0;
-    assign embedding_live_bytes = rst_n && embed_active ?
-        ({52'd0, hidden_hold} + 64'(P)) << 1 : 64'd0;
-    assign embedding_physical_bytes = rst_n ? 64'(2*(MAX_H+P)) : 64'd0;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
         $bits(selected_modality) + $bits(mode_hold) + $bits(continuation_hold) +

@@ -65,6 +65,7 @@ module anvil_en1_replay_text_layer #(
     output wire cmd_valid,
     input wire cmd_ready,
     output wire cmd_write,
+    output wire input_read_event,
     output wire [63:0] cmd_addr,
     output wire [31:0] cmd_wdata,
     input wire result_valid,
@@ -282,6 +283,7 @@ module anvil_en1_replay_text_layer #(
 
     wire embed_ready, embed_valid, embed_input_valid, embed_input_last;
     wire embed_ple_valid, embed_ple_last, embed_cmd_valid, embed_result_ready;
+    wire embed_input_event;
     wire [31:0] embed_input_index, embed_ple_index;
     wire [15:0] embed_ple_data;
     wire [63:0] embed_cmd_addr;
@@ -316,10 +318,12 @@ module anvil_en1_replay_text_layer #(
         .ple_index(embed_ple_index), .ple_data(embed_ple_data), .ple_last(embed_ple_last),
         .cmd_valid(embed_cmd_valid), .cmd_ready(embedding_selected && cmd_ready),
         .cmd_write(), .cmd_addr(embed_cmd_addr), .cmd_wdata(),
+        .input_read_event(embed_input_event),
         .result_valid(embedding_selected && result_valid),
         .result_ready(embed_result_ready), .result_data(result_data), .result_error(result_error),
         .done_valid(embed_valid), .done_ready(rst_n && state == EMBED_WAIT),
-        .done_error(embed_error)
+        .done_error(embed_error), .live_payload_bytes(embedding_live_bytes),
+        .physical_payload_bytes(embedding_physical_bytes)
     );
 
     wire post_ready, post_valid, post_source_valid, post_source_rsp_ready;
@@ -367,7 +371,9 @@ module anvil_en1_replay_text_layer #(
         .output_index(post_output_index), .output_data(post_output_data),
         .output_last(post_output_last), .done_valid(post_valid),
         .done_ready(rst_n && state == POST_WAIT && !post_output_valid &&
-            source_state == SOURCE_IDLE), .done_error(post_error)
+            source_state == SOURCE_IDLE), .done_error(post_error),
+        .live_payload_bytes(post_vector_live_bytes),
+        .physical_payload_bytes(post_vector_physical_bytes)
     );
 
     always @(posedge clk) begin
@@ -425,6 +431,8 @@ module anvil_en1_replay_text_layer #(
         (attention_selected && attention_cmd_valid) ||
         (embedding_selected && embed_cmd_valid) || (post_selected && post_cmd_valid));
     assign cmd_write = 0;
+    assign input_read_event = (rst_n && state == TOKEN_SEND && cmd_ready) ||
+        embed_input_event;
     assign cmd_addr = !rst_n ? 64'd0 : (attention_selected ? attention_cmd_addr :
         (embedding_selected ? embed_cmd_addr : (post_selected ? post_cmd_addr :
             token_address_hold)));
@@ -443,13 +451,6 @@ module anvil_en1_replay_text_layer #(
     assign done_dependency_length = rst_n && yield_hold ? length_hold : 12'd0;
     assign ple_live_bytes = rst_n && (embedding_selected || ple_committed) ? 64'(2*P) : 64'd0;
     assign ple_physical_bytes = rst_n ? 64'(2*P) : 64'd0;
-    assign embedding_live_bytes = embedding_selected ?
-        ({52'd0, length_hold} + 64'(P)) << 1 : 64'd0;
-    assign embedding_physical_bytes = rst_n ? 64'(2*(MAX_H+P)) : 64'd0;
-    assign post_vector_live_bytes = post_selected ?
-        64'd6*{52'd0, length_hold} + 64'(2*P) : 64'd0;
-    assign post_vector_physical_bytes = rst_n ?
-        64'(2*(3*MAX_H+MAX_D+Q*MAX_D+P)) : 64'd0;
     assign busy = rst_n && state != IDLE;
     wire feature_source_event = rst_n && embedding_selected && source_feature_hold &&
         source_state == SOURCE_SEND && work_req_ready;

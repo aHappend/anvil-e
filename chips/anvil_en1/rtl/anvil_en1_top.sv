@@ -167,13 +167,15 @@ module anvil_en1_top #(
     wire [63:0] native_cmd_addr;
     wire [31:0] native_cmd_data;
     wire [2:0] native_cmd_owner;
+    wire native_cmd_input, native_cmd_replay;
+    reg bridge_input, bridge_replay;
     wire native_logit_valid, native_logit_last;
     wire [15:0] native_logit_data;
     wire [17:0] native_logit_index;
     wire native_selected = rst_n && state == NATIVE_WAIT;
     wire fallback_active;
     wire [6:0] frame_depth;
-    wire [1215:0] live_bytes, physical_bytes;
+    wire [1407:0] live_bytes, physical_bytes;
     wire [255:0] metadata_bytes;
     wire [63:0] shadow_bytes, reserved_bytes;
     wire resident_hit, resident_miss, alias_hit, memo_hit, memo_eviction, ring_hit;
@@ -196,6 +198,7 @@ module anvil_en1_top #(
         .cmd_valid(native_cmd_valid), .cmd_ready(native_cmd_ready),
         .cmd_write(native_cmd_write), .cmd_addr(native_cmd_addr),
         .cmd_wdata(native_cmd_data), .cmd_owner(native_cmd_owner),
+        .cmd_input(native_cmd_input), .cmd_replay(native_cmd_replay),
         .result_valid(native_selected && bridge_valid), .result_ready(native_result_ready),
         .result_data(bridge_data), .result_error(bridge_error),
         .logit_valid(native_logit_valid), .logit_ready(native_selected && logit_ready),
@@ -280,6 +283,11 @@ module anvil_en1_top #(
             assign perf_values[64*metric+:64] =
                 (owner_event ? {32'd0,owner_bytes} : 64'd0) +
                 (replay_owner_event ? {32'd0,replay_owner_bytes} : 64'd0);
+        end else if (metric == 18 || metric == 19) begin
+            assign perf_mask[metric] = native_selected && accepted_memory &&
+                !mem_req_write && bridge_replay &&
+                (metric == 18 ? bridge_input : !bridge_input);
+            assign perf_values[64*metric+:64] = 64'd4;
         end else if (metric == 21 || metric == 22) begin
             assign perf_mask[metric] = native_selected &&
                 (metric == 21 ? memo_hit : memo_eviction);
@@ -292,6 +300,15 @@ module anvil_en1_top #(
             assign perf_values[64*metric+:64] = 64'd0;
         end
     end endgenerate
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            bridge_input <= 0;
+            bridge_replay <= 0;
+        end else if (bridge_command && bridge_ready) begin
+            bridge_input <= scan_send || native_cmd_input;
+            bridge_replay <= !scan_send && native_cmd_replay;
+        end
+    end
     anvil_en1_csr_perf performance (
         .clk(clk), .rst_n(rst_n), .csr_valid(csr_valid), .csr_write(csr_write),
         .csr_addr(csr_addr), .csr_wdata(csr_wdata), .csr_ready(csr_ready),
@@ -405,10 +422,13 @@ module anvil_en1_top #(
                 end
                 POSITION_CHECK: begin
                     if (scan_error || scan_data != scan_index) begin
-                        error_hold <= scan_error ? 4'd4 : 4'd5;
+                        error_hold <= scan_error ? 4'd2 : 4'd5;
                         state <= PUBLISH;
                     end else if (scan_index + 32'd1 == tokens_hold) begin
-                        generation <= generation + 32'd1;
+                        if (generation == 32'hffffffff)
+                            generation <= 1;
+                        else
+                            generation <= generation + 32'd1;
                         session_valid <= 0;
                         state <= NATIVE_START;
                     end else begin

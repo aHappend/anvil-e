@@ -24,6 +24,8 @@ module anvil_en1_vision_patch (
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
+    output wire input_read_event,
+    output wire [31:0] input_read_bytes,
     output wire [63:0] controller_bytes
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, EXTENT_PRODUCT = 2,
@@ -205,6 +207,10 @@ module anvil_en1_vision_patch (
         (position_selected ? position_cmd_valid :
         (state == COORD_X_SEND || state == COORD_Y_SEND)))));
     assign cmd_write = 0;
+    assign input_read_event = cmd_valid && cmd_ready &&
+        ((image_selected && input_image) || pixel_selected ||
+            state == COORD_X_SEND || state == COORD_Y_SEND);
+    assign input_read_bytes = input_read_event ? 32'd4 : 32'd0;
     assign cmd_addr = !rst_n ? 64'd0 : (image_selected ? image_cmd_addr :
         (pixel_selected ? source_address : (projection_selected ? projection_cmd_addr :
         (position_selected ? position_cmd_addr : coord_address))));

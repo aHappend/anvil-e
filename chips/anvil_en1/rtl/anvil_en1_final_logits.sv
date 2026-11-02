@@ -29,7 +29,8 @@ module anvil_en1_final_logits #(
     output wire logit_last,
     output wire done_valid,
     input wire done_ready,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] live_payload_bytes, physical_payload_bytes
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
@@ -48,6 +49,8 @@ module anvil_en1_final_logits #(
         assign logit_last = 0;
         assign done_valid = 0;
         assign done_error = 0;
+        assign live_payload_bytes = 0;
+        assign physical_payload_bytes = 0;
     end else begin : final_head
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer H_BITS = $clog2(MAX_H);
@@ -75,6 +78,7 @@ module anvil_en1_final_logits #(
         reg [15:0] scale_data_hold, projection_source_hold, logit_hold;
         reg scale_error_hold, projection_source_error, normalization_error;
         reg normalized_committed;
+        reg payload_allocated;
         reg [31:0] raw_logit_hold;
         reg [3:0] error_hold;
         reg [15:0] normalized_q;
@@ -227,6 +231,19 @@ module anvil_en1_final_logits #(
         assign logit_last = rst_n && state == LOGIT_RESPONSE && row_hold == VOCABULARY - 1;
         assign done_valid = rst_n && state == RESPONSE;
         assign done_error = rst_n ? error_hold : 4'd0;
+        assign live_payload_bytes = rst_n && payload_allocated ?
+            {32'd0, hidden_hold} << 1 : 64'd0;
+        assign physical_payload_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
+
+        always @(posedge clk or negedge rst_n) begin
+            if (!rst_n)
+                payload_allocated <= 0;
+            else if (done_valid && done_ready)
+                payload_allocated <= 0;
+            else if (state == VALIDATE && (model_hold == 1 || model_hold == 2) &&
+                precision_hold <= 1)
+                payload_allocated <= 1;
+        end
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin

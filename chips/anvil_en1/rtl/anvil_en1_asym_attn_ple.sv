@@ -71,7 +71,8 @@ module anvil_en1_asym_attn_ple #(
     output wire output_last,
     output wire done_valid,
     input wire done_ready,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] live_payload_bytes, physical_payload_bytes
 );
     generate if ((COMPACT != 0 && COMPACT != 1) ||
         (POST_ONLY != 0 && POST_ONLY != 1)) begin : invalid_parameters
@@ -117,6 +118,8 @@ module anvil_en1_asym_attn_ple #(
         assign output_last = 0;
         assign done_valid = 0;
         assign done_error = 0;
+        assign live_payload_bytes = 0;
+        assign physical_payload_bytes = 0;
     end else begin : engine
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer MAX_D = COMPACT ? 8 : 512;
@@ -187,6 +190,7 @@ module anvil_en1_asym_attn_ple #(
         reg [15:0] branch_data_hold, residual_data_hold, rotary_first, rotary_second;
         reg [2:0] fp_op;
         reg [3:0] error_hold;
+        reg payload_allocated;
         reg [15:0] residual_q, work_q, branch_q, query_q, attention_q, ple_q;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] residual_payload [0:MAX_H-1];
@@ -473,6 +477,23 @@ module anvil_en1_asym_attn_ple #(
         end
 
         assign start_ready = rst_n && state == IDLE;
+        assign live_payload_bytes = rst_n && payload_allocated ?
+            ({32'd0, hidden_hold} << 2) + ({32'd0, hidden_hold} << 1) +
+            64'(2*P) + (POST_ONLY ? 64'd0 :
+                (({32'd0, dimension_hold} << 1) +
+                 ({32'd0, dimension_hold} << (COMPACT ? 2 : 4)))) : 64'd0;
+        assign physical_payload_bytes = rst_n ?
+            64'(2*(3*MAX_H+P+MAX_D+MAX_A)) : 64'd0;
+
+        always @(posedge clk or negedge rst_n) begin
+            if (!rst_n)
+                payload_allocated <= 0;
+            else if (done_valid && done_ready)
+                payload_allocated <= 0;
+            else if (state == VALIDATE && native_model && precision_hold <= 1 &&
+                layer_hold < layer_count && token_hold <= 131071 && weights_hold[1:0] == 0)
+                payload_allocated <= 1;
+        end
         assign source_valid = rst_n && state == LOAD_START;
         assign source_model = rst_n ? model_hold : 2'd0;
         assign source_layer = rst_n ? layer_hold : 8'd0;
