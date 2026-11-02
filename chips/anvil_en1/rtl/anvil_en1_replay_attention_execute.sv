@@ -360,7 +360,21 @@ module anvil_en1_replay_attention_execute #(
     assign done_is_value = rst_n && yield_hold && done_selector_hold;
     assign done_kv_head = rst_n && yield_hold ? done_head_hold : 2'd0;
     assign done_component = rst_n && yield_hold ? done_component_hold : 10'd0;
-    assign controller_state_bytes = rst_n ? 64'd100 : 64'd0;
+    localparam integer CONTROLLER_BITS = $bits({
+        state, service_state, model_hold, precision_hold, dependency_domain_hold,
+        layer_hold, frame_layer_hold, dependency_layer_hold, query_head_hold,
+        position_hold, tokens_hold, dependency_token_hold, weights_hold,
+        frame_slot_hold, dependency_slot_hold, input_bank_hold, resume_hold,
+        dependency_valid_hold, dependency_length_hold, continuation_hold,
+        done_continuation_hold, error_hold, yield_hold, done_owner_hold,
+        done_token_hold, done_selector_hold, done_head_hold, done_component_hold,
+        authorized, authorized_memo, authorized_owner, authorized_token,
+        authorized_selector, authorized_head, authorized_component, service_model,
+        service_head, service_owner, service_token, service_selector, service_memo,
+        service_component, query_pair, service_pair, query_pair_valid,
+        query_pair_component, service_error
+    });
+    assign controller_state_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
     assign pair_live_bytes = !rst_n ? 64'd0 :
         (query_pair_valid ? 64'd4 : 64'd0) +
         (service_state != SERVICE_IDLE ? 64'd4 : 64'd0);

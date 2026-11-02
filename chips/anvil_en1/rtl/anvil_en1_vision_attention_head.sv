@@ -77,7 +77,9 @@ module anvil_en1_vision_attention_head #(
     wire fp_ready, fp_valid, exp_ready, exp_valid, inverse_ready, inverse_valid;
     wire [31:0] fp_data, exp_data, inverse_data;
     wire [3:0] fp_error, exp_error, inverse_error;
+    wire [63:0] primitive_fp_bytes, primitive_exp_bytes, primitive_div_bytes;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_SEND), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -85,6 +87,7 @@ module anvil_en1_vision_attention_head #(
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_exp exponent (
+        .controller_bytes(primitive_exp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EXP_SEND), .start_ready(exp_ready),
         .operand(exp_operand),
@@ -92,6 +95,7 @@ module anvil_en1_vision_attention_head #(
         .done_data(exp_data), .done_error(exp_error)
     );
     anvil_en1_fp32_divsqrt reciprocal (
+        .controller_bytes(primitive_div_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == INVERSE_SEND), .start_ready(inverse_ready),
         .operation(2'd0), .operand_a(32'h3f800000), .operand_b(exponential_sum),
@@ -169,7 +173,8 @@ module anvil_en1_vision_attention_head #(
         $bits(value_accumulator) + $bits(exponential) + $bits(fp_a) + $bits(fp_b) +
         $bits(fp_value) + $bits(exp_operand) + $bits(fp_op) +
         $bits(service_error_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_fp_bytes + primitive_exp_bytes + primitive_div_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

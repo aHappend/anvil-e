@@ -90,15 +90,94 @@ advertised as avoided work.
 Event-model 3 updates neither bank.
 
 **Remaining integration, not zero-valued measurements:** KV-equivalent
-traffic classification, matched-baseline traffic, avoided work,
-local/global utilization and aggregate live/
-peak allocation events are not yet wired. Their target CSR slots remain
+traffic classification and matched-baseline traffic are not yet wired.
+Their target CSR slots remain
 unmodified by this partial top; zero does not establish a measured result.
 Projection-output-byte events must not be relabeled weight-read bytes.
-Complete whole-system allocation/overlay enforcement, primitive/controller
-accounting and these telemetry connections remain required before handoff.
+Avoided shared projections, local/global component issue/availability,
+and allocation gauges/peaks now have the connected event definitions below.
+Complete whole-system allocation/overlay enforcement and the remaining
+traffic telemetry connections remain required before handoff.
 No static elaboration, simulation, synthesis, timing or hardware result is
 claimed for the top.
+
+### Text attention execution telemetry
+
+The attention leaf exposes `attention_activity[3:0]`, sampled pre-edge:
+bit 0 is a local component-multiply issue, bit 1 a global issue, bit 2
+local lane availability and bit 3 global lane availability. A component
+issue is an accepted binary32 multiply with return state DOT_ADD or
+VALUE_ADD: one Q*K or probability*V component, not a probability scaling,
+normalization, exponentiation, projection or conversion. The serialized
+leaf has one such lane. Availability counts each cycle after descriptor
+validation until publication of completion, including source, memory,
+checkpoint, arithmetic and output stalls. IDLE, validation, publication
+and held done responses do not count. A yielded head stops counting once
+it publishes completion; a resumed head starts again after validation.
+These are component-issue utilization metrics, not pipeline occupancy,
+whole-chip utilization or a tokens/s measurement.
+
+The ordinary and replay paths both forward their actual leaf events
+without using a dispatcher-selected-worker mux. Native assembly adds
+the two one-bit contributions separately for all four counters, retaining
+simultaneous activity instead of OR-combining it. CSR metrics 10..13
+receive those counts in bit order. Invalid parameter branches and active
+reset produce zero events.
+
+`avoided_projection_event` occurs on accepted successful completion of
+one shared logical text-layer worker, including a replay POST_ONLY
+completion, never on a cache alias lookup or a resumed attention fragment.
+Metric 7 adds `4*KV_heads*head_dimension` bytes: the distinct BF16 K and V
+output vectors that this logical consumer does not privately project.
+Compact builds use their actual one KV head and dimensions 4/8.
+Owner layers produce no avoided event. Real owner regeneration remains
+charged separately by metric 17 even if a shared consumer caused it;
+metric 7 is not a claim that those owner computations were avoided.
+Failed or stalled layer completions do not repeatedly add bytes.
+No projected-output count is a weight-bandwidth measurement.
+
+### Registered allocation observations and CSR delivery
+
+`anvil_en1_allocation_ledger` samples the native 25-field component vector,
+four metadata fields and the top integration reservation each native
+execution cycle. Three independent 32-term balanced adder trees each
+have five register stages and one 64-bit addition per stage. The model
+and observation-valid tags traverse those same stages. A report therefore
+corresponds to one coherent input cycle, not a mixture of five successive
+allocations. No per-cycle trace, host sum, dynamic division or subtraction
+of idle physical SRAM capacity supplies these totals.
+
+| Report | Terms | CSR |
+| --- | --- | --- |
+| Payload | Fields 0..15 and 18..21 | Metric 15, current allocated payload gauge |
+| Replay reservation | Fields 5..16 and 22, plus workspace visibility metadata | Metric 20, saturating-session-independent maximum |
+| KV-equivalent reservation | All 25 component fields, all four metadata fields and integration reservation | Metric 24, maximum |
+
+Integration reservation includes the enclosing top's complete declared
+descriptor/session/traffic registers, the immutable native bridge's
+132 register bits (state/write/address/write-data/read-data/error), the
+CSR engine's complete two counter/snapshot banks and controller/atomic
+readback state, and the ledger's own pipeline registers. Arrays already
+charged in payload or metadata fields are not added as primitive state.
+The inactive immutable parent datapath is not native cache-equivalent
+state; its physical FPGA cost still belongs in whole-top synthesis.
+
+The CSR engine accepts allocation reports on an independent, model-tagged
+event channel. A delayed native report cannot charge a newly selected
+parent bank or suppress that parent's simultaneous ordinary events.
+Reports use the existing metric-15 gauge and metric-20/24 maximum rules.
+If both event channels target one of those metrics in the same bank,
+the dedicated allocation report has priority. Clear still wins over
+both channels; snapshot still captures the pre-update counter value.
+The last reports can retire after the job leaves native execution, so
+completion does not silently drop the pipeline tail.
+
+These are connected conservative reservations, including held copies
+and idle controllers, not independently accepted allocation completeness
+or storage savings. Actual mode-overlap, short-context native scratch,
+ordinary workspace and full fallback limits still need enforcement.
+Physical reserved payload and metadata remain separately exposed by
+their owning leaves; a live subtotal is not a Quartus resource report.
 
 ### Matched-unshared payload gauge
 
@@ -272,7 +351,7 @@ success is inferred from them.
 | 21 | Final-logit head's normalized hidden vector |
 | 22 | Reported replay subtree controllers, including workspace and owner-source control, excluding field 16 |
 | 23 | Native memory arbiter, frontier scheduler and cache controller registers |
-| 24 | Ordinary executor, frontier RAM and local-ring controller registers |
+| 24 | Ordinary executor, frontier/ring control, embedding, full text, anchor and final-head scalar/numerical state |
 
 Fields 19..21 now originate at the payload owners rather than being
 silently omitted by the ordinary executor. Legal descriptor validation
@@ -320,11 +399,27 @@ reports the logical backing partition, and `workspace_shadow_bytes` the
 existing production-width shadow allocation. Neither may be silently
 substituted for live bytes. Metadata has four separate 64-bit fields:
 frontier token tags, ring token/lane tags, workspace visibility metadata,
-and resident tags/occupied bits. Unreported child controllers, primitive state,
-additional transient vectors and the enclosing top remain to be accounted;
-short-context native scratch and the full fallback ceiling remain to be
-enforced. Physical field 0 is not a claim that all its reserved words are
+and resident tags/occupied bits. Primitive and enclosing-top scalar state
+now enter the reports as described below; transient-vector liveness,
+short-context native scratch, ordinary workspace and the full fallback
+ceiling remain to be enforced. Physical field 0 is not a claim that all its reserved words are
 live or that FPGA resource fit is established.
+
+The binary32, division/sqrt, unsigned conversion, exp, activation,
+normalization, projection, Q4/BF16 weight reader, GeGLU, gated projection,
+softcap, frequency, sin/cos, rotary and tensor-directory primitives now
+expose declared-register censuses. Compound primitive reports include
+each literal arithmetic child once. Their native vision/audio parents
+add these reports to the existing controller categories; separately
+exposed native child-controller reports remain separate, not added twice.
+The ordinary embedding/text/final workers and owner tile similarly sum
+their own scalar/readback registers and their literal primitive children.
+Replay input/post, attention-projection, checkpoint and K/V wrappers
+forward these through fields 22/24. The previous fixed 74/100/53-byte
+checkpoint/executor/tile estimates have been replaced by declared-width
+censuses, including partial pairs and retained dependency descriptors.
+Combinational function temporaries and loop-unrolling indices are not
+stored state; synchronous RAM readback registers are.
 
 The cache now exposes actual `resident_live_bytes = 4*resident_count`.
 Insertion increments the count only when replacing an unoccupied slot;

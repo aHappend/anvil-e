@@ -114,6 +114,7 @@ module anvil_en1_replay_attention_projection #(
     reg head_active, yield_hold;
     reg [7:0] dependency_owner_hold;
     reg [31:0] dependency_position_hold;
+    wire [63:0] lookup_controller_bytes, weight_controller_bytes, fp_controller_bytes;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -160,6 +161,7 @@ module anvil_en1_replay_attention_projection #(
     wire [31:0] lookup_rows, lookup_columns, lookup_stride;
     wire [3:0] lookup_error;
     anvil_en1_tensor_image #(.COMPACT(COMPACT)) matrix_lookup (
+        .controller_bytes(lookup_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd0),
@@ -181,6 +183,7 @@ module anvil_en1_replay_attention_projection #(
     wire [31:0] weight_data;
     wire [3:0] weight_error;
     anvil_en1_weight_read output_weight (
+        .controller_bytes(weight_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == WEIGHT_START), .start_ready(weight_ready),
         .precision(precision_hold), .tensor_base(matrix_base),
@@ -200,6 +203,7 @@ module anvil_en1_replay_attention_projection #(
     wire [31:0] fp_data;
     wire [3:0] fp_error;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -357,7 +361,9 @@ module anvil_en1_replay_attention_projection #(
         $bits(outer_hold) + $bits(inner_hold) + $bits(error_hold) + $bits(work_error_hold) +
         $bits(head_active) + $bits(yield_hold) +
         $bits(dependency_owner_hold) + $bits(dependency_position_hold);
-    assign controller_state_bytes = rst_n ? 64'((CONTROLLER_BITS + 7) >> 3) : 64'd0;
+    assign controller_state_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS + 7) >> 3) + lookup_controller_bytes +
+        weight_controller_bytes + fp_controller_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

@@ -78,7 +78,10 @@ module anvil_en1_vision_patch (
     wire input_image = image_index < 2;
     wire [15:0] image_kind = image_index == 0 ? 16'h3000 :
         (image_index == 1 ? 16'h3001 : (image_index == 2 ? 16'h1000 : 16'h1001));
+    wire [63:0] primitive_directory_bytes, primitive_projection_bytes;
+    wire [63:0] primitive_weight_bytes, primitive_fp_bytes;
     anvil_en1_tensor_image directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(image_ready),
         .model(model_hold), .precision(input_image ? 2'd0 : precision_hold),
@@ -106,6 +109,7 @@ module anvil_en1_vision_patch (
     wire projection_selected = rst_n && !pixel_selected &&
         (state == PROJECTION_START || state == PROJECTION_WAIT);
     anvil_en1_projection projection (
+        .controller_bytes(primitive_projection_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .precision(precision_hold), .tensor_base(matrix_base), .tensor_bytes(matrix_bytes),
@@ -136,6 +140,7 @@ module anvil_en1_vision_patch (
         state == POSITION_X_START || state == POSITION_X_WAIT);
     wire [31:0] position_row = position_y_selected ? y_hold + 32'd10240 : x_hold;
     anvil_en1_weight_read positions (
+        .controller_bytes(primitive_weight_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == POSITION_X_START || state == POSITION_Y_START)),
         .start_ready(position_ready), .precision(2'd0),
@@ -173,6 +178,7 @@ module anvil_en1_vision_patch (
     wire [31:0] source_fp_b = source_subtract ? 32'hbf000000 :
         (source_multiply ? 32'h40000000 : 32'd0);
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == FP_START || source_fp_start)),
         .start_ready(fp_ready),
@@ -248,7 +254,9 @@ module anvil_en1_vision_patch (
         $bits(source_address) + $bits(source_lane) + $bits(source_memory_error) +
         $bits(source_error_hold) + $bits(source_failure_hold) +
         $bits(source_data_hold) + $bits(source_output_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_projection_bytes +
+        primitive_weight_bytes + primitive_fp_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

@@ -28,7 +28,10 @@ module anvil_en1_audio_relative_position (
     wire exp_ready, exp_valid, trig_ready, trig_valid;
     wire [31:0] fp_data, div_data, uint_data, exp_data, sine_data, cosine_data;
     wire [3:0] fp_error, div_error, uint_error, exp_error, trig_error;
+    wire [63:0] primitive_fp_bytes, primitive_div_bytes, primitive_convert_bytes;
+    wire [63:0] primitive_exp_bytes, primitive_trig_bytes;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -36,6 +39,7 @@ module anvil_en1_audio_relative_position (
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_fp32_divsqrt timescale_increment (
+        .controller_bytes(primitive_div_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == INCREMENT_START), .start_ready(div_ready),
         .operation(2'd0), .operand_a(32'h41135d8e), .operand_b(32'h43ff8000),
@@ -43,6 +47,7 @@ module anvil_en1_audio_relative_position (
         .done_data(div_data), .done_error(div_error)
     );
     anvil_en1_uint_to_fp32 integer_converter (
+        .controller_bytes(primitive_convert_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == INDEX_START || state == DISTANCE_START)),
         .start_ready(uint_ready),
@@ -53,6 +58,7 @@ module anvil_en1_audio_relative_position (
         .done_data(uint_data), .done_error(uint_error)
     );
     anvil_en1_exp exponent (
+        .controller_bytes(primitive_exp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
         .operand(exp_argument),
@@ -60,6 +66,7 @@ module anvil_en1_audio_relative_position (
         .done_data(exp_data), .done_error(exp_error)
     );
     anvil_en1_sincos trigonometry (
+        .controller_bytes(primitive_trig_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == TRIG_START), .start_ready(trig_ready),
         .operand(fp_value), .done_valid(trig_valid),
@@ -76,7 +83,9 @@ module anvil_en1_audio_relative_position (
         $bits(index_float) + $bits(inverse) + $bits(distance_float) +
         $bits(exp_argument) + $bits(fp_a) + $bits(fp_b) +
         $bits(fp_value) + $bits(trig_value) + $bits(output_hold) + $bits(fp_op);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_fp_bytes + primitive_div_bytes + primitive_convert_bytes +
+        primitive_exp_bytes + primitive_trig_bytes;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;

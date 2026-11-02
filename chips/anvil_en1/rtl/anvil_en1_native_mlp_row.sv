@@ -127,7 +127,9 @@ module anvil_en1_native_mlp_row (
     wire geglu_ready, geglu_valid, activation_ready, activation_valid, fp_ready, fp_valid;
     wire [31:0] geglu_data, activation_data, fp_data;
     wire [3:0] geglu_error, activation_error, fp_error;
+    wire [63:0] primitive_geglu_bytes, primitive_activation_bytes, primitive_fp_bytes;
     anvil_en1_geglu_pair geglu (
+        .controller_bytes(primitive_geglu_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_WAIT && source_state == S_GEGLU_START),
         .start_ready(geglu_ready), .operation(2'd0), .gate_data(gate_hold), .up_data(up_hold),
@@ -136,6 +138,7 @@ module anvil_en1_native_mlp_row (
         .done_data(geglu_data), .done_error(geglu_error)
     );
     anvil_en1_activation activation (
+        .controller_bytes(primitive_activation_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_WAIT && source_state == S_ACTIVATION_START),
         .start_ready(activation_ready), .operation(2'd3), .operand({gate_hold, 16'd0}),
@@ -144,6 +147,7 @@ module anvil_en1_native_mlp_row (
         .done_data(activation_data), .done_error(activation_error)
     );
     anvil_en1_fp32 materialize (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_WAIT && source_state == S_NARROW_START),
         .start_ready(fp_ready), .operation(3'd3),
@@ -181,7 +185,8 @@ module anvil_en1_native_mlp_row (
         $bits(up_hold) + $bits(intermediate_hold) + $bits(activation_hold) +
         $bits(output_hold) + $bits(intermediate_error) + $bits(first_error) +
         $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_geglu_bytes + primitive_activation_bytes + primitive_fp_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

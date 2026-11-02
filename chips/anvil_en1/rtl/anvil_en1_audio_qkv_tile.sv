@@ -69,7 +69,10 @@ module anvil_en1_audio_qkv_tile (
     wire [63:0] lookup_addr, lookup_base, lookup_bytes;
     wire [31:0] lookup_rows, lookup_columns, lookup_stride;
     wire [3:0] lookup_error;
+    wire [63:0] primitive_directory_bytes, primitive_projection_bytes;
+    wire [63:0] primitive_weight_bytes, primitive_fp_bytes;
     anvil_en1_tensor_image directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -122,6 +125,7 @@ module anvil_en1_audio_qkv_tile (
     wire [3:0] relative_error;
     wire relative_selected = row_selected && selector_hold == 3;
     anvil_en1_projection relative_projection (
+        .controller_bytes(primitive_projection_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ROW_START && selector_hold == 3),
         .start_ready(relative_ready), .precision(precision_hold),
@@ -159,6 +163,7 @@ module anvil_en1_audio_qkv_tile (
     wire [63:0] scale_addr;
     wire [3:0] scale_error;
     anvil_en1_weight_read scales (
+        .controller_bytes(primitive_weight_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == SCALE_START), .start_ready(scale_ready),
         .precision(2'd0), .tensor_base(tensor_base_hold), .tensor_bytes(tensor_bytes_hold),
@@ -184,6 +189,7 @@ module anvil_en1_audio_qkv_tile (
         .controller_bytes(softplus_controller_bytes)
     );
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -232,7 +238,9 @@ module anvil_en1_audio_qkv_tile (
         $bits(factor_hold) + $bits(fp_a) + $bits(fp_b) + $bits(fp_value) +
         $bits(first_hold) + $bits(fp_op) + $bits(position_data_hold) +
         $bits(error_hold) + $bits(position_error_hold) + $bits(first_source_error);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_projection_bytes +
+        primitive_weight_bytes + primitive_fp_bytes;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             source_state <= S_IDLE;

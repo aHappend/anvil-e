@@ -137,7 +137,9 @@ module anvil_en1_vision_post_layer (
     wire [31:0] fp_data;
     wire [3:0] fp_error;
     wire narrowing = state == NARROW_START || state == NARROW_WAIT;
+    wire [63:0] primitive_fp_bytes;
     anvil_en1_fp32 residual (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == ADD_START || state == NARROW_START)),
         .start_ready(fp_ready), .operation(narrowing ? 3'd3 : 3'd0),
@@ -190,7 +192,8 @@ module anvil_en1_vision_post_layer (
         $bits(load_error_hold) + $bits(load_hold) + $bits(src_hold) + $bits(raw_q) +
         $bits(branch_q) + $bits(mlp_q) + $bits(residual_raw) +
         $bits(residual_branch) + $bits(residual_hold) + $bits(sum_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS + 7) >> 3) + primitive_fp_bytes;
 
     always @(posedge clk) begin
         if (load_store && !loading_branch)

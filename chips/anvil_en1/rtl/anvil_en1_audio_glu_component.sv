@@ -116,7 +116,9 @@ module anvil_en1_audio_glu_component (
     wire glu_ready, glu_valid;
     wire [31:0] glu_data;
     wire [3:0] glu_error;
+    wire [63:0] primitive_geglu_bytes;
     anvil_en1_geglu_pair glu (
+        .controller_bytes(primitive_geglu_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == GLU_START), .start_ready(glu_ready),
         .operation(2'd2), .gate_data(gate_hold), .up_data(first_half),
@@ -167,7 +169,8 @@ module anvil_en1_audio_glu_component (
         $bits(receive_bad) + $bits(bank_error) + $bits(first_half) + $bits(gate_hold) +
         $bits(projected_hold) + $bits(bank_q) + $bits(bank_data) + $bits(output_hold) +
         $bits(child_error_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS + 7) >> 3) + primitive_geglu_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

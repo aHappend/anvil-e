@@ -82,6 +82,14 @@ module anvil_en1_replay_kv_tile #(
     reg read_error;
     reg [3:0] read_pair_error, error_hold;
     reg [31:0] pair_hold;
+    localparam integer CONTROLLER_BITS = $bits({
+        state, source_state, model_hold, precision_hold, head_hold, query_head_hold,
+        owner_hold, source_layer_hold, token_hold, tokens_hold, source_token_hold,
+        weights_hold, selector_hold, query_hold, memo_hold, bank_hold, component_hold,
+        slot_hold, hidden_hold, dimension_hold, read_model, read_owner, read_token,
+        read_index, read_pair, read_data, read_error, read_pair_error, error_hold, pair_hold
+    });
+    wire [63:0] owner_controller_bytes;
 
     initial begin
         if ((COMPACT != 0 && COMPACT != 1) ||
@@ -114,6 +122,7 @@ module anvil_en1_replay_kv_tile #(
     wire run = rst_n && state == TILE_RUN;
 
     anvil_en1_owner_kv_tile #(.COMPACT(COMPACT), .ALLOW_QUERY(ALLOW_QUERY)) owner_tile (
+        .controller_bytes(owner_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == TILE_START), .start_ready(tile_ready),
         .model(model_hold), .precision(precision_hold),
@@ -159,7 +168,8 @@ module anvil_en1_replay_kv_tile #(
     assign done_error = rst_n ? error_hold : 4'd0;
     assign source_read_event = work_rsp_valid && work_rsp_ready;
     assign source_read_bytes = source_read_event ? 32'd4 : 32'd0;
-    assign controller_state_bytes = rst_n ? 64'd53 : 64'd0;
+    assign controller_state_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + owner_controller_bytes;
     assign tile_live_bytes = rst_n &&
         (state == TILE_START || state == TILE_RUN) ?
         ({52'd0, hidden_hold} + {32'd0, dimension_hold}) << 1 : 64'd0;

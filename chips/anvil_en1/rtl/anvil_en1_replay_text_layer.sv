@@ -300,7 +300,9 @@ module anvil_en1_replay_text_layer #(
         embed_input_last == (input_count + 1'b1 == {20'd0, length_hold});
     wire embed_ple_correct = embed_ple_index == ple_count && ple_count < P &&
         embed_ple_last == (ple_count + 1'b1 == P);
+    wire [63:0] embedding_controller_bytes, post_controller_bytes;
     anvil_en1_embedding_ple #(.COMPACT(COMPACT)) layer_embedding (
+        .controller_bytes(embedding_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EMBED_START), .start_ready(embed_ready),
         .model(model_hold), .precision(precision_hold), .modality(selected_modality),
@@ -345,6 +347,7 @@ module anvil_en1_replay_text_layer #(
         output_count < {20'd0, length_hold} &&
         post_output_last == (output_count + 1'b1 == {20'd0, length_hold});
     anvil_en1_asym_attn_ple #(.COMPACT(COMPACT), .POST_ONLY(1)) post_attention (
+        .controller_bytes(post_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(),
         .avoided_projection_event(avoided_projection_event),
@@ -481,7 +484,8 @@ module anvil_en1_replay_text_layer #(
         $bits(source_error_hold) +
         $bits(source_index_hold) + $bits(source_pair_hold) + $bits(source_data_hold) +
         $bits(source_work_error) + $bits(source_tag_error);
-    assign controller_state_bytes = rst_n ? 64'((CONTROLLER_BITS + 7) >> 3) : 64'd0;
+    assign controller_state_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS + 7) >> 3) + embedding_controller_bytes + post_controller_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

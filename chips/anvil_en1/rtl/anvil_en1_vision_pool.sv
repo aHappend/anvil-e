@@ -79,7 +79,9 @@ module anvil_en1_vision_pool (
     wire [7:0] image_type;
     wire [3:0] image_error;
     wire image_selected = rst_n && (state == IMAGE_START || state == IMAGE_WAIT);
+    wire [63:0] primitive_directory_bytes, primitive_fp_bytes, primitive_div_bytes;
     anvil_en1_tensor_image directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(image_ready),
         .model(model_hold), .precision(2'd0), .image_class(2'd3),
@@ -109,6 +111,7 @@ module anvil_en1_vision_pool (
     wire [31:0] fp_data, rd_data;
     wire [3:0] fp_error, rd_error;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -116,6 +119,7 @@ module anvil_en1_vision_pool (
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_fp32_divsqrt root_divider (
+        .controller_bytes(primitive_div_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == RD_START), .start_ready(rd_ready),
         .operation(rd_op), .operand_a(rd_a), .operand_b(rd_b),
@@ -173,7 +177,8 @@ module anvil_en1_vision_pool (
         $bits(rd_value) + $bits(fp_op) + $bits(rd_op) + $bits(reciprocal_hold) +
         $bits(root_hold) + $bits(accumulator) + $bits(source_hold) +
         $bits(output_hold) + $bits(source_error_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_fp_bytes + primitive_div_bytes;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;

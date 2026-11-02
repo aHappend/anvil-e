@@ -141,7 +141,9 @@ module anvil_en1_replay_input #(
         input_count < {20'd0, hidden_hold} &&
         embed_input_last == (input_count + 1'b1 == {20'd0, hidden_hold});
 
+    wire [63:0] embedding_controller_bytes;
     anvil_en1_embedding_ple #(.COMPACT(COMPACT)) reconstruct (
+        .controller_bytes(embedding_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EMBED_START), .start_ready(embed_ready),
         .model(model_hold), .precision(precision_hold),
@@ -234,7 +236,8 @@ module anvil_en1_replay_input #(
         $bits(tokens_base_hold) + $bits(weights_base_hold) + $bits(token_address_hold) +
         $bits(low_hold) + $bits(pair_hold) + $bits(error_hold) + $bits(token_error_hold) +
         $bits(embed_active) + $bits(store_open);
-    assign controller_state_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_state_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS + 7) >> 3) + embedding_controller_bytes;
     assign busy = rst_n && state != IDLE;
 
     always @(posedge clk or negedge rst_n) begin

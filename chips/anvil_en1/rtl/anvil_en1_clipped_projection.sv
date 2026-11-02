@@ -81,7 +81,9 @@ module anvil_en1_clipped_projection #(
     wire [7:0] image_done_type;
     wire [3:0] image_error;
     wire image_selected = rst_n && (state == IMAGE_START || state == IMAGE_WAIT);
+    wire [63:0] primitive_directory_bytes, primitive_projection_bytes;
     anvil_en1_tensor_image #(.COMPACT(COMPACT)) directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(image_ready),
         .model(model_hold), .precision(precision_hold), .image_class(class_hold),
@@ -106,6 +108,7 @@ module anvil_en1_clipped_projection #(
     wire projection_selected = rst_n &&
         (state == PROJECTION_START || state == PROJECTION_WAIT);
     anvil_en1_projection projection (
+        .controller_bytes(primitive_projection_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .precision(precision_hold), .tensor_base(matrix_base), .tensor_bytes(matrix_bytes),
@@ -179,7 +182,8 @@ module anvil_en1_clipped_projection #(
         $bits(source_index_hold) + $bits(output_hold) + $bits(source_data_hold) +
         $bits(clipped_source_hold) + $bits(projected_hold) + $bits(bound_error_hold) +
         $bits(source_error_hold) + $bits(clipped_source_error) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_projection_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

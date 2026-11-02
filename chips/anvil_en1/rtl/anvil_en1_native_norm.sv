@@ -66,7 +66,9 @@ module anvil_en1_native_norm (
     wire [31:0] lookup_rows, lookup_columns, lookup_stride;
     wire [7:0] lookup_type;
     wire [3:0] lookup_error;
+    wire [63:0] primitive_directory_bytes, primitive_norm_bytes, primitive_weight_bytes;
     anvil_en1_tensor_image directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
         .model(model_hold), .precision(precision_hold), .image_class(class_hold),
@@ -86,6 +88,7 @@ module anvil_en1_native_norm (
     wire [31:0] norm_source_index, norm_scale_index;
     wire [3:0] norm_error;
     anvil_en1_norm norm (
+        .controller_bytes(primitive_norm_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .layer_norm(audio_layer_norm), .learned_scale(1'b1),
@@ -112,6 +115,7 @@ module anvil_en1_native_norm (
     wire [31:0] weight_data;
     wire [3:0] weight_error;
     anvil_en1_weight_read scales (
+        .controller_bytes(primitive_weight_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && scale_state == SCALE_START), .start_ready(weight_ready),
         .precision(2'd0), .tensor_base(base_hold), .tensor_bytes(bytes_hold),
@@ -144,7 +148,8 @@ module anvil_en1_native_norm (
         $bits(columns_hold) + $bits(stride_hold) + $bits(index_hold) +
         $bits(weights_hold) + $bits(base_hold) + $bits(bytes_hold) +
         $bits(scale_hold) + $bits(error_hold) + $bits(scale_error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_norm_bytes + primitive_weight_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

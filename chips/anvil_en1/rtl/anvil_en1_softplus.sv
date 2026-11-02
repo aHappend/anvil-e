@@ -45,7 +45,9 @@ module anvil_en1_softplus (
     wire fp_ready, fp_valid, exp_ready, exp_valid, div_ready, div_valid;
     wire [31:0] fp_data, exp_data, div_data;
     wire [3:0] fp_error, exp_error, div_error;
+    wire [63:0] primitive_fp_bytes, primitive_exp_bytes, primitive_div_bytes;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -53,6 +55,7 @@ module anvil_en1_softplus (
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_exp exponent (
+        .controller_bytes(primitive_exp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
         .operand({1'b1, x[30:0]}),
@@ -60,6 +63,7 @@ module anvil_en1_softplus (
         .done_data(exp_data), .done_error(exp_error)
     );
     anvil_en1_fp32_divsqrt divider (
+        .controller_bytes(primitive_div_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == RATIO_START || state == TERM_START)),
         .start_ready(div_ready), .operation(2'd0),
@@ -79,7 +83,8 @@ module anvil_en1_softplus (
         $bits(sum) + $bits(term) + $bits(fp_a) + $bits(fp_b) +
         $bits(fp_value) + $bits(output_hold) + $bits(fp_op) +
         $bits(index_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_fp_bytes + primitive_exp_bytes + primitive_div_bytes;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;

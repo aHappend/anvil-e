@@ -197,6 +197,34 @@ module anvil_en1_top #(
     wire [63:0] avoided_projection_bytes;
     wire bridge_ready, bridge_valid, bridge_error;
     wire [31:0] bridge_data;
+    wire [63:0] csr_controller_bytes, ledger_controller_bytes;
+    wire allocation_report_valid;
+    wire [1:0] allocation_report_model;
+    wire [63:0] allocation_payload_bytes, allocation_replay_bytes, allocation_equivalent_bytes;
+    localparam integer TOP_CONTROLLER_BITS = $bits({
+        state, error_hold, model_hold, precision_hold, mode_hold, decode_hold,
+        tokens_hold, rows_hold, columns_hold, frames_hold, position_hold, output_hold,
+        weights_hold, vision_weights_hold, audio_weights_hold, image_hold, audio_hold,
+        ids_hold, positions_hold, masks_hold, scratch_hold, kv_hold, scan_index,
+        scan_data, generation, scan_error, session_valid, session_tokens, session_model,
+        session_precision, session_mode, session_weights, session_vision_weights,
+        session_audio_weights, session_image, session_audio, session_ids, session_positions,
+        session_masks, session_rows, session_columns, session_frames, baseline_local_units,
+        baseline_global_units, baseline_payload, bridge_input, bridge_replay
+    });
+    // Immutable anvil_e2_memory: state, write, address, write/read data, error.
+    localparam integer NATIVE_BRIDGE_BITS = 2+1+64+32+32+1;
+    wire [63:0] integration_bytes = !rst_n ? 64'd0 :
+        64'((TOP_CONTROLLER_BITS+7) >> 3) + 64'((NATIVE_BRIDGE_BITS+7) >> 3) +
+        csr_controller_bytes + ledger_controller_bytes;
+    anvil_en1_allocation_ledger allocations (
+        .clk(clk), .rst_n(rst_n), .observation_valid(native_selected),
+        .observation_model(model_hold), .component_live_bytes(live_bytes),
+        .metadata_bytes(metadata_bytes), .integration_bytes(integration_bytes),
+        .report_valid(allocation_report_valid), .report_model(allocation_report_model),
+        .payload_bytes(allocation_payload_bytes), .replay_bytes(allocation_replay_bytes),
+        .equivalent_bytes(allocation_equivalent_bytes), .controller_bytes(ledger_controller_bytes)
+    );
     anvil_en1_native #(.COMPACT(COMPACT), .RESIDENT_ENTRIES(RESIDENT_ENTRIES)) native (
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
@@ -366,7 +394,12 @@ module anvil_en1_top #(
         .csr_rdata(csr_rdata), .csr_error(csr_error), .status_model(model_hold),
         .status_busy(busy), .status_error(error_hold),
         .event_valid(rst_n && |perf_mask), .event_model(model_hold),
-        .event_mask(perf_mask), .event_values(perf_values)
+        .event_mask(perf_mask), .event_values(perf_values),
+        .allocation_valid(allocation_report_valid), .allocation_model(allocation_report_model),
+        .allocation_payload_bytes(allocation_payload_bytes),
+        .allocation_replay_bytes(allocation_replay_bytes),
+        .allocation_equivalent_bytes(allocation_equivalent_bytes),
+        .controller_bytes(csr_controller_bytes)
     );
 
     always @(posedge clk or negedge rst_n) begin

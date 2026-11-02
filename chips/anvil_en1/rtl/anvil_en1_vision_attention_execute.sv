@@ -90,7 +90,9 @@ module anvil_en1_vision_attention_execute #(
     wire [63:0] lookup_cmd_addr, lookup_base, lookup_bytes;
     wire [3:0] lookup_error;
     wire lookup_selected = rst_n && (state == LOOKUP_START || state == LOOKUP_WAIT);
+    wire [63:0] primitive_directory_bytes;
     anvil_en1_tensor_image directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
         .model(model_hold), .precision(2'd0), .image_class(2'd3),
@@ -222,7 +224,8 @@ module anvil_en1_vision_attention_execute #(
         $bits(service_mask) + $bits(mask_data_hold) + $bits(memory_error_hold) +
         $bits(resume_hold) + $bits(checkpoint_hold) + $bits(tile_data_hold) +
         $bits(service_error_hold) + $bits(first_service_error) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS + 7) >> 3) + primitive_directory_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

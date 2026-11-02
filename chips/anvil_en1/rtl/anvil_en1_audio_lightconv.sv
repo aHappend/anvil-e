@@ -219,7 +219,9 @@ module anvil_en1_audio_lightconv (
     wire activation_ready, activation_valid, fp_ready, fp_valid;
     wire [31:0] activation_data, fp_data;
     wire [3:0] activation_error, fp_error;
+    wire [63:0] primitive_activation_bytes, primitive_fp_bytes;
     anvil_en1_activation activation (
+        .controller_bytes(primitive_activation_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ACTIVATION_START), .start_ready(activation_ready),
         .operation(2'd2), .operand({work_hold, 16'd0}),
@@ -227,6 +229,7 @@ module anvil_en1_audio_lightconv (
         .done_data(activation_data), .done_error(activation_error)
     );
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -317,7 +320,8 @@ module anvil_en1_audio_lightconv (
         $bits(dependency_data) + $bits(projection_hold) + $bits(fp_a) + $bits(fp_b) +
         $bits(fp_value) + $bits(fp_op) + $bits(child_error_hold) + $bits(error_hold) +
         $bits(dependency_child_error) + $bits(dependency_error) + $bits(dependency_failure);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_activation_bytes + primitive_fp_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

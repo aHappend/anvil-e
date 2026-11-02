@@ -14,7 +14,12 @@ module anvil_en1_csr_perf (
     input wire event_valid,
     input wire [1:0] event_model,
     input wire [24:0] event_mask,
-    input wire [1599:0] event_values
+    input wire [1599:0] event_values,
+    input wire allocation_valid,
+    input wire [1:0] allocation_model,
+    input wire [63:0] allocation_payload_bytes, allocation_replay_bytes,
+    input wire [63:0] allocation_equivalent_bytes,
+    output wire [63:0] controller_bytes
 );
     localparam [1:0] IDLE = 0, EXECUTE = 1, RESPONSE = 2;
     reg [1:0] state;
@@ -30,6 +35,13 @@ module anvil_en1_csr_perf (
     reg [31:0] atomic_high;
     reg [63:0] counters [0:49];
     reg [63:0] snapshots [0:49];
+    localparam integer CONTROLLER_BITS = 100*64 + $bits({
+        state, write_hold, addr_hold, wdata_hold, response_hold, error_hold,
+        bank_select, request_bank, snapshot_active, status_model_hold,
+        status_busy_hold, status_error_hold, atomic_valid, atomic_bank,
+        atomic_metric, atomic_high
+    });
+    assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
 
     wire control_legal = wdata_hold[31:3] == 0 &&
         !(wdata_hold[1] && wdata_hold[2]);
@@ -54,9 +66,17 @@ module anvil_en1_csr_perf (
     generate for (bank = 0; bank < 2; bank = bank + 1) begin : metric_banks
         for (metric = 0; metric < 25; metric = metric + 1) begin : metric_words
             localparam integer INDEX = bank*25+metric;
-            wire selected_event = event_valid && event_mask[metric] &&
-                (bank == 0 ? event_model == 0 : event_native);
-            wire [63:0] value = event_values[64*metric+:64];
+            wire allocation_event = allocation_valid &&
+                (metric == 15 || metric == 20 || metric == 24) &&
+                (bank == 0 ? allocation_model == 0 :
+                    (allocation_model == 1 || allocation_model == 2));
+            wire selected_event = allocation_event ||
+                (event_valid && event_mask[metric] &&
+                    (bank == 0 ? event_model == 0 : event_native));
+            wire [63:0] value = allocation_event ?
+                (metric == 15 ? allocation_payload_bytes :
+                    (metric == 20 ? allocation_replay_bytes : allocation_equivalent_bytes)) :
+                event_values[64*metric+:64];
             wire [64:0] updated = {1'b0, counters[INDEX]} + {1'b0, value};
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) begin

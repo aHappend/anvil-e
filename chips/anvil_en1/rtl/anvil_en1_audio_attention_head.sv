@@ -102,7 +102,9 @@ module anvil_en1_audio_attention_head #(
     wire cap_ready, cap_valid;
     wire [31:0] fp_data, exp_data, inverse_data, cap_data;
     wire [3:0] fp_error, exp_error, inverse_error, cap_error;
+    wire [63:0] primitive_fp_bytes, primitive_cap_bytes, primitive_exp_bytes, primitive_div_bytes;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -110,6 +112,7 @@ module anvil_en1_audio_attention_head #(
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_softcap cap (
+        .controller_bytes(primitive_cap_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == SOFTCAP_START), .start_ready(cap_ready),
         .cap_50(1'b1), .input_binary32(1'b1), .output_binary32(1'b1),
@@ -118,6 +121,7 @@ module anvil_en1_audio_attention_head #(
         .done_data(cap_data), .done_error(cap_error)
     );
     anvil_en1_exp exponent (
+        .controller_bytes(primitive_exp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
         .operand(exp_operand), .done_valid(exp_valid),
@@ -125,6 +129,7 @@ module anvil_en1_audio_attention_head #(
         .done_data(exp_data), .done_error(exp_error)
     );
     anvil_en1_fp32_divsqrt reciprocal (
+        .controller_bytes(primitive_div_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == INVERSE_START), .start_ready(inverse_ready),
         .operation(2'd0), .operand_a(32'h3f800000), .operand_b(exponential_sum),
@@ -239,7 +244,8 @@ module anvil_en1_audio_attention_head #(
         $bits(exponential) + $bits(probability) + $bits(score_hold) +
         $bits(fp_a) + $bits(fp_b) + $bits(fp_value) + $bits(exp_operand) +
         $bits(fp_op) + $bits(output_hold) + $bits(service_error_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_fp_bytes + primitive_cap_bytes + primitive_exp_bytes + primitive_div_bytes;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;

@@ -5,7 +5,59 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected controller reservations and payload baseline
+## Current saved increment: arithmetic accounting and execution/allocation telemetry
+
+Scalar/numerical state is now charged from declared register widths through
+the common arithmetic, tensor-directory, text, owner, vision and audio
+hierarchies. Common primitives include their literal arithmetic children;
+native wrappers add these to their existing controller reports without
+adding already separately exposed native-child subtotals twice. Ordinary
+embedding, full text, anchor and final-head control enters field 24;
+owner/replay input, text/post, attention and K/V state enters field 22.
+The fixed 74/100/53-byte replay checkpoint/executor/tile estimates are
+replaced by explicit register censuses. Payload/tag arrays remain in
+their own existing fields, while returned and partial-word copies count
+as additional scalar state.
+
+The top connects a new `anvil_en1_allocation_ledger.sv`: three balanced,
+five-stage registered trees preserve per-cycle allocation coherence
+and model identity. They drive the current payload gauge and replay/
+whole-equivalent maxima (CSR 15/20/24). Whole-equivalent accounting adds
+all component and metadata fields plus top, immutable native bridge,
+CSR counter/snapshot/control and ledger-pipeline reservations. Separate
+CSR allocation-event delivery preserves late reports across job/model
+transitions without misattributing a native tail to parent work. Existing
+clear-over-event and pre-update snapshot semantics remain explicit.
+These reports do not enforce the required storage limits or prove fit.
+
+Text attention now reports real accepted Q*K/probability*V scalar
+multiply issues and lane-available cycles separately for local/global
+heads. Events propagate through ordinary and replay paths, and simultaneous
+contributors are summed, not ORed, into CSR 10..13. Successful shared-layer
+completion adds only its omitted private BF16 K/V output bytes to CSR 7;
+real owner regeneration remains a separate nonzero metric. Neither
+counter measures weight traffic or claims improved inference throughput.
+`SPEC.md` freezes the precise pre-edge event and report-cycle definitions.
+
+Changed design sources are the new allocation ledger, top/CSR/native
+assembly, ordinary and replay text/owner wrappers, common numerical/
+directory primitives and their native vision/audio parents in `rtl/`;
+the two design documents record their integration and limits.
+Tools used: glob, view, rg and apply_patch. No commands, static checks,
+functional/synthesis probes or experiments ran; no preparation receipts
+exist. Parent, verification and runtime files remain untouched. The
+attempt-0003 ownership-guard interruption is preserved, not repaired
+or reclassified.
+
+Remaining: close transient-vector reservation lifetimes and actual
+physical phase overlays; enforce ordinary/native-scratch and fallback
+allocation limits (including forced short-context production-width
+shadow accounting); connect missing KV-equivalent/matched-baseline
+traffic telemetry. Then use the reserved static elaboration check and
+hand off immediately to independent Verifier. No correctness, savings,
+FPGA-fit or timing result is claimed. Not ready for Verifier.
+
+## Prior saved increment: connected controller reservations and payload baseline
 
 The native component vector now has 25 fields. New fields 22..24 carry
 previously disconnected controller reservations through the real replay

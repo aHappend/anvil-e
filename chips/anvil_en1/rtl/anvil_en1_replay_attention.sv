@@ -141,9 +141,11 @@ module anvil_en1_replay_attention #(
     wire [3:0] head_error;
     wire [383:0] head_checkpoint;
     wire [1:0] head_need_kv_head;
+    wire [63:0] head_controller_bytes;
     wire run = rst_n && state == HEAD_RUN;
 
     anvil_en1_attention_head #(.COMPACT(COMPACT), .REPLAY(1)) attention (
+        .controller_bytes(head_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
         .start_valid(rst_n && state == HEAD_START), .start_ready(head_ready),
@@ -227,7 +229,15 @@ module anvil_en1_replay_attention #(
     assign done_is_value = rst_n && yield_hold && selector_hold;
     assign done_kv_head = rst_n && yield_hold ? kv_head_hold : 2'd0;
     assign done_component = rst_n && yield_hold ? component_hold : 10'd0;
-    assign controller_state_bytes = rst_n ? 64'd74 : 64'd0;
+    localparam integer CONTROLLER_BITS = $bits({
+        state, model_hold, layer_hold, frame_layer_hold, query_head_hold,
+        position_hold, tokens_hold, frame_slot_hold, hidden_hold, resume_hold,
+        checkpoint_hold, word_index, scalar_data_hold, scalar_error_hold,
+        error_hold, yield_hold, owner_hold, token_hold, selector_hold,
+        kv_head_hold, component_hold
+    });
+    assign controller_state_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + head_controller_bytes;
     assign busy = rst_n && state != IDLE;
 
     always @(posedge clk or negedge rst_n) begin

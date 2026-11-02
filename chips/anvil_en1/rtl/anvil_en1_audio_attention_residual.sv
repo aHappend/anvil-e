@@ -264,7 +264,9 @@ module anvil_en1_audio_attention_residual #(
         .done_error(norm_error), .controller_bytes(norm_controller_bytes)
     );
     wire [31:0] fp_data;
+    wire [63:0] primitive_fp_bytes;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -373,7 +375,8 @@ module anvil_en1_audio_attention_residual #(
         $bits(clamped_hold) + $bits(normalized_hold) + $bits(output_hold) +
         $bits(fp_a) + $bits(fp_b) + $bits(fp_value) + $bits(fp_op) +
         $bits(child_error_hold) + $bits(source_error_hold) + $bits(first_source_error) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS + 7) >> 3) + primitive_fp_bytes;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             source_state <= S_IDLE;

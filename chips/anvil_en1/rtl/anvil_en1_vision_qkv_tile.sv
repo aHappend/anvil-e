@@ -79,7 +79,10 @@ module anvil_en1_vision_qkv_tile (
     wire [15:0] lookup_kind = input_norm ? 16'h1100 :
         (selector_hold == 0 ? 16'h1102 : 16'h1104);
     wire lookup_selected = rst_n && (state == LOOKUP_START || state == LOOKUP_WAIT);
+    wire [63:0] primitive_directory_bytes, primitive_norm_bytes;
+    wire [63:0] primitive_weight_bytes, primitive_rotary_bytes;
     anvil_en1_tensor_image directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd1),
@@ -136,6 +139,7 @@ module anvil_en1_vision_qkv_tile (
     wire [3:0] norm_error;
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     anvil_en1_norm norm (
+        .controller_bytes(primitive_norm_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .layer_norm(1'b0), .learned_scale(input_norm || selector_hold != 2),
@@ -169,6 +173,7 @@ module anvil_en1_vision_qkv_tile (
     wire [31:0] scale_data;
     wire [3:0] scale_error;
     anvil_en1_weight_read scales (
+        .controller_bytes(primitive_weight_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && scale_state == SCALE_START), .start_ready(scale_ready),
         .precision(2'd0), .tensor_base(scale_base), .tensor_bytes(scale_bytes),
@@ -187,6 +192,7 @@ module anvil_en1_vision_qkv_tile (
     wire [3:0] rotary_error;
     wire [31:0] rotary_position = current_component[5] ? y_hold : x_hold;
     anvil_en1_rotary_pair #(.SIGNED_POSITION(1)) rotary (
+        .controller_bytes(primitive_rotary_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ROTARY_START), .start_ready(rotary_ready),
         .mode(2'd2), .dimension(10'd32),
@@ -248,7 +254,9 @@ module anvil_en1_vision_qkv_tile (
         $bits(src_error_hold) + $bits(src_data_hold) + $bits(input_q) + $bits(head_q) +
         $bits(first_source) + $bits(second_source) + $bits(first_output) +
         $bits(component_output) + $bits(output_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_norm_bytes +
+        primitive_weight_bytes + primitive_rotary_bytes;
 
     always @(posedge clk) begin
         if (normalized_accept && normalized_well_formed && input_norm)

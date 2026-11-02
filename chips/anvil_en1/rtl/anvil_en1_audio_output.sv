@@ -57,7 +57,10 @@ module anvil_en1_audio_output (
     wire [31:0] lookup_rows, lookup_columns, lookup_stride;
     wire [7:0] lookup_type;
     wire [3:0] lookup_error;
+    wire [63:0] primitive_directory_bytes, primitive_projection_bytes;
+    wire [63:0] primitive_weight_bytes, primitive_fp_bytes;
     anvil_en1_tensor_image directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(lookup_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -80,6 +83,7 @@ module anvil_en1_audio_output (
     wire [63:0] projection_addr;
     wire [3:0] projection_error;
     anvil_en1_projection projection (
+        .controller_bytes(primitive_projection_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .precision(precision_hold), .tensor_base(matrix_base), .tensor_bytes(matrix_bytes),
@@ -104,6 +108,7 @@ module anvil_en1_audio_output (
     wire [63:0] bias_addr;
     wire [3:0] bias_error;
     anvil_en1_weight_read bias_reader (
+        .controller_bytes(primitive_weight_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == BIAS_START), .start_ready(bias_ready),
         .precision(2'd0), .tensor_base(bias_base), .tensor_bytes(bias_bytes),
@@ -120,6 +125,7 @@ module anvil_en1_audio_output (
     wire [31:0] fp_data;
     wire [3:0] fp_error;
     anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -159,7 +165,9 @@ module anvil_en1_audio_output (
         $bits(projection_hold) + $bits(bias_hold) + $bits(output_hold) + $bits(fp_a) +
         $bits(fp_b) + $bits(fp_value) + $bits(fp_op) +
         $bits(child_error_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_projection_bytes +
+        primitive_weight_bytes + primitive_fp_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

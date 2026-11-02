@@ -66,7 +66,9 @@ module anvil_en1_modality_projection #(
     wire [7:0] image_type;
     wire [3:0] image_error;
     wire image_selected = rst_n && (state == IMAGE_START || state == IMAGE_WAIT);
+    wire [63:0] primitive_directory_bytes, primitive_norm_bytes, primitive_projection_bytes;
     anvil_en1_tensor_image #(.COMPACT(COMPACT)) directory (
+        .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(image_ready),
         .model(model_hold), .precision(precision_hold), .image_class(class_hold),
@@ -89,6 +91,7 @@ module anvil_en1_modality_projection #(
     wire [3:0] norm_error;
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     anvil_en1_norm norm (
+        .controller_bytes(primitive_norm_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .layer_norm(1'b0), .learned_scale(1'b0),
@@ -123,6 +126,7 @@ module anvil_en1_modality_projection #(
     wire projection_selected = rst_n &&
         (state == PROJECTION_START || state == PROJECTION_WAIT);
     anvil_en1_projection projection (
+        .controller_bytes(primitive_projection_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .precision(precision_hold), .tensor_base(matrix_base), .tensor_bytes(matrix_bytes),
@@ -181,7 +185,8 @@ module anvil_en1_modality_projection #(
         $bits(received) + $bits(bank_index) + $bits(projected_hold) + $bits(bank_data) +
         $bits(bank_q) + $bits(output_hold) + $bits(bank_error) + $bits(vector_visible) +
         $bits(vector_allocated) + $bits(receive_bad) + $bits(norm_error_hold) + $bits(error_hold);
-    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
+        primitive_directory_bytes + primitive_norm_bytes + primitive_projection_bytes;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             source_state <= S_IDLE;
