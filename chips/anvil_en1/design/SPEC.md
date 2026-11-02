@@ -124,6 +124,13 @@ Scalars/vectors use the same rule, including two pad bytes for a scalar.
 Matrix rows are output-major, with ascending input-column reductions.
 OIHW convolution rows flatten I,H,W in that order; depthwise rows contain
 only one input channel. No arithmetic traverses padding as a tensor element.
+Scalars have rank 0 with four dimensions equal to 1; vectors have rank 1
+with the vector length in dimension 0. Rank-1 vectors use one encoded row.
+Rank-2 matrices have dimension 0 rows and dimension 1 columns. Convolution
+matrices retain the displayed OIHW/OIW rank in the directory and flatten
+dimensions 1..3 into each output-channel row. The rank-3 BF16 vision position
+table instead has 2*10240 rows of 768 columns. These conventions apply to both
+precision modes, including partial Q4 convolution rows.
 
 Q4_0 rows consist of ceil(columns/32) blocks. Each block has a 2-byte FP16
 scale followed by 16 packed bytes: low nibble j is element j; high nibble j is
@@ -379,6 +386,9 @@ Arithmetic result valid is held until acceptance, not pulsed or combinational.
 | FP multiply | A1 classify/unpack; normalize subnormal operands one bit/cycle; four registered 12x12 products; two registered reduction stages; exponent alignment; registered RNE/pack | completion-valid after normalization/pack |
 | Unsigned divide | D1 register operands; D2..D33 one restoring quotient bit per cycle; D34 RNE/pack | after D34 |
 | Square root | S1 register radicand; bounded one digit per cycle; final normalization and RNE stage | completion-valid after final stage |
+| Binary32 divide | classify, bounded operand normalization, normalized numerator setup, 26 restoring fractional bits, subnormal alignment, RNE/pack, publish | completion-valid after publish |
+| Binary32 reciprocal root | classify and normalize; exact-power special case or 78 restoring bits for a rational radicand then 27 root digits; one final RNE/pack, publish | completion-valid after publish |
+| Unsigned32 to binary32 | capture, at most 31 one-bit normalization shifts, RNE/pack, publish | completion-valid after publish |
 | Transcendentals | register range reduction; bounded iterative polynomial/CORDIC primitive calls; register materialization | completion-valid, no fixed-latency fiction |
 | Projection | one decoded weight/input at a time; registered multiply then registered add; ascending-column counter | vector write only after full row |
 | Norm/attention | scalar continuation with bounded registered reduction loops and iterative divider/root/exp | completion-valid |
@@ -398,6 +408,287 @@ zero-extended BF16, and 4 widens operand_a[15:0] FP16. Operations 5..7 reject
 with error 6. Conversion special cases also canonicalize NaN. FP16 subnormal
 conversion uses bounded one-bit normalization, not a floating-point host call.
 This primitive has no memory commands, vectors, or replay frames.
+
+### Implemented scalar arithmetic and streamed leaf interfaces
+
+`anvil_en1_fp32_divsqrt` accepts the same scalar start/done handshake as the
+format/add/multiply primitive, with operation[1:0] selecting 0 binary32 a/b,
+1 sqrt(a), or 2 reciprocal sqrt(a). Operation 3 rejects with error 6.
+All three produce a single RNE binary32 result, including subnormal division
+outputs. Reciprocal root must not be implemented by first rounding sqrt(a)
+and then rounding its reciprocal: that changes the admitted normalization
+boundary. Its implementation forms the rational radicand by iterative
+division, computes an integer root, retains both remainders as sticky
+information, and rounds only once. NaN is canonical. Sqrt(-0) is -0;
+reciprocal sqrt(-0) is -infinity; negative nonzero root arguments are NaN.
+Division zero/infinity special cases follow binary32 semantics and do not
+invent a protocol error for a valid exceptional floating-point operation.
+
+`anvil_en1_uint_to_fp32` accepts an unsigned32 operand and returns its RNE
+binary32 encoding, including exact +0 for input zero. Its normalization
+and rounding are bounded FSM stages, not a host conversion or real-valued RTL.
+Norm vector lengths through 16384 convert exactly.
+
+`anvil_en1_exp` accepts a binary32 operand and returns a binary32 exponential
+approximation. It reduces signed x into (-ln(2),ln(2)) using registered
+binary32 add calls and a signed bounded scale counter. ln(2) is 0x3f317218.
+It evaluates degree-8 exp Taylor coefficients by descending Horner degree
+with separately rounded multiply/add, then applies two representable power
+of two scales using the multiply primitive. Coefficients from degree 8 to 0
+are 0x37d00d01, 0x39500d01, 0x3ab60b61, 0x3c088889, 0x3d2aaaab,
+0x3e2aaaab, 0x3f000000, 0x3f800000, 0x3f800000.
+NaN canonicalizes; +infinity returns +infinity and -infinity returns +0.
+Finite x>=89 returns +infinity and x<=-104 returns +0, outside the
+nonzero finite binary32 exponential range. Intermediate reduction and
+Horner values are binary32, not BF16. This is a proposed implementation
+to be independently tested against the unchanged softmax/tanh thresholds;
+the coefficients themselves are not evidence that those thresholds pass.
+
+`anvil_en1_activation` selects operation 0 tanh, 1 GELU_tanh, 2 SiLU, or
+3 sigmoid. For tanh it evaluates exp(-2*abs(x)), then
+(1-exp)/(1+exp), restoring the input sign. At abs(x)>=8 it returns the
+signed unit value, preserving the admitted saturation rule. At signed zero
+it preserves that sign. GELU uses 0x3d372713 for 0.044715 and 0x3f4c422a
+for sqrt(2/pi); compute x*x, that result*x, the cubic coefficient product,
+its sum with x, and the argument coefficient product, in that order.
+After tanh, compute 1+tanh, 0.5*x, and their product; only the caller
+materializes the BF16 result. Sigmoid uses exp(-abs(x)) to avoid overflow:
+negative x returns exp/(1+exp), nonnegative x returns 1/(1+exp).
+SiLU then multiplies x by that binary32 result. Arithmetic NaNs canonicalize;
+GELU/SiLU at negative infinity follow their invalid infinity-times-zero
+boundary and return canonical NaN. Each scalar result is registered and
+held through backpressure. These leaves do not claim a final logit softcap
+until the native layer/logit controller connects them.
+
+`anvil_en1_norm` is a streamed RMSNorm/LayerNorm leaf. Its descriptor is
+layer_norm, learned_scale, vector_length[31:0], epsilon[31:0].
+Length 1..16384 and finite nonnegative epsilon are legal; native RMS callers
+must use the prescribed binary32 epsilon 1e-6. It issues
+source_valid/source_ready with source_index[31:0] and accepts one BF16
+source_rsp_data[15:0] plus source_rsp_error through
+source_rsp_valid/source_rsp_ready. With learned_scale set, the corresponding
+scale request/response channel uses the same index and BF16 widths.
+The caller must supply immutable on-chip vector values throughout all passes.
+
+RMSNorm reduces squared components in ascending order, divides by the exact
+binary32 length, adds epsilon, and obtains a once-rounded reciprocal root.
+LayerNorm first reduces the mean, then rereads and reduces squared centered
+components in ascending order before the same variance/root path. The
+output pass rereads components, centers only for LayerNorm, multiplies by
+the inverse root, multiplies by the learned scale only when requested, and
+narrows once to BF16. Unscaled V normalization makes no scale requests.
+The normalized_valid/normalized_ready stream carries normalized_index[31:0],
+normalized_data[15:0], and normalized_last. A length-1 vector emits one
+first-and-last value; done follows its acceptance, not its creation.
+The leaf allocates only scalar registers; it neither retains a hidden vector
+nor emits external activation commands. The future allocator must include
+these scalar and child-engine registers in the complete workspace ledger.
+
+`anvil_en1_weight_read` and `anvil_en1_projection` have the standard
+cmd/result channels. Their registered tensor descriptor is precision[1:0],
+tensor_base[63:0], tensor_bytes[63:0], tensor_rows[31:0],
+tensor_columns[31:0], row_stride[31:0], and row_index[31:0].
+The reader also captures column_index[31:0] and returns one binary32 weight.
+The projection traverses all columns of one row and returns a zero-extended
+BF16 row result. Both require positive rows/columns <=1048576 and indices
+within bounds. Actual production tensor shapes are further enforced by
+the tensor-image validator; these wide leaf bounds are not extra model
+geometry or permission to access an invented tensor.
+
+The reader checks exact BF16/Q4 encoded row stride, total tensor length,
+alignment, and address overflow before a memory request. BF16 elements widen
+through the exact format primitive. A Q4 block starts at 18*(column>>5)
+within its row; its FP16 scale starts at byte 0 and the selected packed
+byte at 2+column[3:0]. Column bit 4 chooses low/high nibble, mapping the
+decoded signed integer to -8..7 before a binary32 scale multiply.
+Aligned 32-bit reads never cross an encoded row; partial blocks cannot
+consume the next row. The current folded reader rereads scales and may
+read the same aligned weight word more than once. Every such accepted
+transaction is weight traffic, not avoided traffic or external KV traffic.
+
+The projection requests on-chip BF16 vector components through the same
+source request/response signals as norm. It begins each reduction at +0,
+widens each component, separately rounds its weight multiply and accumulated
+add, advances in ascending column order, and narrows only after the final
+column. A source error returns cache-state error 7; an accepted external
+read error is retired and returns error 2 without a new command.
+Malformed tensor lengths/addresses return error 5; invalid precision returns
+error 6. Scalar errors propagate through done_error; no error produces a
+valid success-shaped numerical answer.
+
+`anvil_en1_tensor_shape` is the model/precision-aware directory schema.
+It accepts image_class 0 text, 1 vision, 2 audio, or 3 original input,
+kind[15:0], layer[15:0], and model/precision[1:0]. For original inputs
+input_audio chooses image/audio and input_items is the required patch/frame
+count. It returns validity, expected type/rank/dimensions, flattened rows
+and columns, and exact entry count. Text counts are 540/665 for E2B/E4B,
+vision 659, audio 752, and each original-input image 2. These include all
+four scalar clipping entries following every clipped matrix. Shared-layer
+K/V and K-norm entries are explicitly invalid, not optional zero tensors.
+COMPACT changes only the admitted text geometry; vision/audio encoder
+geometry remains the pinned native geometry.
+
+`anvil_en1_tensor_image` captures the same schema selector plus image_base
+and requested tensor_kind/tensor_layer, and uses only the standard read-only
+cmd/result channels. It validates the 64-byte header before directory reads,
+then validates every directory entry's prescribed shape, type, dimensions,
+reserved bits, exact stride/length, payload alignment, image containment,
+and exclusion of header/directory intervals. It rereads the first six words
+of each earlier entry for pairwise uniqueness and payload-overlap checks;
+no sorted-offset assumption or unbounded metadata archive is used.
+Exact entry counts, valid schema membership, and uniqueness jointly require
+the complete tensor set. A lookup completes successfully only after the
+entire image validates and the requested entry is found. Returned
+done_base/done_bytes[63:0], done_rows/done_columns/done_stride[31:0],
+and done_type[7:0] are then an admitted payload descriptor; invalid images
+return error 5 and zero those descriptor fields. Accepted memory errors
+return error 2, while invalid selected model/precision returns error 6.
+
+The header, current entry, and six prior-entry words use 1216 register bits;
+the remaining control/address/shape/extent registers are bounded independently
+of directory length. This conservative implementation revalidates an entire
+immutable image on each lookup and has quadratic directory-read work.
+Its actual extra weight/original-input traffic must be counted. It does not
+assert usable throughput, latency, physical fit, or unmeasured SRAM savings.
+Only a future connected arbiter may drive external memory.
+
+For all implemented leaves, input acceptance captures descriptors; no changing
+start pin influences in-flight work. Returned source/memory responses are
+registered before dependent arithmetic or accesses. Active reset zeros every
+public output and clears valid state. There are no vector/payload RAMs in
+these new leaves, no host numerical answer ports, and no hidden-state writes.
+These interfaces expose substantive arithmetic but do not replace the
+required connected top/replay/modalities or independent cases A--E.
+
+### Rotary and bounded attention leaf contract
+
+The following implementation stages are frozen before this source increment.
+They do not assert that the independent numerical thresholds have passed.
+
+`anvil_en1_rope_frequency` selects theta with mode 0=10000 (local),
+1=1000000 (global proportional), or 2=100 (one vision spatial partition).
+Its dimension is the full text head dimension or the vision spatial partition
+dimension, respectively. Legal leaf dimensions are 4,8,16,32,64,128,256,512;
+the caller enforces the production/compact model geometry. Pair i must be
+less than D/2. Global pairs i>=D/8 have frequency exactly +0.
+For remaining pairs, form theta^(i/(D/2)) using binary32 square roots and
+products: start product=1, root=sqrt(theta), and bit=(D/2)>>1; for each
+descending bit multiply product by root only if i has that bit, then square
+root root before the next bit. Return binary32 1/product. All roots,
+products, and the reciprocal round independently. Pair zero returns 1.
+This specifies the finite hardware frequency evaluation order; independent
+verification must compare the resulting rotary components against the pinned
+operation and numerical contract, not assume repeated-root evaluation is a
+bit-exact substitute for a particular host math library's power implementation.
+
+`anvil_en1_sincos` takes a binary32 angle and returns two binary32 scalars.
+Finite magnitude must be <=262144, which covers native position-derived
+angles. Larger finite arguments reject with error 5; exceptional arguments
+return canonical NaN for both results. Signed zero is preserved in sine.
+For magnitude <=2^-12, sine is the input and cosine is 1. Otherwise convert
+the binary32 magnitude to unsigned fixed Q44, reduce modulo a Q44 2*pi
+constant with 18 descending shift/subtract steps, then choose the nearest
+pi/2 quadrant to leave magnitude <=pi/4. Q44 pi is 0x00003243f6a8885a,
+2*pi is 0x00006487ed5110b4. Fixed-to-binary32 conversion uses iterative
+normalization and RNE, not an integer-to-real host function.
+Evaluate sine through degree 11 and cosine through degree 12 using Horner
+polynomials in r*r. Coefficient +/-1/k! is obtained by unsigned32 factorial
+conversion followed by the binary32 divider; every polynomial multiply/add
+rounds separately. Restore quadrant and argument signs only after both
+polynomials complete. This bounded approximation requires independent checks.
+
+`anvil_en1_rotary_pair` captures mode, dimension, pair index, unsigned position,
+and a 32-bit pair containing BF16 a in the low lane and BF16 b in the high
+lane. Position is <=131071. It connects the frequency and sine/cosine engines,
+multiplies the binary32 frequency by the exactly converted position, narrows
+sine/cosine to BF16, and returns
+BF16_RNE(a*cos-b*sin) and BF16_RNE(b*cos+a*sin). Each product and sum uses
+separately rounded binary32 arithmetic. Text pairs are i and i+D/2.
+Vision pairs use this leaf independently in the x and y spatial partitions;
+the caller supplies the corresponding coordinate, not the full-head pairing.
+
+`anvil_en1_geglu_pair` captures BF16 gate/up and operation 0=GELU_tanh,
+1=SiLU, or 2=GLU sigmoid; operation 3 rejects with error 6. It materializes
+the activation to BF16 before multiplying by the independently materialized
+up value and narrowing the product. Thus text GeGLU and the PLE gate share
+the same GELU materialization, while native audio can reuse the same folded
+scalar channel without bypassing its prescribed operation.
+`anvil_en1_softcap` captures a BF16 raw value and cap selector 0=30 or 1=50;
+it divides the widened value by the binary32 cap, evaluates tanh, multiplies
+by the cap, and narrows once when output_binary32 is clear. Selector 0
+implements final text softcapping with BF16 input/output. Audio attention
+scores use both input_binary32 and output_binary32 so they are not
+prematurely narrowed.
+
+`anvil_en1_attention_head` is a scalar-workspace text attention engine.
+Its descriptor is native model, logical layer, query head, and query position.
+It derives only head dimensions, grouping and window schedule from geometry;
+it never derives an owner alias. Every K/V read first obtains the canonical
+metadata response for the logical layer, consumes its owner and native space,
+then issues the real fetch channel with that owner. A caller supplies immutable
+on-chip BF16 Q components and 0/1 key masks through separate registered
+request/response channels. No projected K/V or host-produced score enters
+the engine except through the real cache fetch interface.
+
+The head scans permitted keys in ascending order for maximum, rereads them
+for the max-subtracted exponential sum, obtains binary32 1/sum, then scans
+the keys again separately for each output component. Each last scan recomputes
+the score, exponential, normalized BF16 probability, and real V fetch.
+There is no private score/probability archive. Dot products traverse ascending
+components and value reductions traverse ascending keys. Masked keys issue
+no K/V requests. An empty permitted-key set produces zero attention output,
+without a divide-by-zero or fabricated cache answer. Nonempty exceptional
+scores propagate canonical NaN through the normal arithmetic.
+Output BF16 components stream in ascending order; done follows acceptance
+of the last component. This deliberately folded design adds owner-replay
+and Q/mask rereads, which are real work, not avoided projection traffic.
+
+| New scalar/attention stage | Registered dependency order |
+| --- | --- |
+| Frequency | capture/validate; bounded descending-bit root/product calls; reciprocal; publish |
+| Sine/cosine | capture/classify; Q44 conversion; 18 modulo steps; quadrant/normalize/RNE; bounded coefficient/divider/Horner calls; sign restoration; publish |
+| Rotary pair | capture/validate; frequency; position conversion; angle multiply; sine/cosine; two BF16 trigonometric conversions; four separate products/two adds; BF16 outputs; publish |
+| GeGLU/softcap | capture/validate; activation or divide/tanh; required materializations; multiply; final narrow; publish |
+| Attention | capture/validate; mask request/register; component Q request/register; metadata/fetch/register; dot multiply/add; max or exponential/sum; reciprocal; probability narrow; V fetch/register; value multiply/add; output narrow/accept |
+
+Every child result is consumed on an already-visible valid handshake and
+registered before the next dependent operation. All starts/results and
+source/cache requests remain stable under backpressure. There is one
+outstanding request per leaf; reset clears all validity and zeroes public
+outputs. Scalar state and all instantiated child arithmetic registers must
+be included in the future complete replay workspace allocation; lack of
+vector RAM in a leaf is not permission to omit its scalar footprint.
+
+`anvil_en1_gated_projection` evaluates one output row of a streamed gated
+projection. It captures precision, activation (the GeGLU-pair operation),
+up_mode (0=second matrix projection, 1=on-chip up vector, 2=unit up),
+and complete gate/up/down tensor descriptors, plus down_row.
+Gate columns H must be 1..2560, gate rows J must be 1..12288;
+down columns equal J and down rows are 1..2560. Matrix up has the same
+H/J dimensions as gate. On-chip-vector up has one BF16 value per J index.
+Unused up tensor descriptor fields do not authorize reads in modes 1/2.
+Invalid up_mode/activation rejects with error 6 and bad geometry with error 5.
+Native tensor-image lookup still enforces each model's exact tensor shapes.
+
+For each j in ascending order, run the full gate row projection, run the
+up row projection or read the immutable on-chip up component or use BF16 1,
+run the connected GeGLU-pair leaf with required BF16 materializations, read
+down[row,j] through the bounded BF16/Q4 reader, then separately multiply
+and add into a binary32 accumulator. Narrow only after the final j.
+Mode 0 is text/vision GeGLU; mode 1 is gated PLE using the independently
+constructed combined PLE vector; mode 2 with SiLU is audio feedforward.
+The surrounding layer controller owns norms, residuals and scalar order.
+
+The gate and up projections reuse one projection instance; down weights use
+one reader. A registered local transaction owner selects their read-only
+cmd/result channels and changes only after a child done handshake, when its
+memory response has retired. The shared external arbiter remains the sole
+external master. The source H-vector stays immutable for the entire row.
+No J-wide intermediate is allocated; each output row recomputes every gated
+intermediate. This increases actual weight/replay work and cannot be counted
+as avoided computation. Stage order is descriptor capture/validation,
+gate projection, selected up source, activation/materialization, down read,
+binary32 multiply/add, bounded j advance, BF16 narrow, registered completion.
 
 ## Cache, replay, and storage
 
@@ -470,6 +761,52 @@ The independent unshared baseline must actually handshake its padded KV writes
 and attention reads with successful responses and a nonzero denominator.
 Require candidate external KV bytes <0.45*baseline bytes separately, never by
 averaging models/precisions or counting aliases as traffic.
+
+### Ordinary frontier storage boundary
+
+`anvil_en1_frontier` provides the ordinary token-major storage, not a complete
+replay controller. COMPACT is 0/1; it reserves 3 MiB of 32-bit payload RAM
+in production and 8192 bytes in compact mode. The compact reservation holds
+512 H=8 vectors, allowing ordinary 17-token cases; forcing a smaller frontier
+is a later replay-controller partition decision, not a change to arithmetic.
+Control op 0 starts a session with captured model, generation and context
+length; op 1 invalidates; op 2 freezes all further writes. Other ops reject.
+Control acknowledgement reports padded_tokens, live_bytes, and fallback_needed.
+If the padded frontier exceeds its reservation, release the previous frontier,
+clear visibility, and return fallback_needed with zero ordinary live bytes.
+This is a capacity-selection response, not a native job-completion error or
+an implemented fallback. The replay controller must proceed with real bounded
+workspace execution in the same overlaid storage before it can complete a job.
+
+Each write_start captures generation, token and entering-layer tag. Initial
+layer 0 fills an empty vector. A replacement must advance that vector's tag
+by exactly one layer and cannot exceed the final global-owner input layer.
+The caller must already have computed the entire output vector before starting
+an overwrite. Accept exactly H/2 32-bit beats in ascending pair order, checking
+write_first and write_last, including simultaneous first/last for a one-pair
+configuration if such geometry is later admitted. A malformed beat is not
+written, leaves the target vector unreadable, and returns error 7.
+Commit the token's layer/valid tag only after the final RAM write edge.
+Padding occupies the allocation ledger but is not a readable token.
+
+A read captures generation, token, entering layer and aligned component pair.
+Reject unfilled, stale, wrong-layer, out-of-context or frozen-session-mismatched
+descriptors before RAM access. Freezing preserves reads at existing tags and
+does not manufacture a new layer. Payload RAM has synchronous registered reads
+and writes with no reset sweep; per-token valid bits make old words inaccessible.
+Reads/writes/control are serialized. The resettable controller uses asynchronous
+reset; the dedicated payload RAM process has no asynchronous reset, to preserve
+M20K inference. Active reset gates all public outputs and RAM write enables.
+
+Control stages are capture, validation/padding, extent calculation, publication.
+Read stages are capture, descriptor/tag check, synchronous RAM read, registered
+result publication. Writes are capture, check, accepted beat writes, commit,
+registered completion. No new transaction is accepted until the prior response
+retires. Control has priority over write_start, which has priority over read.
+Control changes and invalidation wait for the currently stalled result to drain.
+Live bytes count the complete padded occupied frontier; metadata and physical
+reserved bytes are separately visible. Payload visibility uses token tags, not
+an external hidden-state archive or word-initialization data.
 
 ## Public interfaces
 

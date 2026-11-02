@@ -107,7 +107,6 @@ module anvil_en1_tensor_image #(
         wire [64:0] prior_end =
             {1'b0, prior_entry[127:64]} + {1'b0, prior_entry[191:128]};
         wire [63:0] columns_wide = {32'd0, shape_columns};
-        wire [63:0] q4_blocks = (columns_wide + 63) >> 5;
         wire [63:0] q4_blocks_exact = (columns_wide + 31) >> 5;
         wire [63:0] q4_bytes = (q4_blocks_exact << 4) + (q4_blocks_exact << 1);
         wire [63:0] required_stride = shape_type == 1 ?

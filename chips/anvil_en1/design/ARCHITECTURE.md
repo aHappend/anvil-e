@@ -92,20 +92,59 @@ mutation, benchmark, or engineering-acceptance result is presently claimed.
 
 ## Current source increment
 
-Implemented design-owned sources in this increment are the canonical geometry
-helpers, resident/metadata cache, binary32 add/multiply/format primitive, and CSR.
-They do not constitute a complete product.
-The remaining arithmetic engine, tensor-image reader, owner replay/frontier/ring/
-memo allocator, native vision/audio, attention/PLE, and compatible top
-remain to be implemented and connected. The pinned global proportional and
-vision multidimensional RoPE formulas are transcribed in SPEC before rotary
-arithmetic implementation.
+The saved first increment remains intact: canonical geometry helpers,
+resident/metadata cache, binary32 add/multiply/format primitive, and CSR.
+This continuation adds these design-owned leaves:
+
+| Source | Implemented role |
+| --- | --- |
+| `rtl/anvil_en1_fp32_divsqrt.sv` | Restoring binary32 division, digit square root, once-rounded reciprocal square root, exceptional-value handling |
+| `rtl/anvil_en1_uint_to_fp32.sv` | Iterative unsigned32 normalization and RNE conversion |
+| `rtl/anvil_en1_exp.sv` | Registered range reduction and folded degree-8 exponential polynomial |
+| `rtl/anvil_en1_activation.sv` | Exponential/divider-connected tanh, GELU_tanh, SiLU and sigmoid |
+| `rtl/anvil_en1_norm.sv` | Ascending streamed RMSNorm/LayerNorm, optional learned scale, accepted BF16 output stream |
+| `rtl/anvil_en1_weight_read.sv` | Bounded aligned BF16/Q4 row addressing, FP16 scale/nibble decoding and real memory-error retirement |
+| `rtl/anvil_en1_projection.sv` | On-chip-source-connected folded multiply/add reduction and final BF16 materialization |
+| `rtl/anvil_en1_tensor_shape.sv` | Complete text/vision/audio/original-input directory geometry and clipping-scalar membership |
+| `rtl/anvil_en1_tensor_image.sv` | Full image/schema validation, exact tensor extents, pairwise duplicate/overlap checks, validated lookup descriptor |
+
+The projection connects its weight reader and arithmetic primitive. The norm
+connects its length converter, arithmetic primitive and reciprocal-root
+engine. Activation connects real exponential, add/multiply and divider
+engines. Tensor lookup connects the complete geometry schema. These are
+substantive leaf hierarchies, not a connected accelerator top.
+
+Reciprocal root rounds the mathematical reciprocal root once rather than
+composing two rounded primitive results. The implementation reduces its
+normalized rational radicand by 78 restoring steps before 27 root digits,
+retaining both remainder classes for the final RNE decision. Exponential and
+activation coefficients remain subject to independent numerical comparisons;
+their presence is not a threshold pass.
+
+Projection/norm request source components from a caller-owned immutable on-chip
+vector. Neither allocates a private vector or writes it externally. The tensor
+lookup holds only a header, current entry, six prior-entry words and bounded
+scalar control. Its pairwise rereads avoid a directory-sized private archive,
+but introduce quadratic immutable-input/weight work. The weight reader also
+rereads Q4 scales/packed words. Count every accepted read; no total-traffic or
+latency improvement is asserted.
+
+The remaining sin/cos and frequency/rotary arithmetic, stable attention,
+GeGLU/PLE/layer controller, owner replay/frontier/ring/continuation-stack/memo
+allocator, native vision/audio execution, generation-safe memory arbitration,
+actual allocation accounting, and parent-compatible top remain to be
+implemented and connected. The pinned global proportional and vision
+multidimensional RoPE formulas are frozen in SPEC before their RTL.
 
 The parent RTL remains unchanged. No verification source exists in this
 increment and none was authored by Designer. Independent Verifier owns
 `tests/*`, including all six unchanged suites. The single optional Designer
 static elaboration check has not been used. There are no preparation probes,
-receipts, simulation results, or synthesis results from this increment.
+receipts, functional execution, numerical comparisons, simulation results,
+or synthesis results from either design increment. The new leaves have not
+yet been statically elaborated; the optional single check is reserved for
+the complete design handoff. There are no retained diagnostic failures to
+repair in this continuation, and no physical timing/resource result.
 
 Do not hand this increment to verification as a ready design. Continue from
 these saved sources under an independently admitted continuation; never
