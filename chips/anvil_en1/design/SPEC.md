@@ -62,6 +62,44 @@ head's 22 live checkpoint words are saved at frame scalar indices 8..29;
 reserved head words 22..31 are recreated as zero. Scalars 30/31 remain
 available for the enclosing worker's output count/unpaired BF16 lane.
 
+The head wrapper's outward source callback supplies actual **entering-layer**
+BF16 components, not precomputed FF1 or normalized attention inputs. Before
+accepting an available-vector decision for Q/K/V, it executes the literal
+`anvil_en1_audio_pre_attention` on that requested token. Raw FF1 residual
+outputs are checked and discarded; all 1024 normalized outputs are checked
+and stored in a tagged synchronous 2048-byte on-chip cache. Successful child
+completion and both complete streams precede cache visibility. The head then
+reads only that normalized cache. A cache hit bypasses outward dependency
+resolution; relative-K decisions always use the native local position engine.
+A miss with action 1 still uses the existing durable head checkpoint. A miss
+with action 0 stalls that same pending head decision during genuine FF1
+reconstruction. No accepted head/weight response remains outstanding at that
+handover. A new start/resume invalidates the cache and recomputes it as needed.
+This cache does not retain an encoder activation archive across Eval tasks.
+
+| Normalized audio-source boundary | Registered behavior |
+| --- | --- |
+| Available miss | Accept the outward decision, capture token, then start genuine FF1/pre-attention on a later edge; do not accept the pending head decision until cache commit |
+| Source callback | Forward only pre-attention entering-layer reads; caller must supply committed query frame or matching lower-layer memo data |
+| Cache fill | Require raw kind 0 followed by normalized kind 1, each 1024 ascending BF16 components and correct last; partial/failed fill is not visible |
+| Cache hit | Accept the original head need, then service actual normalized source requests with separate tag validation/read/capture/response stages |
+| Error | Drain pre-attention output/completion, reject the still-pending head need with action 2, retire head completion, preserve the first specific failure |
+| Stall/reset | Held source/need/result payloads do not change while stalled; reset zeros all public outputs and invalidates cache visibility |
+
+The wrapper exposes cache-inclusive vector live/physical allocation and
+pre-attention/controller allocations separately from the executor/controller
+outputs already present. The 2048-byte cache is charged from refill start,
+including partial failures, through completion acceptance; the literal
+pre-attention's vector reservations remain additional. Neither declared
+allocation outputs nor RAM attributes establish measured liveness or M20K
+inference.
+Accepted entering-layer source callbacks count two on-chip bytes each.
+Accepted pre-attention directory/weight commands count four immutable-weight
+bytes each, including requests whose later response fails; the executor's
+original-mask and projection-weight observations stay separately connected.
+These are actual event outputs, not substitutes for the independent external
+handshake/address-classification scoreboard.
+
 | Durable audio-head boundary | Registered behavior |
 | --- | --- |
 | Need | Capture an actual accepted yield decision and its token; relative K is locally generated and cannot request a historical Eval dependency |
@@ -73,8 +111,51 @@ available for the enclosing worker's output count/unpaired BF16 lane.
 
 These bindings are implementation contracts, not verified numerical, RAM,
 timing or hardware results. Domain-2 full-layer continuation/memo dispatch,
-layer-zero subsampling, completed audio-feature routing and whole-system
-allocation accounting remain required.
+completed audio-feature routing and whole-system allocation accounting
+remain required.
+
+### Durable eight-head audio/frame stage
+
+`anvil_en1_replay_audio_heads` is an attention-output stage for the enclosing
+conformer dispatcher, not a completed encoder Eval result. It binds the actual
+query predecessor to frame bank 0, executes heads 0..7 with the genuine
+pre-attention/head wrapper above, and writes all 1024 head-concatenation
+components to frame bank 1 by acknowledged operation 6/target 2 pairs.
+Bank 0 stays immutable through the entire stage. Historical source requests
+read only the matching domain-2 lower-layer memo slot using operation 4/
+target 1; query requests use operation 4/target 0 on the committed frame.
+An unavailable historical token yields exactly Eval(frame_layer-1,token),
+never same-rank Eval or a host-generated FF1 answer.
+
+Initial input yield uses continuation `{0x454e3148,128'b0}`. Head yields
+retain the full head wrapper continuation (magic 0x454e3141). In addition
+to acknowledged checkpoint words 8..29, the stage saves accepted global
+component count in scalar 30 and the unpaired low BF16 lane in scalar 31.
+Resume checks count is within the tagged head's 128-component interval,
+that scalar 31's upper half is zero, and that even counts have no unpaired
+lane. Workspace pair-progress/visibility persists across child Eval.
+Final successful head completion is insufficient by itself: the 1024th
+component's pair write must have acknowledged, all heads must complete,
+and no source/workspace error may be pending before returning bank 1.
+
+| Eight-head frame boundary | Registered behavior |
+| --- | --- |
+| Initial/linear mode | Bind the genuine query predecessor before the first head; mode 2 is a supplied-predecessor optimization, not different arithmetic |
+| Input dependency | Missing predecessor returns the input continuation; resumed matching memo copy must acknowledge before any head start |
+| Historical callback | Capture full source tag/index, validate query frame or supplied memo identity, accept workspace read, register result, select BF16 lane, then hold response |
+| Accepted head output | Check head-relative index/last and global count; capture low lane or complete high/low pair; stall head until actual write acknowledgment |
+| Head dependency | Retire the wrapper's real yielded completion (including checkpoint saves), save count/low scalars, then expose the dependency continuation |
+| Head resume | Restore and validate the two outer scalars before starting the tagged numerical head; do not recopy query bank or restart finished heads |
+| Failure/reset | Drain active head/source traffic before error completion; reset invalidates state; no failed/partial attention bank is returned as a completed vector |
+
+This stage has no extra vector bank: its durable vectors live in the existing
+accounted frame banks. Its literal head wrapper's cache/pre-attention vectors,
+binding controller, frame-source/scalar controller and numerical children
+remain additional reported allocations. The enclosing dispatcher must still
+execute output projection, post norm/FF1 residual, causal light convolution,
+FF2 and norm_out before it can publish Eval(frame_layer,query). It must retain
+or recompute intermediate stage state within the admitted frame/workspace
+bounds. The eight-head stage alone is not authorized as a layer substitute.
 
 ### Native audio layer-zero replay
 

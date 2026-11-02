@@ -65,6 +65,12 @@ module anvil_en1_replay_audio_attention (
     output wire [31:0] done_dependency_token,
     output wire input_read_event, projection_event,
     output wire [31:0] input_read_bytes, projection_bytes,
+    output wire intermediate_event,
+    output wire [31:0] intermediate_bytes,
+    output wire source_read_event, weight_read_event,
+    output wire [31:0] source_read_bytes, weight_read_bytes,
+    output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire [63:0] pre_controller_bytes, pre_nested_controller_bytes,
     output wire [63:0] controller_bytes, executor_controller_bytes, head_controller_bytes,
     output wire [63:0] block_controller_bytes, input_controller_bytes,
     output wire [63:0] tile_controller_bytes, clipped_controller_bytes, clamp_controller_bytes,
@@ -74,7 +80,10 @@ module anvil_en1_replay_audio_attention (
         RESTORE_SEND = 2, RESTORE_WAIT = 3, RESTORE_REGISTER = 4,
         ENGINE_START = 5, ENGINE_RUN = 6, ENGINE_DRAIN = 7,
         SAVE_SEND = 8, SAVE_WAIT = 9, SAVE_REGISTER = 10,
-        PUBLISH = 11, RESPONSE = 12;
+        PUBLISH = 11, RESPONSE = 12, INPUT_START = 13,
+        INPUT_RUN = 14, INPUT_CHECK = 15;
+    localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_READ = 2,
+        S_CAPTURE = 3, S_RESPONSE = 4;
     localparam [31:0] MAGIC = 32'h454e3141;
     reg [3:0] state;
     reg [4:0] word_index;
@@ -89,6 +98,13 @@ module anvil_en1_replay_audio_attention (
     reg resume_hold, yield_hold, decision_seen, checkpoint_seen;
     reg [31:0] scalar_hold;
     reg [3:0] scalar_error_hold, error_hold;
+    reg [2:0] source_state;
+    reg [31:0] cache_token, rebuild_token, raw_received, norm_received;
+    reg [31:0] source_index_hold;
+    reg cache_allocated, cache_visible, receive_bad, source_tag_bad;
+    reg [15:0] cache_q, cache_data_hold;
+    reg [3:0] input_error_hold, cache_error_hold, first_source_error;
+    (* ramstyle = "M20K", nomem2reg *) reg [15:0] normalized [0:1023];
     wire [159:0] outer = {MAGIC, generation_hold, query_hold,
         frame_layer_hold, slot_hold, model_hold, precision_hold,
         layer_hold, head_hold, 35'd0};
@@ -111,17 +127,82 @@ module anvil_en1_replay_audio_attention (
         engine_need_selector <= 3 && engine_need_component < 128 &&
         !engine_need_component[0] &&
         (engine_need_selector == 3 ? engine_need_token <= 12 : engine_need_token < tokens_hold);
-    wire legal_action = need_action <= 2 &&
-        !(need_action == 1 && engine_need_selector == 3);
-    wire [1:0] action = need_tag_good && legal_action ? need_action : 2'd2;
+    wire cache_hit = cache_visible && cache_token == engine_need_token;
+    wire local_need = engine_need_selector == 3 || cache_hit;
+    wire outward_need = run && engine_need_valid && need_tag_good &&
+        error_hold == 0 && !local_need;
+    wire legal_action = need_action <= 2;
+    wire [1:0] action = !need_tag_good || error_hold != 0 ? 2'd2 :
+        (local_need ? 2'd0 : (legal_action ? need_action : 2'd2));
+    wire engine_need_ready = run &&
+        (!need_tag_good || error_hold != 0 || local_need ||
+            (need_ready && action != 0));
     wire engine_source_valid, engine_source_rsp_ready, engine_cmd_valid, engine_result_ready;
     wire [1:0] engine_source_model;
     wire [7:0] engine_source_layer;
     wire [31:0] engine_source_generation, engine_source_token, engine_source_index;
     wire engine_output_valid, engine_output_last;
+    wire engine_weight_event;
+    wire [31:0] engine_weight_bytes;
     wire [9:0] engine_output_index;
     wire [15:0] engine_output_data;
     wire [63:0] engine_addr;
+    wire pre_selected = rst_n && (state == INPUT_START || state == INPUT_RUN);
+    wire pre_ready, pre_valid, pre_cmd_valid, pre_result_ready;
+    wire pre_source_valid, pre_source_rsp_ready;
+    wire [1:0] pre_source_model;
+    wire [7:0] pre_source_layer;
+    wire [31:0] pre_source_generation, pre_source_token, pre_source_index;
+    wire pre_output_valid, pre_output_kind, pre_output_last;
+    wire [31:0] pre_output_index;
+    wire [15:0] pre_output_data;
+    wire [63:0] pre_addr, pre_live, pre_physical;
+    wire [3:0] pre_error;
+    wire [63:0] pre_norm_control, pre_clamp_control, pre_ff_control;
+    wire [63:0] pre_ff_norm_control, pre_ff_clamp_control, pre_mlp_control;
+    wire [63:0] pre_down_control, pre_down_clamp_control;
+    wire [63:0] pre_inner_control, pre_inner_clamp_control;
+    wire pre_beat_good = pre_output_kind ?
+        (raw_received == 1024 && norm_received < 1024 &&
+            pre_output_index == norm_received &&
+            pre_output_last == (norm_received == 1023)) :
+        (norm_received == 0 && raw_received < 1024 &&
+            pre_output_index == raw_received &&
+            pre_output_last == (raw_received == 1023));
+    anvil_en1_audio_pre_attention pre_attention (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(rst_n && state == INPUT_START), .start_ready(pre_ready),
+        .model(model_hold), .precision(precision_hold), .layer(layer_hold),
+        .generation(generation_hold), .token(rebuild_token),
+        .audio_weights_base(weights_hold),
+        .source_valid(pre_source_valid), .source_ready(pre_selected && source_ready),
+        .source_model(pre_source_model), .source_layer(pre_source_layer),
+        .source_generation(pre_source_generation), .source_token(pre_source_token),
+        .source_index(pre_source_index),
+        .source_rsp_valid(pre_selected && source_rsp_valid),
+        .source_rsp_ready(pre_source_rsp_ready),
+        .source_rsp_data(source_rsp_data), .source_rsp_error(source_rsp_error),
+        .cmd_valid(pre_cmd_valid), .cmd_ready(pre_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(pre_addr), .cmd_wdata(),
+        .result_valid(pre_selected && result_valid), .result_ready(pre_result_ready),
+        .result_data(result_data), .result_error(result_error),
+        .output_valid(pre_output_valid), .output_ready(rst_n && state == INPUT_RUN),
+        .output_kind(pre_output_kind), .output_index(pre_output_index),
+        .output_data(pre_output_data), .output_last(pre_output_last),
+        .done_valid(pre_valid),
+        .done_ready(rst_n && state == INPUT_RUN && !pre_output_valid),
+        .done_error(pre_error),
+        .intermediate_event(intermediate_event), .intermediate_bytes(intermediate_bytes),
+        .vector_live_bytes(pre_live), .vector_physical_bytes(pre_physical),
+        .controller_bytes(pre_controller_bytes), .norm_controller_bytes(pre_norm_control),
+        .clamp_controller_bytes(pre_clamp_control), .ff_controller_bytes(pre_ff_control),
+        .ff_norm_controller_bytes(pre_ff_norm_control),
+        .ff_clamp_controller_bytes(pre_ff_clamp_control),
+        .mlp_controller_bytes(pre_mlp_control), .down_controller_bytes(pre_down_control),
+        .down_clamp_controller_bytes(pre_down_clamp_control),
+        .inner_controller_bytes(pre_inner_control),
+        .inner_clamp_controller_bytes(pre_inner_clamp_control)
+    );
     anvil_en1_audio_attention_execute #(.REPLAY(1)) executor (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ENGINE_START), .start_ready(engine_ready),
@@ -129,20 +210,21 @@ module anvil_en1_replay_audio_attention (
         .frames(frames_hold), .query_token(query_hold), .layer(layer_hold), .head(head_hold),
         .audio_base(audio_hold), .audio_weights_base(weights_hold),
         .resume_valid(resume_hold), .resume_checkpoint(checkpoint_hold),
-        .need_valid(engine_need_valid), .need_ready(run && need_ready), .need_action(action),
+        .need_valid(engine_need_valid), .need_ready(engine_need_ready), .need_action(action),
         .need_model(engine_need_model), .need_precision(engine_need_precision),
         .need_selector(engine_need_selector), .need_generation(engine_need_generation),
         .need_token(engine_need_token), .need_layer(engine_need_layer),
         .need_head(engine_need_head), .need_component(engine_need_component),
         .checkpoint_valid(engine_checkpoint_valid), .checkpoint_ready(run),
         .checkpoint_data(engine_checkpoint),
-        .source_valid(engine_source_valid), .source_ready(engine_selected && source_ready),
+        .source_valid(engine_source_valid),
+        .source_ready(engine_selected && source_state == S_IDLE),
         .source_model(engine_source_model), .source_layer(engine_source_layer),
         .source_generation(engine_source_generation), .source_token(engine_source_token),
         .source_index(engine_source_index),
-        .source_rsp_valid(engine_selected && source_rsp_valid),
+        .source_rsp_valid(engine_selected && source_state == S_RESPONSE),
         .source_rsp_ready(engine_source_rsp_ready),
-        .source_rsp_data(source_rsp_data), .source_rsp_error(source_rsp_error),
+        .source_rsp_data(cache_data_hold), .source_rsp_error(cache_error_hold != 0),
         .cmd_valid(engine_cmd_valid), .cmd_ready(engine_selected && cmd_ready),
         .cmd_write(), .cmd_addr(engine_addr), .cmd_wdata(),
         .result_valid(engine_selected && result_valid), .result_ready(engine_result_ready),
@@ -153,7 +235,7 @@ module anvil_en1_replay_audio_attention (
         .done_ready(rst_n && (state == ENGINE_RUN || state == ENGINE_DRAIN)),
         .done_yield(engine_yield), .done_error(engine_error),
         .input_read_event(input_read_event), .input_read_bytes(input_read_bytes),
-        .weight_read_event(), .weight_read_bytes(),
+        .weight_read_event(engine_weight_event), .weight_read_bytes(engine_weight_bytes),
         .projection_event(projection_event), .projection_bytes(projection_bytes),
         .controller_bytes(executor_controller_bytes), .head_controller_bytes(head_controller_bytes),
         .block_controller_bytes(block_controller_bytes),
@@ -166,7 +248,7 @@ module anvil_en1_replay_audio_attention (
     );
 
     assign start_ready = rst_n && state == IDLE;
-    assign need_valid = run && engine_need_valid;
+    assign need_valid = outward_need;
     assign need_model = rst_n ? engine_need_model : 2'd0;
     assign need_precision = rst_n ? engine_need_precision : 2'd0;
     assign need_selector = rst_n ? engine_need_selector : 2'd0;
@@ -175,18 +257,26 @@ module anvil_en1_replay_audio_attention (
     assign need_layer = rst_n ? engine_need_layer : 8'd0;
     assign need_head = rst_n ? engine_need_head : 3'd0;
     assign need_component = rst_n ? engine_need_component : 10'd0;
-    assign source_valid = engine_selected && engine_source_valid;
-    assign source_rsp_ready = engine_selected && engine_source_rsp_ready;
-    assign source_model = rst_n ? engine_source_model : 2'd0;
-    assign source_layer = rst_n ? engine_source_layer : 8'd0;
-    assign source_generation = rst_n ? engine_source_generation : 32'd0;
-    assign source_token = rst_n ? engine_source_token : 32'd0;
-    assign source_index = rst_n ? engine_source_index : 32'd0;
-    assign cmd_valid = engine_selected && engine_cmd_valid;
+    assign source_valid = pre_selected && pre_source_valid;
+    assign source_rsp_ready = pre_selected && pre_source_rsp_ready;
+    assign source_model = pre_selected ? pre_source_model : 2'd0;
+    assign source_layer = pre_selected ? pre_source_layer : 8'd0;
+    assign source_generation = pre_selected ? pre_source_generation : 32'd0;
+    assign source_token = pre_selected ? pre_source_token : 32'd0;
+    assign source_index = pre_selected ? pre_source_index : 32'd0;
+    assign cmd_valid = (engine_selected && engine_cmd_valid) ||
+        (pre_selected && pre_cmd_valid);
     assign cmd_write = 0;
-    assign cmd_addr = engine_selected ? engine_addr : 64'd0;
+    assign cmd_addr = engine_selected ? engine_addr : (pre_selected ? pre_addr : 64'd0);
     assign cmd_wdata = 0;
-    assign result_ready = engine_selected && engine_result_ready;
+    assign result_ready = (engine_selected && engine_result_ready) ||
+        (pre_selected && pre_result_ready);
+    assign source_read_event = pre_selected && pre_source_valid && source_ready;
+    assign source_read_bytes = source_read_event ? 32'd2 : 32'd0;
+    assign weight_read_event = engine_weight_event ||
+        (pre_selected && pre_cmd_valid && cmd_ready);
+    assign weight_read_bytes = engine_weight_bytes +
+        ((pre_selected && pre_cmd_valid && cmd_ready) ? 32'd4 : 32'd0);
     assign output_valid = run && engine_output_valid;
     assign output_index = rst_n ? engine_output_index : 10'd0;
     assign output_data = rst_n ? engine_output_data : 16'd0;
@@ -219,8 +309,77 @@ module anvil_en1_replay_audio_attention (
         $bits(audio_hold) + $bits(weights_hold) + $bits(continuation_hold) +
         $bits(checkpoint_hold) + $bits(resume_hold) + $bits(yield_hold) +
         $bits(decision_seen) + $bits(checkpoint_seen) + $bits(scalar_hold) +
-        $bits(scalar_error_hold) + $bits(error_hold);
+        $bits(scalar_error_hold) + $bits(error_hold) +
+        $bits(source_state) + $bits(cache_token) + $bits(rebuild_token) +
+        $bits(raw_received) + $bits(norm_received) + $bits(source_index_hold) +
+        $bits(cache_allocated) + $bits(cache_visible) + $bits(receive_bad) +
+        $bits(source_tag_bad) + $bits(cache_q) + $bits(cache_data_hold) +
+        $bits(input_error_hold) + $bits(cache_error_hold) + $bits(first_source_error);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+    assign vector_live_bytes = !rst_n ? 64'd0 :
+        (cache_allocated ? 64'd2048 : 64'd0) + pre_live;
+    assign vector_physical_bytes = rst_n ? 64'd2048 + pre_physical : 64'd0;
+    assign pre_nested_controller_bytes = !rst_n ? 64'd0 :
+        pre_norm_control + pre_clamp_control + pre_ff_control +
+        pre_ff_norm_control + pre_ff_clamp_control + pre_mlp_control +
+        pre_down_control + pre_down_clamp_control +
+        pre_inner_control + pre_inner_clamp_control;
+
+    always @(posedge clk) begin
+        if (rst_n && state == INPUT_RUN && pre_output_valid &&
+            pre_output_kind && pre_beat_good && !receive_bad)
+            normalized[pre_output_index[9:0]] <= pre_output_data;
+        if (rst_n && source_state == S_READ)
+            cache_q <= normalized[source_index_hold[9:0]];
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            source_state <= S_IDLE;
+            source_index_hold <= 0;
+            source_tag_bad <= 0;
+            cache_data_hold <= 0;
+            cache_error_hold <= 0;
+            first_source_error <= 0;
+        end else begin
+            if (start_valid && start_ready)
+                first_source_error <= 0;
+            case (source_state)
+                S_IDLE: if (engine_selected && engine_source_valid) begin
+                    source_index_hold <= engine_source_index;
+                    source_tag_bad <= engine_source_model != model_hold ||
+                        engine_source_generation != generation_hold ||
+                        engine_source_layer != layer_hold ||
+                        engine_source_token != cache_token;
+                    cache_data_hold <= 0;
+                    cache_error_hold <= 0;
+                    source_state <= S_VALIDATE;
+                end
+                S_VALIDATE: begin
+                    if (source_tag_bad || !cache_visible || source_index_hold >= 1024) begin
+                        cache_error_hold <= 7;
+                        if (first_source_error == 0)
+                            first_source_error <= 7;
+                        source_state <= S_RESPONSE;
+                    end else
+                        source_state <= S_READ;
+                end
+                S_READ: source_state <= S_CAPTURE;
+                S_CAPTURE: begin
+                    cache_data_hold <= cache_q;
+                    source_state <= S_RESPONSE;
+                end
+                S_RESPONSE: if (engine_selected && engine_source_rsp_ready)
+                    source_state <= S_IDLE;
+                default: begin
+                    cache_error_hold <= 7;
+                    if (first_source_error == 0)
+                        first_source_error <= 7;
+                    source_state <= S_RESPONSE;
+                end
+            endcase
+        end
+    end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -248,8 +407,16 @@ module anvil_en1_replay_audio_attention (
             scalar_hold <= 0;
             scalar_error_hold <= 0;
             error_hold <= 0;
+            cache_token <= 0;
+            rebuild_token <= 0;
+            raw_received <= 0;
+            norm_received <= 0;
+            cache_allocated <= 0;
+            cache_visible <= 0;
+            receive_bad <= 0;
+            input_error_hold <= 0;
         end else begin
-            if (run && engine_need_valid && need_ready && action == 1) begin
+            if (engine_need_valid && engine_need_ready && action == 1) begin
                 dependency_token_hold <= engine_need_token;
                 decision_seen <= 1;
             end
@@ -277,6 +444,14 @@ module anvil_en1_replay_audio_attention (
                     word_index <= 0;
                     scalar_error_hold <= 0;
                     error_hold <= 0;
+                    cache_token <= 0;
+                    rebuild_token <= 0;
+                    raw_received <= 0;
+                    norm_received <= 0;
+                    cache_allocated <= 0;
+                    cache_visible <= 0;
+                    receive_bad <= 0;
+                    input_error_hold <= 0;
                     state <= VALIDATE;
                 end
                 VALIDATE: begin
@@ -329,12 +504,54 @@ module anvil_en1_replay_audio_attention (
                             error_hold <= 7;
                         state <= ENGINE_DRAIN;
                     end else if (engine_valid) begin
-                        if (engine_error != 0)
-                            error_hold <= engine_error;
-                        else if (engine_yield)
-                            error_hold <= 7;
+                        if (error_hold == 0) begin
+                            if (first_source_error != 0)
+                                error_hold <= first_source_error;
+                            else if (engine_error != 0)
+                                error_hold <= engine_error;
+                            else if (engine_yield)
+                                error_hold <= 7;
+                        end
                         state <= PUBLISH;
+                    end else if (outward_need && need_ready && action == 0) begin
+                        rebuild_token <= engine_need_token;
+                        cache_visible <= 0;
+                        cache_allocated <= 1;
+                        raw_received <= 0;
+                        norm_received <= 0;
+                        receive_bad <= 0;
+                        input_error_hold <= 0;
+                        state <= INPUT_START;
                     end
+                end
+                INPUT_START: if (pre_ready)
+                    state <= INPUT_RUN;
+                INPUT_RUN: begin
+                    if (pre_output_valid) begin
+                        if (!pre_beat_good)
+                            receive_bad <= 1;
+                        if (pre_output_kind) begin
+                            if (norm_received < 1024)
+                                norm_received <= norm_received + 1'b1;
+                        end else if (raw_received < 1024)
+                            raw_received <= raw_received + 1'b1;
+                    end else if (pre_valid) begin
+                        input_error_hold <= pre_error;
+                        state <= INPUT_CHECK;
+                    end
+                end
+                INPUT_CHECK: begin
+                    if (input_error_hold != 0) begin
+                        if (error_hold == 0)
+                            error_hold <= input_error_hold;
+                    end else if (receive_bad || raw_received != 1024 || norm_received != 1024) begin
+                        if (error_hold == 0)
+                            error_hold <= 7;
+                    end else begin
+                        cache_token <= rebuild_token;
+                        cache_visible <= 1;
+                    end
+                    state <= ENGINE_RUN;
                 end
                 ENGINE_DRAIN: if (engine_valid) begin
                     if (engine_error != 0) begin
@@ -370,8 +587,11 @@ module anvil_en1_replay_audio_attention (
                     end
                 end
                 PUBLISH: state <= RESPONSE;
-                RESPONSE: if (done_ready)
+                RESPONSE: if (done_ready) begin
+                    cache_visible <= 0;
+                    cache_allocated <= 0;
                     state <= IDLE;
+                end
                 default: begin
                     yield_hold <= 0;
                     error_hold <= 7;

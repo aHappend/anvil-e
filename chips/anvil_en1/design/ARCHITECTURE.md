@@ -5,7 +5,60 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: complete connected native conformer
+## Current saved increment: durable audio heads with actual frame/memo inputs
+
+`rtl/anvil_en1_replay_audio_attention.sv` now connects its real
+REPLAY=1 executor to the literal FF1/clamp/learned pre-attention norm,
+instead of accepting normalized hidden vectors from its outward source.
+An available-token miss holds the original numerical need pending,
+executes actual pre-attention reconstruction and checks both full
+1024-component streams before committing a tagged synchronous normalized
+cache. The head reads that cache with registered tag/read/capture/response
+stages. Hits and native relative-position K bypass outward dependencies.
+Unavailable historical inputs retain the existing acknowledged checkpoint
+and executor-drain path. Partial/error caches stay unreadable and charged;
+failed reconstruction rejects the waiting head need and retires the
+numerical executor before failure completion.
+
+`rtl/anvil_en1_replay_audio_heads.sv` adds the compound eight-head/frame
+stage. The query predecessor is copied by the existing domain-2 binding
+worker into immutable frame bank 0. Actual FF1 source callbacks read that
+frame or the matching lower-layer memo slot through acknowledged workspace
+reads; no source-vector or attention answer is manufactured. All eight
+native numerical heads write their actual concatenated outputs to frame
+bank 1 using ordered acknowledged BF16 pairs. A dependency yield saves
+the numerical checkpoint plus accepted global component count/unpaired
+lane in scalar words 30/31. Resume validates those scalars and restarts
+the tagged unfinished head, not the whole attention stage. Earlier head
+outputs and partial-pair visibility/progress survive in the existing
+workspace, with no additional durable vector archive.
+
+The normalized cache/pre-attention vector live/physical reports, all
+reported numerical and binding controllers, accepted on-chip source reads,
+immutable weight commands, original-mask reads and actual intermediate
+events are connected through this stage. These declarations are not
+measured allocation, traffic, numerical correctness, M20K inference or
+timing evidence.
+
+This stage is deliberately not dispatched as a completed encoder Eval:
+its bank-1 result is head concatenation, not norm_out. The next concrete
+integration dependency is the enclosing durable conformer dispatcher:
+retain the entering vector and head outputs, execute clipped post
+projection/post norm and the genuine FF1 residual, then suspend/resume
+historical causal-lightconv reconstruction before FF2/clamp/norm_out.
+Only that complete dispatcher may publish a higher domain-2 layer result
+through `replay_execute`. Modality/session routing, owner/frontier/fallback
+binding, whole-system allocation overlays and parent-compatible
+top/cache/arbiter/CSR integration still remain. Not ready for Verifier.
+
+Tools used for this increment: glob, view, rg and apply_patch. No command,
+static elaboration, simulation, synthesis, installation or experiment ran;
+the reserved static check remains unused and no preparation receipt exists.
+Verification, immutable parent and runtime-owned metadata remain untouched.
+The original interruption at `.vulcan/engineering/run-0001/attempt-0003`
+remains preserved without a claimed repair.
+
+## Prior saved increment: complete connected native conformer
 
 `rtl/anvil_en1_audio_layer.sv` connects the saved genuine FF1/relative
 attention residual to causal light convolution, genuine FF2, final BF16
@@ -25,18 +78,51 @@ peak live vector allocation is bounded by 26624 bytes. Both figures
 exclude additional primitive/controller state and are implementation
 accounting, not measured liveness, inferred M20Ks or proven resource fit.
 
-The associated durable audio-head contract in SPEC freezes acknowledged
-checkpoint save/restore and, unlike a simple checkpoint relay, requires
-the attention executor's actual yield completion to retire before another
-start. Full domain-2 conformer/frame dispatch remains unfinished; the
-non-resumable worker is not yet wired into full replay or native top.
+`rtl/anvil_en1_replay_audio_attention.sv` connects the real REPLAY=1
+audio head executor to acknowledged frame scalar operations. It saves
+the 22 live checkpoint words at indices 8..29, retaining 30/31 for the
+enclosing worker. Restore validates the complete tagged 160-bit outer
+descriptor and recreates reserved head words as zero. An actual accepted
+need/yield decision supplies the dependency token. The wrapper drains
+the executor's real done_yield before storing/publishing a continuation,
+so the numerical executor is idle before another resume. Relative K
+uses locally generated position inputs and cannot push historical Eval.
 
-Remaining integration: durable audio continuations and memo dispatch,
-subsampling layer-zero/completed audio-feature binding, modality/session
+`rtl/anvil_en1_replay_audio_input.sv` connects genuine layer-zero
+subsampling/input projection to domain-2 frame bank 0. Ordered actual
+BF16 pairs wait for acknowledged workspace writes; child completion and
+all 1024 components are required. Workspace errors drain the still-live
+subsampler rather than returning while it owns a response.
+`rtl/anvil_en1_replay_execute.sv` now captures immutable native audio
+bases/frame count at root acceptance and dispatches that layer-zero
+worker through its existing scheduler, external memory and backing
+interfaces. Input/projection/point-replay events and audio vector/
+controller allocation reports are connected. The existing text/vision
+selection remains separate.
+
+Full domain-2 conformer/frame dispatch remains unfinished: higher audio
+layers still reject explicitly, and the non-resumable conformer has not
+yet been connected to the durable head/memo flow. This is not complete
+native audio inference or a ready handoff to Verifier.
+
+Remaining integration: durable audio-layer continuations and memo dispatch,
+completed audio-feature binding, modality/session
 mapping, owner/frontier/fallback binding, complete allocation overlays
 and parent-compatible top/cache/arbiter/CSR integration. Not ready for
-Verifier. No commands, static elaboration, simulation, synthesis or
-experiments ran; no preparation receipt exists.
+Verifier. Next connect the audio layer's lower-layer input dependencies
+to real memo/frame reads, save the numerical head checkpoint and partial
+outer vector/index state before every dependency yield, and resume the
+actual FF1/attention/convolution/FF2 sequence without same-rank Eval
+or uncounted retained scratch.
+
+Tools used: glob, view, rg, web_fetch and apply_patch. The pinned model
+read established the final clamp/norm_out ordering. No commands,
+installation, static elaboration, simulation, synthesis or experiments
+ran; the reserved static check remains unused and no preparation receipt
+exists. Parent, verification and runtime-owned files remain untouched.
+The original ownership-guard interruption at
+`.vulcan/engineering/run-0001/attempt-0003` remains preserved without a
+claimed repair or acceptance.
 
 ## Prior increment: connected native audio attention residual
 
