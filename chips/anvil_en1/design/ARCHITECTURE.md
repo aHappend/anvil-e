@@ -5,7 +5,71 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: causal audio light convolution and output features
+## Current saved increment: connected durable vision replay
+
+`rtl/anvil_en1_replay_vision_layer.sv` connects real immutable patch
+reconstruction, all 12 vision attention heads, clipped output projection
+and the existing complete post-attention/residual/MLP engine to the
+bounded continuation workspace. Layer zero emits real patch embeddings
+into its frame. Later layers acquire the same patch's completed
+predecessor through the memo pool, preserve it in frame bank 0, and
+collect attention in bank 1 without overwriting bidirectional inputs.
+Historical dependencies yield strictly lower vision layers; query
+reads use the retained frame and historical reads use the actual tagged
+memo result. No host feature/KV answer or external activation archive
+enters this path.
+
+The saved head wrapper writes its 512-bit arithmetic continuation at
+scalar words 8..23; this worker additionally saves output count and
+unpaired low BF16 at 24/25 before returning the yield. Resume validates
+the descriptor, restores those words and checks the next output index
+against actual saved head word 17. Pair writes stall child acceptance
+until the workspace response retires. Predecessor continuations have a
+distinct magic and authorize only the same patch's previous layer.
+
+After all 768 head outputs complete, each actual clipped output row
+reads the completed frame vector and collects into one additional
+1536-byte synchronous bank. Only the complete projection replaces
+bank 1. The post layer first loads complete raw/projected vectors,
+then produces actual final layer pairs into bank 1. Ordered counts,
+last, concrete child/workspace errors and accepted done guard each
+visibility boundary. Partial/error banks remain charged through done;
+successful projection storage releases before post allocation.
+
+`rtl/anvil_en1_replay_frame_input.sv` now supports explicit compile-time
+domains 0/1/2 with their actual layer limits and vector lengths. Default
+domain 0 preserves its previous text behavior. It validates same-domain
+immediately preceding layers and actual completed memo copies. Its
+controller report now derives from declared registers rather than the
+previous fixed byte estimate.
+
+`rtl/anvil_en1_replay_execute.sv` dispatches domain-1 tasks to that worker
+using the existing frame/memo scheduler and registered external/backing
+ownership. Root image geometry and immutable image/vision-weight bases
+are captured on root start; worker generation comes from each registered
+task. This makes the saved native vision path accessible through the
+real replay start/output/done and backing interfaces, not only leaves.
+New outputs separate native input/projection/intermediate events and
+connected vector/controller allocation categories from text owner work.
+Arithmetic leaf state still needs the final whole-system overlay.
+
+Remaining integration dependencies: audio relative attention and full
+conformer/replay worker; text modality yields and native soft-token/
+placeholder/session mapping; owner-replay binding to ordinary frontier
+and fallback execution; complete arithmetic/controller live and physical
+overlays; parent-compatible top, session, cache, arbiter and CSR wiring.
+The native vision root is implemented but not independently verified.
+The complete design is not ready for Verifier.
+
+Tools used: glob, view, rg, web_fetch and apply_patch. No commands,
+installation, static elaboration, simulation, synthesis or experiments
+ran; the reserved static check remains unused and no preparation
+receipt exists. Parent, tests and runtime-owned files remain untouched.
+The original ownership-guard interruption at
+`.vulcan/engineering/run-0001/attempt-0003` remains preserved with no
+claimed repair or acceptance.
+
+## Prior increment: causal audio light convolution and output features
 
 `rtl/anvil_en1_audio_glu_component.sv` computes one genuine
 light-convolution GLU input channel from the attention-residual vector.

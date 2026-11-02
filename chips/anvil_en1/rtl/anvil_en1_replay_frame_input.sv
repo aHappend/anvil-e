@@ -1,5 +1,6 @@
 module anvil_en1_replay_frame_input #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer DOMAIN = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -54,15 +55,19 @@ module anvil_en1_replay_frame_input #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (DOMAIN < 0 || DOMAIN > 2)
+            $fatal(1, "PARAMETER ERROR: DOMAIN must be 0, 1 or 2");
     end
 
     wire native_model = model_hold == 1 || model_hold == 2;
-    wire [7:0] layers = model_hold == 1 ? 8'd35 : 8'd42;
-    wire [11:0] selected_length = COMPACT ? 12'd8 :
-        (model_hold == 1 ? 12'd1536 : 12'd2560);
+    wire [7:0] layers = DOMAIN == 1 ? 8'd16 : (DOMAIN == 2 ? 8'd12 :
+        (model_hold == 1 ? 8'd35 : 8'd42));
+    wire [11:0] selected_length = DOMAIN == 1 ? 12'd768 :
+        (DOMAIN == 2 ? 12'd1024 : (COMPACT ? 12'd8 :
+        (model_hold == 1 ? 12'd1536 : 12'd2560)));
     wire descriptor_valid = frame_layer_hold != 0 && frame_layer_hold <= layers &&
         tokens_hold != 0 && tokens_hold <= 131072 && token_hold < tokens_hold;
-    wire dependency_tag_valid = dependency_domain_hold == 0 &&
+    wire dependency_tag_valid = dependency_domain_hold == DOMAIN &&
         {1'b0, dependency_layer_hold} + 9'd1 == {1'b0, frame_layer_hold} &&
         dependency_token_hold == token_hold && dependency_length_hold == selected_length &&
         dependency_slot_hold < 16;
@@ -70,7 +75,7 @@ module anvil_en1_replay_frame_input #(
     assign start_ready = rst_n && state == IDLE;
     assign work_req_valid = rst_n && state == COPY_SEND;
     assign work_req_op = rst_n ? 3'd3 : 3'd0;
-    assign work_req_domain = 0;
+    assign work_req_domain = rst_n ? 2'(DOMAIN) : 2'd0;
     assign work_req_target = rst_n ? 2'd3 : 2'd0;
     assign work_req_token = rst_n ? token_hold : 32'd0;
     assign work_req_layer = rst_n ? frame_layer_hold : 8'd0;
@@ -85,11 +90,19 @@ module anvil_en1_replay_frame_input #(
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
     assign done_dependency = rst_n && yield_hold && error_hold == 0;
-    assign done_dependency_domain = 0;
+    assign done_dependency_domain = rst_n ? 2'(DOMAIN) : 2'd0;
     assign done_dependency_layer = rst_n && yield_hold ? frame_layer_hold - 1'b1 : 8'd0;
     assign done_dependency_token = rst_n && yield_hold ? token_hold : 32'd0;
     assign done_dependency_length = rst_n && yield_hold ? length_hold : 12'd0;
-    assign controller_state_bytes = rst_n ? 64'd21 : 64'd0;
+    localparam integer CONTROLLER_BITS =
+        $bits(state) + $bits(model_hold) + $bits(dependency_domain_hold) +
+        $bits(token_hold) + $bits(tokens_hold) + $bits(dependency_token_hold) +
+        $bits(frame_layer_hold) + $bits(dependency_layer_hold) +
+        $bits(frame_slot_hold) + $bits(dependency_slot_hold) +
+        $bits(bank_hold) + $bits(dependency_valid_hold) + $bits(yield_hold) +
+        $bits(length_hold) + $bits(dependency_length_hold) +
+        $bits(error_hold) + $bits(copy_error_hold);
+    assign controller_state_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
     assign busy = rst_n && state != IDLE;
 
     always @(posedge clk or negedge rst_n) begin

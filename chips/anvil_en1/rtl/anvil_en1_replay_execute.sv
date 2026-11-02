@@ -4,10 +4,12 @@ module anvil_en1_replay_execute #(
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
-    input wire [1:0] model, precision, modality,
+    input wire [1:0] model, precision, modality, eval_domain,
     input wire [31:0] generation, tokens, token,
     input wire [7:0] layer,
     input wire [63:0] tokens_base, weights_base,
+    input wire [63:0] native_image_base, native_vision_weights_base,
+    input wire [31:0] native_patches, native_patch_rows, native_patch_columns,
     output wire modality_valid,
     input wire modality_ready,
     output wire [1:0] modality_model, modality_kind,
@@ -77,6 +79,18 @@ module anvil_en1_replay_execute #(
     output wire [63:0] ple_live_bytes, ple_physical_bytes,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
     output wire [63:0] post_vector_live_bytes, post_vector_physical_bytes,
+    output wire [63:0] vision_vector_live_bytes, vision_vector_physical_bytes,
+    output wire [63:0] vision_binding_controller_bytes, vision_patch_controller_bytes,
+    output wire [63:0] vision_replay_controller_bytes, vision_executor_controller_bytes,
+    output wire [63:0] vision_head_controller_bytes, vision_tile_controller_bytes,
+    output wire [63:0] vision_clipped_controller_bytes, vision_clamp_controller_bytes,
+    output wire [63:0] vision_output_controller_bytes, vision_output_clamp_controller_bytes,
+    output wire [63:0] vision_post_controller_bytes, vision_norm_controller_bytes,
+    output wire [63:0] vision_mlp_controller_bytes, vision_down_controller_bytes,
+    output wire [63:0] vision_down_clamp_controller_bytes,
+    output wire [63:0] vision_inner_controller_bytes, vision_inner_clamp_controller_bytes,
+    output wire native_input_read_event, native_projection_event, native_intermediate_event,
+    output wire [31:0] native_input_read_bytes, native_projection_bytes, native_intermediate_bytes,
     output wire memo_hit_event, memo_eviction_event,
     output wire owner_reprojection_event,
     output wire [31:0] owner_reprojection_bytes,
@@ -90,7 +104,9 @@ module anvil_en1_replay_execute #(
         WORKER_WAIT = 3, PUBLISH = 4, RESPONSE = 5;
     reg [2:0] state;
     reg [1:0] model_hold, precision_hold, modality_hold, mode_hold, domain_hold;
-    reg [31:0] token_hold, tokens_hold, dependency_token_hold;
+    reg [31:0] token_hold, tokens_hold, dependency_token_hold, generation_hold;
+    reg [63:0] native_image_hold, native_vision_weights_hold;
+    reg [31:0] native_patches_hold, native_rows_hold, native_columns_hold;
     reg [7:0] layer_hold, dependency_layer_hold;
     reg [11:0] length_hold, dependency_length_hold;
     reg [5:0] frame_hold, dependency_slot_hold;
@@ -136,7 +152,7 @@ module anvil_en1_replay_execute #(
     anvil_en1_eval_schedule #(.COMPACT(COMPACT)) scheduler (
         .clk(clk), .rst_n(rst_n),
         .start_valid(start_valid), .start_ready(start_ready),
-        .model(model), .precision(precision), .modality(modality), .domain(2'd0),
+        .model(model), .precision(precision), .modality(modality), .domain(eval_domain),
         .generation(generation), .tokens(tokens), .token(token), .layer(layer),
         .tokens_base(tokens_base), .weights_base(weights_base),
         .task_valid(task_valid), .task_ready(task_ready),
@@ -189,9 +205,9 @@ module anvil_en1_replay_execute #(
         .busy(busy)
     );
 
-    wire input_selected = rst_n && input_worker &&
+    wire input_selected = rst_n && domain_hold == 0 && input_worker &&
         (state == WORKER_START || state == WORKER_WAIT);
-    wire text_selected = rst_n && !input_worker &&
+    wire text_selected = rst_n && domain_hold == 0 && !input_worker &&
         (state == WORKER_START || state == WORKER_WAIT);
     wire input_ready, input_valid;
     wire [3:0] input_error;
@@ -266,6 +282,8 @@ module anvil_en1_replay_execute #(
     wire [5:0] text_work_slot;
     wire text_work_bank, text_cmd_valid, text_result_ready;
     wire [63:0] text_cmd_addr, text_state_bytes, text_embedding_live, text_embedding_physical;
+    wire text_owner_event, text_query_event, text_source_event;
+    wire [31:0] text_owner_bytes, text_query_bytes, text_source_bytes;
     anvil_en1_replay_text_layer #(.COMPACT(COMPACT)) text_layer (
         .clk(clk), .rst_n(rst_n),
         .start_valid(text_selected && state == WORKER_START), .start_ready(text_ready),
@@ -309,10 +327,10 @@ module anvil_en1_replay_execute #(
         .done_continuation(text_continuation), .done_dependency_domain(text_dependency_domain),
         .done_dependency_layer(text_dependency_layer), .done_dependency_token(text_dependency_token),
         .done_dependency_length(text_dependency_length),
-        .owner_reprojection_event(owner_reprojection_event),
-        .owner_reprojection_bytes(owner_reprojection_bytes),
-        .query_projection_event(query_projection_event), .query_projection_bytes(query_projection_bytes),
-        .source_read_event(source_read_event), .source_read_bytes(source_read_bytes),
+        .owner_reprojection_event(text_owner_event),
+        .owner_reprojection_bytes(text_owner_bytes),
+        .query_projection_event(text_query_event), .query_projection_bytes(text_query_bytes),
+        .source_read_event(text_source_event), .source_read_bytes(text_source_bytes),
         .controller_state_bytes(text_state_bytes), .binding_controller_bytes(binding_controller_bytes),
         .projection_controller_bytes(projection_controller_bytes),
         .executor_controller_bytes(executor_controller_bytes),
@@ -325,27 +343,97 @@ module anvil_en1_replay_execute #(
         .post_vector_physical_bytes(post_vector_physical_bytes), .busy()
     );
 
+    wire vision_selected = rst_n && domain_hold == 1 &&
+        (state == WORKER_START || state == WORKER_WAIT);
+    wire vision_ready, vision_valid, vision_yield, vision_bank_result;
+    wire [3:0] vision_error;
+    wire [159:0] vision_continuation;
+    wire [1:0] vision_dependency_domain;
+    wire [7:0] vision_dependency_layer;
+    wire [31:0] vision_dependency_token;
+    wire [11:0] vision_dependency_length;
+    wire vision_work_valid, vision_work_rsp_ready;
+    wire [2:0] vision_work_op;
+    wire [1:0] vision_work_domain, vision_work_target;
+    wire [31:0] vision_work_token, vision_work_data;
+    wire [7:0] vision_work_layer, vision_work_scalar_index;
+    wire [11:0] vision_work_length, vision_work_component;
+    wire [5:0] vision_work_slot;
+    wire vision_work_bank, vision_cmd_valid, vision_result_ready, vision_source_event;
+    wire [31:0] vision_source_bytes;
+    wire [63:0] vision_cmd_addr, vision_state_bytes;
+    anvil_en1_replay_vision_layer #(.COMPACT(COMPACT)) vision_layer (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(vision_selected && state == WORKER_START), .start_ready(vision_ready),
+        .model(model_hold), .precision(precision_hold), .mode(mode_hold),
+        .generation(generation_hold), .patches(native_patches_hold),
+        .patch_rows(native_rows_hold), .patch_columns(native_columns_hold), .query_patch(token_hold),
+        .frame_layer(layer_hold), .frame_slot(frame_hold), .image_base(native_image_hold),
+        .vision_weights_base(native_vision_weights_hold), .continuation(continuation_hold),
+        .dependency_valid(dependency_valid_hold), .dependency_domain(dependency_domain_hold),
+        .dependency_layer(dependency_layer_hold), .dependency_token(dependency_token_hold),
+        .dependency_length(dependency_length_hold), .dependency_slot(dependency_slot_hold),
+        .work_req_valid(vision_work_valid), .work_req_ready(vision_selected && work_ready),
+        .work_req_op(vision_work_op), .work_req_domain(vision_work_domain),
+        .work_req_target(vision_work_target), .work_req_token(vision_work_token),
+        .work_req_layer(vision_work_layer), .work_req_length(vision_work_length),
+        .work_req_component(vision_work_component), .work_req_slot(vision_work_slot),
+        .work_req_bank(vision_work_bank), .work_req_scalar_index(vision_work_scalar_index),
+        .work_req_data(vision_work_data), .work_rsp_valid(vision_selected && work_rsp_valid),
+        .work_rsp_ready(vision_work_rsp_ready), .work_rsp_data(work_rsp_data),
+        .work_rsp_error(work_rsp_error), .cmd_valid(vision_cmd_valid),
+        .cmd_ready(vision_selected && cmd_ready), .cmd_write(), .cmd_addr(vision_cmd_addr),
+        .cmd_wdata(), .result_valid(vision_selected && result_valid),
+        .result_ready(vision_result_ready), .result_data(result_data), .result_error(result_error),
+        .done_valid(vision_valid), .done_ready(vision_selected && state == WORKER_WAIT),
+        .done_error(vision_error), .done_yield(vision_yield), .done_bank(vision_bank_result),
+        .done_continuation(vision_continuation),
+        .done_dependency_domain(vision_dependency_domain),
+        .done_dependency_layer(vision_dependency_layer), .done_dependency_token(vision_dependency_token),
+        .done_dependency_length(vision_dependency_length),
+        .input_read_event(native_input_read_event), .input_read_bytes(native_input_read_bytes),
+        .projection_event(native_projection_event), .projection_bytes(native_projection_bytes),
+        .intermediate_event(native_intermediate_event), .intermediate_bytes(native_intermediate_bytes),
+        .source_read_event(vision_source_event), .source_read_bytes(vision_source_bytes),
+        .vector_live_bytes(vision_vector_live_bytes), .vector_physical_bytes(vision_vector_physical_bytes),
+        .controller_bytes(vision_state_bytes), .binding_controller_bytes(vision_binding_controller_bytes),
+        .patch_controller_bytes(vision_patch_controller_bytes),
+        .replay_controller_bytes(vision_replay_controller_bytes),
+        .executor_controller_bytes(vision_executor_controller_bytes),
+        .head_controller_bytes(vision_head_controller_bytes), .tile_controller_bytes(vision_tile_controller_bytes),
+        .clipped_controller_bytes(vision_clipped_controller_bytes),
+        .clamp_controller_bytes(vision_clamp_controller_bytes),
+        .output_controller_bytes(vision_output_controller_bytes),
+        .output_clamp_controller_bytes(vision_output_clamp_controller_bytes),
+        .post_controller_bytes(vision_post_controller_bytes), .norm_controller_bytes(vision_norm_controller_bytes),
+        .mlp_controller_bytes(vision_mlp_controller_bytes), .down_controller_bytes(vision_down_controller_bytes),
+        .down_clamp_controller_bytes(vision_down_clamp_controller_bytes),
+        .inner_controller_bytes(vision_inner_controller_bytes),
+        .inner_clamp_controller_bytes(vision_inner_clamp_controller_bytes)
+    );
+
     assign task_ready = rst_n && state == IDLE;
     assign work_valid = (input_selected && input_work_valid) ||
-        (text_selected && text_work_valid);
-    assign work_op = input_worker ? input_work_op : text_work_op;
-    assign work_domain = input_worker ? input_work_domain : text_work_domain;
-    assign work_target = input_worker ? input_work_target : text_work_target;
-    assign work_token = input_worker ? input_work_token : text_work_token;
-    assign work_layer = input_worker ? input_work_layer : text_work_layer;
-    assign work_length = input_worker ? input_work_length : text_work_length;
-    assign work_component = input_worker ? input_work_component : text_work_component;
-    assign work_slot = input_worker ? input_work_slot : text_work_slot;
-    assign work_bank = input_worker ? input_work_bank : text_work_bank;
-    assign work_scalar_index = input_worker ? input_work_scalar_index : text_work_scalar_index;
-    assign work_data = input_worker ? input_work_data : text_work_data;
+        (text_selected && text_work_valid) || (vision_selected && vision_work_valid);
+    assign work_op = domain_hold == 1 ? vision_work_op : (input_worker ? input_work_op : text_work_op);
+    assign work_domain = domain_hold == 1 ? vision_work_domain : (input_worker ? input_work_domain : text_work_domain);
+    assign work_target = domain_hold == 1 ? vision_work_target : (input_worker ? input_work_target : text_work_target);
+    assign work_token = domain_hold == 1 ? vision_work_token : (input_worker ? input_work_token : text_work_token);
+    assign work_layer = domain_hold == 1 ? vision_work_layer : (input_worker ? input_work_layer : text_work_layer);
+    assign work_length = domain_hold == 1 ? vision_work_length : (input_worker ? input_work_length : text_work_length);
+    assign work_component = domain_hold == 1 ? vision_work_component : (input_worker ? input_work_component : text_work_component);
+    assign work_slot = domain_hold == 1 ? vision_work_slot : (input_worker ? input_work_slot : text_work_slot);
+    assign work_bank = domain_hold == 1 ? vision_work_bank : (input_worker ? input_work_bank : text_work_bank);
+    assign work_scalar_index = domain_hold == 1 ? vision_work_scalar_index :
+        (input_worker ? input_work_scalar_index : text_work_scalar_index);
+    assign work_data = domain_hold == 1 ? vision_work_data : (input_worker ? input_work_data : text_work_data);
     assign write_valid = input_selected && input_write_valid;
     assign write_data = input_write_data;
     assign write_first = input_selected && input_write_first;
     assign write_last = input_selected && input_write_last;
     assign write_abort = input_selected && input_write_abort;
     assign work_rsp_ready = (input_selected && input_work_rsp_ready) ||
-        (text_selected && text_work_rsp_ready);
+        (text_selected && text_work_rsp_ready) || (vision_selected && vision_work_rsp_ready);
     assign modality_valid = (input_selected && input_modality_valid) ||
         (text_selected && text_modality_valid);
     assign modality_model = !rst_n ? 2'd0 :
@@ -358,18 +446,29 @@ module anvil_en1_replay_execute #(
         (input_worker ? input_modality_index : text_modality_index);
     assign modality_rsp_ready = (input_selected && input_modality_rsp_ready) ||
         (text_selected && text_modality_rsp_ready);
-    assign cmd_valid = (input_selected && input_cmd_valid) || (text_selected && text_cmd_valid);
+    assign cmd_valid = (input_selected && input_cmd_valid) || (text_selected && text_cmd_valid) ||
+        (vision_selected && vision_cmd_valid);
     assign cmd_write = 0;
-    assign cmd_addr = !rst_n ? 64'd0 : (input_worker ? input_cmd_addr : text_cmd_addr);
+    assign cmd_addr = !rst_n ? 64'd0 : (domain_hold == 1 ? vision_cmd_addr :
+        (input_worker ? input_cmd_addr : text_cmd_addr));
     assign cmd_wdata = 0;
-    assign result_ready = (input_selected && input_result_ready) || (text_selected && text_result_ready);
+    assign result_ready = (input_selected && input_result_ready) || (text_selected && text_result_ready) ||
+        (vision_selected && vision_result_ready);
+    assign owner_reprojection_event = text_owner_event;
+    assign owner_reprojection_bytes = text_owner_bytes;
+    assign query_projection_event = text_query_event;
+    assign query_projection_bytes = text_query_bytes;
+    assign source_read_event = text_source_event || vision_source_event;
+    assign source_read_bytes = text_source_bytes + vision_source_bytes;
     assign embedding_live_bytes = input_worker ? input_embedding_live : text_embedding_live;
     assign embedding_physical_bytes = rst_n ? input_embedding_physical + text_embedding_physical : 64'd0;
     assign selected_worker_state_bytes = !rst_n ? 64'd0 :
-        (input_worker ? input_state_bytes : text_state_bytes);
+        (domain_hold == 1 ? vision_state_bytes : (input_worker ? input_state_bytes : text_state_bytes));
     localparam integer DISPATCHER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
         $bits(mode_hold) + $bits(domain_hold) + $bits(token_hold) + $bits(tokens_hold) +
+        $bits(generation_hold) + $bits(native_image_hold) + $bits(native_vision_weights_hold) +
+        $bits(native_patches_hold) + $bits(native_rows_hold) + $bits(native_columns_hold) +
         $bits(dependency_token_hold) + $bits(layer_hold) + $bits(dependency_layer_hold) +
         $bits(length_hold) + $bits(dependency_length_hold) + $bits(frame_hold) +
         $bits(dependency_slot_hold) + $bits(tokens_base_hold) + $bits(weights_base_hold) +
@@ -381,6 +480,22 @@ module anvil_en1_replay_execute #(
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            native_image_hold <= 0;
+            native_vision_weights_hold <= 0;
+            native_patches_hold <= 0;
+            native_rows_hold <= 0;
+            native_columns_hold <= 0;
+        end else if (start_valid && start_ready) begin
+            native_image_hold <= native_image_base;
+            native_vision_weights_hold <= native_vision_weights_base;
+            native_patches_hold <= native_patches;
+            native_rows_hold <= native_patch_rows;
+            native_columns_hold <= native_patch_columns;
+        end
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
             state <= IDLE;
             model_hold <= 0;
             precision_hold <= 0;
@@ -389,6 +504,7 @@ module anvil_en1_replay_execute #(
             domain_hold <= 0;
             token_hold <= 0;
             tokens_hold <= 0;
+            generation_hold <= 0;
             dependency_token_hold <= 0;
             layer_hold <= 0;
             dependency_layer_hold <= 0;
@@ -420,6 +536,7 @@ module anvil_en1_replay_execute #(
                     domain_hold <= task_domain;
                     token_hold <= task_token;
                     tokens_hold <= task_tokens;
+                    generation_hold <= task_generation;
                     layer_hold <= task_layer;
                     length_hold <= task_length;
                     frame_hold <= task_frame;
@@ -444,22 +561,34 @@ module anvil_en1_replay_execute #(
                     state <= VALIDATE;
                 end
                 VALIDATE: begin
-                    if (domain_hold != 0 || length_hold != (COMPACT ? 12'd8 :
-                        (model_hold == 1 ? 12'd1536 : 12'd2560)) ||
+                    if (domain_hold > 1 || length_hold != (domain_hold == 1 ? 12'd768 :
+                        (COMPACT ? 12'd8 : (model_hold == 1 ? 12'd1536 : 12'd2560))) ||
+                        (domain_hold == 1 && (native_patches_hold == 0 ||
+                            token_hold >= native_patches_hold)) ||
                         (input_worker && mode_hold != 0)) begin
                         error_hold <= 7;
                         state <= PUBLISH;
                     end else
                         state <= WORKER_START;
                 end
-                WORKER_START: if (input_worker ? input_ready : text_ready)
+                WORKER_START: if (domain_hold == 1 ? vision_ready : (input_worker ? input_ready : text_ready))
                     state <= WORKER_WAIT;
                 WORKER_WAIT: begin
-                    if (input_worker && input_valid) begin
+                    if (domain_hold == 1 && vision_valid) begin
+                        error_hold <= vision_error;
+                        done_bank_hold <= vision_bank_result;
+                        done_dependency_hold <= vision_yield;
+                        done_continuation_hold <= vision_continuation;
+                        done_domain_hold <= vision_dependency_domain;
+                        done_layer_hold <= vision_dependency_layer;
+                        done_token_hold <= vision_dependency_token;
+                        done_length_hold <= vision_dependency_length;
+                        state <= PUBLISH;
+                    end else if (domain_hold == 0 && input_worker && input_valid) begin
                         error_hold <= input_error;
                         done_bank_hold <= input_bank_result;
                         state <= PUBLISH;
-                    end else if (!input_worker && text_valid) begin
+                    end else if (domain_hold == 0 && !input_worker && text_valid) begin
                         error_hold <= text_error;
                         done_bank_hold <= text_bank_result;
                         done_dependency_hold <= text_yield;

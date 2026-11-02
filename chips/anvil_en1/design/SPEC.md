@@ -7,6 +7,96 @@ engineering acceptance or a claim that every described engine exists.
 
 ## Native causal audio light-convolution increment
 
+### Durable native vision replay dispatch
+
+The next native replay worker uses the existing scheduler's domain 1,
+768-component frames and 16-entry memo pool. Eval(0,patch) executes
+`vision_patch` from immutable image inputs. Eval(l,patch), l=1..16,
+first obtains Eval(l-1,patch) and copies the completed memo vector into
+frame bank 0. Preserve that bank throughout bidirectional attention.
+Run all 12 genuine 64-component attention heads, writing ascending
+BF16 pairs to frame bank 1. An unavailable historical patch yields a
+dependency Eval(l-1,historical_patch); it never recurses combinationally
+or overwrites another patch's layer input. Query sources read bank 0;
+historical sources read the tagged completed memo dependency.
+
+Save each interrupted head's actual 512-bit arithmetic checkpoint at
+scalar words 8..23 using `replay_vision_attention`. Save the outer
+worker's global output count and unpaired low BF16 component at words
+24 and 25 before returning a yield. The returned 160-bit descriptor
+identifies generation, model, precision, query, frame, logical layer
+and head. Restore both outer words before resuming the head; require
+the count to belong to that head's 64-component interval. No expected
+numerical answer or scalar reduction is reconstructed in software.
+Read saved head word 17 as well, and require its next output-component
+field to equal the restored count modulo 64; phases before value output
+must have no emitted components. This is a checkpoint consistency check,
+not another retained vector or a new numerical boundary.
+The predecessor-only continuation has magic 0x454e314a and zeros in
+the remaining bits. It authorizes only the same patch's immediately
+preceding vision layer, not a different memo source.
+
+After complete successful attention, execute clipped output projection
+0x1106 for every row using the completed bank-1 vector. Replace bank 1
+with its actual projected result, then execute `vision_post_layer`
+from bank 0 and the projected bank 1. Its complete input collection
+precedes replacement of bank 1 with final layer outputs.
+
+| Native replay boundary | Registered behavior |
+| --- | --- |
+| Start/reset | Capture descriptor pre-edge; zero public outputs and invalidate visibility during reset |
+| Predecessor | Yield before reads if absent; copy only the tagged completed same-domain memo on resume |
+| Head output pair | Capture low then high; stall the head while a workspace pair transaction retires |
+| Missing patch | Accept need, save actual head checkpoint, save outer words, then publish dependency |
+| Resume | Validate outer descriptor, read saved words, validate count, then start restored head |
+| Source | Capture tag/index, validate, read aligned frame/memo pair, capture, then hold one BF16 response |
+| Output projection | Read only a completed head vector; collect every row before replacing that vector |
+| Post layer | Load complete raw/branch inputs before any bank-1 output replacement |
+| Failure | Drain child outputs/done and workspace responses; preserve first concrete error |
+| Completion | Require every ordered pair write and successful child done before worker done |
+| Native liveness | Frame pairs and scalar words stay charged across yields; child partial banks stay charged through done acceptance |
+
+The output-projection vector needs one 1536-byte synchronous bank,
+including partial/error collection through completion. Saved head words
+occupy 64 bytes and outer words 8 bytes per interrupted frame, additional
+to the scheduler's return record. Existing child vector reservations,
+all scalar/controllers and arithmetic state remain additional. This
+increment does not certify the final 1 MiB overlay or physical RAM fit.
+The native dispatcher must carry original image geometry and immutable
+image/vision-weight bases captured for the whole replay session.
+
+`anvil_en1_replay_execute` now carries this worker as domain 1, alongside
+the retained domain-0 input/text workers. The added start descriptor is
+`eval_domain[1:0]`, `native_image_base[63:0]`,
+`native_vision_weights_base[63:0]`, and the three 32-bit
+`native_patches/native_patch_rows/native_patch_columns` counts. Capture
+those image fields only on accepted root start; capture task generation
+from the scheduler for each dispatched worker. Domain 0 retains text
+vector lengths and its existing single-token linear schedule. Domain 1
+retains native 768-wide vectors even in COMPACT builds, uses `token` as
+the requested patch, and permits Eval layer 0..16. The original text
+token/weight bases remain separate immutable descriptor fields, not
+aliases for image storage.
+
+The public root reproduction sequence is active reset, reset release,
+accepted start with a complete registered root/image descriptor,
+service aligned external read commands and on-chip backing requests
+with one response each, accept every ascending output component, and
+then accept done. The backing channel belongs to the declared on-chip
+workspace RAM and must never be routed to external DDR. New native
+controller/vector outputs expose all connected worker categories for
+system accounting; inherited workspace live/shadow/physical outputs
+include frames, memo and scalar reservations across yields. Directory
+and payload traffic classification must still scoreboard the external
+address map; native input/projection events are not a replacement for
+that independent public-handshake ledger.
+
+This saved dispatcher still rejects domain 2 because its audio worker
+is not implemented. Text modality callbacks still require their native
+session/placeholder dispatcher. Those are implementation gaps, not
+authorized removal of native audio or multimodal acceptance. No
+functional or synthesis pass is established for either saved worker.
+
 `anvil_en1_audio_glu_component` reconstructs one channel of the pinned
 light-convolution input. Its descriptor captures model, precision, generation,
 audio layer 0..11, token 0..131071, channel 0..1023 and aligned immutable
