@@ -450,9 +450,10 @@ module anvil_en1_vision_attention_head #(
                 PASS_FINISH: begin
                     key <= 0;
                     if (phase == 0) begin
-                        if (active_keys == 0)
-                            state <= OUTPUT_NARROW;
-                        else begin
+                        if (active_keys == 0) begin
+                            error_hold <= 5;
+                            state <= PUBLISH;
+                        end else begin
                             phase <= 1;
                             state <= MASK_SEND;
                         end
@@ -492,10 +493,7 @@ module anvil_en1_vision_attention_head #(
                         output_component <= output_component + 1'b1;
                         value_accumulator <= 0;
                         key <= 0;
-                        if (active_keys == 0)
-                            state <= OUTPUT_NARROW;
-                        else
-                            state <= MASK_SEND;
+                        state <= MASK_SEND;
                     end
                 end
                 FP_SEND: if (fp_ready)

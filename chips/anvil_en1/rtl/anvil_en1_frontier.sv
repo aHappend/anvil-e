@@ -68,11 +68,11 @@ module anvil_en1_frontier #(
         assign backing_rsp_data = 0;
         assign backing_rsp_error = 0;
     end else begin : frontier
-        localparam integer WORD_COUNT = COMPACT ? 4096 : 786432;
+        localparam integer WORD_COUNT = COMPACT ? 131072 : 786432;
         localparam integer ADDRESS_WIDTH = $clog2(WORD_COUNT);
         localparam integer MAX_TOKENS = COMPACT ? 512 : 1024;
         localparam [31:0] CAPACITY_BYTES = COMPACT ? 32'd8192 : 32'd3145728;
-        localparam integer BACKING_WORDS = COMPACT ? 2624 : 245760;
+        localparam integer BACKING_WORDS = COMPACT ? 75776 : 245760;
         localparam [4:0] IDLE = 0, CONTROL_VALIDATE = 1, CONTROL_EXTENT = 2,
             CONTROL_PUBLISH = 3, CONTROL_RESPONSE = 4, TAG_READ = 5,
             VECTOR_CHECK = 6, WRITING = 7, WRITE_COMMIT = 8,

@@ -134,10 +134,10 @@ module anvil_en1_eval_schedule #(
     wire [7:0] text_layers = model_hold == 1 ? 8'd35 : 8'd42;
     wire [11:0] text_length = COMPACT ? 12'd8 :
         (model_hold == 1 ? 12'd1536 : 12'd2560);
-    wire [11:0] root_length = COMPACT ? 12'd8 :
+    wire [11:0] root_length =
         (root_domain == 0 ? text_length :
         (root_domain == 1 ? 12'd768 : 12'd1024));
-    wire [11:0] selected_dependency_length = COMPACT ? 12'd8 :
+    wire [11:0] selected_dependency_length =
         (dependency_domain == 0 ? text_length :
         (dependency_domain == 1 ? 12'd768 : 12'd1024));
     wire root_valid = root_domain != 3 &&

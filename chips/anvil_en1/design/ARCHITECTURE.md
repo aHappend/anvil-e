@@ -5,7 +5,99 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: native clipped linears and vision input/QKV
+## Current saved increment: connected bidirectional vision attention and native MLP
+
+`rtl/anvil_en1_vision_attention_head.sv` performs actual native 64-component,
+twelve-head-compatible vision attention with bidirectional key traversal,
+scaling 1.0, registered pair service, real max-subtracted exponential/sum/
+reciprocal, BF16 probabilities and ascending-key value reduction. It repeats
+the value pass per component rather than storing scores or another head
+vector. Q/K/V requests retain distinct selectors, actual native layer/head
+identities and correct aligned low/high BF16 lanes. Padded query patches
+are not prematurely replaced with zero; padding keys are masked before
+numeric work. An all-masked image explicitly rejects, not successful zero
+feature output.
+
+Its optional replay mode yields only before a source service request, after
+all prior responses and arithmetic have retired. The held 512-bit continuation
+preserves generation, complete descriptor, all traversal indices, current
+query/probability and scalar reductions. Resume rejects stale/malformed tags
+and reacquires the precise source dependency without restarting an unfinished
+reduction. It has no text owner/cache-alias path, causal/window assumption,
+host numerical answer or new floating-point approximation. The existing
+binary32, exponential and division engines supply the real arithmetic.
+
+`rtl/anvil_en1_vision_attention_execute.sv` literally connects that head to
+the saved `anvil_en1_vision_qkv_tile`. It validates the immutable input
+directory, rereads original x/y coordinates for every mask/service operation,
+checks padding/in-grid semantics and routes the single accepted memory
+transaction to coordinate/directory or tile work. Coordinate row start,
+row/payload end and comparison occupy separate registered stages; an
+unchecked native address never becomes a command. Failed coordinate reads
+remain external error 2 after the head retires its actual failed response.
+Weight and original-input reads remain distinct accepted traffic, including
+repeated reads/errors. Source callbacks identify the captured generation and
+entering-layer vector needed by the real norm/projection tile.
+
+The executor forwards drained source-dependency and full-checkpoint channels;
+neither head nor executor fabricates successful completion on a yield.
+`rtl/anvil_en1_replay_vision_attention.sv` connects these to actual workspace
+scalar reads/writes: all 16 checkpoint words at native-frame slots 8..23
+are acknowledged before publishing a yielded dependency. Resume restores
+every occupied word and validates the generation/frame/query/layer/head
+outer continuation before starting the numerical executor. Failed saves/
+restores retire their actual work responses and cannot produce a usable
+continuation. Grid products and extent checks are registered before any
+workspace access. The pending dependency strictly decreases encoder layer.
+
+The enclosing native replay layer dispatcher still must bind committed
+source vectors, save its outer branch state and execute the smaller-rank
+child. This is not yet that dispatcher or a completed bidirectional encoder.
+The current compact workspace allocates only 8-component native vectors;
+the new wrapper deliberately requests real 768-component vision frames.
+Native compact-text replay therefore still requires a collision-safe native
+frame/memo layout and full accounting, not a clamped or synthetic feature.
+The head/executor/wrapper allocate
+no new vector bank. Both held resume copies and all descriptor/scalar state
+are charged by their declared register-width observations, with all three
+held checkpoint copies and 64 acknowledged workspace scalar bytes explicitly
+additional. Existing tile
+live/reserved 1664-byte vectors and its controller/clamp observations are
+forwarded separately; numerical/directory child registers remain additional.
+
+`rtl/anvil_en1_native_mlp_row.sv` executes the real vision clipped gate/up,
+BF16 GELU_tanh GeGLU and clipped down row, or either audio clipped FF/SiLU/
+clipped down row. It serially regenerates each intermediate through the outer
+down projection's actual ascending-column source callback, not an
+unclipped down weight reader. Audio has no fictitious up projection/multiply.
+All clipping buffers, matrix words, activations and reductions are read/
+computed in RTL. Temporary memory ownership changes only while the outer
+projection waits for its source and its previous weight response is retired.
+Original child errors propagate through the real outer failure before done.
+No 3072/4096-component intermediate RAM or external feature spill is allocated.
+Repeated intermediate work and its considerable weight traffic are not
+claimed as savings.
+
+SPEC freezes these descriptors, continuation bits, native geometry,
+materialization, errors, reset/stalls and registered stages. Existing text,
+cache, replay, parent and numerical leaves are retained unchanged by this
+increment. Native vision layer output projection/residual/GeGLU/norm execution
+and durable replay-frame binding, pooling/modality projection, the full audio
+encoder, complete liveness/resource overlay and parent-compatible literal
+top/session/cache/replay/arbiter/CSR integration still remain. The design is
+**continue**, not ready for independent Verifier.
+
+Tools used in this increment: glob, view, rg, web_fetch and apply_patch.
+Pinned public source inspection confirmed vision scaling, bidirectional mask,
+Q/K learned and V unscaled normalization, axial rotation, layer residual order
+and audio FF activation. No command, installation, static elaboration,
+simulation, synthesis or experiment ran; the reserved static check remains
+unused and no preparation receipts exist. Parent/test/runtime sources and
+failure-0001 in `.vulcan/engineering/run-0001/attempt-0003` were preserved.
+No interruption repair, engineering acceptance, FPGA resource/timing result
+or product report is claimed.
+
+## Prior increment: native clipped linears and vision input/QKV
 
 `rtl/anvil_en1_bf16_clamp.sv` implements registered sign/magnitude comparison
 and clamp selection, including signed zero, subnormals, infinities, canonical

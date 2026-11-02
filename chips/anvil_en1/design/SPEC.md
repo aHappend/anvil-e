@@ -24,9 +24,8 @@ in ascending key order. Pass 2 repeats for components 0..63, avoiding a live
 score/probability tensor or vector accumulator. Q/K dot products use ascending
 components, separate binary32 multiply/add, and no intermediate BF16 score
 rounding. Only the completed value reduction narrows to BF16. An all-masked
-head emits zero components without reading Q/K/V or dividing by zero, matching
-the established explicit mask convention; the enclosing image session must
-reject an image without valid output soft tokens.
+image rejects with descriptor error 5 without reading Q/K/V or dividing by
+zero; it is not converted into a successful zero feature.
 
 Q/K/V service requests specify model, precision, native layer, patch, selector
 (0 Q / 1 K / 2 V), head and even aligned component 0..62. The returned 32-bit
@@ -80,11 +79,43 @@ geometry or synthetic head result is introduced.
 | Output/completion | Stable component/index/last while stalled; advance only on acceptance; done follows acceptance of component 63 |
 | Reset/error | All public outputs zero during reset; retire accepted child responses, stop new work, hold explicit failure completion |
 
-The connected service executor and native layer/continuation dispatcher remain
-required below this boundary. The head's declared controller bytes include
+`anvil_en1_vision_attention_execute` binds the head to a literal
+`anvil_en1_vision_qkv_tile` and real immutable coordinate reads. It validates
+the original image's coordinate-directory entry before starting the head.
+Every mask and Q/K/V service request rereads both signed coordinates for
+that patch, checking padding or nonnegative in-grid coordinates before
+dispatch. Original-input traffic includes these accepted coordinate reads,
+including failed responses and repeats. Tile directory/projection/scale
+reads are separate immutable-weight traffic. The executor never drives a
+write command or interprets the tile result as an external address.
+
+Source callbacks expose the captured generation/model/layer/patch and actual
+component requested by the tile's input norm. Their producer is a committed
+on-chip Eval/frame source. During replay, the public dependency descriptor
+identifies precisely the Q/K/V source patch about to be used. Yield releases
+the head only after its held checkpoint is accepted; the executor itself
+returns idle on that same acceptance, without a normal done. The enclosing
+native layer dispatcher must durably save the checkpoint before child work.
+This executor does not implement that dispatcher or bidirectional overwrite.
+
+Coordinates use aligned 32-bit reads. The captured patch*8 offset, row start,
+parallel row/payload ends, extent comparison and later y-address each have
+separate registered stages; all 65-bit
+address sums reject overflow or out-of-payload extent before access. A failed
+coordinate memory response is retired and preserved as external error 2,
+not collapsed to mask-state error 7. A malformed pair rejects with 5. The
+head receives its actual failed mask/service response and retires completion
+before executor failure publication. Child routing remains selected through
+stalls and accepted responses; no same-edge newly created response is consumed.
+
+The head's declared controller bytes include
 its held 512-bit resume word and scalar operands; floating-point, exponential
 and reciprocal child state are additional. There is no vector bank in this
-head. This interface freeze is not functional or timing evidence.
+head or executor. Tile live/physical vectors and controller observations are
+forwarded separately, not included twice. All tile/head numerical children
+still require whole-system accounting and phase overlay. Native layer/
+continuation dispatch, residual/GeGLU, pooling/projection and audio execution
+remain required. This interface freeze is not functional or timing evidence.
 
 ## Native clipped-linear and vision-input implementation boundary
 
@@ -209,6 +240,99 @@ answer. Illegal parameter values explicitly diagnose.
 These native tiles still require bidirectional vision Eval/layer dispatch,
 native audio execution and complete top integration. They do not establish
 whole-model behavior, resource fit or independently observed acceptance.
+
+### Folded native MLP row
+
+`anvil_en1_native_mlp_row` computes one native output row with no allocated
+intermediate vector. Mode 0 is vision GeGLU: real clipped gate/up kinds
+0x1109/110a, BF16 GELU_tanh and gated multiply, then real clipped down kind
+0x110b. Modes 1/2 are audio feed_forward1/2: clipped kinds 0x2101/2112,
+BF16 SiLU, then clipped kinds 0x2102/2113. Audio does not invent an up
+projection or multiply by a host-provided vector. The surrounding native
+layer remains responsible for its pre/post norms, residuals, audio gradient
+clamps and 0.5 residual weighting.
+
+The outer down clipped projection owns the ascending 3072/4096-component
+reduction. Each source callback captures the requested intermediate row,
+temporarily routes the one external command stream to the inner real
+gate/up clipped projection, and returns its genuinely computed BF16
+activation/gated value. Outer down input/output clipping is still applied
+by that actual clipped projection, not bypassed with the unclipped
+`gated_projection` helper. Each additional gate/up execution and all accepted
+directory/bound/matrix reads are actual weight work/traffic. Output-row
+repetition regenerates intermediates exactly; no throughput or total DDR
+improvement is claimed.
+
+Source callbacks expose generation, native model/layer/token, mode and actual
+component, referring to the committed, already pre-normalized on-chip layer
+input. The producer must keep it immutable through every gate/up reduction.
+The leaf never writes hidden state externally. No callback accepts a
+precomputed MLP intermediate, activation, or numerical answer.
+
+| Native MLP row boundary | Registered behavior |
+| --- | --- |
+| R0/R1/R2 | Capture descriptor; validate mode/model/precision/layer/token/output-row; then start real down clipped projection |
+| Intermediate callback | Capture exact requested row; validate range; start actual gate projection, then up only in vision mode |
+| Down continuation | Its real weight/partial sum remain held while the inner source is computed; outer memory route resumes only after inner retirement |
+| Activation | Vision uses materialized GeGLU; audio uses SiLU then one BF16 narrowing, with no invented up multiply |
+| Source failure | Return acknowledged failure to down projection; preserve original child error rather than collapsing all failures to 7 |
+| Completion | Retire down done only with source service idle; register numerical result/error, then publish held completion |
+| Reset/stall | Zero every public output in reset; hold source/command/result descriptors; no partial success or activation spill |
+
+Declared controller bytes count descriptors, callback indices, held gate/up/
+activation/output scalars and routing state. Both actual clipped-projection
+controllers and scalar-clamp state are exposed separately; their numerical/
+directory children and activation/GeGLU/narrowing engines remain additional
+whole-system allocations. This leaf has no live/reserved vector bank.
+It is not a complete vision residual layer or audio conformer, nor the durable
+native replay layer dispatcher required before design readiness.
+
+### Durable native vision-head continuation
+
+`anvil_en1_replay_vision_attention` connects the real replay-enabled vision
+executor to the existing workspace's acknowledged scalar operation 6/7,
+target 0. The current frame tag is native domain 1, model/generation, query
+patch, entering layer `frame_layer=vision_layer+1`, length 768 and frame slot.
+No compact native-vector substitution is made. An enclosing compact-text
+replay integration must still provide real native frames; the current
+compact workspace's 8-component-only native layout is not sufficient and
+must be integrated/repaired before claiming native replay readiness.
+
+At a real head yield, capture the complete 512-bit checkpoint and pending
+source patch, then write all 16 little-endian words to scalar indices 8..23.
+Every word waits for its real acknowledgment; only the final successful
+acknowledgment permits done_yield. Words 0..7 remain scheduler-owned; 24..31
+are available to an enclosing native layer's branch continuation. A failed
+save returns the actual error without a usable yield continuation. Resume
+validates the outer tag, reads/acknowledges all 16 words, then the real head
+revalidates its full numerical descriptor before execution. Scalar occupancy
+and the backing controller, not an uncounted local array, determine whether
+the words exist. No synthetic successful backing response is generated.
+
+The 160-bit outer continuation is:
+159:128 magic 0x454e3157; 127:96 generation; 95:64 query patch;
+63:56 frame layer; 55:50 frame slot; 49:48 model; 47:46 precision;
+45:38 vision layer; 37:34 head; 33:0 zero. The yielded dependency is
+`Eval(vision_layer,pending_patch)` and therefore strictly below the current
+`Eval(vision_layer+1,query_patch)` frame. Query, key and value source needs all
+use this dependency boundary; none recurse at the same encoder layer.
+
+| Durable head boundary | Registered behavior |
+| --- | --- |
+| W0/W1/W2/W3 | Capture complete descriptor/frame/continuation; validate native frame/outer tag; registered 16x16 grid product and later extent check precede any work access |
+| Yield capture | Accept only with executor/tile drained; capture actual numerical checkpoint, not expected scalar results |
+| Save/read request | Stable native frame tag, scalar index and data through stalls; each response registers before index advance |
+| Final save | Final acknowledgment precedes yield publication; failure never publishes usable continuation |
+| Resume | Read every occupied word; start real executor only after last read is registered |
+| Error/reset | Preserve actual work/memory errors; active reset zeros all public outputs; no late numerical result is rebound to a new generation |
+
+The wrapper's held checkpoint/scalars/descriptor and the executor/head resume
+copies are separately charged by their controller byte observations, in
+addition to the 64 live workspace scalar bytes. These are real transient
+copies, not assumed memory savings. A complete native layer dispatcher,
+on-chip source binding, vector/memo allocation and whole-system ledger are
+still required; this acknowledged continuation path is not full fallback
+acceptance.
 
 ## Frame-pair assembly and streamed attention output projection
 
