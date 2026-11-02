@@ -196,8 +196,9 @@ the full attention/PLE/layer controller, frontier/ring scheduling, the explicit
 continuation stack and bounded memo/eviction engine, ordinary/fallback RAM
 overlay, native vision/audio execution, actual complete allocation accounting,
 generation-safe shared memory arbitration, and parent-compatible top integration.
-The required literal `anvil_en1_asym_attn_ple`, `anvil_en1_owner_replay`, and
-`anvil_en1_top` are not present yet.
+At this saved third increment, the required literal `anvil_en1_asym_attn_ple`,
+`anvil_en1_owner_replay` and `anvil_en1_top` were not present. The subsequent
+increments below distinguish newly implemented modules from remaining work.
 
 The parent RTL remains unchanged. No verification source was authored or
 modified by Designer. Independent Verifier owns `tests/*`, including all six
@@ -213,7 +214,7 @@ Do not hand this increment to verification as a ready design. Continue from
 these saved sources under an independently admitted continuation; never
 replace it with an older checkout or treat this status as a waiver.
 
-## Current recovery continuation increment
+## Saved fourth recovery continuation increment
 
 The saved earlier RTL was retained, not rebuilt from an older checkout. This
 increment freezes the owner-tile and embedding/PLE interfaces, numerical
@@ -294,3 +295,67 @@ guard. No original failing command, output path, acceptance command, threshold
 or runtime metadata was changed. Independent Verifier must follow only after
 the full design handoff; engineering acceptance and the product PDF remain
 future shared-runtime work. This is a saved **continue**, not ready or accepted.
+
+## Saved fifth continuation increment: layer execution and memory transport
+
+`rtl/anvil_en1_asym_attn_ple.sv` now implements the full single-text-layer
+controller, connecting the saved image validator, projection, norm, rotary,
+attention, gated-projection, weight-read and binary32 leaves. It copies the
+entering hidden and original-input-derived combined PLE vectors, runs input
+norm and every Q head's projection/norm/RoPE, consumes actual canonical cache
+metadata/fetch responses through the attention leaf, projects the concatenated
+heads, and executes the specified post norms, three residuals, double-wide
+E2B shared GeGLU, gated PLE and final layer scalar. Output is a complete BF16
+hidden vector, not logits or a job completion. The layer does not compute
+another owner alias map and has no external KV read/write path.
+
+Three H-banks preserve residual, normalized source and branch lifetimes.
+One D-bank retains the current Q head, one Q*D bank retains accepted attention
+outputs and one P-bank retains combined PLE. Matrix/down rows cannot overwrite
+their source vector. Norm reductions precede accepted in-place branch/Q
+writes. Rotary pairs use two serialized writes to the actual half-head
+components. Internal source reads have capture/read/publish/response stages;
+external command ownership switches only at completed child boundaries.
+The complete H output holds through backpressure and finishes only after the
+last component is accepted. Errors stop numerical progress and publish an
+explicit failed completion.
+
+Layer vector payload is `6H+2D+2Q*D+2P`, at most 18944 bytes for E2B global
+and 25088 bytes for E4B global. Production physical banks reserve 25088 bytes;
+compact banks reserve 104 bytes. These figures exclude scalar/child state,
+which must still be measured and counted. The final phase overlay and
+whole-system live ledger are not implemented by these private banks.
+
+`rtl/anvil_en1_memory_arbiter.sv` supplies the registered single-outstanding
+cmd/result transport needed to share the external port between suspended
+layer work, real owner projection and the remaining native engines.
+CLIENTS=1..8 use an explicitly wrapped round-robin scan, including 3.
+Captured commands hold to the actual external handshake; actual responses
+are registered and routed only to the captured client, including errors.
+No client may consume a response on the edge that first creates its valid.
+Its drain barrier closes ingress and waits for both external response and
+original-client retirement before acknowledging. It does not itself cancel
+an engine or replace session invalidation. An impossible FSM encoding raises
+an explicit protocol error instead of manufacturing a successful drain.
+
+These are implemented connected sub-engines, not a complete native top.
+Next implement `anvil_en1_owner_replay`: ordinary frontier initialization,
+descending layer/token scheduling, local-ring materialization and preserved
+global frontier, then genuine continuation-stack/memo fallback with historical
+dependencies and single-token fast path. The remaining work also includes
+workspace overlay/full allocation observations, native vision/audio execution,
+final norm/tied softcapped logits, generation-safe session/error handling,
+arbiter integration, actual CSR events and parent-compatible `anvil_en1_top`.
+The arbiter and layer public channels must be wired, not tied to fabricated
+answers. Owner-only rematerialization and all admitted tests remain mandatory.
+
+Only the two new RTL modules and SPEC/ARCHITECTURE were changed in this
+increment. Existing arithmetic/storage/embedding/owner leaves, parent RTL,
+verification files, acceptance commands and runtime metadata were preserved.
+Actual tools were glob, view, rg and apply_patch. No command, diagnostic probe,
+installation, static elaboration, simulation, synthesis or numerical experiment
+ran. The one reserved fast static elaboration remains unused; no preparation
+receipt or verification result exists. The retained failure-0001 and
+`.vulcan/engineering/run-0001/attempt-0003` interruption were neither changed
+nor claimed repaired. This is a bounded saved continuation, not a ready
+handoff or engineering acceptance.

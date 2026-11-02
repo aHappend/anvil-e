@@ -24,7 +24,8 @@ module anvil_en1_memory_arbiter #(
     input wire drain_valid,
     output wire drain_ready,
     output wire drain_done_valid,
-    input wire drain_done_ready
+    input wire drain_done_ready,
+    output wire protocol_error
 );
     generate if (CLIENTS < 1 || CLIENTS > 8) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: CLIENTS must be 1..8");
@@ -40,11 +41,12 @@ module anvil_en1_memory_arbiter #(
         assign result_ready = 0;
         assign drain_ready = 0;
         assign drain_done_valid = 0;
+        assign protocol_error = 0;
     end else begin : arbiter
         localparam [2:0] IDLE = 0, SEND = 1, WAIT_RESULT = 2,
-            CLIENT_RESPONSE = 3, DRAIN_RESPONSE = 4;
+            CLIENT_RESPONSE = 3, DRAIN_RESPONSE = 4, FAULT = 5;
         reg [2:0] state, cursor, owner_hold;
-        reg draining, write_hold, error_hold;
+        reg draining, write_hold, error_hold, fault_hold;
         reg [63:0] address_hold;
         reg [31:0] write_data_hold, read_data_hold;
         wire drain_accept = drain_valid && drain_ready;
@@ -57,8 +59,9 @@ module anvil_en1_memory_arbiter #(
         assign cmd_wdata = rst_n ? write_data_hold : 32'd0;
         assign cmd_owner = rst_n ? owner_hold : 3'd0;
         assign result_ready = rst_n && state == WAIT_RESULT;
-        assign drain_ready = rst_n && !draining && state != DRAIN_RESPONSE;
+        assign drain_ready = rst_n && !draining && state != DRAIN_RESPONSE && !fault_hold;
         assign drain_done_valid = rst_n && state == DRAIN_RESPONSE;
+        assign protocol_error = rst_n && fault_hold;
         genvar client;
         for (client = 0; client < CLIENTS; client = client + 1) begin : responses
             wire selected = rst_n && state == CLIENT_RESPONSE && owner_hold == client;
@@ -75,6 +78,7 @@ module anvil_en1_memory_arbiter #(
                 draining <= 0;
                 write_hold <= 0;
                 error_hold <= 0;
+                fault_hold <= 0;
                 address_hold <= 0;
                 write_data_hold <= 0;
                 read_data_hold <= 0;
@@ -121,9 +125,11 @@ module anvil_en1_memory_arbiter #(
                         draining <= 0;
                         state <= IDLE;
                     end
+                    FAULT: state <= FAULT;
                     default: begin
                         draining <= 1;
-                        state <= DRAIN_RESPONSE;
+                        fault_hold <= 1;
+                        state <= FAULT;
                     end
                 endcase
             end

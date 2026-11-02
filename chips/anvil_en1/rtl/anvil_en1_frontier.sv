@@ -31,7 +31,18 @@ module anvil_en1_frontier #(
     output wire read_rsp_valid,
     input wire read_rsp_ready,
     output wire [31:0] read_rsp_data,
-    output wire [3:0] read_rsp_error
+    output wire [3:0] read_rsp_error,
+    output wire backing_bound,
+    input wire backing_valid,
+    output wire backing_ready,
+    input wire [31:0] backing_generation,
+    input wire backing_write,
+    input wire [17:0] backing_addr,
+    input wire [31:0] backing_wdata,
+    output wire backing_rsp_valid,
+    input wire backing_rsp_ready,
+    output wire [31:0] backing_rsp_data,
+    output wire [3:0] backing_rsp_error
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
@@ -51,17 +62,24 @@ module anvil_en1_frontier #(
         assign read_rsp_valid = 0;
         assign read_rsp_data = 0;
         assign read_rsp_error = 0;
+        assign backing_bound = 0;
+        assign backing_ready = 0;
+        assign backing_rsp_valid = 0;
+        assign backing_rsp_data = 0;
+        assign backing_rsp_error = 0;
     end else begin : frontier
         localparam integer WORD_COUNT = COMPACT ? 2048 : 786432;
         localparam integer ADDRESS_WIDTH = $clog2(WORD_COUNT);
         localparam integer MAX_TOKENS = COMPACT ? 512 : 1024;
         localparam [31:0] CAPACITY_BYTES = COMPACT ? 32'd8192 : 32'd3145728;
-        localparam [3:0] IDLE = 0, CONTROL_VALIDATE = 1, CONTROL_EXTENT = 2,
+        localparam integer BACKING_WORDS = COMPACT ? 1600 : 245760;
+        localparam [4:0] IDLE = 0, CONTROL_VALIDATE = 1, CONTROL_EXTENT = 2,
             CONTROL_PUBLISH = 3, CONTROL_RESPONSE = 4, TAG_READ = 5,
             VECTOR_CHECK = 6, WRITING = 7, WRITE_COMMIT = 8,
             WRITE_PUBLISH = 9, WRITE_RESPONSE = 10, RAM_READ = 11,
-            READ_PUBLISH = 12, READ_RESPONSE = 13;
-        reg [3:0] state;
+            READ_PUBLISH = 12, READ_RESPONSE = 13, BACKING_VALIDATE = 14,
+            BACKING_ACCESS = 15, BACKING_PUBLISH = 16, BACKING_RESPONSE = 17;
+        reg [4:0] state;
         reg [1:0] op_hold, control_model_hold, model_hold;
         reg [31:0] control_generation_hold, control_tokens_hold;
         reg [31:0] generation_hold, tokens_hold, padded_hold, allocation_hold;
@@ -72,6 +90,9 @@ module anvil_en1_frontier #(
         reg active, frozen, fallback_hold, is_write, token_valid_hold;
         reg [MAX_TOKENS-1:0] occupied;
         reg [31:0] read_hold;
+        reg bound_hold, backing_write_hold;
+        reg [17:0] backing_address_hold;
+        reg [31:0] backing_generation_hold, backing_data_hold;
         reg [7:0] layer_q;
         reg [31:0] payload_q;
         (* ramstyle = "M20K", nomem2reg *)
@@ -100,6 +121,9 @@ module anvil_en1_frontier #(
         wire payload_write = rst_n && state == WRITING &&
             write_valid && write_ready && beat_flags_valid;
         wire [31:0] write_address = vector_base + pair_index;
+        wire backing_access_valid = bound_hold &&
+            backing_generation_hold == generation_hold &&
+            backing_address_hold < BACKING_WORDS;
 
         assign control_ready = rst_n && state == IDLE;
         assign control_rsp_valid = rst_n && state == CONTROL_RESPONSE;
@@ -117,12 +141,24 @@ module anvil_en1_frontier #(
         assign read_rsp_valid = rst_n && state == READ_RESPONSE;
         assign read_rsp_data = rst_n ? read_hold : 32'd0;
         assign read_rsp_error = rst_n ? error_hold : 4'd0;
+        assign backing_bound = rst_n && bound_hold;
+        assign backing_ready = rst_n && state == IDLE && bound_hold &&
+            !control_valid && !write_start_valid && !read_valid;
+        assign backing_rsp_valid = rst_n && state == BACKING_RESPONSE;
+        assign backing_rsp_data = rst_n ? read_hold : 32'd0;
+        assign backing_rsp_error = rst_n ? error_hold : 4'd0;
 
         always @(posedge clk) begin
             if (payload_write)
                 payload[write_address[ADDRESS_WIDTH-1:0]] <= write_data;
+            else if (rst_n && state == BACKING_ACCESS && backing_access_valid &&
+                backing_write_hold)
+                payload[ADDRESS_WIDTH'(backing_address_hold)] <= backing_data_hold;
             if (rst_n && state == RAM_READ)
                 payload_q <= payload[word_address[ADDRESS_WIDTH-1:0]];
+            else if (rst_n && state == BACKING_ACCESS && backing_access_valid &&
+                !backing_write_hold)
+                payload_q <= payload[ADDRESS_WIDTH'(backing_address_hold)];
             if (rst_n && state == TAG_READ && request_in_range)
                 layer_q <= layer_tags[token_hold];
             if (rst_n && state == WRITE_COMMIT)
@@ -159,6 +195,11 @@ module anvil_en1_frontier #(
                 token_valid_hold <= 0;
                 occupied <= 0;
                 read_hold <= 0;
+                bound_hold <= 0;
+                backing_write_hold <= 0;
+                backing_address_hold <= 0;
+                backing_generation_hold <= 0;
+                backing_data_hold <= 0;
             end else begin
                 case (state)
                     IDLE: begin
@@ -187,11 +228,36 @@ module anvil_en1_frontier #(
                             read_hold <= 0;
                             error_hold <= 0;
                             state <= TAG_READ;
+                        end else if (backing_valid && backing_ready) begin
+                            backing_address_hold <= backing_addr;
+                            backing_write_hold <= backing_write;
+                            backing_data_hold <= backing_wdata;
+                            backing_generation_hold <= backing_generation;
+                            read_hold <= 0;
+                            error_hold <= 0;
+                            state <= BACKING_VALIDATE;
                         end
                     end
                     CONTROL_VALIDATE: begin
                         if (op_hold == 3) begin
-                            error_hold <= 1;
+                            if (active || bound_hold)
+                                error_hold <= 7;
+                            else if (!control_native)
+                                error_hold <= 6;
+                            else if (control_tokens_hold == 0 ||
+                                control_tokens_hold > 131072)
+                                error_hold <= 5;
+                            else begin
+                                occupied <= 0;
+                                frozen <= 0;
+                                allocation_hold <= 0;
+                                padded_hold <= 0;
+                                tokens_hold <= 0;
+                                fallback_hold <= 1;
+                                model_hold <= control_model_hold;
+                                generation_hold <= control_generation_hold;
+                                bound_hold <= 1;
+                            end
                             state <= CONTROL_PUBLISH;
                         end else if (op_hold == 1) begin
                             occupied <= 0;
@@ -201,6 +267,7 @@ module anvil_en1_frontier #(
                             padded_hold <= 0;
                             tokens_hold <= 0;
                             fallback_hold <= 0;
+                            bound_hold <= 0;
                             state <= CONTROL_PUBLISH;
                         end else if (op_hold == 2) begin
                             if (!active || control_generation_hold != generation_hold ||
@@ -208,6 +275,9 @@ module anvil_en1_frontier #(
                                 error_hold <= 7;
                             else
                                 frozen <= 1;
+                            state <= CONTROL_PUBLISH;
+                        end else if (bound_hold) begin
+                            error_hold <= 7;
                             state <= CONTROL_PUBLISH;
                         end else begin
                             occupied <= 0;
@@ -306,8 +376,23 @@ module anvil_en1_frontier #(
                     end
                     READ_RESPONSE: if (read_rsp_ready)
                         state <= IDLE;
+                    BACKING_VALIDATE: begin
+                        if (!backing_access_valid) begin
+                            error_hold <= 7;
+                            state <= BACKING_RESPONSE;
+                        end else
+                            state <= BACKING_ACCESS;
+                    end
+                    BACKING_ACCESS: state <= BACKING_PUBLISH;
+                    BACKING_PUBLISH: begin
+                        read_hold <= backing_write_hold ? 32'd0 : payload_q;
+                        state <= BACKING_RESPONSE;
+                    end
+                    BACKING_RESPONSE: if (backing_rsp_ready)
+                        state <= IDLE;
                     default: begin
                         active <= 0;
+                        bound_hold <= 0;
                         occupied <= 0;
                         allocation_hold <= 0;
                         read_hold <= 0;

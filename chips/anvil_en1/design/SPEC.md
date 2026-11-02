@@ -923,6 +923,9 @@ accepted. Drain does not cancel a memory response, reset an engine, complete
 a session or invalidate a generation by itself. The enclosing session
 controller must retire engine work and generation state around this barrier.
 Reset gates all public outputs to zero; no payload/state validity survives it.
+An impossible control-state encoding latches `protocol_error`, closes ingress
+and does not fabricate drain completion; reset is needed after enclosing
+error recovery. This indicator must be consumed by the final session controller.
 
 | Arbiter boundary | Behavior |
 | --- | --- |
@@ -1008,13 +1011,115 @@ averaging models/precisions or counting aliases as traffic.
 
 ### Ordinary frontier storage boundary
 
+### Bounded replay workspace backing contract
+
+`anvil_en1_replay_workspace` is a storage/controller leaf, not the completed
+`Eval` interpreter. Its only payload transport is an on-chip backing-word
+channel; it has no DDR command port. The replay scheduler must drain and
+invalidate the ordinary frontier and local ring before enabling this channel.
+The frontier's control op 3 binds its existing payload RAM to fallback backing
+access, only from an inactive state, with zero ordinary live bytes. Op 1
+releases either representation. A new ordinary op 0 cannot acquire RAM while
+fallback binding remains active: release first. Binding is not allocation of
+a second copy of RAM and is not an implemented fallback numerical result.
+
+The backing interface carries `backing_valid/ready`, `backing_write`,
+`backing_addr[17:0]` (a **word index**, never an external byte address),
+`backing_wdata[31:0]`, and a held `backing_rsp_valid/ready/data/error`.
+Every accepted write receives one response after the synchronous write.
+Every accepted read receives the actual synchronous RAM word. The legal
+backing range is 0..245759 in production and 0..1599 in compact mode.
+No operation is accepted before op 3 binds the RAM. Backing transport does not
+make uninitialized words readable through the workspace's public interface.
+
+| Partition | Production words / bytes | Compact words / bytes |
+| --- | --- | --- |
+| 64 two-vector frame slots | 196608 / 786432 | 512 / 2048 |
+| 16 memo vector slots | 32768 / 131072 | 64 / 256 |
+| 64 scalar continuation slots | 16384 / 65536 | 1024 / 4096 |
+| Backing total | 245760 / 983040 | 1600 / 6400 |
+
+Frame f starts at `f*3072` production words (`f*8` compact). Each of its two
+vector banks has 1536 words (4 compact). Memo slot s starts at
+`196608+s*2048` (compact `512+s*4`). Scalar slot f starts at
+`229376+f*256` (compact `576+f*16`). Full occupied slot reservations, including
+padding, count as live payload, not merely returned components. Production
+shadow frame/memo/scalar allocations always use the production slot sizes.
+Physical reserved backing is reported separately; it is the first part of
+the existing frontier RAM, not an extra inferred payload array.
+The remaining 65536 production bytes of the admitted 1 MiB ceiling must cover
+**all** workspace descriptor registers, masks, returned data, resident cache,
+primitive state and connected arithmetic buffers. These are not established
+as fitting merely by reserving this partition.
+
+Workspace control captures a native model and generation or invalidates.
+It is serialized behind accepted transactions and stalled responses. Start
+clears all frame/memo/scalar visibility; invalidation releases live slots.
+The eight request ops are push-frame (0), pop-frame (1), update-continuation
+(2), complete-vector-store (3), vector-pair-read (4), memo-lookup (5),
+scalar-word-write (6), and scalar-word-read (7).
+Requests capture model, generation, domain, layer, token, vector length,
+frame/slot handle, bank, aligned component, scalar index, data and a 256-bit
+continuation. Domain 0 is text, 1 vision, 2 audio; 3 rejects. Text lengths
+equal the selected H, vision/audio lengths are 768/1024, or 8 in compact mode.
+Text layer is 0..L, vision 0..16, audio 0..12; token is 0..131071.
+Memo tags include every descriptor field affecting the vector
+(model, generation, domain, layer, token, length).
+
+Push allocates the next of 64 frame slots, invalidates both vectors and its
+scalar visibility, writes the eight continuation words, and commits depth
+only after all backing responses. Rank is `text_layer+18`, `vision_layer+1`,
+or `audio_layer+1`: child pushes must strictly decrease rank. This enforces
+bounded dependency descent; it does not implement the neural operator that
+must request the correct child. Pop reads the top continuation from backing
+RAM, then releases both frame and scalar slots. Update writes only the top
+frame's continuation. Additional scalar words are individually valid only
+after acknowledged writes; unfilled scalar reads error rather than return
+RAM initialization. Only live frame handles are accessible.
+
+Vector store target 0 is a frame bank and target 1 a memo slot. It accepts
+exactly length/2 aligned 32-bit beats, checking first/last. The existing target
+loses visibility before the first beat; a malformed stream, backing error,
+reset or invalidation cannot commit partial payload. Vector read target 0
+requires a completed frame bank. Target 1 requires a completed memo slot and
+the complete matching tag; an old evicted handle cannot read its successor.
+Component must be even and below length.
+
+Memo lookup scans 16 occupied tags sequentially and returns a slot/hit, not a
+fabricated vector. Complete-vector memo stores first scan for an existing tag.
+An existing-tag replacement preserves the round-robin cursor. A new tag uses
+the cursor and advances it only after successful full-vector commit; evicting
+an occupied slot emits an eviction event when visibility is removed. A failed
+store leaves that slot empty. Lookup hits emit hit events; invalidation is not
+an eviction. Returned handles do not pin memo slots against later replacement.
+
+| Workspace/backing cycle or degenerate boundary | Behavior |
+| --- | --- |
+| Active reset | Every public output zero; frame, memo and scalar validity cleared without payload reset |
+| First released edge | Idle control/request readiness; no old-generation data becomes visible |
+| Control versus request | Control wins at ingress; neither bypasses a stalled result |
+| Request W0/W1 | Capture all fields, then validate before backing access |
+| Backing B0/B1/B2 | Capture request, synchronous RAM access, register actual response; no same-edge response consumption |
+| Frame depth 0/64 | Empty pop and 65th push error before RAM access; no depth wrap |
+| Dependency push | Strictly smaller registered rank; primitive iterations use no vector frame |
+| Vector first/last | Final beat's acknowledged write precedes visibility; malformed beat is not issued |
+| Memo cursor | Terminal comparison wraps 15 to 0; hit replacement does not advance |
+| Scalar/vector collisions | One backing operation outstanding; no simultaneous read/write collision |
+| Error and partial store | Drain accepted backing response, leave target unreadable, expose explicit error |
+| Stalled response | Data, descriptor, continuation, hit, slot and error remain stable |
+
+The workspace is required infrastructure for the genuine continuation/memo
+fallback, not evidence that fallback inference, regeneration, termination,
+full-system allocation or any acceptance case has executed.
+
 `anvil_en1_frontier` provides the ordinary token-major storage, not a complete
 replay controller. COMPACT is 0/1; it reserves 3 MiB of 32-bit payload RAM
 in production and 8192 bytes in compact mode. The compact reservation holds
 512 H=8 vectors, allowing ordinary 17-token cases; forcing a smaller frontier
 is a later replay-controller partition decision, not a change to arithmetic.
 Control op 0 starts a session with captured model, generation and context
-length; op 1 invalidates; op 2 freezes all further writes. Other ops reject.
+length; op 1 invalidates; op 2 freezes all further writes. Op 3 binds the
+released RAM to the fallback backing channel described above.
 Control acknowledgement reports padded_tokens, live_bytes, and fallback_needed.
 If the padded frontier exceeds its reservation, release the previous frontier,
 clear visibility, and return fallback_needed with zero ordinary live bytes.
