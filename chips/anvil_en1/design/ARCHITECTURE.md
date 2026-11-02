@@ -471,3 +471,59 @@ receipt or verification result exists. The retained failure-0001 and
 `.vulcan/engineering/run-0001/attempt-0003` interruption were neither changed
 nor claimed repaired. This is a bounded saved continuation, not a ready
 handoff or engineering acceptance.
+
+## Saved continuation: connected frontier task execution
+
+`rtl/anvil_en1_frontier_execute.sv` now connects real frontier tasks to the
+existing embedding/PLE, asymmetric text layer, local-anchor collector and
+final-logit engines. It instantiates the actual frontier and local ring,
+arbitrates tagged owner/layer frontier reads, and routes the canonical cache
+metadata/fetch interfaces to the active anchor or attention consumer. It
+does not duplicate logical owner selection or issue external KV commands.
+
+Original token reads choose each token's native modality from its placeholder
+identity within the captured text/image/audio domain. Text tokens in mixed
+jobs remain ordinary text; modality placeholders request the internal feature
+producer rather than host-generated embeddings. Extra immutable token reads
+are real original-input traffic, not reported KV savings. Weight and original
+input commands are multiplexed to one enclosing arbiter client; the enclosing
+top must still arbitrate this client with owner replay and native encoders.
+
+Input fill and every prefix output are checked as complete ascending H-vectors
+and retained before frontier writes. Prefix writes advance the entering layer
+tag, while last-token execution keeps the frozen owner frontier untouched.
+The retained upper-layer source carries generation/token/layer tags. PLE is
+reconstructed from the original input, not from a later hidden state. Final
+output executes actual RMS normalization, tied projection and logit softcap,
+with task completion after the real final accepted logit.
+
+Session binding/invalidation releases old frontier and ring visibility.
+Fallback task execution releases both ordinary allocations before binding the
+same frontier RAM to the existing workspace backing channel. It then requests
+the real internal numerical Eval producer and checks its entire result stream
+plus completion. That producer is still absent; the fallback call boundary
+and backing binding do not constitute numerical Eval or a completion claim.
+Pending control cannot block owner reads required to finish an accepted task.
+
+The executor adds one Hmax bank and one P bank, reserving 5632 production
+bytes or 24 compact bytes. Selected H/P allocations include receive lifetime;
+frontier, ring and anchor live/physical/metadata figures are exposed separately.
+Private numerical leaf banks and scalar/control state still require whole-
+system phase-overlay/liveness integration. No complete payload ratio, inferred
+M20K resource fit or physical clock period is established.
+
+Remaining implementation is the explicit numerical continuation-stack/memo
+Eval engine (including historical dependencies, eviction/regeneration and the
+single-token path), native vision/audio producers, complete workspace overlay
+and live ledger, and compatible top/session/sole-arbiter/CSR integration. The
+new executor must be connected to those real producers, cache and replay
+before a complete design handoff.
+
+Only the new executor and directly related SPEC/ARCHITECTURE documentation
+were changed in this increment. Tools used were glob, view, rg and apply_patch.
+No command, installation, static elaboration, simulation, synthesis or
+numerical probe ran. The one reserved fast Designer elaboration remains
+unused; no preparation receipts exist. Parent and verification sources,
+acceptance commands, runtime metadata and retained failure-0001/attempt-0003
+evidence were preserved. No repair of that ownership-guard interruption or
+engineering acceptance is claimed. This increment is **continue**, not ready.

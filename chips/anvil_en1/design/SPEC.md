@@ -132,6 +132,85 @@ in the allocator ledger.
 | Error | Stop issuing tasks; publish explicit done error after the failed outstanding task retires |
 | Completion/reset | Stable done until accepted; no completion on creation edge; active reset zeroes every output and task validity |
 
+### Frontier task execution boundary
+
+`anvil_en1_frontier_execute` binds the schedule to the existing numerical
+embedding/PLE, text-layer, anchor-materialization and final-logit engines.
+Its idle control channel captures model, precision, generation, tokens,
+original token-image base, weight-image base and modality selection. Task
+descriptors must match this captured session. Control invalidation and a
+new binding first release the old frontier and ring, and clear retained
+vector visibility. The enclosing top must already have drained cache/replay
+and external memory before accepting this session control. This executor is
+not a substitute for that whole-system barrier.
+
+Control modality is a permitted domain, not a forced type for every token:
+0 text, 1 image+text, 2 audio+text, 3 image/audio/text. Before each original
+input/PLE reconstruction the executor performs a registered original token
+read and selects text, image or audio from the pinned placeholder identity.
+A placeholder outside the permitted domain errors before encoder work.
+The embedding engine still performs its own validated immutable token read.
+Both accepted reads count as original-input traffic; duplicate original-input
+reads are not avoided KV transfers.
+
+The executor contains the frontier and ring. The canonical cache channels
+are selected between the anchor and layer engines for the entire accepted
+task, including stalled responses. Owner replay reaches the same frontier
+through a separately registered read arbiter and the same ring through its
+tagged read port. Owner frontier reads have ingress priority over layer
+source reads; an accepted read retains its routing owner until response
+acceptance. There is no external KV address interpretation.
+Pending executor control closes task ingress, not the owner reads needed
+to finish an already accepted numerical task. Otherwise a requested drain
+could deadlock that task's outstanding cache miss.
+
+Tasks 1, 3 and 5 reconstruct original-input-derived PLE with the actual
+embedding engine. Its complete input and PLE streams are checked before
+numerical layer start. For input fill, the H-vector is retained then written
+to frontier layer 0. For text-layer tasks the reconstructed original H-vector
+is drained, not mistaken for the current layer input. Combined PLE is held
+in a P-bank; entering hidden sources use the tagged frontier or the complete
+retained last-token vector according to the captured schedule descriptor.
+The text engine computes its complete output before emitting components.
+The executor checks and retains all H output components before starting any
+frontier write. A prefix write commits entering layer `layer+1`; last-token
+tasks never overwrite the frozen frontier. Retained-vector tags include
+generation, token and entering layer.
+
+Task 0 configures both real ordinary storage leaves. Task 2 runs actual
+anchor materialization. Task 4 freezes the frontier. Task 6 starts actual
+final RMS normalization, tied vocabulary projection and softcap; completion
+follows the last accepted **logit**, not merely the hidden-vector stream.
+Task 7 releases both ordinary stores before binding the frontier RAM to
+fallback backing and calling the internal numerical Eval producer at
+`Eval(L,N-1)`. Eval is an internal RTL producer, not a host-provided answer.
+The executor exposes the bound backing channel for the real continuation/
+memo workspace. The Eval producer remains required implementation elsewhere;
+neither this transport nor binding RAM implements or certifies fallback.
+
+Two synchronous private banks reserve `2*Hmax+2*P` bytes: 5632 production,
+24 compact. Live payload includes the full selected H-vector during receive
+and through its last use, and P during receive/committed layer use. Raw
+original H is not allocated during PLE-only reconstruction. All frontier,
+ring and anchor payload/reservation/metadata outputs are exposed separately.
+These banks and numerical child state still require integration into the
+complete phase-overlaid ledger; the executor does not claim that ledger
+or the production resource/timing bounds are already established.
+
+| Executor cycle/degenerate boundary | Behavior |
+| --- | --- |
+| Control/task E0/E1/E2 | Capture, validate, then start registered real work; tasks cannot use live descriptor ports |
+| N=1, first/last | Check exactly H/P components; paired frontier writes have first and last on the only beat when applicable |
+| Source arbitration | Capture requester/lane, issue one tagged read, hold routing through response acceptance |
+| Full-vector receive | Exact ascending indices and last flag plus successful engine done are required before visibility |
+| Prefix overwrite | Begin frontier write only after the full numerical output and successful engine done |
+| Upper shared layers | Consume the tagged previous last-token result, never an overwritten owner frontier |
+| Memory/cache stalls | Child selection and descriptors remain fixed until the actual completion retires |
+| Invalid task | Error 6 for model/precision; 5 for ranges; 7 for session/source-state mismatch, before offending engine access |
+| Error | Drain accepted child completion; partial vectors remain unreadable and no dependent task starts |
+| Mode/control transition | Release ordinary ring/frontier before fallback binding or new ordinary configuration |
+| Reset | Zero all public outputs and clear visibility; no asynchronous payload RAM reset writes |
+
 ### Complete local-anchor materialization
 
 `anvil_en1_anchor_materialize` executes one ordinary schedule op 2 for one
