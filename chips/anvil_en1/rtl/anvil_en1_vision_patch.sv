@@ -258,6 +258,8 @@ module anvil_en1_vision_patch (
             source_data_hold <= 0;
             source_output_hold <= 0;
         end else begin
+            if (state == PROJECTION_START && projection_ready)
+                source_failure_hold <= 0;
             case (source_state)
                 S_IDLE: if (state == PROJECTION_WAIT && projection_source_valid) begin
                     source_index_hold <= projection_source_index;

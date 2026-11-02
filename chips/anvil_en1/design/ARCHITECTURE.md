@@ -5,7 +5,75 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected resumable text Eval execution
+## Current saved increment: native clipped linears and vision input/QKV
+
+`rtl/anvil_en1_bf16_clamp.sv` implements registered sign/magnitude comparison
+and clamp selection, including signed zero, subnormals, infinities, canonical
+value NaNs and explicit rejection of malformed bounds. Its declared scalar
+state is 75 bits / 10 byte-rounded bytes. It stores no vector or weight image.
+
+`rtl/anvil_en1_clipped_projection.sv` validates the real native clipped-matrix
+schema and the four immutable clipping-buffer entries, reads their actual
+BF16 values, and executes the existing projection through individually
+acknowledged, input-clamped source components. The BF16 completed row is
+output-clamped. The controller has 648 declared bits / 81 byte-rounded bytes,
+with its scalar clamp, directory reader, projection/weight decoder and
+floating-point child state additional. This path is common to vision/audio
+clipped linears, not a text-precision or Q4-packing change. It revalidates the
+directory for each tensor; its considerable repeated weight traffic and
+latency are not claimed as savings.
+
+`rtl/anvil_en1_vision_patch.sv` computes a native 768-component patch from
+actual immutable preprocessed BF16 pixels, signed coordinates and the pinned
+patch/position tensors. It validates the captured grid extent before input
+access, preserves input row order, preprocesses pixels with the prescribed
+BF16 boundaries, executes genuine ascending-column projection, and combines
+the learned x/y position rows. Padding suppresses only position addition here,
+not patch projection; later encoder/pool masking remains required. There is
+no input/output vector bank or feature archive. Its declared controller state
+is 1799 bits / 225 byte-rounded bytes, including pending read words, source
+operands, projection result and held output. The directory, projection,
+position weight reader and floating-point child registers are additional.
+Failed original pixel reads propagate external error 2 after retirement.
+
+`rtl/anvil_en1_vision_qkv_tile.sv` connects the real learned input RMSNorm,
+clipped native Q/K/V projection, learned Q/K or unscaled V head RMSNorm,
+and theta-100 axial rotation. It computes one aligned adjacent BF16 pair for
+one of the twelve native heads; no text owner alias or projection is used.
+Q/K rotation pairs within separate x/y 32-component partitions, not across
+the complete 64-component head. `rtl/anvil_en1_rotary_pair.sv` adds the
+default-off SIGNED_POSITION capability; unsigned text behavior is retained,
+while native negative padding coordinates are converted and rotated as -1,
+never silently clamped to zero.
+
+The tile charges complete 1536-byte input and 128-byte head banks from their
+allocation until final result acceptance. Both arrays have one serialized
+synchronous write/read port, no asynchronous payload reset, and explicit
+committed visibility. Head-norm output overwrites only its already consumed
+input component. Its declared controller state is 682 bits / 86 byte-rounded
+bytes, with all numerical child state additional. The bank reservation of
+1664 bytes is logical payload capacity, **not** measured FPGA M20K utilization
+or a claim that only those physical bits are used. Physical block rounding,
+unused capacity, connected hierarchy, whole-system liveness and <=10 ns
+timing require the future source-matched independent/tool-execution evidence.
+
+Pinned upstream operation inspection was limited to clipping, patch
+preprocessing/positions, axial vision attention/norm semantics and surrounding
+encoder/pooling ordering. It is not inspection of production checkpoints or a
+numerical result. Source additions are saved, but native bidirectional layer
+dispatch and continuations, complete vision GeGLU/residual/pooling/modality
+projection, the full audio encoder, whole-system liveness/resource overlay and
+parent-compatible literal top/session/cache/replay/arbiter/CSR integration
+remain required. The design is **continue**, not ready for independent Verifier.
+
+Tools used in this increment: glob, view, rg, web_fetch and apply_patch.
+No command, installation, static elaboration, simulation, synthesis or
+experiment ran. The reserved fast static check remains unused and there are
+no preparation receipts. Parent RTL, verification sources, runtime-owned
+metadata and the retained earlier ownership-guard interruption were preserved;
+no repair of that interruption or hardware acceptance is claimed.
+
+## Prior increment: connected resumable text Eval execution
 
 `rtl/anvil_en1_replay_execute.sv` connects the bounded Eval scheduler/workspace
 to genuine input reconstruction and the new

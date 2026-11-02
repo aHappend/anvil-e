@@ -168,7 +168,18 @@ module anvil_en1_clipped_projection #(
     assign done_valid = rst_n && state == RESPONSE;
     assign done_data = rst_n ? output_hold : 32'd0;
     assign done_error = rst_n ? error_hold : 4'd0;
-    assign controller_bytes = rst_n ? 64'd81 : 64'd0;
+    localparam integer CONTROLLER_BITS =
+        $bits(state) + $bits(source_state) + $bits(image_index) +
+        $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
+        $bits(image_base_hold) + $bits(matrix_base) + $bits(matrix_bytes) +
+        $bits(bound_address) + $bits(kind_hold) + $bits(layer_hold) +
+        $bits(row_hold) + $bits(matrix_rows) + $bits(matrix_columns) +
+        $bits(matrix_stride) + $bits(input_minimum) + $bits(input_maximum) +
+        $bits(output_minimum) + $bits(output_maximum) + $bits(bound_word) +
+        $bits(source_index_hold) + $bits(output_hold) + $bits(source_data_hold) +
+        $bits(clipped_source_hold) + $bits(projected_hold) + $bits(bound_error_hold) +
+        $bits(source_error_hold) + $bits(clipped_source_error) + $bits(error_hold);
+    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

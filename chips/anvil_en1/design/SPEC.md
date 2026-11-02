@@ -5,6 +5,87 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Bidirectional native vision attention and replay boundary
+
+`anvil_en1_vision_attention_head` executes one native 64-component head over
+all supplied patches, including keys after the query's patch index. There is
+no text causal/window mask, grouped-query alias, text owner metadata or
+head-dimension scaling: pinned vision scaling is 1.0. Its mask channel returns
+whether each key's original coordinates are nonpadding. Padded query patches
+still execute attention; the pool, not the head, suppresses their final encoder
+features. Immutable coordinates and source vectors must survive all three
+softmax passes and every replay yield.
+
+The scalar algorithm shares the existing binary32/exp/division primitives.
+Pass 0 computes the maximum score and valid-key count. Pass 1 recomputes the
+same scores and sums max-subtracted exponentials. Pass 2 recomputes scores,
+materializes BF16 probabilities, and accumulates one BF16 output component
+in ascending key order. Pass 2 repeats for components 0..63, avoiding a live
+score/probability tensor or vector accumulator. Q/K dot products use ascending
+components, separate binary32 multiply/add, and no intermediate BF16 score
+rounding. Only the completed value reduction narrows to BF16. An all-masked
+head emits zero components without reading Q/K/V or dividing by zero, matching
+the established explicit mask convention; the enclosing image session must
+reject an image without valid output soft tokens.
+
+Q/K/V service requests specify model, precision, native layer, patch, selector
+(0 Q / 1 K / 2 V), head and even aligned component 0..62. The returned 32-bit
+word contains the actual adjacent BF16 pair, low component first. Every
+accepted service response is registered before lane selection and arithmetic.
+The service must compute from immutable on-chip entering-layer vectors,
+never an externally supplied generated feature.
+
+In `REPLAY=1`, each service request first publishes a dependency decision.
+Action 0 means the source vector is available, 1 requests a drained yield,
+and 2/3 reject with cache-state error 7. The consumer must commit the current
+query vector as well as historical keys; query projection can itself require
+an Eval child. A yield happens only before accepting a service request, with
+mask/arithmetic/service transactions all retired. `checkpoint_valid` holds the
+complete 512-bit numerical continuation until acceptance, then the head
+returns idle without a false done. An enclosing layer dispatcher must store
+it in acknowledged scalar continuations before executing a smaller-rank
+vision Eval dependency. Resume revalidates the complete descriptor/generation,
+then reacquires the same dependency decision and service request. No unfinished
+reduction, accepted output, or BF16 probability is discarded/recomputed with a
+different reduction order.
+
+| Checkpoint bits | Meaning |
+| --- | --- |
+| 511:480 | Magic 0x454e3156 |
+| 479:448 | Session generation |
+| 447:446 / 445:444 | Native model / precision |
+| 443:436 / 435:432 | Vision layer / query head |
+| 431:400 / 399:368 | Query patch / patch count |
+| 367:336 / 335:304 | Current key patch / valid keys counted |
+| 303:302 / 301:296 / 295:290 | Pass / dot component / output component |
+| 289:288 | Pending Q/K/V selector |
+| 287:272 / 271:256 | BF16 query component / BF16 probability |
+| 255:224 / 223:192 | Binary32 dot accumulator / maximum |
+| 191:160 / 159:128 / 127:96 | Binary32 exponential sum / inverse / value accumulator |
+| 95:0 | Reserved zero |
+
+`REPLAY=0` ignores resume inputs and never emits a dependency/yield. Both
+parameter values use exactly the same arithmetic and native production
+geometry. Invalid parameter values explicitly diagnose; no compact vision
+geometry or synthetic head result is introduced.
+
+| Vision head boundary | Registered behavior |
+| --- | --- |
+| H0/H1/H2 | Capture complete descriptor; validate model/precision/layer/head/count/query; first mask/restore work only after validation |
+| Mask M0/M1/M2 | Accept request; register accepted response; then decide skip/start-dot; invalid mask responses explicitly fail |
+| Service S0/S1/S2 | Dependency decision precedes registered request; register pair/error; select the requested lane on a later edge |
+| Replay yield | No outstanding response; hold checkpoint; acceptance returns idle, not successful done |
+| Resume | Match generation/model/precision/layer/head/query/count, zero reserved bits and legal traversal/selector before source work |
+| N=1 | Exactly one permitted key per pass; query patch 0; component 63 is the final output |
+| Output/completion | Stable component/index/last while stalled; advance only on acceptance; done follows acceptance of component 63 |
+| Reset/error | All public outputs zero during reset; retire accepted child responses, stop new work, hold explicit failure completion |
+
+The connected service executor and native layer/continuation dispatcher remain
+required below this boundary. The head's declared controller bytes include
+its held 512-bit resume word and scalar operands; floating-point, exponential
+and reciprocal child state are additional. There is no vector bank in this
+head. This interface freeze is not functional or timing evidence.
+
 ## Native clipped-linear and vision-input implementation boundary
 
 The next owned increment implements scalar BF16 clamp, a real directory-driven
@@ -940,6 +1021,9 @@ No reassociation, compression tolerance, or fallback-specific tolerance exists.
 | Operation | Input and internal arithmetic | Materialized output |
 | --- | --- | --- |
 | Matrix projection | BF16 x, BF16 or decoded binary32 w; binary32 multiply then ascending-column binary32 add | BF16 vector |
+| Native clipped linear | clamp each BF16 input to real BF16 input bounds; same matrix projection; clamp the BF16 row to real BF16 output bounds | BF16 vector |
+| Vision pixel preprocessing | binary32 pixel-0.5, BF16 round, binary32 multiply 2, BF16 round; flatten channel/y/x | BF16 projection input |
+| Vision patch position | real patch matrix projection; binary32 sum of BF16 x/y table values and BF16 round; binary32 patch+position sum and BF16 round | BF16 encoder input |
 | RMSNorm | binary32 square, ascending-component sum, binary32 mean + binary32 epsilon; reciprocal square root; binary32 x*inv followed by learned scale if present | BF16 vector |
 | LayerNorm (audio subsampling) | ascending-component binary32 mean and centered variance, epsilon, inverse root, learned scale; no bias | BF16 vector |
 | Text embedding | matrix row decode, multiply by BF16_RNE(sqrt(H)) | BF16 vector |

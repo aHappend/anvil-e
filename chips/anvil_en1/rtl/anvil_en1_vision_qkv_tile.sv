@@ -251,24 +251,20 @@ module anvil_en1_vision_qkv_tile (
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
 
     always @(posedge clk) begin
-        if (normalized_accept && normalized_well_formed) begin
-            if (input_norm)
-                input_payload[normalized_index[9:0]] <= normalized_data;
-            else
-                head_payload[normalized_index[5:0]] <= normalized_data;
-        end
-        if (projection_accept && projection_error == 0)
+        if (normalized_accept && normalized_well_formed && input_norm)
+            input_payload[normalized_index[9:0]] <= normalized_data;
+        if (normalized_accept && normalized_well_formed && !input_norm)
+            head_payload[normalized_index[5:0]] <= normalized_data;
+        else if (projection_accept && projection_error == 0)
             head_payload[projection_index] <= projection_data[15:0];
-        if (rst_n && src_state == SRC_READ) begin
-            if (src_is_head)
-                head_q <= head_payload[src_index_hold[5:0]];
-            else
-                input_q <= input_payload[src_index_hold[9:0]];
-        end
+        if (rst_n && src_state == SRC_READ && !src_is_head)
+            input_q <= input_payload[src_index_hold[9:0]];
         if (rst_n && state == PAIR_FIRST_READ)
             head_q <= head_payload[pair_base];
-        if (rst_n && state == PAIR_SECOND_READ)
+        else if (rst_n && state == PAIR_SECOND_READ)
             head_q <= head_payload[{pair_base[5], 1'b1, pair_base[3:0]}];
+        else if (rst_n && src_state == SRC_READ && src_is_head)
+            head_q <= head_payload[src_index_hold[5:0]];
     end
 
     always @(posedge clk or negedge rst_n) begin
@@ -330,6 +326,10 @@ module anvil_en1_vision_qkv_tile (
             scale_error_hold <= 0;
             scale_failure_hold <= 0;
         end else begin
+            if (state == NORM_START && norm_ready) begin
+                scale_error_hold <= 0;
+                scale_failure_hold <= 0;
+            end
             case (scale_state)
                 SCALE_IDLE: if (state == NORM_WAIT && norm_scale_valid) begin
                     scale_index_hold <= norm_scale_index;
