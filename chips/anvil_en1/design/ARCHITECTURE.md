@@ -5,7 +5,85 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: replay vision projection/branch physical overlay
+## Current saved increment: replay audio residual/working physical overlay
+
+`rtl/anvil_en1_replay_audio_layer.sv` now owns two synchronous BF16
+1024-component banks shared by convolution and second feed-forward.
+The two children export optional full-address RAM ports through
+`EXTERNAL_VECTOR_RAM=0/1`; their standalone default retains local storage.
+The registered wrapper owner grants both banks at child start and releases
+them only on accepted child done. Convolution outputs reach the replay
+frame through acknowledged pair writes before feed-forward reloads them.
+Existing arithmetic, BF16 boundaries and callback capture cycles remain
+unchanged. Feed-forward's simultaneous output-branch bank and convolution's
+GLU-child bank remain separate.
+
+Full-address, phase, owner, concurrent-port and overlapping-live checks
+suppress invalid shared accesses and retain error 7 without replacing
+earlier concrete child failures. Payload RAM uses enabled-edge synchronous
+read/write ports without an initialization sweep. Shared read/owner/fault
+registers are included in controller accounting.
+
+This removes 4096 bytes of duplicate physical payload declarations for
+this worker pair. Child live/shadow reservations remain complete; sharing
+declarations is not claimed as measured live savings, M20K inference,
+resource fit or timing closure. The local two-bank grant does not complete
+whole-system frame/native-scratch/fallback grant enforcement.
+
+Changed those three RTL files, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch only. No command, static check,
+simulation, synthesis, installation or experiment ran; there is no new
+preparation receipt. Parent, verification and runtime files remain untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+Remaining: whole-system grant-time ordinary/native-scratch/fallback limits,
+including forced-short-context production-shadow limits, and remaining
+physical phase overlays. Then run the reserved fast static elaboration
+check and immediately hand the completed design to independent Verifier.
+Not ready.
+
+## Prior saved increment: context-bounded memo grants and eviction
+
+`rtl/anvil_en1_replay_workspace.sv` now admits memo replacements against
+an explicit `min(128 KiB, B/64)` production-context payload envelope before
+charging pending storage or starting any copy/stream. Actual and
+production-shadow candidates must both fit. An over-budget request scans
+the existing 16 slots from the round-robin cursor, invalidates completed
+victims and updates all actual/shadow/native subtotals before rechecking.
+It preserves the destination and current frame source. Eviction emits the
+real telemetry event and has no dirty writeback; subsequent misses use the
+existing exact Eval computation. It does not reject legal replacements
+merely because their optional memo pool is full.
+
+The workspace captures/validates the complete text-context length through
+the connected Eval scheduler. Three registered budget stages compute the
+model's padded local/global baseline terms and scaled/clamped envelope.
+Text/reconstructed-feature token descriptors must be inside that context.
+The smallest legal envelopes exceed every legal single result-vector size;
+exhausted scans or subtotal underflow therefore indicate inconsistent
+workspace state, not permission to spill. Added registers are counted.
+The physical pool size and numeric operation boundaries are unchanged.
+
+This closes only the opportunistic memo grant/eviction portion, not the
+whole-system allocation limiter. Frame and suspended native-worker
+reservations still need complete grant-time treatment and, where needed,
+further streaming/rematerialization. Existing completion guards remain
+failure observers, not storage grants or acceptance.
+
+Changed `rtl/anvil_en1_replay_workspace.sv`,
+`rtl/anvil_en1_eval_schedule.sv`, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch only. No command, static check,
+simulation, synthesis, installation or experiment ran; there is no new
+preparation receipt. Parent, verification and runtime files remain untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+Remaining: whole-system grant-time ordinary/native-scratch/fallback limits,
+including forced-short-context production-shadow limits, and remaining
+physical phase overlays. Then run the reserved fast static elaboration
+check and immediately hand the completed design to independent Verifier.
+Not ready.
+
+## Prior saved increment: replay vision projection/branch physical overlay
 
 `rtl/anvil_en1_replay_vision_layer.sv` now physically reuses its
 768-component projection-staging bank as the post worker's branch bank.

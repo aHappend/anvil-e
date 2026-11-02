@@ -1,4 +1,6 @@
-module anvil_en1_audio_feedforward (
+module anvil_en1_audio_feedforward #(
+    parameter integer EXTERNAL_VECTOR_RAM = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -37,6 +39,10 @@ module anvil_en1_audio_feedforward (
     output wire intermediate_event,
     output wire [31:0] intermediate_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire [1:0] vector_ram_write, vector_ram_read,
+    output wire [63:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [31:0] vector_ram_wdata,
+    input wire [31:0] vector_ram_rdata,
     output wire [63:0] controller_bytes, norm_controller_bytes, clamp_controller_bytes,
     output wire [63:0] mlp_controller_bytes, down_controller_bytes,
     output wire [63:0] down_clamp_controller_bytes,
@@ -64,13 +70,17 @@ module anvil_en1_audio_feedforward (
     reg post_phase, vector_allocated, raw_visible, working_visible, branch_visible;
     reg receive_bad, source_error_hold, bank_error, bank_branch_hold;
     reg [15:0] source_hold, clip_input_hold, clip_output_hold, mlp_hold;
-    reg [15:0] raw_q, branch_q, callback_q, bank_data, residual_hold, output_hold;
+    reg [15:0] branch_q, bank_data, residual_hold, output_hold;
+    wire [15:0] raw_q, working_q;
+    wire [15:0] callback_q = bank_branch_hold ? branch_q : working_q;
     reg [31:0] fp_a, fp_b, fp_value;
     reg [2:0] fp_op;
     reg [3:0] child_error_hold, error_hold;
-    (* ramstyle = "M20K", nomem2reg *) reg [15:0] residual [0:1023];
-    (* ramstyle = "M20K", nomem2reg *) reg [15:0] working [0:1023];
     (* ramstyle = "M20K", nomem2reg *) reg [15:0] branch [0:1023];
+    initial begin
+        if (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_VECTOR_RAM must be 0 or 1");
+    end
 
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     wire mlp_selected = rst_n && (state == MLP_START || state == MLP_WAIT);
@@ -169,40 +179,58 @@ module anvil_en1_audio_feedforward (
     wire callback_ready = state == NORM_WAIT ? norm_source_rsp_ready : mlp_source_rsp_ready;
     wire mlp_tag_good = mlp_generation == generation_hold && mlp_token == token_hold &&
         mlp_model == model_hold && mlp_mode == mode_hold && mlp_layer == layer_hold;
+    wire [1:0] bank_write = {rst_n && !post_phase &&
+        (state == CLIP_STORE || (state == NORM_WAIT && norm_output_valid &&
+            norm_beat_good && !receive_bad)), rst_n && state == INPUT_STORE};
+    wire [1:0] bank_read = {rst_n &&
+        (state == NORM_WAIT || state == MLP_WAIT) &&
+            source_state == S_READ && !bank_branch_hold,
+        rst_n && ((state == CLIP_READ && !post_phase) || state == FINAL_READ)};
+    wire [63:0] bank_waddr = {
+        state == CLIP_STORE ? index_hold : norm_output_index, index_hold};
+    wire [63:0] bank_raddr = {bank_index, index_hold};
+    wire [31:0] bank_wdata = {
+        state == CLIP_STORE ? clip_output_hold : norm_output_data, source_hold};
+    assign vector_ram_write = EXTERNAL_VECTOR_RAM ? bank_write : 2'd0;
+    assign vector_ram_read = EXTERNAL_VECTOR_RAM ? bank_read : 2'd0;
+    assign vector_ram_waddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_waddr : 64'd0;
+    assign vector_ram_raddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_raddr : 64'd0;
+    assign vector_ram_wdata = rst_n && EXTERNAL_VECTOR_RAM ? bank_wdata : 32'd0;
+    generate if (EXTERNAL_VECTOR_RAM == 1) begin : external_vectors
+        assign raw_q = vector_ram_rdata[15:0];
+        assign working_q = vector_ram_rdata[31:16];
+    end else begin : local_vectors
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] residual [0:1023];
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] working [0:1023];
+        reg [15:0] residual_read_q, working_read_q;
+        assign raw_q = residual_read_q;
+        assign working_q = working_read_q;
+        always @(posedge clk) begin
+            if (bank_write[0] && bank_waddr[31:0] < 1024)
+                residual[bank_waddr[9:0]] <= bank_wdata[15:0];
+            if (bank_write[1] && bank_waddr[63:32] < 1024)
+                working[bank_waddr[41:32]] <= bank_wdata[31:16];
+            if (bank_read[0] && bank_raddr[31:0] < 1024)
+                residual_read_q <= residual[bank_raddr[9:0]];
+            if (bank_read[1] && bank_raddr[63:32] < 1024)
+                working_read_q <= working[bank_raddr[41:32]];
+        end
+    end endgenerate
     always @(posedge clk) begin
-        if (rst_n && state == INPUT_STORE)
-            residual[index_hold[9:0]] <= source_hold;
-        if (rst_n && state == CLIP_READ) begin
-            if (post_phase)
-                branch_q <= branch[index_hold[9:0]];
-            else
-                raw_q <= residual[index_hold[9:0]];
-        end
-        if (rst_n && state == CLIP_STORE) begin
-            if (post_phase)
-                branch[index_hold[9:0]] <= clip_output_hold;
-            else
-                working[index_hold[9:0]] <= clip_output_hold;
-        end
+        if (rst_n && state == CLIP_READ && post_phase)
+            branch_q <= branch[index_hold[9:0]];
+        if (rst_n && state == CLIP_STORE && post_phase)
+            branch[index_hold[9:0]] <= clip_output_hold;
         if (rst_n && state == NORM_WAIT && norm_output_valid &&
-            norm_beat_good && !receive_bad) begin
-            if (post_phase)
-                branch[norm_output_index[9:0]] <= norm_output_data;
-            else
-                working[norm_output_index[9:0]] <= norm_output_data;
-        end
+            norm_beat_good && !receive_bad && post_phase)
+            branch[norm_output_index[9:0]] <= norm_output_data;
         if (rst_n && state == MLP_STORE)
             branch[index_hold[9:0]] <= mlp_hold;
-        if (rst_n && (state == NORM_WAIT || state == MLP_WAIT) && source_state == S_READ) begin
-            if (bank_branch_hold)
-                callback_q <= branch[bank_index[9:0]];
-            else
-                callback_q <= working[bank_index[9:0]];
-        end
-        if (rst_n && state == FINAL_READ) begin
-            raw_q <= residual[index_hold[9:0]];
+        if (rst_n && (state == NORM_WAIT || state == MLP_WAIT) &&
+            source_state == S_READ && bank_branch_hold)
+            branch_q <= branch[bank_index[9:0]];
+        if (rst_n && state == FINAL_READ)
             branch_q <= branch[index_hold[9:0]];
-        end
     end
     assign start_ready = rst_n && state == IDLE;
     assign source_valid = rst_n && state == SOURCE_SEND;
@@ -228,7 +256,8 @@ module anvil_en1_audio_feedforward (
     assign weight_read_event = cmd_valid && cmd_ready;
     assign weight_read_bytes = weight_read_event ? 32'd4 : 32'd0;
     assign vector_live_bytes = rst_n && vector_allocated ? 64'd6144 : 64'd0;
-    assign vector_physical_bytes = rst_n ? 64'd6144 : 64'd0;
+    assign vector_physical_bytes = rst_n ?
+        (EXTERNAL_VECTOR_RAM ? 64'd2048 : 64'd6144) : 64'd0;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) + $bits(layer_hold) +
@@ -238,7 +267,7 @@ module anvil_en1_audio_feedforward (
         $bits(branch_visible) + $bits(receive_bad) + $bits(source_error_hold) +
         $bits(bank_error) + $bits(bank_branch_hold) + $bits(source_hold) +
         $bits(clip_input_hold) + $bits(clip_output_hold) + $bits(mlp_hold) +
-        $bits(raw_q) + $bits(branch_q) + $bits(callback_q) +
+        (EXTERNAL_VECTOR_RAM ? 0 : 32) + $bits(branch_q) +
         $bits(bank_data) + $bits(residual_hold) + $bits(output_hold) +
         $bits(fp_a) + $bits(fp_b) + $bits(fp_value) + $bits(fp_op) +
         $bits(child_error_hold) + $bits(error_hold);

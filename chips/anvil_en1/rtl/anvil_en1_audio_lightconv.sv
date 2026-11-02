@@ -1,4 +1,6 @@
-module anvil_en1_audio_lightconv (
+module anvil_en1_audio_lightconv #(
+    parameter integer EXTERNAL_VECTOR_RAM = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -39,6 +41,10 @@ module anvil_en1_audio_lightconv (
     output wire glu_replay_event,
     output wire [31:0] glu_replay_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire [1:0] vector_ram_write, vector_ram_read,
+    output wire [63:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [31:0] vector_ram_wdata,
+    input wire [31:0] vector_ram_rdata,
     output wire [63:0] controller_bytes, nested_controller_bytes
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, SOURCE_SEND = 2,
@@ -66,13 +72,17 @@ module anvil_en1_audio_lightconv (
     reg vector_allocated, raw_visible, working_visible, activation_phase;
     reg source_error_hold, receive_bad, bank_error;
     reg [15:0] source_hold, conv_hold, work_hold, output_hold;
-    reg [15:0] raw_q, work_q, callback_q, bank_data, dependency_data;
+    reg [15:0] bank_data, dependency_data;
+    wire [15:0] raw_q, work_q;
+    wire [15:0] callback_q = work_q;
     reg [31:0] projection_hold, fp_a, fp_b, fp_value;
     reg [2:0] fp_op;
     reg [3:0] child_error_hold, error_hold;
     reg [3:0] dependency_child_error, dependency_error, dependency_failure;
-    (* ramstyle = "M20K", nomem2reg *) reg [15:0] residual [0:1023];
-    (* ramstyle = "M20K", nomem2reg *) reg [15:0] working [0:1023];
+    initial begin
+        if (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_VECTOR_RAM must be 0 or 1");
+    end
 
     wire glu_selected = rst_n && (dependency_state == D_START || dependency_state == D_WAIT);
     wire conv_selected = rst_n && !glu_selected &&
@@ -245,24 +255,44 @@ module anvil_en1_audio_lightconv (
         dependency_layer == layer_hold && dependency_generation == generation_hold &&
         dependency_token <= token_hold && dependency_channel == index_hold &&
         dependency_channel < 1024;
-    always @(posedge clk) begin
-        if (rst_n && state == INPUT_STORE)
-            residual[index_hold[9:0]] <= source_hold;
-        if (rst_n && state == CONV_STORE)
-            working[index_hold[9:0]] <= conv_hold;
-        if (rst_n && state == WORK_READ)
-            work_q <= working[index_hold[9:0]];
-        if (rst_n && state == WORK_STORE)
-            working[index_hold[9:0]] <= work_hold;
-        if (rst_n && state == NORM_WAIT && norm_output_valid &&
-            norm_beat_good && !receive_bad)
-            working[norm_output_index[9:0]] <= norm_output_data;
-        if (rst_n && (state == NORM_WAIT || state == PROJECTION_WAIT) &&
-            source_state == S_READ)
-            callback_q <= working[bank_index[9:0]];
-        if (rst_n && state == RESIDUAL_READ)
-            raw_q <= residual[index_hold[9:0]];
-    end
+    wire norm_store = rst_n && state == NORM_WAIT && norm_output_valid &&
+        norm_beat_good && !receive_bad;
+    wire callback_read = rst_n && (state == NORM_WAIT || state == PROJECTION_WAIT) &&
+        source_state == S_READ;
+    wire [1:0] bank_write = {rst_n &&
+        (state == CONV_STORE || state == WORK_STORE || norm_store),
+        rst_n && state == INPUT_STORE};
+    wire [1:0] bank_read = {rst_n && (state == WORK_READ || callback_read),
+        rst_n && state == RESIDUAL_READ};
+    wire [63:0] bank_waddr = {norm_store ? norm_output_index : index_hold, index_hold};
+    wire [63:0] bank_raddr = {callback_read ? bank_index : index_hold, index_hold};
+    wire [31:0] bank_wdata = {state == CONV_STORE ? conv_hold :
+        (state == WORK_STORE ? work_hold : norm_output_data), source_hold};
+    assign vector_ram_write = EXTERNAL_VECTOR_RAM ? bank_write : 2'd0;
+    assign vector_ram_read = EXTERNAL_VECTOR_RAM ? bank_read : 2'd0;
+    assign vector_ram_waddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_waddr : 64'd0;
+    assign vector_ram_raddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_raddr : 64'd0;
+    assign vector_ram_wdata = rst_n && EXTERNAL_VECTOR_RAM ? bank_wdata : 32'd0;
+    generate if (EXTERNAL_VECTOR_RAM == 1) begin : external_vectors
+        assign raw_q = vector_ram_rdata[15:0];
+        assign work_q = vector_ram_rdata[31:16];
+    end else begin : local_vectors
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] residual [0:1023];
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] working [0:1023];
+        reg [15:0] residual_read_q, working_read_q;
+        assign raw_q = residual_read_q;
+        assign work_q = working_read_q;
+        always @(posedge clk) begin
+            if (bank_write[0] && bank_waddr[31:0] < 1024)
+                residual[bank_waddr[9:0]] <= bank_wdata[15:0];
+            if (bank_write[1] && bank_waddr[63:32] < 1024)
+                working[bank_waddr[41:32]] <= bank_wdata[31:16];
+            if (bank_read[0] && bank_raddr[31:0] < 1024)
+                residual_read_q <= residual[bank_raddr[9:0]];
+            if (bank_read[1] && bank_raddr[63:32] < 1024)
+                working_read_q <= working[bank_raddr[41:32]];
+        end
+    end endgenerate
     assign start_ready = rst_n && state == IDLE;
     assign source_valid = !rst_n ? 1'b0 :
         (glu_selected ? glu_source_valid : state == SOURCE_SEND);
@@ -301,7 +331,8 @@ module anvil_en1_audio_lightconv (
     assign glu_replay_bytes = glu_replay_event ? 32'd2048 : 32'd0;
     assign vector_live_bytes = !rst_n ? 64'd0 :
         (vector_allocated ? 64'd4096 : 64'd0) + glu_live;
-    assign vector_physical_bytes = rst_n ? 64'd4096 + glu_physical : 64'd0;
+    assign vector_physical_bytes = rst_n ?
+        (EXTERNAL_VECTOR_RAM ? 64'd0 : 64'd4096) + glu_physical : 64'd0;
     assign nested_controller_bytes = rst_n ?
         conv_controller + glu_controller + glu_norm_controller +
         glu_projection_controller + glu_clamp_controller + norm_controller +
@@ -316,7 +347,7 @@ module anvil_en1_audio_lightconv (
         $bits(raw_visible) + $bits(working_visible) + $bits(activation_phase) +
         $bits(source_error_hold) + $bits(receive_bad) + $bits(bank_error) +
         $bits(source_hold) + $bits(conv_hold) + $bits(work_hold) + $bits(output_hold) +
-        $bits(raw_q) + $bits(work_q) + $bits(callback_q) + $bits(bank_data) +
+        (EXTERNAL_VECTOR_RAM ? 0 : 32) + $bits(bank_data) +
         $bits(dependency_data) + $bits(projection_hold) + $bits(fp_a) + $bits(fp_b) +
         $bits(fp_value) + $bits(fp_op) + $bits(child_error_hold) + $bits(error_hold) +
         $bits(dependency_child_error) + $bits(dependency_error) + $bits(dependency_failure);

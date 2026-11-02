@@ -6,7 +6,7 @@ module anvil_en1_replay_workspace #(
     output wire control_ready,
     input wire control_invalidate,
     input wire [1:0] control_model,
-    input wire [31:0] control_generation,
+    input wire [31:0] control_generation, control_tokens,
     output wire control_rsp_valid,
     input wire control_rsp_ready,
     output wire [3:0] control_error,
@@ -111,12 +111,20 @@ module anvil_en1_replay_workspace #(
             BACKING_SEND = 26, BACKING_WAIT = 27, PUBLISH = 28,
             RESPONSE = 29, COPY_READ = 30, COPY_CAPTURE = 31,
             COPY_WRITE = 32, PAIR_SETUP = 33, PAIR_FINISH = 34,
-            FRAME_RESERVE = 35, MEMO_RESERVE = 36, MEMO_VALIDATE = 37;
+            FRAME_RESERVE = 35, MEMO_RESERVE = 36, MEMO_VALIDATE = 37,
+            CONTROL_BUDGET_TERMS = 38, CONTROL_BUDGET_SUM = 39,
+            CONTROL_BUDGET_COMMIT = 40, MEMO_BUDGET_SCAN = 41,
+            MEMO_BUDGET_EVICT = 42, MEMO_BUDGET_CHECK = 43;
         reg [5:0] state, backing_return;
         reg active, invalidate_hold, bank_hold, pending_push, pending_memo;
         reg hit_hold, hit_pulse, eviction_pulse, new_memo;
         reg [1:0] model_hold, control_model_hold, domain_hold, target_hold;
         reg [31:0] generation_hold, control_generation_hold, request_generation;
+        reg [31:0] control_tokens_hold, tokens_hold;
+        reg [31:0] memo_local_units, memo_global_units, memo_budget_units;
+        reg [31:0] memo_budget_bytes;
+        reg [3:0] budget_index;
+        reg [4:0] budget_visits;
         reg [31:0] token_hold, request_data, data_hold;
         reg [7:0] layer_hold, scalar_index_hold;
         reg [11:0] length_hold, component_hold, pair_index;
@@ -164,6 +172,9 @@ module anvil_en1_replay_workspace #(
             $bits(eviction_pulse) + $bits(new_memo) + $bits(model_hold) +
             $bits(control_model_hold) + $bits(domain_hold) + $bits(target_hold) +
             $bits(generation_hold) + $bits(control_generation_hold) +
+            $bits(control_tokens_hold) + $bits(tokens_hold) + $bits(memo_local_units) +
+            $bits(memo_global_units) + $bits(memo_budget_units) +
+            $bits(memo_budget_bytes) + $bits(budget_index) + $bits(budget_visits) +
             $bits(request_generation) + $bits(token_hold) + $bits(request_data) +
             $bits(data_hold) + $bits(layer_hold) + $bits(scalar_index_hold) +
             $bits(length_hold) + $bits(component_hold) + $bits(pair_index) +
@@ -192,6 +203,7 @@ module anvil_en1_replay_workspace #(
                 (model_hold == 1 ? 12'd1536 : 12'd2560)) :
             (domain_hold == 1 ? 12'd768 : 12'd1024));
         wire descriptor_valid = token_hold <= 131071 &&
+            ((domain_hold != 0 && domain_hold != 3) || token_hold < tokens_hold) &&
             length_hold == expected_length &&
             (domain_hold == 3 ? (layer_hold == 1 || layer_hold == 2) :
             (domain_hold == 0 ? layer_hold <= layer_limit :
@@ -316,6 +328,28 @@ module anvil_en1_replay_workspace #(
             shadow_candidate <= 33'(MEMO_BASE*4) && allocated_frames < 64;
         wire memo_capacity_ok = allocation_candidate <= 33'(16*MEMO_WORDS*4) &&
             shadow_candidate <= 33'd131072;
+        wire memo_budget_ok = allocation_candidate <= {1'b0, memo_budget_bytes} &&
+            shadow_candidate <= {1'b0, memo_budget_bytes};
+        wire [31:0] budget_padded = (tokens_hold + 32'd15) & 32'hfffffff0;
+        wire [31:0] budget_window = budget_padded > 512 ? 32'd512 : budget_padded;
+        wire [31:0] budget_bytes = memo_budget_units << (model_hold == 1 ? 4 : 5);
+        wire [1:0] budget_victim_domain = memo_domains[2*budget_index+:2];
+        wire [31:0] budget_victim_shadow =
+            budget_victim_domain == 0 || budget_victim_domain == 3 ?
+                production_text_vector_bytes :
+                (budget_victim_domain == 1 ? 32'd1536 : 32'd2048);
+        wire [31:0] budget_victim_bytes = COMPACT &&
+            (budget_victim_domain == 0 || budget_victim_domain == 3) ?
+                32'd16 : budget_victim_shadow;
+        wire budget_victim_native = budget_victim_domain != 0;
+        wire budget_victim_valid = memo_payload_bytes >= budget_victim_bytes &&
+            shadow_memo_payload_bytes >= budget_victim_shadow &&
+            allocation_candidate >= {1'b0, budget_victim_bytes} &&
+            shadow_candidate >= {1'b0, budget_victim_shadow} &&
+            memo_count != 0 &&
+            (!budget_victim_native ||
+                (native_memo_payload_bytes >= budget_victim_bytes &&
+                    native_shadow_memo_bytes >= budget_victim_shadow));
 
         assign control_ready = rst_n && state == IDLE;
         assign control_rsp_valid = rst_n && state == CONTROL_RESPONSE;
@@ -392,6 +426,14 @@ module anvil_en1_replay_workspace #(
                 target_hold <= 0;
                 generation_hold <= 0;
                 control_generation_hold <= 0;
+                control_tokens_hold <= 0;
+                tokens_hold <= 0;
+                memo_local_units <= 0;
+                memo_global_units <= 0;
+                memo_budget_units <= 0;
+                memo_budget_bytes <= 0;
+                budget_index <= 0;
+                budget_visits <= 0;
                 request_generation <= 0;
                 token_hold <= 0;
                 request_data <= 0;
@@ -448,6 +490,7 @@ module anvil_en1_replay_workspace #(
                             invalidate_hold <= control_invalidate;
                             control_model_hold <= control_model;
                             control_generation_hold <= control_generation;
+                            control_tokens_hold <= control_tokens;
                             error_hold <= 0;
                             state <= CONTROL_VALIDATE;
                         end else if (req_valid && req_ready) begin
@@ -480,12 +523,18 @@ module anvil_en1_replay_workspace #(
                     end
                     CONTROL_VALIDATE: begin
                         if (!invalidate_hold && control_model_hold != 1 &&
-                            control_model_hold != 2)
+                            control_model_hold != 2) begin
                             error_hold <= 6;
-                        else begin
+                            state <= CONTROL_PUBLISH;
+                        end else if (!invalidate_hold &&
+                            (control_tokens_hold == 0 || control_tokens_hold > 131072)) begin
+                            error_hold <= 5;
+                            state <= CONTROL_PUBLISH;
+                        end else begin
                             active <= !invalidate_hold;
                             model_hold <= control_model_hold;
                             generation_hold <= control_generation_hold;
+                            tokens_hold <= invalidate_hold ? 32'd0 : control_tokens_hold;
                             depth <= 0;
                             memo_count <= 0;
                             cursor <= 0;
@@ -507,7 +556,28 @@ module anvil_en1_replay_workspace #(
                             native_shadow_memo_bytes <= 0;
                             native_depth <= 0;
                             scalar_occupied <= 0;
+                            memo_budget_bytes <= 0;
+                            budget_index <= 0;
+                            budget_visits <= 0;
+                            if (invalidate_hold)
+                                state <= CONTROL_PUBLISH;
+                            else
+                                state <= CONTROL_BUDGET_TERMS;
                         end
+                    end
+                    CONTROL_BUDGET_TERMS: begin
+                        memo_local_units <= model_hold == 1 ?
+                            (budget_window << 5) - (budget_window << 2) :
+                            (budget_window << 5) + (budget_window << 1) + budget_window;
+                        memo_global_units <= (budget_padded << 4) - (budget_padded << 1);
+                        state <= CONTROL_BUDGET_SUM;
+                    end
+                    CONTROL_BUDGET_SUM: begin
+                        memo_budget_units <= memo_local_units + memo_global_units;
+                        state <= CONTROL_BUDGET_COMMIT;
+                    end
+                    CONTROL_BUDGET_COMMIT: begin
+                        memo_budget_bytes <= budget_bytes > 131072 ? 32'd131072 : budget_bytes;
                         state <= CONTROL_PUBLISH;
                     end
                     CONTROL_PUBLISH: state <= CONTROL_RESPONSE;
@@ -814,6 +884,10 @@ module anvil_en1_replay_workspace #(
                         if (!memo_capacity_ok) begin
                             error_hold <= 7;
                             state <= PUBLISH;
+                        end else if (!memo_budget_ok) begin
+                            budget_index <= cursor;
+                            budget_visits <= 0;
+                            state <= MEMO_BUDGET_SCAN;
                         end else begin
                             pending_memo <= 1;
                             if (memo_occupied[slot_hold[3:0]]) begin
@@ -835,6 +909,50 @@ module anvil_en1_replay_workspace #(
                             else
                                 state <= STREAM;
                         end
+                    end
+                    MEMO_BUDGET_SCAN: begin
+                        if (budget_visits == 16) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else if (budget_index != slot_hold[3:0] &&
+                            memo_occupied[budget_index])
+                            state <= MEMO_BUDGET_EVICT;
+                        else begin
+                            budget_index <= budget_index + 1'b1;
+                            budget_visits <= budget_visits + 1'b1;
+                        end
+                    end
+                    MEMO_BUDGET_EVICT: begin
+                        if (!budget_victim_valid) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else begin
+                            memo_occupied[budget_index] <= 0;
+                            memo_count <= memo_count - 1'b1;
+                            memo_payload_bytes <= memo_payload_bytes - budget_victim_bytes;
+                            shadow_memo_payload_bytes <= shadow_memo_payload_bytes -
+                                budget_victim_shadow;
+                            allocation_candidate <= allocation_candidate -
+                                {1'b0, budget_victim_bytes};
+                            shadow_candidate <= shadow_candidate -
+                                {1'b0, budget_victim_shadow};
+                            if (budget_victim_native) begin
+                                native_memo_payload_bytes <= native_memo_payload_bytes -
+                                    budget_victim_bytes;
+                                native_shadow_memo_bytes <= native_shadow_memo_bytes -
+                                    budget_victim_shadow;
+                            end
+                            eviction_pulse <= 1;
+                            budget_index <= budget_index + 1'b1;
+                            budget_visits <= budget_visits + 1'b1;
+                            state <= MEMO_BUDGET_CHECK;
+                        end
+                    end
+                    MEMO_BUDGET_CHECK: begin
+                        if (memo_budget_ok)
+                            state <= MEMO_VALIDATE;
+                        else
+                            state <= MEMO_BUDGET_SCAN;
                     end
                     STREAM: if (write_valid && write_ready) begin
                         if (write_abort || !flags_valid) begin

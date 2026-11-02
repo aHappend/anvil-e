@@ -344,6 +344,114 @@ and post lifetime flags still determine actual and production-shadow live
 reservations. This is physical declaration sharing, not an observed M20K,
 live-savings, resource-fit or timing result.
 
+### Replay audio convolution/feed-forward physical overlay
+
+`anvil_en1_replay_audio_layer` owns two synchronous 1024-component BF16
+banks, shared between its convolution residual/working vectors and its
+second feed-forward residual/working vectors. Bank 0 is residual; bank 1
+is working. The convolution completes all output-to-frame pair writes
+before its done is accepted. Feed-forward subsequently reloads that frame;
+it never consumes the former owner's stale RAM contents. Its output-branch
+bank remains private because it is simultaneously live with both input
+banks. The convolution GLU child's normalized bank also remains private.
+History/frame storage is not aliased by this change.
+
+Both `anvil_en1_audio_lightconv` and `anvil_en1_audio_feedforward` add
+`EXTERNAL_VECTOR_RAM=0/1`, default 0. The default retains local banks.
+At 1, bit b of `vector_ram_write/read[1:0]` enables bank b;
+`vector_ram_waddr/raddr[32*b+:32]` carries the full component address,
+and `vector_ram_wdata/rdata[16*b+:16]` carries BF16 data. These are
+enabled-edge synchronous RAM ports, not a decoupled request protocol.
+The owner supplies registered read data on the original read edge;
+the child's existing later capture edge remains unchanged. Payloads
+remain uninitialized and unreadable until the existing visibility
+conditions permit access. All exported enables/addresses/write data
+are zero during active reset.
+
+| Audio shared-bank boundary | Behavior |
+| --- | --- |
+| Child start | Grant the complete two-bank reservation only when the registered owner is free; child and parent advance on the same accepted start |
+| Convolution lifetime | Hold ownership through source, weight, output and acknowledged frame-write stalls |
+| Convolution completion | Release only on actual accepted child done, including failure retirement |
+| Feed-forward start | Acquire the released banks; load every input from the completed replay frame before norm/MLP visibility |
+| Feed-forward lifetime | Hold through branch-clamp, frame-write and output stalls; release only on accepted done |
+| Read/write coincidence | Preserve synchronous read-before-write semantics independently in each bank |
+| Invalid access | Check full addresses, phase and registered owner before truncating indices; suppress accesses on range/ownership conflicts |
+| Overlap | Concurrent port owners or simultaneously live convolution/feed-forward vectors latch a fault |
+| Fault completion | Retire the child normally; preserve an earlier specific error, otherwise expose error 7 and disallow a successful yield |
+| Reset/new task | Reset releases ownership and disables RAM accesses without clearing payload; a new task clears the prior task's fault only after retirement |
+
+The wrapper declares 4096 shared payload bytes once. The external
+feed-forward worker declares its remaining 2048-byte branch; the external
+convolution worker declares only its unchanged GLU-child payload.
+Thus this pair removes 4096 bytes of duplicate physical vector declarations.
+The unchanged, separate child lifetime reports still charge complete
+4096/6144-byte convolution/feed-forward reservations, plus the GLU child's
+live payload, to the actual and production-shadow ledger. No live payload
+is subtracted merely because the declarations share RAM.
+The two shared 16-bit read registers and owner/fault registers are charged
+to wrapper control state; external children do not charge those read
+registers again. The feed-forward branch read register remains local,
+is reused for its disjoint branch callbacks, and is counted once.
+This local two-bank ownership grant is not the
+whole-system native-scratch/fallback limiter, a synthesis result or a
+measured memory/timing improvement.
+
+### Context-bounded memo grants and exact eviction
+
+The replay workspace control descriptor now includes `control_tokens[31:0]`,
+captured with model/generation on the accepted control edge. The connected
+Eval scheduler supplies the registered complete text-context length, not an
+encoder patch/frame count. A non-invalidation bind rejects zero or more than
+131072 tokens with error 5. Invalidation ignores the token count and clears
+all memo visibility/reservations and the memo budget. Domain-0 text and
+domain-3 reconstructed-feature requests additionally require their token
+to be inside that captured context. Encoder-domain token extents retain
+their separate scheduler/worker checks.
+
+The implementation chooses an opportunistic memo-payload envelope
+`min(131072, B >> 6)` bytes, where B is the admitted model-specific
+production-width matched live baseline using 16-token padding and the
+512-token production window. This is a microarchitectural cache limit,
+not a change to the required total-footprint or native-scratch limits.
+The same byte ceiling applies independently to actual and production-shadow
+memo payload, including the pending replacement. Physical slot/row bounds
+also continue to apply. For the smallest context the envelope is 10752
+bytes for E2B and 25088 bytes for E4B, enough for every single legal result
+vector, including native audio/vision results. Large contexts cap at
+128 KiB. No numerical value, tensor width or materialization changes.
+
+| Memo/control boundary | Pre-edge handshake / post-edge action |
+| --- | --- |
+| Control acceptance | Capture immutable model, generation and context length; close requests until the control response retires |
+| Bind validation | Validate the captured context before enabling a new workspace session |
+| Budget terms / sum / commit | Register model-specific local/global terms, their sum, then the scaled/clamped byte ceiling on three separate edges before control publication |
+| Replacement candidate | Subtract the selected destination's old actual/shadow bytes, then add the new vector before any new backing write or pending reservation |
+| Over-budget candidate | Scan the 16 memo slots from the deterministic round-robin cursor, skipping the destination and unoccupied slots; do not enter STREAM/COPY_READ |
+| Budget eviction | Invalidate one completed victim, decrement actual/shadow and native-domain subtotals and the candidate on the same edge, and emit the existing eviction event |
+| Recheck | Compare registered reduced candidates on a later edge; continue scanning or grant the replacement |
+| Grant | Remove any old destination reservation and charge the complete pending vector before accepting its first stream word or issuing a copy read |
+| Commit / abort | Existing commit visibility and abort/backing-error release rules are unchanged; budget-evicted values remain invalid |
+| No feasible victim / inconsistent census | Report error 7 without unsigned wraparound or a new backing write; legal model/context/vector tuples always admit one vector after the other memos are evicted |
+| Stalled public response | Keep its payload stable; a second workspace request cannot race eviction or read an evicted slot |
+
+Budget eviction has no dirty writeback and never sends an external memory
+command. A later scheduler lookup misses and runs the existing decreasing-rank
+Eval dependency computation. It does not import a hidden-state or KV answer.
+The scheduler does not allocate a new memo while a worker is consuming its
+dependency memo: work passthrough can read/copy that memo into the current
+frame, but completed-result memo allocations occur only after worker done.
+Thus no concurrent pinned consumer is displaced by the new budget scan.
+The frame source of a completed-result copy is separate from all memo victims.
+Budget scan/control/candidate registers enter the workspace controller census;
+unused physical memo capacity is still disclosed, not advertised as removed RAM.
+
+This closes a context-sensitive **memo** grant path with real eviction and
+recomputation. It does not yet grant/limit the full frame, native-worker,
+arithmetic/controller or whole-system concurrent reservations. In particular,
+the outer completion-time allocation guard is still an observer; its failures
+cannot be relabeled as successful legal execution.
+
 ### Native-workspace domain census
 
 The replay workspace additionally reports `native_payload_bytes` and
@@ -369,7 +477,8 @@ dispatcher currently selects text work.
 Native-subtotal underflow or inconsistency is a cache-state error (7),
 not unsigned wraparound. These subsets traverse the existing schedule,
 executor and binding interfaces without altering numerical scheduling,
-backing addresses, memo replacement or external memory traffic. They are
+backing addresses or external memory traffic. Context-bounded memo replacement
+is specified immediately above. These subtotals are
 required inputs to the remaining whole-system native-scratch limiter;
 by themselves they do not establish grant-time limiting. Their production
 counterparts now enter the complete 25-field shadow observation described above.
@@ -1780,7 +1889,7 @@ does not apply the attention mask.
 | Completion/error | Drain accepted child responses, preserve first concrete child failure, and wait for final output acceptance |
 | Live allocation | Charge partial/error banks from accepted start through accepted done; no release at result creation |
 
-Physical vector reservation is 6144 bytes: residual 2048, convolution/working
+With default local storage, physical vector reservation is 6144 bytes: residual 2048, convolution/working
 2048, and the GLU child's normalized bank 2048. The two outer banks remain
 live throughout the task; the child's bank is additionally live during
 historical reconstruction, including partially filled/failed norm work.
@@ -1791,6 +1900,8 @@ controller outputs include connected child controller reports. Final system
 overlay/replay accounting must also charge arithmetic leaf state not already
 included by those reports. Reprojection increases weight and native-source
 reads and is not avoided computation. No practical latency claim is made.
+The replay audio wrapper instead selects the external two-bank overlay
+specified above; it owns and reports the 4096 outer physical bytes once.
 
 These modules supply an actual light-convolution sublayer, not complete
 audio attention, a complete conformer, durable native replay or system
@@ -2146,7 +2257,10 @@ of the unclipped residual and BF16 materialization. Stream all 1024 results.
 Do not apply 0.5 to the residual or invent a GeGLU up matrix for audio.
 
 The three synchronous 1024-component BF16 banks (residual, normalized working
-input, output branch) reserve 6144 bytes. Charge their complete padded
+input, output branch) reserve 6144 bytes with default local storage.
+The replay audio wrapper selects the external residual/working overlay
+specified above; this worker then declares only its 2048-byte branch.
+Charge the complete 6144-byte live padded
 allocation from accepted job start through done acceptance, even during
 receive, errors and output stalls. Inputs and branch become readable only
 after their entire vectors are received; norms overwrite only a component

@@ -83,6 +83,8 @@ module anvil_en1_replay_audio_layer #(
     reg [15:0] low_hold, clamp_input_hold, clamp_data_hold, source_data_hold;
     reg [3:0] error_hold, child_error_hold, work_error_hold;
     reg [3:0] source_error_hold, first_source_error;
+    reg vector_ram_fault;
+    reg [1:0] vector_owner;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -170,11 +172,16 @@ module anvil_en1_replay_audio_layer #(
     wire [15:0] conv_output_data;
     wire [3:0] conv_error;
     wire [63:0] conv_addr, conv_live, conv_physical, conv_control, conv_nested;
+    wire [1:0] conv_ram_write, conv_ram_read, ff_ram_write, ff_ram_read;
+    wire [63:0] conv_ram_waddr, conv_ram_raddr, ff_ram_waddr, ff_ram_raddr;
+    wire [31:0] conv_ram_wdata, ff_ram_wdata, shared_ram_rdata;
     wire conv_projection_event;
     wire [31:0] conv_projection_bytes;
-    anvil_en1_audio_lightconv convolution (
+    wire conv_start = rst_n && state == CONV_START && vector_owner == 0;
+    wire ff_start = rst_n && state == FF_START && vector_owner == 0;
+    anvil_en1_audio_lightconv #(.EXTERNAL_VECTOR_RAM(1)) convolution (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == CONV_START), .start_ready(conv_ready),
+        .start_valid(conv_start), .start_ready(conv_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),
         .generation(generation_hold), .token(query_hold), .audio_weights_base(weights_hold),
         .source_valid(conv_source_valid), .source_ready(callback_accept && state == CONV_WAIT),
@@ -198,6 +205,9 @@ module anvil_en1_replay_audio_layer #(
         .projection_event(conv_projection_event), .projection_bytes(conv_projection_bytes),
         .glu_replay_event(glu_replay_event), .glu_replay_bytes(glu_replay_bytes),
         .vector_live_bytes(conv_live), .vector_physical_bytes(conv_physical),
+        .vector_ram_write(conv_ram_write), .vector_ram_read(conv_ram_read),
+        .vector_ram_waddr(conv_ram_waddr), .vector_ram_raddr(conv_ram_raddr),
+        .vector_ram_wdata(conv_ram_wdata), .vector_ram_rdata(shared_ram_rdata),
         .controller_bytes(conv_control), .nested_controller_bytes(conv_nested)
     );
 
@@ -213,9 +223,9 @@ module anvil_en1_replay_audio_layer #(
     wire [63:0] ff_down_clamp_control, ff_inner_control, ff_inner_clamp_control;
     wire ff_intermediate_event;
     wire [31:0] ff_intermediate_bytes;
-    anvil_en1_audio_feedforward feed_forward2 (
+    anvil_en1_audio_feedforward #(.EXTERNAL_VECTOR_RAM(1)) feed_forward2 (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FF_START), .start_ready(ff_ready),
+        .start_valid(ff_start), .start_ready(ff_ready),
         .model(model_hold), .precision(precision_hold), .mode(2'd2), .layer(logical_layer),
         .generation(generation_hold), .token(query_hold), .audio_weights_base(weights_hold),
         .source_valid(ff_source_valid), .source_ready(callback_accept && state == FF_WAIT),
@@ -237,6 +247,9 @@ module anvil_en1_replay_audio_layer #(
         .done_error(ff_error), .weight_read_event(), .weight_read_bytes(),
         .intermediate_event(ff_intermediate_event), .intermediate_bytes(ff_intermediate_bytes),
         .vector_live_bytes(ff_live), .vector_physical_bytes(ff_physical),
+        .vector_ram_write(ff_ram_write), .vector_ram_read(ff_ram_read),
+        .vector_ram_waddr(ff_ram_waddr), .vector_ram_raddr(ff_ram_raddr),
+        .vector_ram_wdata(ff_ram_wdata), .vector_ram_rdata(shared_ram_rdata),
         .controller_bytes(ff_control), .norm_controller_bytes(ff_norm_control),
         .clamp_controller_bytes(ff_clamp_control), .mlp_controller_bytes(ff_mlp_control),
         .down_controller_bytes(ff_down_control), .down_clamp_controller_bytes(ff_down_clamp_control),
@@ -374,8 +387,9 @@ module anvil_en1_replay_audio_layer #(
         (norm_selected && norm_result_ready);
     assign start_ready = rst_n && state == IDLE;
     assign done_valid = rst_n && state == RESPONSE;
-    assign done_error = rst_n ? error_hold : 4'd0;
-    assign done_yield = done_valid && yield_hold && error_hold == 0;
+    assign done_error = !rst_n ? 4'd0 :
+        (error_hold != 0 ? error_hold : (vector_ram_fault ? 4'd7 : 4'd0));
+    assign done_yield = done_valid && yield_hold && done_error == 0;
     assign done_bank = 0;
     assign done_continuation = done_yield ? yielded_continuation : 160'd0;
     assign done_dependency_domain = done_yield ? yielded_domain : 2'd0;
@@ -395,7 +409,8 @@ module anvil_en1_replay_audio_layer #(
     assign weight_read_event = history_weight_event || weight_event;
     assign weight_read_bytes = history_weight_bytes + (weight_event ? 32'd4 : 32'd0);
     assign vector_live_bytes = !rst_n ? 64'd0 : history_live + conv_live + ff_live;
-    assign vector_physical_bytes = !rst_n ? 64'd0 : history_physical + conv_physical + ff_physical;
+    assign vector_physical_bytes = !rst_n ? 64'd0 :
+        history_physical + conv_physical + ff_physical + 64'd4096;
     assign nested_controller_bytes = !rst_n ? 64'd0 :
         history_control + history_nested + conv_control + conv_nested +
         ff_control + ff_norm_control + ff_clamp_control + ff_mlp_control +
@@ -416,8 +431,69 @@ module anvil_en1_replay_audio_layer #(
         $bits(source_bank_hold) + $bits(source_bad) + $bits(low_hold) +
         $bits(clamp_input_hold) + $bits(clamp_data_hold) + $bits(source_data_hold) +
         $bits(error_hold) + $bits(child_error_hold) + $bits(work_error_hold) +
-        $bits(source_error_hold) + $bits(first_source_error);
+        $bits(source_error_hold) + $bits(first_source_error) +
+        $bits(vector_ram_fault) + $bits(vector_owner) + 32;
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+
+    wire conv_ram_access = |conv_ram_write || |conv_ram_read;
+    wire ff_ram_access = |ff_ram_write || |ff_ram_read;
+    wire vector_owner_fault = rst_n &&
+        ((conv_ram_access && ff_ram_access) ||
+         (conv_ram_access && !conv_selected) ||
+         (ff_ram_access && !ff_selected) ||
+         (conv_ram_access && vector_owner != 1) ||
+         (ff_ram_access && vector_owner != 2) ||
+         (|conv_live && |ff_live));
+    wire [1:0] vector_range_fault;
+    wire vector_access_fault = vector_owner_fault || |vector_range_fault;
+    genvar bank;
+    generate for (bank=0; bank<2; bank=bank+1) begin : shared_vectors
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] payload [0:1023];
+        reg [15:0] read_q;
+        wire [31:0] conv_waddr = conv_ram_waddr[32*bank+:32];
+        wire [31:0] conv_raddr = conv_ram_raddr[32*bank+:32];
+        wire [31:0] ff_waddr = ff_ram_waddr[32*bank+:32];
+        wire [31:0] ff_raddr = ff_ram_raddr[32*bank+:32];
+        assign vector_range_fault[bank] = rst_n &&
+            ((conv_ram_write[bank] && conv_waddr >= 1024) ||
+             (conv_ram_read[bank] && conv_raddr >= 1024) ||
+             (ff_ram_write[bank] && ff_waddr >= 1024) ||
+             (ff_ram_read[bank] && ff_raddr >= 1024));
+        assign shared_ram_rdata[16*bank+:16] = read_q;
+        always @(posedge clk) begin
+            if (rst_n && !vector_access_fault) begin
+                if (conv_ram_write[bank])
+                    payload[conv_waddr[9:0]] <= conv_ram_wdata[16*bank+:16];
+                else if (ff_ram_write[bank])
+                    payload[ff_waddr[9:0]] <= ff_ram_wdata[16*bank+:16];
+                if (conv_ram_read[bank])
+                    read_q <= payload[conv_raddr[9:0]];
+                else if (ff_ram_read[bank])
+                    read_q <= payload[ff_raddr[9:0]];
+            end
+        end
+    end endgenerate
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            vector_ram_fault <= 0;
+        else if (start_valid && start_ready)
+            vector_ram_fault <= 0;
+        else if (vector_access_fault)
+            vector_ram_fault <= 1;
+    end
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            vector_owner <= 0;
+        else if (conv_start && conv_ready)
+            vector_owner <= 1;
+        else if (ff_start && ff_ready)
+            vector_owner <= 2;
+        else if ((vector_owner == 1 && conv_valid && callback_accept &&
+                state == CONV_WAIT && !conv_output_valid && !conv_source_valid) ||
+            (vector_owner == 2 && ff_valid && callback_accept &&
+                state == FF_WAIT && !ff_output_valid && !ff_source_valid))
+            vector_owner <= 0;
+    end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -615,9 +691,9 @@ module anvil_en1_replay_audio_layer #(
                         state <= CONV_START;
                     end
                 end
-                CONV_START: if (conv_ready)
+                CONV_START: if (conv_start && conv_ready)
                     state <= CONV_WAIT;
-                FF_START: if (ff_ready)
+                FF_START: if (ff_start && ff_ready)
                     state <= FF_WAIT;
                 NORM_START: if (norm_ready)
                     state <= NORM_WAIT;

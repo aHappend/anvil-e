@@ -210,6 +210,7 @@ module anvil_en1_eval_schedule #(
         .control_ready(ws_control_ready),
         .control_invalidate(state == INVALIDATE_SEND),
         .control_model(model_hold), .control_generation(generation_hold),
+        .control_tokens(tokens_hold),
         .control_rsp_valid(ws_control_valid),
         .control_rsp_ready(rst_n &&
             (state == BIND_WAIT || state == INVALIDATE_WAIT)),
