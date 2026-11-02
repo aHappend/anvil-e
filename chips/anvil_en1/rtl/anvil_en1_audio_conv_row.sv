@@ -63,7 +63,7 @@ module anvil_en1_audio_conv_row (
     reg [31:0] half_frames, input_times, output_times, input_frequencies, output_frequencies;
     reg [31:0] input_channels, output_channels, matrix_columns, matrix_stride;
     reg [63:0] weights_hold, matrix_base, matrix_bytes;
-    reg [31:0] source_column, source_channel_hold, kernel_flat, kernel_y, kernel_x;
+    reg [31:0] source_column, source_channel_hold, kernel_y, kernel_x;
     reg [31:0] time_origin, frequency_origin, time_sum, frequency_sum;
     reg [31:0] source_time_hold, source_frequency_hold, mask_frame_hold;
     reg [31:0] mask_word;
@@ -186,7 +186,7 @@ module anvil_en1_audio_conv_row (
         $bits(output_frequencies) + $bits(input_channels) + $bits(output_channels) +
         $bits(matrix_columns) + $bits(matrix_stride) + $bits(weights_hold) +
         $bits(matrix_base) + $bits(matrix_bytes) + $bits(source_column) +
-        $bits(source_channel_hold) + $bits(kernel_flat) + $bits(kernel_y) +
+        $bits(source_channel_hold) + $bits(kernel_y) +
         $bits(kernel_x) + $bits(time_origin) + $bits(frequency_origin) +
         $bits(time_sum) + $bits(frequency_sum) + $bits(source_time_hold) +
         $bits(source_frequency_hold) + $bits(mask_frame_hold) + $bits(mask_word) +
@@ -204,7 +204,6 @@ module anvil_en1_audio_conv_row (
             fp_return <= 0;
             source_column <= 0;
             source_channel_hold <= 0;
-            kernel_flat <= 0;
             kernel_y <= 0;
             kernel_x <= 0;
             time_origin <= 0;
@@ -257,7 +256,6 @@ module anvil_en1_audio_conv_row (
                         source_state <= S_RESPONSE;
                     end else begin
                         source_channel_hold <= uint_value;
-                        kernel_flat <= uint_remainder;
                         uint_a <= uint_remainder;
                         uint_b <= 3;
                         uint_return <= S_KERNEL_RESULT;

@@ -47,7 +47,7 @@ are separately performed and both counted as original-input traffic.
 The native session still must derive expected_soft_tokens and ordinal by
 scanning the original token stream, not trust a host feature map.
 
-The next subsampling numerical leaf, `anvil_en1_audio_conv_row`, accepts
+The subsampling numerical leaf, `anvil_en1_audio_conv_row`, accepts
 stage 0/1, model/precision/generation, original frames, output time/frequency/
 channel and immutable audio weights. Stage 0 has one input channel and 128
 output channels; stage 1 has 128 input channels and 32 output channels.
@@ -93,6 +93,119 @@ all 128/32 channel rows and execute actual learned LayerNorm followed by ReLU.
 These are implementation boundaries, not simulation or synthesis results.
 Native replay must supply source callbacks, bound their continuations and
 include mask/control/scratch state in the complete live ledger.
+
+`anvil_en1_audio_subsample_point` executes one complete native spatial
+point, not an independently normalized convolution channel. Its descriptor
+omits output_channel: gather all 128/32 rows in ascending channel order
+through `audio_conv_row`, then learned channel LayerNorm 0x2001/2003 with
+epsilon 1e-6, then BF16 ReLU. ReLU maps strictly negative nonzero finite
+values and negative infinity to +0, preserves signed zero and positive
+values/infinity, and preserves canonical quiet NaN. The point streams
+128/32 actual channels in ascending order with last on the final channel.
+The sampled output validity word comes from original frame 2*output_time
+for stage 0 or 4*output_time for stage 1, matching mask[:,::2] at each layer;
+invalid output points still execute the actual convolution/norm/ReLU path.
+The caller must use this mask for the next stage, not suppress an encoder
+layer or manufacture a zero normalized point.
+
+One 128-component synchronous BF16 bank reserves and charges 256 bytes
+from accepted start through completion acceptance, also for stage 1 and
+failed/partial receives. Complete successful convolution rows are necessary
+before norm-source visibility. Each norm-source callback captures its index,
+reads RAM synchronously and publishes the captured response on a later edge.
+One scalar output reservation decouples accepted normalized output from the
+ReLU classification/public output; all three events are distinct edges.
+While public output is stalled, index/data/last stay stable; norm completion
+cannot retire until the final public output has retired. Shape-one jobs
+still perform all native channels. Numerical, directory and control state
+is additional to the bank. This point engine does not cache spatial tensors,
+perform the 1024-dimensional flattened input projection, implement replay
+dispatch, or supply its source callback from a host-produced feature.
+
+`anvil_en1_audio_input` reads one actual original audio item from the
+versioned immutable ANI1 input image. Its registered descriptor is model,
+generation, frames, kind (0 BF16 feature / 1 validity word), frame, frequency
+and audio_base. Feature frequency is 0..127; mask frequency must be zero.
+Frames are 1..131072 and frame must be strictly smaller. Kind 0 selects
+0x3010 [frames,128], kind 1 selects 0x3011 [frames]; all other kinds reject.
+Validate the tensor directory and returned geometry/type, register byte
+offset, 65-bit base sum and aligned-word end in separate stages, then issue
+one actual 32-bit read. Feature rows are 256 bytes and use low/high
+little-endian BF16 lanes; result_data[15:0] returns the exact encoding
+without arithmetic or host normalization. Mask returns the entire word
+and rejects values outside 0/1. Memory errors remain error 2; malformed
+descriptors/lengths/addresses/masks remain error 5. Count all accepted
+directory/payload reads, including failed responses, as original-input
+bytes. No write or generated-feature memory path exists. Scalar held
+words/descriptors are counted by controller_bytes; there is no vector RAM.
+This is the original-input service for subsampling, not a replacement
+for native layer-0 point production or bounded replay.
+
+`anvil_en1_audio_subsample_execute` connects the point's raw stage-0 sources
+and all original validity reads to `audio_input`. Stage-1 generated sources
+request the actual preceding normalized/ReLU point through the generated
+callback (generation/model/time/frequency/channel); the callback never
+accepts a finished convolution row or encoded audio hidden vector in place
+of that component. Native replay must produce it. Callback acceptance
+registers and validates tags before any original-input or generated request.
+Mask/source responses are captured, registered and then exposed to the
+point on a later edge. First callback failure is retained, including
+audio_input error 2/5, and overrides the point's boolean callback error 7
+after the failed child response retires. No further source work can pass
+as successful after a callback failure.
+
+External ownership belongs to original-input service only while servicing
+a drained point mask/source callback; otherwise it belongs to point weight/
+norm work. Point callbacks arise only after its preceding weight response
+has retired; point memory ready/response-valid are disabled throughout the
+original-input service. The original-input response retires before ownership
+returns. Count accepted input-directory/payload transfers as original-input
+bytes and accepted point-directory/matrix/norm-scale transfers as weight
+bytes, including failures, with no double counting of logical mask/source
+callbacks. Generated reads expose a separate two-byte logical source event,
+not invented external traffic. This wrapper adds scalar state but no vector
+copy; the point's full 256-byte allocation remains live until actual done.
+Stage-0 spatial point execution is connected to its real input boundary;
+stage-1 preceding-point replay, flattened input projection, the remaining
+audio layers and native system dispatch are still required.
+
+`anvil_en1_audio_subsample` is the real complete native input projection.
+Capture a native output token time (0..ceil(frames/4)-1), original input/
+audio-weight bases, generation/model/precision; validate matrix 0x2004 at
+layer 0xffff as 1024 rows by 1024 columns. Compute all 1024 rows in ascending
+order. For each actual requested source column, frequency=column[9:5] and
+channel=column[4:0] are the pinned [frequency,channel] flattening of stage 1.
+Execute the full stage-1 point through `audio_subsample_execute`, drain all
+32 actual outputs, retain only the selected component and require complete
+successful done. Its generated callback executes a complete stage-0 point,
+drains all 128 outputs, retains the requested preceding-channel component,
+and returns it only after actual complete done. Stage 0 reads raw inputs
+through the real immutable-input service. These two fixed controller levels
+are bounded, synthesizable native rematerialization, not recursive RTL or
+an external feature archive. There is no memo of a complete spatial tensor.
+
+The upper matrix waits for the stage-1 point; the stage-1 point waits for the
+stage-0 point. Parent memory ready/response-valid are disabled while the
+child owns memory. Each ownership handoff occurs after the parent's prior
+accepted weight response has retired; each child finishes and retires its
+own responses before returning a component. Failed child errors propagate
+through the enclosing failed source responses and are preserved verbatim
+at the final completion. Every nested original-input and weight transfer
+is real and counted once in its actual class. Recomputing all point channels
+per selected component causes very high weight/input traffic and latency;
+none of this work is advertised as avoided computation or a speedup.
+
+Two separate point banks are physically reserved (512 bytes total).
+Both can be live together while the stage-1 channel reduction requests
+stage 0; all partially filled vectors, scalar retained components,
+projection/norm/directory/arithmetic state and controller state are
+additional in the ledger. No 1024-component input bank or output copy
+is allocated: the projected rows stream, with completion waiting for final
+acceptance. Every stage-1 result's mask must agree with the immutable
+original output mask, sampled at frame 4*token; a false mask does not skip
+numerical input projection. The complete conformer encoder, native
+continuation/frame dispatch, final audio projection and top-level session
+integration remain separate unfinished requirements.
 
 The pooling leaf accepts one physical pooled-bin index, not a host-generated
 feature or a text placeholder index. For the pinned kernel 3, patch_count

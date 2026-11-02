@@ -5,7 +5,91 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: native pooling, modality projection and audio FF
+## Current saved increment: valid image ordinals and connected audio subsampling
+
+`rtl/anvil_en1_vision_bins.sv` derives the actual true-bin map from the
+immutable coordinate tensor. It performs the same max-x/floor mapping as
+the pinned pool, including clamped padding in bin zero, stores presence in
+a bounded 456-word synchronous bitmap, and enumerates physical bins in
+ascending order. Repeated coordinates set one bit. Selecting an ordinal
+does not stop validation: complete enumeration must match the expected
+placeholder count before a usable bin is returned. Every new task clears
+the entire 1824-byte allocation before reading it; reset invalidates its
+visibility rather than resetting RAM payload.
+
+`rtl/anvil_en1_vision_soft_token.sv` connects that selected bin to the saved
+real pool/normalization/modality projection. It checks the true numerical
+mask and all H ordered output components before completion. Mapping RAM
+is released before numerical vector allocation starts; physical reserved
+RAM remains 6432 bytes, while the separate live peaks are 1824 bytes for
+mapping and 3072 bytes for numerical vectors, plus all scalar/child state.
+Native session token scanning still must derive the requested ordinal and
+expected placeholder count. No host-generated feature map is accepted.
+
+`rtl/anvil_en1_audio_conv_row.sv` executes native stage-0/1 stride-2 padded
+3x3 convolutions using the actual BF16/Q4 OIHW matrices. Sequential divide
+by 9 and 3 preserves input-channel/kernel traversal, and registered
+coordinate checks distinguish padding from real sources. Padding still
+participates in actual weight arithmetic; in-domain masked sources still
+execute source-times-mask with BF16 materialization. No lossy zero shortcut,
+host convolution answer, bias, clipping or per-channel RMSNorm is inserted.
+
+`rtl/anvil_en1_audio_subsample_point.sv` gathers all 128/32 real convolution
+channels before learned channel LayerNorm and ReLU. One 256-byte synchronous
+bank preserves all channel inputs through reductions and output. Source
+reads, normalized-output capture, ReLU classification and public acceptance
+occupy distinct edges. Final completion waits for every actual channel to
+retire. The original mask is sampled at frame 2*time or 4*time as prescribed
+by the two mask-striding operations, including odd frame counts.
+
+`rtl/anvil_en1_audio_input.sv` reads actual immutable BF16 input features
+and 0/1 validity words through the versioned tensor directory, registered
+aligned-address/bounds checks and real external responses. It returns
+exact BF16 lane encodings and preserves memory error 2 and malformed-mask/
+descriptor error 5. All accepted directory/payload bytes, including failures,
+remain original-input traffic; no generated-feature write path exists.
+
+`rtl/anvil_en1_audio_subsample_execute.sv` connects raw sources and masks to
+that original-input service, forwarding only preceding-point generated
+components to its native callback. It holds memory ownership through actual
+response retirement and retains original callback failures rather than
+flattening them into a success or a generic error.
+
+`rtl/anvil_en1_audio_subsample.sv` completes the two-stage input projection:
+each requested flattened [frequency,channel] stage-1 component executes a
+real complete 32-channel point; its preceding-point dependency executes a
+real complete 128-channel stage-0 point. Only requested components are
+retained after complete output/done checks. The fixed two-level FSM nesting
+has no combinational recursion or spatial tensor archive. Actual 1024x1024
+input projection rows stream in ascending order with complete masking/error/
+backpressure handling. Both 256-byte point banks can be live concurrently;
+their 512-byte reservation and every scalar/controller/numerical state
+remain additional to the text/native workspace ledger. Repeated point
+execution has very high input/weight cost; no practical throughput or
+total-DDR reduction is claimed.
+
+SPEC records the public descriptors, degenerate/registered cycle tables,
+native tensor order, mask/exceptional rules, storage lifetimes and nested
+memory ownership before implementation. These connected subsampling and
+valid-bin paths are not complete native inference. Remaining: durable
+vision/text/modality replay continuations and frame dispatch; original-token
+ordinal/placeholder/session validation; audio relative attention, causal
+light convolution, complete layers and final projection; linear single-token
+text replay; whole-system allocation overlays and parent-compatible
+top/session/cache/replay/arbiter/CSR integration. The design is not ready
+for independent Verifier.
+
+Tools used in this increment: glob, view, rg, web_fetch and apply_patch.
+Pinned public model reads confirmed pool weight-presence stripping, OIHW
+subsampling, channel LayerNorm/ReLU, mask striding and frequency/channel
+flattening. No command, installation, static elaboration, functional
+simulation, synthesis or experiment ran. The reserved static check remains
+unused and no preparation receipts exist. Parent, tests and runtime-owned
+files remain untouched; the ownership-guard failure at
+`.vulcan/engineering/run-0001/attempt-0003` remains preserved with no new
+diagnosis, interruption repair or acceptance claim.
+
+## Prior increment: native pooling, modality projection and audio FF
 
 `rtl/anvil_en1_vision_pool.sv` executes actual pinned 3x3 coordinate pooling
 over immutable original-input coordinates and real layer-16 vision sources.
