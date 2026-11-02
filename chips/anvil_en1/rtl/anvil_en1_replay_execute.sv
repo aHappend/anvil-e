@@ -96,6 +96,8 @@ module anvil_en1_replay_execute #(
     output wire [63:0] audio_layer_controller_bytes,
     output wire [63:0] audio_feature_vector_live_bytes, audio_feature_vector_physical_bytes,
     output wire [63:0] audio_feature_controller_bytes, audio_feature_nested_controller_bytes,
+    output wire [63:0] image_feature_vector_live_bytes, image_feature_vector_physical_bytes,
+    output wire [63:0] image_feature_controller_bytes, image_feature_nested_controller_bytes,
     output wire native_audio_point_replay_event,
     output wire [31:0] native_audio_point_replay_bytes,
     output wire native_audio_history_replay_event, native_audio_glu_replay_event,
@@ -224,7 +226,12 @@ module anvil_en1_replay_execute #(
         (state == WORKER_START || state == WORKER_WAIT);
     wire input_ready, input_valid;
     wire [3:0] input_error;
-    wire input_bank_result;
+    wire input_bank_result, input_yield;
+    wire [159:0] input_continuation;
+    wire [1:0] input_dependency_domain;
+    wire [7:0] input_dependency_layer;
+    wire [31:0] input_dependency_token;
+    wire [11:0] input_dependency_length;
     wire input_modality_valid, input_modality_rsp_ready;
     wire [1:0] input_modality_model, input_modality_kind;
     wire [31:0] input_modality_token, input_modality_index;
@@ -244,9 +251,13 @@ module anvil_en1_replay_execute #(
     anvil_en1_replay_input #(.COMPACT(COMPACT)) original_input (
         .clk(clk), .rst_n(rst_n),
         .start_valid(input_selected && state == WORKER_START), .start_ready(input_ready),
-        .model(model_hold), .precision(precision_hold), .modality(modality_hold),
+        .model(model_hold), .precision(precision_hold), .modality(modality_hold), .mode(mode_hold),
         .tokens(tokens_hold), .token(token_hold), .frame_layer(layer_hold),
         .frame_slot(frame_hold), .tokens_base(tokens_base_hold), .weights_base(weights_base_hold),
+        .continuation(continuation_hold), .dependency_valid(dependency_valid_hold),
+        .dependency_domain(dependency_domain_hold), .dependency_layer(dependency_layer_hold),
+        .dependency_token(dependency_token_hold), .dependency_length(dependency_length_hold),
+        .dependency_slot(dependency_slot_hold),
         .modality_valid(input_modality_valid), .modality_ready(input_selected && modality_ready),
         .modality_model(input_modality_model), .modality_kind(input_modality_kind),
         .modality_token(input_modality_token), .modality_index(input_modality_index),
@@ -265,12 +276,17 @@ module anvil_en1_replay_execute #(
         .work_write_last(input_write_last), .work_write_abort(input_write_abort),
         .work_rsp_valid(input_selected && work_rsp_valid),
         .work_rsp_ready(input_work_rsp_ready), .work_rsp_error(work_rsp_error),
+        .work_rsp_data(work_rsp_data),
         .cmd_valid(input_cmd_valid), .cmd_ready(input_selected && cmd_ready),
         .cmd_write(), .cmd_addr(input_cmd_addr), .cmd_wdata(),
         .result_valid(input_selected && result_valid), .result_ready(input_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(input_valid), .done_ready(input_selected && state == WORKER_WAIT),
         .done_error(input_error), .done_bank(input_bank_result),
+        .done_yield(input_yield), .done_continuation(input_continuation),
+        .done_dependency_domain(input_dependency_domain),
+        .done_dependency_layer(input_dependency_layer), .done_dependency_token(input_dependency_token),
+        .done_dependency_length(input_dependency_length),
         .embedding_live_bytes(input_embedding_live),
         .embedding_physical_bytes(input_embedding_physical),
         .controller_state_bytes(input_state_bytes), .busy()
@@ -639,32 +655,98 @@ module anvil_en1_replay_execute #(
         .nested_controller_bytes(audio_feature_nested_controller_bytes)
     );
 
+    wire image_feature_selected = rst_n && domain_hold == 3 && layer_hold == 1 &&
+        (state == WORKER_START || state == WORKER_WAIT);
+    wire image_feature_ready, image_feature_valid, image_feature_yield, image_feature_bank_result;
+    wire [3:0] image_feature_error;
+    wire [159:0] image_feature_continuation;
+    wire [1:0] image_feature_dependency_domain;
+    wire [7:0] image_feature_dependency_layer;
+    wire [31:0] image_feature_dependency_token;
+    wire [11:0] image_feature_dependency_length;
+    wire image_feature_work_valid, image_feature_work_rsp_ready;
+    wire [2:0] image_feature_work_op;
+    wire [1:0] image_feature_work_domain, image_feature_work_target;
+    wire [31:0] image_feature_work_token, image_feature_work_data;
+    wire [7:0] image_feature_work_layer, image_feature_work_scalar_index;
+    wire [11:0] image_feature_work_length, image_feature_work_component;
+    wire [5:0] image_feature_work_slot;
+    wire image_feature_work_bank, image_feature_cmd_valid, image_feature_result_ready;
+    wire image_feature_projection_event, image_feature_source_event, image_feature_input_event;
+    wire [31:0] image_feature_projection_bytes, image_feature_source_bytes, image_feature_input_bytes;
+    wire [63:0] image_feature_cmd_addr;
+    anvil_en1_replay_image_feature #(.COMPACT(COMPACT)) image_feature (
+        .clk(clk), .rst_n(rst_n), .cancel(start_valid && start_ready),
+        .start_valid(image_feature_selected && state == WORKER_START),
+        .start_ready(image_feature_ready),
+        .model(model_hold), .precision(precision_hold), .mode(mode_hold), .modality(modality_hold),
+        .generation(generation_hold), .tokens(tokens_hold), .token(token_hold),
+        .patches(native_patches_hold), .patch_rows(native_rows_hold), .patch_columns(native_columns_hold),
+        .frame_layer(layer_hold), .frame_slot(frame_hold),
+        .image_base(native_image_hold), .vision_weights_base(native_vision_weights_hold),
+        .tokens_base(tokens_base_hold), .continuation(continuation_hold),
+        .dependency_valid(dependency_valid_hold), .dependency_domain(dependency_domain_hold),
+        .dependency_layer(dependency_layer_hold), .dependency_token(dependency_token_hold),
+        .dependency_length(dependency_length_hold), .dependency_slot(dependency_slot_hold),
+        .work_req_valid(image_feature_work_valid),
+        .work_req_ready(image_feature_selected && work_ready),
+        .work_req_op(image_feature_work_op), .work_req_domain(image_feature_work_domain),
+        .work_req_target(image_feature_work_target), .work_req_token(image_feature_work_token),
+        .work_req_layer(image_feature_work_layer), .work_req_length(image_feature_work_length),
+        .work_req_component(image_feature_work_component), .work_req_slot(image_feature_work_slot),
+        .work_req_bank(image_feature_work_bank), .work_req_scalar_index(image_feature_work_scalar_index),
+        .work_req_data(image_feature_work_data),
+        .work_rsp_valid(image_feature_selected && work_rsp_valid),
+        .work_rsp_ready(image_feature_work_rsp_ready), .work_rsp_data(work_rsp_data),
+        .work_rsp_error(work_rsp_error),
+        .cmd_valid(image_feature_cmd_valid), .cmd_ready(image_feature_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(image_feature_cmd_addr), .cmd_wdata(),
+        .result_valid(image_feature_selected && result_valid), .result_ready(image_feature_result_ready),
+        .result_data(result_data), .result_error(result_error),
+        .done_valid(image_feature_valid), .done_ready(image_feature_selected && state == WORKER_WAIT),
+        .done_error(image_feature_error), .done_yield(image_feature_yield),
+        .done_bank(image_feature_bank_result), .done_continuation(image_feature_continuation),
+        .done_dependency_domain(image_feature_dependency_domain),
+        .done_dependency_layer(image_feature_dependency_layer),
+        .done_dependency_token(image_feature_dependency_token),
+        .done_dependency_length(image_feature_dependency_length),
+        .projection_event(image_feature_projection_event), .projection_bytes(image_feature_projection_bytes),
+        .input_read_event(image_feature_input_event), .input_read_bytes(image_feature_input_bytes),
+        .source_read_event(image_feature_source_event), .source_read_bytes(image_feature_source_bytes),
+        .vector_live_bytes(image_feature_vector_live_bytes),
+        .vector_physical_bytes(image_feature_vector_physical_bytes),
+        .controller_bytes(image_feature_controller_bytes),
+        .nested_controller_bytes(image_feature_nested_controller_bytes)
+    );
+
     assign task_ready = rst_n && state == IDLE;
     assign work_valid = (input_selected && input_work_valid) ||
         (text_selected && text_work_valid) || (vision_selected && vision_work_valid) ||
-        (audio_active && audio_work_valid) || (feature_selected && feature_work_valid);
-    assign work_op = domain_hold == 3 ? feature_work_op : (domain_hold == 2 ? audio_work_op :
+        (audio_active && audio_work_valid) || (feature_selected && feature_work_valid) ||
+        (image_feature_selected && image_feature_work_valid);
+    assign work_op = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_op : feature_work_op) : (domain_hold == 2 ? audio_work_op :
         (domain_hold == 1 ? vision_work_op : (input_worker ? input_work_op : text_work_op)));
-    assign work_domain = domain_hold == 3 ? feature_work_domain : (domain_hold == 2 ? audio_work_domain :
+    assign work_domain = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_domain : feature_work_domain) : (domain_hold == 2 ? audio_work_domain :
         (domain_hold == 1 ? vision_work_domain : (input_worker ? input_work_domain : text_work_domain)));
-    assign work_target = domain_hold == 3 ? feature_work_target : (domain_hold == 2 ? audio_work_target :
+    assign work_target = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_target : feature_work_target) : (domain_hold == 2 ? audio_work_target :
         (domain_hold == 1 ? vision_work_target : (input_worker ? input_work_target : text_work_target)));
-    assign work_token = domain_hold == 3 ? feature_work_token : (domain_hold == 2 ? audio_work_token :
+    assign work_token = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_token : feature_work_token) : (domain_hold == 2 ? audio_work_token :
         (domain_hold == 1 ? vision_work_token : (input_worker ? input_work_token : text_work_token)));
-    assign work_layer = domain_hold == 3 ? feature_work_layer : (domain_hold == 2 ? audio_work_layer :
+    assign work_layer = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_layer : feature_work_layer) : (domain_hold == 2 ? audio_work_layer :
         (domain_hold == 1 ? vision_work_layer : (input_worker ? input_work_layer : text_work_layer)));
-    assign work_length = domain_hold == 3 ? feature_work_length : (domain_hold == 2 ? audio_work_length :
+    assign work_length = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_length : feature_work_length) : (domain_hold == 2 ? audio_work_length :
         (domain_hold == 1 ? vision_work_length : (input_worker ? input_work_length : text_work_length)));
-    assign work_component = domain_hold == 3 ? feature_work_component : (domain_hold == 2 ? audio_work_component :
+    assign work_component = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_component : feature_work_component) : (domain_hold == 2 ? audio_work_component :
         (domain_hold == 1 ? vision_work_component : (input_worker ? input_work_component : text_work_component)));
-    assign work_slot = domain_hold == 3 ? feature_work_slot : (domain_hold == 2 ? audio_work_slot :
+    assign work_slot = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_slot : feature_work_slot) : (domain_hold == 2 ? audio_work_slot :
         (domain_hold == 1 ? vision_work_slot : (input_worker ? input_work_slot : text_work_slot)));
-    assign work_bank = domain_hold == 3 ? feature_work_bank : (domain_hold == 2 ? audio_work_bank :
+    assign work_bank = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_bank : feature_work_bank) : (domain_hold == 2 ? audio_work_bank :
         (domain_hold == 1 ? vision_work_bank : (input_worker ? input_work_bank : text_work_bank)));
-    assign work_scalar_index = domain_hold == 3 ? feature_work_scalar_index :
+    assign work_scalar_index = domain_hold == 3 ?
+        (layer_hold == 1 ? image_feature_work_scalar_index : feature_work_scalar_index) :
         (domain_hold == 2 ? audio_work_scalar_index : (domain_hold == 1 ? vision_work_scalar_index :
         (input_worker ? input_work_scalar_index : text_work_scalar_index)));
-    assign work_data = domain_hold == 3 ? feature_work_data : (domain_hold == 2 ? audio_work_data :
+    assign work_data = domain_hold == 3 ? (layer_hold == 1 ? image_feature_work_data : feature_work_data) : (domain_hold == 2 ? audio_work_data :
         (domain_hold == 1 ? vision_work_data : (input_worker ? input_work_data : text_work_data)));
     assign write_valid = input_selected && input_write_valid;
     assign write_data = input_write_data;
@@ -673,7 +755,8 @@ module anvil_en1_replay_execute #(
     assign write_abort = input_selected && input_write_abort;
     assign work_rsp_ready = (input_selected && input_work_rsp_ready) ||
         (text_selected && text_work_rsp_ready) || (vision_selected && vision_work_rsp_ready) ||
-        (audio_active && audio_work_rsp_ready) || (feature_selected && feature_work_rsp_ready);
+        (audio_active && audio_work_rsp_ready) || (feature_selected && feature_work_rsp_ready) ||
+        (image_feature_selected && image_feature_work_rsp_ready);
     assign modality_valid = (input_selected && input_modality_valid) ||
         (text_selected && text_modality_valid);
     assign modality_model = !rst_n ? 2'd0 :
@@ -688,31 +771,38 @@ module anvil_en1_replay_execute #(
         (text_selected && text_modality_rsp_ready);
     assign cmd_valid = (input_selected && input_cmd_valid) || (text_selected && text_cmd_valid) ||
         (vision_selected && vision_cmd_valid) || (audio_active && audio_cmd_valid) ||
-        (feature_selected && feature_cmd_valid);
+        (feature_selected && feature_cmd_valid) || (image_feature_selected && image_feature_cmd_valid);
     assign cmd_write = 0;
-    assign cmd_addr = !rst_n ? 64'd0 : (domain_hold == 3 ? feature_cmd_addr :
+    assign cmd_addr = !rst_n ? 64'd0 :
+        (domain_hold == 3 ? (layer_hold == 1 ? image_feature_cmd_addr : feature_cmd_addr) :
         (domain_hold == 2 ? audio_cmd_addr :
         (domain_hold == 1 ? vision_cmd_addr : (input_worker ? input_cmd_addr : text_cmd_addr))));
     assign cmd_wdata = 0;
     assign result_ready = (input_selected && input_result_ready) || (text_selected && text_result_ready) ||
         (vision_selected && vision_result_ready) || (audio_active && audio_result_ready) ||
-        (feature_selected && feature_result_ready);
-    assign native_input_read_event = vision_input_event || audio_input_event || feature_input_event;
-    assign native_input_read_bytes = vision_input_bytes + audio_input_bytes + feature_input_bytes;
-    assign native_projection_event = vision_projection_event || audio_projection_event || feature_projection_event;
-    assign native_projection_bytes = vision_projection_bytes + audio_projection_bytes + feature_projection_bytes;
+        (feature_selected && feature_result_ready) || (image_feature_selected && image_feature_result_ready);
+    assign native_input_read_event = vision_input_event || audio_input_event ||
+        feature_input_event || image_feature_input_event;
+    assign native_input_read_bytes = vision_input_bytes + audio_input_bytes +
+        feature_input_bytes + image_feature_input_bytes;
+    assign native_projection_event = vision_projection_event || audio_projection_event ||
+        feature_projection_event || image_feature_projection_event;
+    assign native_projection_bytes = vision_projection_bytes + audio_projection_bytes +
+        feature_projection_bytes + image_feature_projection_bytes;
     assign native_intermediate_event = vision_intermediate_event || audio_layer_intermediate_event;
     assign native_intermediate_bytes = vision_intermediate_bytes + audio_layer_intermediate_bytes;
     assign owner_reprojection_event = text_owner_event;
     assign owner_reprojection_bytes = text_owner_bytes;
     assign query_projection_event = text_query_event;
     assign query_projection_bytes = text_query_bytes;
-    assign source_read_event = text_source_event || vision_source_event || audio_layer_source_event || feature_source_event;
-    assign source_read_bytes = text_source_bytes + vision_source_bytes + audio_layer_source_bytes + feature_source_bytes;
+    assign source_read_event = text_source_event || vision_source_event ||
+        audio_layer_source_event || feature_source_event || image_feature_source_event;
+    assign source_read_bytes = text_source_bytes + vision_source_bytes +
+        audio_layer_source_bytes + feature_source_bytes + image_feature_source_bytes;
     assign embedding_live_bytes = input_worker ? input_embedding_live : text_embedding_live;
     assign embedding_physical_bytes = rst_n ? input_embedding_physical + text_embedding_physical : 64'd0;
     assign selected_worker_state_bytes = !rst_n ? 64'd0 :
-        (domain_hold == 3 ? audio_feature_controller_bytes :
+        (domain_hold == 3 ? (layer_hold == 1 ? image_feature_controller_bytes : audio_feature_controller_bytes) :
         (domain_hold == 2 ? (input_worker ? audio_input_controller_bytes : audio_layer_controller_bytes) :
         (domain_hold == 1 ? vision_state_bytes : (input_worker ? input_state_bytes : text_state_bytes))));
     localparam integer DISPATCHER_BITS =
@@ -819,7 +909,7 @@ module anvil_en1_replay_execute #(
                     state <= VALIDATE;
                 end
                 VALIDATE: begin
-                    if ((domain_hold == 3 && layer_hold != 2) ||
+                    if ((domain_hold == 3 && layer_hold != 1 && layer_hold != 2) ||
                         length_hold != (domain_hold == 2 ? 12'd1024 :
                         (domain_hold == 1 ? 12'd768 :
                         (COMPACT ? 12'd8 : (model_hold == 1 ? 12'd1536 : 12'd2560)))) ||
@@ -828,19 +918,32 @@ module anvil_en1_replay_execute #(
                         (domain_hold == 2 && (layer_hold > 12 || native_audio_frames_hold == 0 ||
                             native_audio_frames_hold > 131072 ||
                             token_hold >= ((native_audio_frames_hold + 32'd3) >> 2))) ||
-                        (domain_hold == 3 && (native_audio_frames_hold == 0 ||
-                            native_audio_frames_hold > 131072 || token_hold >= tokens_hold)) ||
-                        (input_worker && mode_hold != 0)) begin
+                        (domain_hold == 3 && (token_hold >= tokens_hold ||
+                            (layer_hold == 1 && native_patches_hold == 0) ||
+                            (layer_hold == 2 && (native_audio_frames_hold == 0 ||
+                                native_audio_frames_hold > 131072)))) ||
+                        (input_worker && (domain_hold == 0 ? mode_hold > 1 : mode_hold != 0))) begin
                         error_hold <= 7;
                         state <= PUBLISH;
                     end else
                         state <= WORKER_START;
                 end
-                WORKER_START: if (domain_hold == 3 ? feature_ready : (domain_hold == 2 ? audio_ready :
+                WORKER_START: if (domain_hold == 3 ?
+                    (layer_hold == 1 ? image_feature_ready : feature_ready) : (domain_hold == 2 ? audio_ready :
                     (domain_hold == 1 ? vision_ready : (input_worker ? input_ready : text_ready))))
                     state <= WORKER_WAIT;
                 WORKER_WAIT: begin
-                    if (domain_hold == 3 && feature_valid) begin
+                    if (domain_hold == 3 && layer_hold == 1 && image_feature_valid) begin
+                        error_hold <= image_feature_error;
+                        done_bank_hold <= image_feature_bank_result;
+                        done_dependency_hold <= image_feature_yield;
+                        done_continuation_hold <= image_feature_continuation;
+                        done_domain_hold <= image_feature_dependency_domain;
+                        done_layer_hold <= image_feature_dependency_layer;
+                        done_token_hold <= image_feature_dependency_token;
+                        done_length_hold <= image_feature_dependency_length;
+                        state <= PUBLISH;
+                    end else if (domain_hold == 3 && layer_hold == 2 && feature_valid) begin
                         error_hold <= feature_error;
                         done_bank_hold <= feature_bank_result;
                         done_dependency_hold <= feature_yield;
@@ -875,6 +978,12 @@ module anvil_en1_replay_execute #(
                     end else if (domain_hold == 0 && input_worker && input_valid) begin
                         error_hold <= input_error;
                         done_bank_hold <= input_bank_result;
+                        done_dependency_hold <= input_yield;
+                        done_continuation_hold <= input_continuation;
+                        done_domain_hold <= input_dependency_domain;
+                        done_layer_hold <= input_dependency_layer;
+                        done_token_hold <= input_dependency_token;
+                        done_length_hold <= input_dependency_length;
                         state <= PUBLISH;
                     end else if (domain_hold == 0 && !input_worker && text_valid) begin
                         error_hold <= text_error;

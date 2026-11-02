@@ -5,7 +5,62 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected durable full audio-layer replay
+## Current saved increment: native audio placeholder-to-feature replay
+
+`rtl/anvil_en1_native_token_map.sv` derives a real placeholder ordinal and
+count by scanning the entire immutable text stream. Audio mapping then
+reads the actual original validity mask at every fourth frame, selects
+the requested true-mask ordinal and checks that the full valid-token
+count matches audio placeholders. Invalid identities, forbidden modality
+placeholders, malformed masks, memory failures and count mismatches return
+explicit errors. Every accepted scan/mask/directory read is original-input
+traffic, including failures; there is no feature map supplied by the host.
+The image ordinal/count output is available for the existing vision-bin
+mapper, but its complete replay binding is still pending.
+
+`rtl/anvil_en1_replay_audio_feature.sv` connects that mapping to the real
+bounded scheduler. It yields for the exact mapped domain-2 layer-12
+vector, resumes only with the matching completed memo, and supplies its
+acknowledged BF16 pairs to the existing native output/norm/modality
+projection engine. Actual H outputs are ordered, paired and acknowledged
+into the current feature frame. Source failures drain the real numerical
+worker; partial output never becomes a completed feature.
+
+The scheduler/workspace now carry domain-3 completed features at text H,
+with rank 18 below text rank 19+l and above native encoder ranks 1+l.
+Feature frame/memo live and production-shadow charges are connected.
+The literal feature engine's scratch/controller reservations are separately
+reported through `replay_execute`, not relabeled as shared frame RAM.
+Domain-3 layer 2 is connected audio; image layer 1 remains an explicit
+dispatcher error until its durable pooling worker is implemented.
+
+The domain-0 `replay_input` now yields for that actual audio feature before
+starting embedding. Its resumed audio callbacks read the feature memo,
+not the outward modality port. Opening its frame streaming store waits
+for a real embedding input valid, avoiding a store reservation that would
+deadlock earlier feature memo reads. `replay_text_layer` likewise retains
+its genuine entering/attention frame banks while yielding for the feature,
+then executes the existing real per-layer embedding, gated PLE and
+post-attention/MLP path. Its distinct continuation skips only already
+completed attention, never the numerical PLE. Existing image callbacks
+remain pending native routing; no complete five-domain execution is claimed.
+
+Saved changes: the two new RTL modules above; `replay_input`,
+`replay_text_layer`, `replay_execute`, `eval_schedule`, `replay_workspace`,
+`SPEC.md` and this document. Tools used: glob, view, rg and apply_patch.
+No commands, elaboration, simulation, synthesis, installations or experiments
+ran, and no preparation receipt exists. The reserved fast static check
+remains unused. Immutable parent, verification and runtime files are
+untouched; `.vulcan/engineering/run-0001/attempt-0003` remains preserved
+without a claimed repair.
+
+Next concrete dependency: durable image pooling/feature replay and native
+image-placeholder binding, followed by ordinary owner/frontier execution,
+fallback/cache/arbiter binding, whole-system live/physical overlays and
+parent-compatible top/CSR integration. Complete the design before the
+independent Verifier handoff; current sources are not ready.
+
+## Prior saved increment: connected durable full audio-layer replay
 
 `rtl/anvil_en1_replay_audio_history.sv` reconstructs actual attention
 residuals for the query and its at most four causal lightconv predecessors.

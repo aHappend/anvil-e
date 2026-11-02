@@ -106,16 +106,17 @@ module anvil_en1_replay_text_layer #(
         TOKEN_REGISTER = 9, EMBED_START = 10, EMBED_WAIT = 11,
         EMBED_REGISTER = 12, POST_START = 13, POST_WAIT = 14,
         PAIR_SEND = 15, PAIR_WAIT = 16, PAIR_REGISTER = 17,
-        PUBLISH = 18, RESPONSE = 19;
+        PUBLISH = 18, RESPONSE = 19, MODALITY_BIND = 20;
     localparam [2:0] SOURCE_IDLE = 0, SOURCE_VALIDATE = 1,
         SOURCE_LOCAL = 2, SOURCE_LOCAL_CAPTURE = 3, SOURCE_SEND = 4,
         SOURCE_WAIT = 5, SOURCE_REGISTER = 6, SOURCE_RESPONSE = 7;
     localparam [31:0] INPUT_MAGIC = 32'h454e3149;
     localparam [31:0] ATTENTION_MAGIC = 32'h454e3150;
+    localparam [31:0] PLE_MAGIC = 32'h454e314c;
     reg [4:0] state;
     reg [2:0] source_state;
     reg [1:0] model_hold, precision_hold, modality_hold, mode_hold;
-    reg [1:0] dependency_domain_hold, selected_modality;
+    reg [1:0] dependency_domain_hold, selected_modality, yielded_domain;
     reg [7:0] frame_layer_hold, dependency_layer_hold, yielded_layer;
     reg [31:0] token_hold, tokens_hold, dependency_token_hold, yielded_token;
     reg [63:0] tokens_base_hold, weights_base_hold, token_address_hold;
@@ -127,7 +128,7 @@ module anvil_en1_replay_text_layer #(
     reg token_error_hold;
     reg [15:0] low_hold, ple_q;
     reg [3:0] error_hold, pair_error_hold, source_failure_hold;
-    reg source_ple_hold, source_branch_hold, source_error_hold;
+    reg source_ple_hold, source_branch_hold, source_feature_hold, source_error_hold;
     reg [31:0] source_index_hold, source_pair_hold;
     reg [15:0] source_data_hold;
     reg [3:0] source_work_error;
@@ -151,6 +152,11 @@ module anvil_en1_replay_text_layer #(
     wire input_continuation = continuation_hold[159:128] == INPUT_MAGIC &&
         continuation_hold[127:0] == 0;
     wire projection_continuation = continuation_hold[159:128] == ATTENTION_MAGIC;
+    wire ple_continuation = continuation_hold == {PLE_MAGIC, 128'd0};
+    wire feature_tag_good = dependency_valid_hold && dependency_domain_hold == 3 &&
+        (dependency_layer_hold == 1 || dependency_layer_hold == 2) &&
+        dependency_token_hold == token_hold &&
+        dependency_length_hold == selected_length && dependency_slot_hold < 16;
     wire [64:0] token_address_sum = {1'b0, tokens_base_hold} +
         {31'd0, token_hold, 2'd0};
     wire [64:0] token_address_end = token_address_sum + 65'd3;
@@ -158,6 +164,7 @@ module anvil_en1_replay_text_layer #(
     wire audio_token = token_id_hold == (COMPACT ? 32'd29 : 32'd258881);
     wire image_allowed = modality_hold == 1 || modality_hold == 3;
     wire audio_allowed = modality_hold == 2 || modality_hold == 3;
+    wire native_feature = selected_modality == 1 || selected_modality == 2;
     wire binding_selected = rst_n && (state == BIND_START || state == BIND_WAIT);
     wire attention_selected = rst_n &&
         (state == ATTENTION_START || state == ATTENTION_WAIT);
@@ -215,6 +222,8 @@ module anvil_en1_replay_text_layer #(
     wire [11:0] attention_work_length, attention_work_component;
     wire [5:0] attention_work_slot;
     wire attention_work_bank, attention_cmd_valid, attention_result_ready;
+    wire attention_source_event;
+    wire [31:0] attention_source_bytes;
     wire [63:0] attention_cmd_addr;
     anvil_en1_replay_attention_projection #(.COMPACT(COMPACT)) attention_branch (
         .clk(clk), .rst_n(rst_n),
@@ -263,7 +272,7 @@ module anvil_en1_replay_text_layer #(
         .owner_reprojection_bytes(owner_reprojection_bytes),
         .query_projection_event(query_projection_event),
         .query_projection_bytes(query_projection_bytes),
-        .source_read_event(source_read_event), .source_read_bytes(source_read_bytes),
+        .source_read_event(attention_source_event), .source_read_bytes(attention_source_bytes),
         .controller_state_bytes(projection_controller_bytes),
         .executor_controller_bytes(executor_controller_bytes),
         .checkpoint_controller_bytes(checkpoint_controller_bytes),
@@ -277,6 +286,9 @@ module anvil_en1_replay_text_layer #(
     wire [15:0] embed_ple_data;
     wire [63:0] embed_cmd_addr;
     wire [3:0] embed_error;
+    wire embed_modality_valid, embed_modality_rsp_ready;
+    wire [1:0] embed_modality_model, embed_modality_kind;
+    wire [31:0] embed_modality_token, embed_modality_index;
     wire embed_input_correct = embed_input_index == input_count &&
         input_count < {20'd0, length_hold} &&
         embed_input_last == (input_count + 1'b1 == {20'd0, length_hold});
@@ -288,12 +300,16 @@ module anvil_en1_replay_text_layer #(
         .model(model_hold), .precision(precision_hold), .modality(selected_modality),
         .layer(logical_layer), .token(token_hold), .tokens_base(tokens_base_hold),
         .weights_base(weights_base_hold),
-        .modality_valid(modality_valid), .modality_ready(embedding_selected && modality_ready),
-        .modality_model(modality_model), .modality_kind(modality_kind),
-        .modality_token(modality_token), .modality_index(modality_index),
-        .modality_rsp_valid(embedding_selected && modality_rsp_valid),
-        .modality_rsp_ready(modality_rsp_ready), .modality_rsp_data(modality_rsp_data),
-        .modality_rsp_error(modality_rsp_error),
+        .modality_valid(embed_modality_valid),
+        .modality_ready(embedding_selected && (native_feature ?
+            source_state == SOURCE_IDLE : modality_ready)),
+        .modality_model(embed_modality_model), .modality_kind(embed_modality_kind),
+        .modality_token(embed_modality_token), .modality_index(embed_modality_index),
+        .modality_rsp_valid(embedding_selected && (native_feature ?
+            source_state == SOURCE_RESPONSE : modality_rsp_valid)),
+        .modality_rsp_ready(embed_modality_rsp_ready),
+        .modality_rsp_data(native_feature ? source_data_hold : modality_rsp_data),
+        .modality_rsp_error(native_feature ? source_error_hold : modality_rsp_error),
         .input_valid(embed_input_valid), .input_ready(rst_n && state == EMBED_WAIT),
         .input_index(embed_input_index), .input_data(), .input_last(embed_input_last),
         .ple_valid(embed_ple_valid), .ple_ready(rst_n && state == EMBED_WAIT),
@@ -362,20 +378,30 @@ module anvil_en1_replay_text_layer #(
     end
 
     assign start_ready = rst_n && state == IDLE;
+    assign modality_valid = embedding_selected && !native_feature && embed_modality_valid;
+    assign modality_model = rst_n ? embed_modality_model : 2'd0;
+    assign modality_kind = rst_n ? embed_modality_kind : 2'd0;
+    assign modality_token = rst_n ? embed_modality_token : 32'd0;
+    assign modality_index = rst_n ? embed_modality_index : 32'd0;
+    assign modality_rsp_ready = embedding_selected && !native_feature && embed_modality_rsp_ready;
     assign work_req_valid = rst_n && (binding_selected ? binding_work_valid :
         (attention_selected ? attention_work_valid :
          (pair_selected ? state == PAIR_SEND :
-            (post_selected && source_state == SOURCE_SEND))));
+            ((post_selected || (embedding_selected && native_feature)) &&
+                source_state == SOURCE_SEND))));
     assign work_req_op = !rst_n ? 3'd0 : (binding_selected ? binding_work_op :
         (attention_selected ? attention_work_op : (pair_selected ? 3'd6 : 3'd4)));
     assign work_req_domain = !rst_n ? 2'd0 : (binding_selected ? binding_work_domain :
-        (attention_selected ? attention_work_domain : 2'd0));
+        (attention_selected ? attention_work_domain :
+            (source_feature_hold && !pair_selected ? 2'd3 : 2'd0)));
     assign work_req_target = !rst_n ? 2'd0 : (binding_selected ? binding_work_target :
-        (attention_selected ? attention_work_target : (pair_selected ? 2'd2 : 2'd0)));
+        (attention_selected ? attention_work_target : (pair_selected ? 2'd2 :
+            (source_feature_hold ? 2'd1 : 2'd0))));
     assign work_req_token = !rst_n ? 32'd0 : (binding_selected ? binding_work_token :
         (attention_selected ? attention_work_token : token_hold));
     assign work_req_layer = !rst_n ? 8'd0 : (binding_selected ? binding_work_layer :
-        (attention_selected ? attention_work_layer : frame_layer_hold));
+        (attention_selected ? attention_work_layer :
+            (source_feature_hold && !pair_selected ? {6'd0, selected_modality} : frame_layer_hold)));
     assign work_req_length = !rst_n ? 12'd0 : (binding_selected ? binding_work_length :
         (attention_selected ? attention_work_length : length_hold));
     assign work_req_component = !rst_n ? 12'd0 :
@@ -383,7 +409,8 @@ module anvil_en1_replay_text_layer #(
             attention_work_component : (pair_selected ?
                 output_count[11:0] - 12'd2 : {source_index_hold[11:1], 1'b0})));
     assign work_req_slot = !rst_n ? 6'd0 : (binding_selected ? binding_work_slot :
-        (attention_selected ? attention_work_slot : slot_hold));
+        (attention_selected ? attention_work_slot :
+            (source_feature_hold && !pair_selected ? dependency_slot_hold : slot_hold)));
     assign work_req_bank = rst_n && (binding_selected ? binding_work_bank :
         (attention_selected ? attention_work_bank : (pair_selected || source_branch_hold)));
     assign work_req_scalar_index = !rst_n ? 8'd0 :
@@ -410,7 +437,7 @@ module anvil_en1_replay_text_layer #(
     assign done_yield = rst_n && yield_hold && error_hold == 0;
     assign done_bank = rst_n;
     assign done_continuation = rst_n && yield_hold ? yielded_continuation : 160'd0;
-    assign done_dependency_domain = 0;
+    assign done_dependency_domain = rst_n && yield_hold ? yielded_domain : 2'd0;
     assign done_dependency_layer = rst_n && yield_hold ? yielded_layer : 8'd0;
     assign done_dependency_token = rst_n && yield_hold ? yielded_token : 32'd0;
     assign done_dependency_length = rst_n && yield_hold ? length_hold : 12'd0;
@@ -424,10 +451,14 @@ module anvil_en1_replay_text_layer #(
     assign post_vector_physical_bytes = rst_n ?
         64'(2*(3*MAX_H+MAX_D+Q*MAX_D+P)) : 64'd0;
     assign busy = rst_n && state != IDLE;
+    wire feature_source_event = rst_n && embedding_selected && source_feature_hold &&
+        source_state == SOURCE_SEND && work_req_ready;
+    assign source_read_event = attention_source_event || feature_source_event;
+    assign source_read_bytes = attention_source_bytes + (feature_source_event ? 32'd4 : 32'd0);
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(source_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) + $bits(mode_hold) +
-        $bits(dependency_domain_hold) + $bits(selected_modality) +
+        $bits(dependency_domain_hold) + $bits(selected_modality) + $bits(yielded_domain) +
         $bits(frame_layer_hold) + $bits(dependency_layer_hold) + $bits(yielded_layer) +
         $bits(token_hold) + $bits(tokens_hold) + $bits(dependency_token_hold) + $bits(yielded_token) +
         $bits(tokens_base_hold) + $bits(weights_base_hold) + $bits(token_address_hold) +
@@ -438,7 +469,8 @@ module anvil_en1_replay_text_layer #(
         $bits(token_id_hold) + $bits(input_count) + $bits(ple_count) + $bits(output_count) +
         $bits(pair_hold) + $bits(token_error_hold) + $bits(low_hold) + $bits(ple_q) +
         $bits(error_hold) + $bits(pair_error_hold) + $bits(source_failure_hold) +
-        $bits(source_ple_hold) + $bits(source_branch_hold) + $bits(source_error_hold) +
+        $bits(source_ple_hold) + $bits(source_branch_hold) + $bits(source_feature_hold) +
+        $bits(source_error_hold) +
         $bits(source_index_hold) + $bits(source_pair_hold) + $bits(source_data_hold) +
         $bits(source_work_error) + $bits(source_tag_error);
     assign controller_state_bytes = rst_n ? 64'((CONTROLLER_BITS + 7) >> 3) : 64'd0;
@@ -448,6 +480,7 @@ module anvil_en1_replay_text_layer #(
             source_state <= SOURCE_IDLE;
             source_ple_hold <= 0;
             source_branch_hold <= 0;
+            source_feature_hold <= 0;
             source_error_hold <= 0;
             source_index_hold <= 0;
             source_pair_hold <= 0;
@@ -459,16 +492,33 @@ module anvil_en1_replay_text_layer #(
             if (start_valid && start_ready)
                 source_failure_hold <= 0;
             case (source_state)
-                SOURCE_IDLE: if (rst_n && state == POST_WAIT && post_source_valid) begin
-                    source_ple_hold <= post_source_ple;
-                    source_branch_hold <= post_source_branch;
-                    source_index_hold <= post_source_index;
-                    source_tag_error <= post_source_model != model_hold ||
-                        post_source_layer != logical_layer || post_source_token != token_hold;
-                    source_error_hold <= 0;
-                    source_work_error <= 0;
-                    source_data_hold <= 0;
-                    source_state <= SOURCE_VALIDATE;
+                SOURCE_IDLE: begin
+                    if (state == EMBED_WAIT && native_feature && embed_modality_valid) begin
+                        source_feature_hold <= 1;
+                        source_ple_hold <= 0;
+                        source_branch_hold <= 0;
+                        source_index_hold <= embed_modality_index;
+                        source_tag_error <= !feature_tag_good ||
+                            dependency_layer_hold != {6'd0, selected_modality} ||
+                            embed_modality_model != model_hold ||
+                            embed_modality_kind != selected_modality ||
+                            embed_modality_token != token_hold;
+                        source_error_hold <= 0;
+                        source_work_error <= 0;
+                        source_data_hold <= 0;
+                        source_state <= SOURCE_VALIDATE;
+                    end else if (state == POST_WAIT && post_source_valid) begin
+                        source_feature_hold <= 0;
+                        source_ple_hold <= post_source_ple;
+                        source_branch_hold <= post_source_branch;
+                        source_index_hold <= post_source_index;
+                        source_tag_error <= post_source_model != model_hold ||
+                            post_source_layer != logical_layer || post_source_token != token_hold;
+                        source_error_hold <= 0;
+                        source_work_error <= 0;
+                        source_data_hold <= 0;
+                        source_state <= SOURCE_VALIDATE;
+                    end
                 end
                 SOURCE_VALIDATE: begin
                     if (source_tag_error || (source_ple_hold && source_branch_hold) ||
@@ -504,7 +554,7 @@ module anvil_en1_replay_text_layer #(
                             source_pair_hold[31:16] : source_pair_hold[15:0];
                     source_state <= SOURCE_RESPONSE;
                 end
-                SOURCE_RESPONSE: if (post_source_rsp_ready)
+                SOURCE_RESPONSE: if (source_feature_hold ? embed_modality_rsp_ready : post_source_rsp_ready)
                     source_state <= SOURCE_IDLE;
                 default: begin
                     source_error_hold <= 1;
@@ -524,6 +574,7 @@ module anvil_en1_replay_text_layer #(
             mode_hold <= 0;
             dependency_domain_hold <= 0;
             selected_modality <= 0;
+            yielded_domain <= 0;
             frame_layer_hold <= 0;
             dependency_layer_hold <= 0;
             yielded_layer <= 0;
@@ -582,6 +633,7 @@ module anvil_en1_replay_text_layer #(
                     ple_count <= 0;
                     output_count <= 0;
                     selected_modality <= 0;
+                    yielded_domain <= 0;
                     yielded_layer <= 0;
                     yielded_token <= 0;
                     yielded_continuation <= 0;
@@ -597,9 +649,15 @@ module anvil_en1_replay_text_layer #(
                         state <= PUBLISH;
                     end else if (mode_hold == 3 || (mode_hold == 1 &&
                         (!dependency_valid_hold || (!input_continuation &&
-                            !projection_continuation)))) begin
+                            !projection_continuation && !ple_continuation)))) begin
                         error_hold <= 7;
                         state <= PUBLISH;
+                    end else if (mode_hold == 1 && ple_continuation) begin
+                        if (!feature_tag_good) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else
+                            state <= TOKEN_ADDRESS;
                     end else if (mode_hold == 1 && projection_continuation) begin
                         attention_resume <= 1;
                         state <= ATTENTION_START;
@@ -670,8 +728,26 @@ module anvil_en1_replay_text_layer #(
                             selected_modality <= 2;
                         else
                             selected_modality <= 0;
-                        state <= EMBED_START;
+                        state <= MODALITY_BIND;
                     end
+                end
+                MODALITY_BIND: begin
+                    if (mode_hold == 1 && ple_continuation) begin
+                        if (!native_feature || !feature_tag_good ||
+                            dependency_layer_hold != {6'd0, selected_modality}) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else
+                            state <= EMBED_START;
+                    end else if (native_feature) begin
+                        yield_hold <= 1;
+                        yielded_domain <= 3;
+                        yielded_layer <= {6'd0, selected_modality};
+                        yielded_token <= token_hold;
+                        yielded_continuation <= {PLE_MAGIC, 128'd0};
+                        state <= PUBLISH;
+                    end else
+                        state <= EMBED_START;
                 end
                 EMBED_START: if (embed_ready)
                     state <= EMBED_WAIT;
@@ -693,9 +769,11 @@ module anvil_en1_replay_text_layer #(
                     end
                 end
                 EMBED_REGISTER: begin
-                    if (error_hold != 0)
+                    if (error_hold != 0 || source_failure_hold != 0) begin
+                        if (error_hold == 0)
+                            error_hold <= source_failure_hold;
                         state <= PUBLISH;
-                    else if (input_count != {20'd0, length_hold} || ple_count != P) begin
+                    end else if (input_count != {20'd0, length_hold} || ple_count != P) begin
                         error_hold <= 7;
                         state <= PUBLISH;
                     end else begin

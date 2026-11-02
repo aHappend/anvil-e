@@ -7,10 +7,71 @@ engineering acceptance or a claim that every described engine exists.
 
 ## Durable causal-convolution history layout
 
-### Completed audio-feature replay binding
+### Durable image placeholder-to-feature execution
+
+`anvil_en1_replay_image_feature` implements domain-3 layer 1 by connecting
+the immutable text-placeholder mapper to `anvil_en1_vision_soft_token`.
+The mapper supplies the actual image ordinal and total placeholder count.
+The physical pool count is the exactly checked integer quotient
+patches/9 from the sequential divider; a remainder is an error. The
+existing vision-bin mapper still validates the coordinate directory,
+grid, occupied physical bins and expected valid soft-token count.
+Neither the placeholder ordinal nor a source patch is an image feature.
+
+The real pool requests domain-1 layer-16 components. A missing patch
+memo yields Eval(16,patch) at rank 17, below feature rank 18, while
+retaining the literal soft-token/pool FSM and its RAM. It does not restart
+pooling from a partial sum or substitute a host encoder answer. Each
+component keeps the original ascending-patch binary32 multiply/add
+order, pool BF16 boundary, sqrt(768) scaling, modality normalization and
+projection. This can regenerate an evicted patch for another component;
+there is no latency or total-weight-traffic improvement claim.
+
+Image continuation is
+`{0x454e3149,generation[31:0],text_position[31:0],patch[31:0],component[31:0]}`.
+The worker checks the complete resumed model, precision, modality,
+generation, text extent, text position, frame slot, image geometry and
+immutable base addresses against its retained descriptor. It also checks
+this continuation and the exact domain-1/layer-16/patch/768-component memo
+descriptor before any memo read. The source pair is acknowledged,
+registered and lane-selected before its held numerical callback response.
+Wrong resumed descriptors fail the outstanding source explicitly and
+drain the real child to completion.
+
+| Image feature boundary | Pre-edge acceptance and post-edge action |
+| --- | --- |
+| Fresh task | Capture descriptor; sequentially divide and validate before immutable mapping or numerical dispatch |
+| Source miss | Accept actual child callback, register patch/index, validate, then publish the lower-rank dependency |
+| Yield response | Retire the task response, enter suspended state; retain pool/controller/RAM and hold the outstanding numerical source response absent |
+| Lower-rank work | Only the separate vision replay worker executes; suspended image feature emits no memory or workspace command |
+| Resume | Capture exact returned descriptor; validate on a later edge, then issue the real aligned memo read |
+| Source response | Register the acknowledged memo pair and selected BF16 lane; hold response/error until the pool accepts |
+| Feature output | Accept ordered H values, write each pair to frame bank 0 and await its acknowledgment before the next pair |
+| Final response | Require actual child completion, H values, exact last and all pair acknowledgments; only then release the retained child |
+| Root cancellation | A new scheduler-root handshake, after prior root completion, cancels any abandoned source-stalled image continuation and resets its child visibility before dispatch |
+| Reset | All public outputs zero; controller validity and child visibility invalidated |
+
+Same-rank feature nesting is prohibited by the scheduler rank check.
+Vision dependencies cannot invoke a text/image-feature ancestor, so one
+retained literal image worker is sufficient. There is no recursive
+elaboration or unbounded vector archive. Root cancellation is connected
+to the replay scheduler's actual new-root acceptance, not to an arbitrary
+mid-transaction task change; normal yields never reset the child.
+
+The image worker reports its live vector allocation continuously while
+suspended, including while a separate lower-rank encoder frame executes.
+Its physical vector reservation is 6432 bytes: 1824-byte physical-bin
+mask, 1536-byte pooled BF16 vector and 3072-byte modality-normalized
+bank. These remain additive to workspace frames/memos and lower-layer
+scratch, not a claimed overlay. Its own controller and all reported
+nested controllers are separate outputs. Primitive-state completion,
+whole-system allocation enforcement and actual physical RAM inference
+remain pending; this declaration is not measured resource-fit evidence.
+
+### Completed native-feature replay binding
 
 Domain 3 is the internal completed-modality feature domain. Layer 2
-identifies audio; layer 1 is reserved for the image feature worker.
+identifies audio; layer 1 identifies image features.
 Its vector length is the selected text H (8 in compact builds), not the
 native encoder width. This domain does not change the public job descriptor
 or introduce host-generated features. Its dependency rank is 18; text
@@ -59,10 +120,39 @@ Domain-3 compact frames charge two H vectors (32 bytes), memos charge
 one H vector (16 bytes), plus the existing scalar frame charge. Production
 frames retain the conservative 12 KiB vector/1 KiB scalar reservation,
 and memos retain 8 KiB. Both actual and shadow allocations remain visible.
-The literal feature worker's 1536-vector/projection banks and controller
-reports are additive, not fictitious RAM overlays. Image feature execution,
-text placeholder/session binding and whole-system primitive/scratch
-accounting remain integration obligations before a ready handoff.
+The literal audio feature worker's 1536-vector/projection banks and
+controller reports are additive, not fictitious RAM overlays.
+Whole-system session binding and primitive/scratch accounting remain
+integration obligations before a ready handoff.
+
+The domain-0 layer-zero input worker binds native placeholders to this
+feature domain before starting embedding reconstruction. It yields
+Eval(domain 3,layer kind,text_position), with kind 1 for image and 2 for audio, using
+`{0x454e314d,128'b0}` as its input continuation. Resume rereads the
+immutable token identity and validates the exact H-wide feature memo
+descriptor. Real embedding/PLE native callbacks read that memo with
+op 4/target 1, never the outward host modality port.
+Embedding computes all feature replacement/PLE boundaries before its input
+stream can be stored. The input worker waits for the first real input
+valid before opening the workspace streaming write reservation; this
+prevents a live store from blocking the preceding feature memo reads.
+Each memo read is captured/registered/held, and source or embedding
+failure drains the actual child before returning the original error.
+Text-only behavior is retained; image and audio callbacks both use actual
+completed native features.
+
+Higher text layers retain the completed entering vector and projected
+attention branch in their existing two frame banks while yielding for the
+same selected native feature memo. Their distinct PLE continuation is
+`{0x454e314c,128'b0}`. Resume validates the feature descriptor, rereads
+the immutable placeholder identity and skips predecessor/attention
+reexecution; it does not skip embedding/PLE arithmetic. Embedding feature
+callbacks use the acknowledged memo source FSM, and actual PLE still
+passes through the existing gated post-attention/MLP residual engine.
+The source FSM distinguishes feature memo, entering/attention frame and
+local PLE reads; only one is outstanding. The reread immutable token kind
+must match the feature layer before embedding starts. Full system
+integration still requires completion.
 
 `anvil_en1_replay_audio_history` materializes the query attention
 residual and at most four causal predecessors before starting lightconv.
@@ -3127,17 +3217,20 @@ The eight request ops are push-frame (0), pop-frame (1), update-continuation
 scalar-word-write/frame-pair-write (6), and scalar-word-read (7).
 Requests capture model, generation, domain, layer, token, vector length,
 frame/slot handle, bank, aligned component, scalar index, data and a 256-bit
-continuation. Domain 0 is text, 1 vision, 2 audio; 3 rejects. Text lengths
+continuation. Domain 0 is text, 1 vision, 2 audio, 3 completed modality features. Text/feature lengths
 equal the selected H (8 in compact mode); vision/audio lengths stay 768/1024
 in both modes.
-Text layer is 0..L, vision 0..16, audio 0..12; token is 0..131071.
+Text layer is 0..L, vision 0..16, audio 0..12; feature layer 1/2 identifies
+image/audio. Feature tokens are original text positions. The saved dispatcher
+currently implements audio features; image feature execution is pending.
+Token is 0..131071.
 Memo tags include every descriptor field affecting the vector
 (model, generation, domain, layer, token, length).
 
 Push allocates the next of 64 frame slots, invalidates both vectors and its
 scalar visibility, writes the eight continuation words, and commits depth
-only after all backing responses. Rank is `text_layer+18`, `vision_layer+1`,
-or `audio_layer+1`: child pushes must strictly decrease rank. This enforces
+only after all backing responses. Rank is `text_layer+19`, `vision_layer+1`,
+`audio_layer+1`, or 18 for completed features: child pushes must strictly decrease rank. This enforces
 bounded dependency descent; it does not implement the neural operator that
 must request the correct child. Pop reads the top continuation from backing
 RAM, then releases both frame and scalar slots. Update writes only the top
@@ -3262,7 +3355,7 @@ only after the final component acceptance.
 | Start E0/E1/E2 | Capture descriptor, validate root/session/addresses, then bind workspace; no numerical task on E0/E1 |
 | Task T0 | Capture a stable frame/continuation/dependency descriptor before worker execution |
 | Worker request versus done | A done/yield is accepted only after every forwarded workspace response retires; no request/done race |
-| Dependency layer 0 | Only native reconstruction may cross to lower-rank encoder work; text cannot request text at an equal/higher layer |
+| Dependency layer 0 / native PLE | Native reconstruction and per-layer PLE may request lower-rank completed features, whose dependencies descend into encoders; text cannot request text at an equal/higher layer |
 | Memo hit/miss | A hit resumes after its registered lookup response; a miss waits for actual child computation and copy completion |
 | Copy and pop | Committed frame stays live through memo copy; its final destination acknowledgment precedes frame release |
 | Single token/root layer 0 | Exactly one reconstruction task; no needless history stack or empty vector |

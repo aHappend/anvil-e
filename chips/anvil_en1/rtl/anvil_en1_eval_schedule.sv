@@ -141,7 +141,7 @@ module anvil_en1_eval_schedule #(
         (dependency_domain == 0 || dependency_domain == 3 ? text_length :
         (dependency_domain == 1 ? 12'd768 : 12'd1024));
     wire root_valid =
-        (root_domain == 0 ? root_token < tokens_hold : root_token <= 131071) &&
+        (root_domain == 0 || root_domain == 3 ? root_token < tokens_hold : root_token <= 131071) &&
         (root_domain == 3 ? (root_layer == 1 || root_layer == 2) :
         (root_domain == 0 ? root_layer <= text_layers :
         (root_domain == 1 ? root_layer <= 16 : root_layer <= 12)));
@@ -154,7 +154,7 @@ module anvil_en1_eval_schedule #(
         {1'b0, dependency_layer[5:0]} + 7'd19 :
         (dependency_domain == 3 ? 7'd18 : {1'b0, dependency_layer[5:0]} + 7'd1);
     wire dependency_descriptor_valid =
-        (dependency_domain == 0 ? dependency_token < tokens_hold :
+        (dependency_domain == 0 || dependency_domain == 3 ? dependency_token < tokens_hold :
             dependency_token <= 131071) &&
         dependency_length == selected_dependency_length &&
         (dependency_domain == 3 ? (dependency_layer == 1 || dependency_layer == 2) :
