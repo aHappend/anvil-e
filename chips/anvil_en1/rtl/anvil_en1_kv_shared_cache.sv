@@ -43,7 +43,9 @@ module anvil_en1_kv_shared_cache #(
     input wire regen_rsp_valid,
     output wire regen_rsp_ready,
     input wire [31:0] regen_rsp_data,
-    input wire [3:0] regen_rsp_error
+    input wire [3:0] regen_rsp_error,
+    output wire [63:0] resident_live_bytes, resident_physical_bytes, metadata_bytes,
+    output wire resident_hit_event, resident_miss_event, alias_event
 );
     localparam integer LEGAL = RESIDENT_ENTRIES >= 1 &&
         RESIDENT_ENTRIES <= 64 && (COMPACT == 0 || COMPACT == 1);
@@ -69,6 +71,12 @@ module anvil_en1_kv_shared_cache #(
         assign regen_kv_head = 0;
         assign regen_component = 0;
         assign regen_rsp_ready = 0;
+        assign resident_live_bytes = 0;
+        assign resident_physical_bytes = 0;
+        assign metadata_bytes = 0;
+        assign resident_hit_event = 0;
+        assign resident_miss_event = 0;
+        assign alias_event = 0;
     end else begin : cache
         localparam [2:0] META_IDLE = 0, META_MAP = 1, META_PUBLISH = 2,
             META_RESPONSE = 3, META_DRAIN = 4;
@@ -81,6 +89,7 @@ module anvil_en1_kv_shared_cache #(
         reg [31:0] generation;
         reg [RESIDENT_ENTRIES-1:0] occupied;
         reg [5:0] replace_index;
+        reg [6:0] resident_count;
         reg [2:0] op_hold;
         reg [1:0] model_hold;
         reg [7:0] layer_hold;
@@ -188,6 +197,15 @@ module anvil_en1_kv_shared_cache #(
         assign regen_kv_head = rst_n ? data_head : 2'd0;
         assign regen_component = rst_n ? {data_component[9:1], 1'b0} : 10'd0;
         assign regen_rsp_ready = rst_n && fetch_state == FETCH_WAIT;
+        assign resident_live_bytes = rst_n ? {55'd0, resident_count, 2'd0} : 64'd0;
+        assign resident_physical_bytes = rst_n ? 64'(4*RESIDENT_ENTRIES) : 64'd0;
+        assign metadata_bytes = rst_n ?
+            64'((RESIDENT_ENTRIES*(TAG_WIDTH+1)+7) >> 3) : 64'd0;
+        assign resident_hit_event = rst_n && fetch_state == FETCH_LOOKUP &&
+            !invalidating && data_error == 0 && hit_hold;
+        assign resident_miss_event = rst_n && fetch_state == FETCH_LOOKUP &&
+            !invalidating && data_error == 0 && !hit_hold;
+        assign alias_event = rsp_valid && rsp_ready && meta_error == 0 && alias_hold;
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin
@@ -275,11 +293,15 @@ module anvil_en1_kv_shared_cache #(
             if (!rst_n) begin
                 occupied <= 0;
                 replace_index <= 0;
+                resident_count <= 0;
             end else if (meta_state == META_DRAIN && fetch_state == FETCH_IDLE) begin
                 occupied <= 0;
                 replace_index <= 0;
+                resident_count <= 0;
             end else if (insert_word) begin
                 occupied[replace_index] <= 1;
+                if (!occupied[replace_index])
+                    resident_count <= resident_count + 1'b1;
                 if (replace_index == RESIDENT_ENTRIES-1)
                     replace_index <= 0;
                 else

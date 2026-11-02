@@ -171,7 +171,7 @@ module anvil_en1_replay_binding #(
     wire control_open = rst_n && control_state == CONTROL_IDLE &&
         root_state == ROOT_IDLE && !owner_busy && !replay_busy;
     wire root_open = rst_n && active && control_state == CONTROL_IDLE &&
-        !control_valid && root_state == ROOT_IDLE;
+        root_state == ROOT_IDLE;
     wire owner_route = rst_n && root_owner && root_state == ROOT_WAIT;
     wire frontier_route = rst_n && !root_owner && root_state == ROOT_WAIT;
     wire root_error_valid = rst_n && root_state == ROOT_ERROR_RESPONSE;
@@ -188,7 +188,7 @@ module anvil_en1_replay_binding #(
     assign regen_ready = rst_n && active && control_state == CONTROL_IDLE &&
         !control_valid && owner_regen_ready;
     assign owner_eval_ready = root_open;
-    assign eval_start_ready = root_open && !owner_eval_valid;
+    assign eval_start_ready = root_open && !control_valid && !owner_eval_valid;
     assign eval_output_valid = frontier_route && engine_output_valid;
     assign eval_output_index = rst_n ? engine_output_index : 32'd0;
     assign eval_output_data = rst_n ? engine_output_data : 16'd0;
@@ -199,7 +199,18 @@ module anvil_en1_replay_binding #(
         (root_error_valid ? root_error_hold : engine_done_error);
     assign busy = rst_n && (control_state != CONTROL_IDLE ||
         root_state != ROOT_IDLE || owner_busy || replay_busy);
-    assign binding_state_bytes = rst_n ? 64'd105 : 64'd0;
+    localparam integer BINDING_BITS = $bits(control_state) + $bits(root_state) +
+        $bits(active) + $bits(invalidate_hold) + $bits(fallback_hold) + $bits(root_owner) +
+        $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
+        $bits(generation_hold) + $bits(tokens_hold) + $bits(tokens_base_hold) +
+        $bits(weights_base_hold) + $bits(image_base_hold) + $bits(vision_weights_hold) +
+        $bits(patches_hold) + $bits(rows_hold) + $bits(columns_hold) +
+        $bits(audio_base_hold) + $bits(audio_weights_hold) + $bits(audio_frames_hold) +
+        $bits(root_model) + $bits(root_precision) + $bits(root_modality) + $bits(root_domain) +
+        $bits(root_generation) + $bits(root_tokens) + $bits(root_token) +
+        $bits(root_layer) + $bits(root_tokens_base) + $bits(root_weights_base) +
+        $bits(control_error_hold) + $bits(root_error_hold);
+    assign binding_state_bytes = rst_n ? 64'((BINDING_BITS + 7) >> 3) : 64'd0;
 
     anvil_en1_owner_replay #(.COMPACT(COMPACT)) owner_replay (
         .clk(clk), .rst_n(rst_n),
@@ -466,7 +477,10 @@ module anvil_en1_replay_binding #(
                     root_state <= ROOT_VALIDATE;
                 end
                 ROOT_VALIDATE: begin
-                    if (!root_descriptor_good) begin
+                    if ((root_model != 1 && root_model != 2) || root_precision > 1) begin
+                        root_error_hold <= 6;
+                        root_state <= ROOT_ERROR_PUBLISH;
+                    end else if (!root_descriptor_good) begin
                         root_error_hold <= 7;
                         root_state <= ROOT_ERROR_PUBLISH;
                     end else

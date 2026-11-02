@@ -5,7 +5,115 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: ordinary native features and disjoint backing
+## Current saved increment: connected native execution assembly
+
+`rtl/anvil_en1_native.sv` connects the literal frontier scheduler/executor,
+cache, real owner/replay binding and three-client memory arbiter. The
+binding's owner-source/ring callbacks, frontier Eval stream and actual
+backing channel now close onto the executor. Ordinary resident misses
+regenerate through the real owner worker; recursive replay shares cache
+metadata but does not reenter the blocked resident fetch channel.
+
+Registered metadata arbitration retains full commands and response owners.
+Replay metadata can progress while ordinary attention waits for owner
+regeneration. Registered mask arbitration rereads real immutable unsigned32
+0/1 masks through the shared memory arbiter, checking token bounds, full
+byte-address sums, memory failures and malformed data. It does not replace
+the mask with a constant or permit host-produced hidden/KV answers.
+
+The assembly captures a complete native context, validates it, acknowledges
+cache invalidation, releases/configures the old frontier/ring, configures
+the actual replay binding and only then starts the schedule. The same
+padded capacity rule selects binding and scheduler fallback modes.
+Completion waits for schedule/output completion, idle workers and routers,
+and an acknowledged memory drain. The arbiter drain request is gated by
+that same idle condition so it cannot block a worker's remaining accesses.
+Parent compatibility and public decode/session/position handling still
+belong to the pending outer top.
+
+`kv_shared_cache` now reports actual occupied resident-pair bytes,
+physical payload, tag metadata and one-shot validated hit/miss/accepted
+alias events. Its existing metadata/fetch datapath and latencies are
+unchanged. The native assembly carries 19 separate live/physical component
+fields, four metadata fields and the existing workspace shadow/reservation
+reports. Shared workspace RAM is physically charged once, not as a second
+allocation. Its own controller/register bits are reported explicitly.
+These reports remain incomplete subtotals: not all primitive/controller
+state is counted, and short-context native scratch/full fallback overlay
+limits are not enforced. No measured reduction, resource fit or timing
+claim is made.
+
+Saved changes: new `rtl/anvil_en1_native.sv`; updated
+`rtl/anvil_en1_kv_shared_cache.sv`, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+simulation, synthesis, installations or experiments ran; no preparation
+receipts exist. The reserved static check remains unused. Parent,
+verification and runtime files remain untouched; the original
+`.vulcan/engineering/run-0001/attempt-0003` interruption remains preserved
+without a claimed repair.
+
+Next: complete parent-compatible `anvil_en1_top`, public session/decode
+and positions-array semantics, final parent/native memory routing and CSR
+telemetry; finish complete live/physical overlays and storage-limit
+enforcement, including short-context native scratch and the fallback
+arithmetic/controller allowance. Then use the reserved static check and
+hand off immediately to independent Verifier. Not ready for Verifier.
+
+## Prior saved increment: shared owner/frontier replay binding
+
+`rtl/anvil_en1_replay_binding.sv` now connects literal owner projection,
+real continuation/memo execution and a registered two-client memory
+arbiter. A registered session binds original text/image/audio descriptors.
+Owner and frontier Eval starts share one actual scheduler; owner wins
+simultaneous offers, with no preemption after acceptance. The complete
+selected descriptor and response owner are retained through scheduler
+stalls, output backpressure and actual completion. Invalid native
+model/precision and stale/session-mismatched descriptors fail before
+scheduler/backing access.
+
+The cache remains the only regeneration producer. Ordinary projections
+use the exposed tagged frontier/ring callbacks; fallback owner projections
+consume the real Eval hidden vector. The frontier requester also accepts
+domain-3 feature jobs. Both use the same backing channel and numerical
+implementation, never a second replay engine or host-produced KV/features.
+Owner and replay immutable-memory commands pass through the literal
+registered arbiter; its local owner IDs remain separate from tensor-map
+traffic classes. Workspace and individual vector live/physical reports
+remain separate, and the binding's own 105-byte controller is counted.
+Child/primitive/top accounting is not complete.
+
+`eval_schedule` now acknowledges workspace invalidation after its last
+accepted output before publishing successful root completion. Memos still
+serve all dependencies within the root; no cross-root reuse is lost
+because roots already rebound the workspace. The retained image worker
+also cancels on accepted root completion, not just next-root acceptance,
+so a failed suspended continuation cannot retain visibility across the
+next representation switch. Normal dependency yields remain durable.
+
+Saved changes in this increment:
+`rtl/anvil_en1_replay_binding.sv`, `rtl/anvil_en1_frontier.sv`,
+`rtl/anvil_en1_frontier_execute.sv`, `rtl/anvil_en1_eval_schedule.sv`,
+`rtl/anvil_en1_replay_execute.sv`, `design/SPEC.md` and this document.
+The ordinary native feature and disjoint backing changes are described
+below. `design/GENERATIONAL_HANDOFF.md` was read; its parent STA/PPA/HIL
+entries are N/A, not evidence of timing closure.
+
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+simulation, synthesis, installations or experiments ran; no preparation
+receipts exist. The reserved static check remains unused. Parent,
+verification and runtime files remain untouched; the original
+`.vulcan/engineering/run-0001/attempt-0003` ownership interruption remains
+preserved without a claimed repair.
+
+Next concrete dependency: wire this binding's Eval, owner-read/ring and
+backing ports to the frontier executor, arbitrate its cache metadata/mask
+requests with ordinary execution, and connect session/schedule/cache,
+parent-compatible top and CSR paths. Complete actual live/physical
+phase overlays, including native scratch at short contexts and the
+complete fallback ceiling. None of the current subtotal reports
+establishes those bounds. Not ready for Verifier.
+
+## Same increment: ordinary native features and disjoint backing
 
 `frontier_execute` now dispatches ordinary image/audio placeholders through
 the real Eval domain-3 feature route before embedding or per-layer PLE.
@@ -27,16 +135,6 @@ production and 835584 bytes compact, disclosed separately from live bytes.
 Neither the ordinary frontier cap nor the admitted live-payload limits
 change.
 
-Saved changes: `rtl/anvil_en1_frontier.sv`,
-`rtl/anvil_en1_frontier_execute.sv`, `design/SPEC.md` and this document.
-No static check, commands, simulation, synthesis or experiments ran;
-no preparation receipt exists. Tools used: glob, view, rg and apply_patch.
-Parent, verification and runtime files remain untouched; attempt-0003
-is preserved without a claimed repair.
-
-Next concrete dependency: bind the frontier and owner requesters to the
-same real replay engine and backing, cache metadata/data interfaces and
-registered memory arbiter, then complete session/top/CSR integration.
 Whole-system live/physical overlays remain necessary, including the
 ordinary native scratch limit `min(1 MiB,floor(B/8))` and the complete
 fallback 1 MiB ceiling. Current frame-slot accounting does not establish

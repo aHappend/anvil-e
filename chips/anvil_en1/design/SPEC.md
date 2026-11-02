@@ -5,7 +5,207 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Connected native execution assembly
+
+`rtl/anvil_en1_native.sv` connects the existing frontier scheduler, frontier
+executor, owner/replay binding, shared cache and registered memory arbiter.
+This is the native execution assembly below the still-pending compatible
+top/session/CSR wrapper. It is not a substitute top or an accepted design.
+Its start descriptor is a complete immutable native context, not a decode
+append descriptor; only the outer top may authorize a decode/session change.
+It captures model, precision, modality, generation, context length, forced
+fallback, original text/mask/image/audio bases and encoder geometry, and all
+three weight-image bases before validation. Its legal models, precisions,
+geometry and resident capacity are unchanged.
+
+The assembly routes cache regeneration exclusively to the real binding.
+Owner source/ring reads return to the frontier executor's actual tagged RAM;
+frontier Eval requests and results use that same binding; replay backing
+uses the executor's acknowledged disjoint/rebound RAM channel. Only the
+ordinary executor issues resident fetches. Recursive replay uses its actual
+dependency/projection engine and shared metadata, not a second resident
+fetch port that could recursively deadlock a cache miss.
+
+The two metadata requesters share a registered 122-bit command and 79-bit
+response router. The packing is
+`{op,model,layer,token,is_value,kv_head,component,base}` and
+`{addr,owner,alias,error,space}`, respectively. Replay has admission
+priority over ordinary execution when both offer a command. An accepted
+request owns the complete transaction through response retirement;
+priority cannot change a stalled command or response. The assembly's
+session-invalidation requester has priority while admitting a new context.
+There is exactly one cache, and no duplicate owner-selection logic in
+this assembly.
+
+Both attention mask requesters share another registered router. Each
+request rereads the actual immutable unsigned32 mask at
+`mask_base + 4*token` through memory client 2. Token bounds and the complete
+65-bit byte-address sum are checked before access. Only data 0 or 1 is
+legal; failed responses and malformed masks return an explicit source
+error. Replay has admission priority; a captured response remains routed
+only to its captured requester. These are original-input reads, not
+cache-equivalent transfers or an all-ones software mask.
+
+The three memory clients are ordinary execution (0), owner/replay binding
+(1) and immutable masks (2). The literal registered arbiter is the only
+source of this assembly's outward memory commands; no on-chip cache or
+backing address is connected to that port. Client IDs are routing IDs,
+not tensor-map traffic classifications. The outer parent/native arbiter
+still owns the final public DDR port.
+
+| Assembly boundary | Registered behavior |
+| --- | --- |
+| Start E0 | Capture every native field; no child start or memory command derived from live input |
+| E1 validation | Reject native model/precision with 6; reject context, enabled-modality geometry, alignment and full text/mask address-range errors with 5 |
+| Session cache barrier | Issue a real cache invalidate and wait for its response; no new execution is dispatched |
+| Frontier barrier | Configure executor, which releases old frontier/ring visibility before responding |
+| Replay binding | Configure actual owner/replay engine with the same captured generation/context and selected ordinary/fallback mode |
+| Schedule start | Dispatch only after all three preceding barriers succeed |
+| Metadata ingress | Capture selected full command, then offer to cache on a later edge; register its actual response before requester visibility |
+| Mask ingress | Capture requester/token, validate, issue actual read, register accepted response, then publish held mask/error |
+| Fallback transition | Existing executor releases frontier and ring before binding base-zero replay backing and starting actual Eval |
+| Final result | Schedule waits for actual output completion, including final-logit acceptance |
+| Completion drain | Wait for executor, replay and both routers to be idle before asserting arbiter drain; acknowledge drain before publishing done |
+| Stalled done | Hold error and valid; do not admit another context |
+| Reset | Cancel child/router generations and arbiter work; all public outputs zero |
+| C=1/C=3/C=64 | Same literal cache, explicit replacement wrap; no capacity-dependent router widths |
+
+Draining cannot close the memory arbiter while a worker still needs to
+finish: both the drain request and its state transition use the same
+worker/router-idle condition. Configuration and execution errors retain
+their real child error and follow the drain boundary. A descriptor rejected
+before dispatch issues no child or memory request. This assembly does not
+yet implement public prefill/decode session validation, positions-array
+validation or parent mode routing.
+
+### Allocation observation vector
+
+`allocation_live_bytes` and `allocation_physical_bytes` contain 19 unsigned
+64-bit fields, field i at `[64*i+:64]`. These are named component reports,
+not a complete accepted live ledger. No aggregate savings or allocator
+success is inferred from them.
+
+| i | Component |
+| --- | --- |
+| 0 | Frontier payload RAM, including its physically disjoint replay tail |
+| 1 | Local anchor ring |
+| 2 | Ordinary hidden/PLE banks |
+| 3 | Ordinary reconstructed native-feature bank |
+| 4 | Anchor materialization worker's reported vector storage |
+| 5 | Actual workspace frame/memo/scalar live payload |
+| 6 | Owner replay source vector |
+| 7 | Owner projection/normalization tile |
+| 8 | Replay text tile |
+| 9 | Replay PLE vector |
+| 10 | Replay embedding vector |
+| 11 | Replay post-attention/MLP vector |
+| 12 | Replay vision vectors |
+| 13 | Replay audio vectors |
+| 14 | Replay audio-feature vectors |
+| 15 | Replay image-feature vectors |
+| 16 | Binding's own controller registers |
+| 17 | Native assembly's own descriptor/router/controller registers |
+| 18 | Occupied resident KV pairs |
+
+Physical field 5 is zero **only because** the actual backing RAM is
+physically counted once in field 0. `workspace_reserved_bytes` separately
+reports the logical backing partition, and `workspace_shadow_bytes` the
+existing production-width shadow allocation. Neither may be silently
+substituted for live bytes. Metadata has four separate 64-bit fields:
+frontier token tags, ring token/lane tags, workspace visibility metadata,
+and resident tags/occupied bits. Child controllers, primitive state,
+additional transient vectors and the enclosing top remain to be accounted;
+short-context native scratch and the full fallback ceiling remain to be
+enforced. Physical field 0 is not a claim that all its reserved words are
+live or that FPGA resource fit is established.
+
+The cache now exposes actual `resident_live_bytes = 4*resident_count`.
+Insertion increments the count only when replacing an unoccupied slot;
+successful invalidation clears it with the occupied bitmap. Physical
+resident payload is `4*C`, with tag/occupied metadata reported separately.
+Hit/miss events occur once on the validated lookup decision, not on each
+cycle of a stalled fetch response. Alias events occur on accepted successful
+aliased metadata responses. None counts an error or cancelled lookup as a
+hit/miss, or changes the existing metadata/fetch cycle table.
+
+No commands, elaboration, simulation, synthesis or preparation probes have
+run for this increment. Independent verification and complete top/allocation
+integration remain pending.
+
 ## Ordinary native-feature routing and disjoint replay backing
+
+### Owner/frontier arbitration onto the real replay engine
+
+`anvil_en1_replay_binding` contains literal, connected `owner_replay`,
+`replay_execute` and two-client `memory_arbiter` instances. It binds a native
+session with registered model/precision/modality/generation/context and
+immutable text/image/audio source and weight-image descriptors. Control
+is accepted only while both engines and the root router are idle.
+Successful owner configuration is required before regeneration or Eval
+ingress opens. A pending control closes new regeneration/root ingress,
+but does not disable the routes needed to finish accepted work.
+In particular, an already accepted owner regeneration may still start its
+required internal Eval root while control is pending. Blocking that root
+would deadlock the control's own idle/drain precondition. New frontier
+roots remain blocked, and the enclosing barrier must finish frontier
+work before presenting session control.
+
+The cache alone drives its regeneration input. Ordinary owner projections
+use its tagged frontier/ring callbacks. Fallback owner projections request
+a real domain-0 Eval root; the returned ordered hidden vector feeds the
+existing normalized/rotated K/V projection worker. Frontier input features
+and full fallback text execution use the other Eval requester. Both share
+one literal continuation/memo/arithmetic implementation and one backing
+channel, not replicated replay engines or software answers.
+
+Owner roots have priority when both start channels are offered. The
+router captures the selected complete root descriptor before validating
+and sending it to the scheduler. No priority change can replace a
+stalled scheduler descriptor. Exact session fields are checked; invalid
+native model/precision errors use 6 and descriptor/session mismatches use
+7 before scheduler/backing/memory access. Only the captured requester
+receives the output stream and held completion. This priority is not
+preemption: an accepted root executes to actual completion.
+
+| Binding boundary | Behavior |
+| --- | --- |
+| Session C0 | Capture every descriptor field and close data ingress |
+| Session validation | Validate model, precision, context and text/weight alignment before dispatch to owner configuration |
+| Configuration response | Propagate the actual owner error; open new ingress only after successful configuration and the held control response retires |
+| Competing root R0 | Accept only owner, otherwise frontier; register descriptor and response owner |
+| R1/R2 | Validate captured session identity, then offer a registered descriptor to the real scheduler |
+| Root output/completion stall | Route only to the captured requester; no new root/control can overwrite its descriptor |
+| Root final output | After the last accepted pair, invalidate real workspace visibility through its acknowledged control channel before publishing done |
+| Root failure | Drain/clear workspace, then hold explicit requester-specific error completion |
+| External command | Two-client registered arbiter retains command, response and issuing owner until their actual handshakes |
+| Reset | Zero public outputs/validity and cancel all three literal instances |
+
+Local memory-owner IDs 0/1 distinguish owner projection from replay
+execution; they are not memory-address classes. An enclosing arbiter
+still owns the actual external DDR port. Native weight/input traffic must
+be classified from the tensor map, including failed accepted reads,
+not inferred from these local IDs. Replay's cache metadata port is
+outward; there is no duplicate owner map inside this binding.
+
+Workspace frame/memo live/shadow/reserved/metadata, owner source/tile,
+text tile, PLE/embedding/post, native encoder and image/audio feature
+live/physical reports are passed through as separate quantities. Its
+own 840-bit controller is explicitly reported as 105 bytes using the
+declared register widths. These reports do not yet include every child
+controller, primitive, arbiter, transient or top state and are not a
+complete admitted allocation ledger.
+
+Every successful Eval root now releases workspace memo/frame/scalar
+visibility after its last accepted output, before done. Memo reuse and
+eviction *within* that root are unchanged; new roots already performed a
+fresh workspace binding, so no cross-root reuse is lost. Image worker
+cancellation is connected to accepted root completion as well as a new
+root, releasing an abandoned suspended image continuation after failure.
+Normal lower-rank yields do not cancel the retained numerical worker.
+The enclosing session barrier must still wait for actual root/owner
+completion and all shared cache/memory responses before reusing RAM.
+
+### Ordinary feature transport and physical partition
 
 The ordinary frontier executor now sends a native placeholder to the same
 real Eval engine used by fallback: `eval_domain=3`, `eval_layer=1` for image
@@ -108,15 +308,15 @@ drain the real child to completion.
 | Source response | Register the acknowledged memo pair and selected BF16 lane; hold response/error until the pool accepts |
 | Feature output | Accept ordered H values, write each pair to frame bank 0 and await its acknowledgment before the next pair |
 | Final response | Require actual child completion, H values, exact last and all pair acknowledgments; only then release the retained child |
-| Root cancellation | A new scheduler-root handshake, after prior root completion, cancels any abandoned source-stalled image continuation and resets its child visibility before dispatch |
+| Root cancellation | An accepted root completion or a new scheduler-root handshake cancels any abandoned source-stalled image continuation and resets child visibility; dependency yields do not cancel it |
 | Reset | All public outputs zero; controller validity and child visibility invalidated |
 
 Same-rank feature nesting is prohibited by the scheduler rank check.
 Vision dependencies cannot invoke a text/image-feature ancestor, so one
 retained literal image worker is sufficient. There is no recursive
-elaboration or unbounded vector archive. Root cancellation is connected
-to the replay scheduler's actual new-root acceptance, not to an arbitrary
-mid-transaction task change; normal yields never reset the child.
+elaboration or unbounded vector archive. Root cancellation is connected to the replay scheduler's actual root
+acceptance/completion, not to an arbitrary mid-transaction task change;
+normal yields never reset the child.
 
 The image worker reports its live vector allocation continuously while
 suspended, including while a separate lower-rank encoder frame executes.
