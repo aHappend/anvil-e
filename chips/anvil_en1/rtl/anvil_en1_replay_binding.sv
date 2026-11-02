@@ -351,7 +351,7 @@ module anvil_en1_replay_binding #(
         .busy(replay_busy)
     );
 
-    anvil_en1_memory_arbiter #(.CLIENTS(2)) memory (
+    anvil_en1_memory_arbiter #(.CLIENTS(2), .READ_ONLY(1)) memory (
         .clk(clk), .rst_n(rst_n),
         .client_cmd_valid(client_cmd_valid), .client_cmd_ready(client_cmd_ready),
         .client_cmd_write(client_cmd_write), .client_cmd_addr(client_cmd_addr),

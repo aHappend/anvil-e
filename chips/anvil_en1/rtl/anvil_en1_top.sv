@@ -399,6 +399,10 @@ module anvil_en1_top #(
         .allocation_payload_bytes(allocation_payload_bytes),
         .allocation_replay_bytes(allocation_replay_bytes),
         .allocation_equivalent_bytes(allocation_equivalent_bytes),
+        .traffic_valid(accepted_memory), .traffic_model(model_hold),
+        .traffic_write(mem_req_write),
+        .traffic_input(!parent_selected && bridge_input),
+        .traffic_cache(!parent_selected && mem_req_write),
         .controller_bytes(csr_controller_bytes)
     );
 

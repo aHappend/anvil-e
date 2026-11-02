@@ -91,7 +91,7 @@ module anvil_en1_replay_workspace #(
         localparam integer BANK_WORDS = 1536;
         localparam integer FRAME_WORDS = 2 * BANK_WORDS;
         localparam integer MEMO_WORDS = COMPACT ? 512 : 2048;
-        localparam integer SCALAR_WORDS = COMPACT ? 32 : 256;
+        localparam integer SCALAR_WORDS = 32;
         localparam integer MEMO_BASE = 64 * FRAME_WORDS;
         localparam integer SCALAR_BASE = MEMO_BASE + 16 * MEMO_WORDS;
         localparam integer TOTAL_WORDS = SCALAR_BASE + 64 * SCALAR_WORDS;
@@ -107,7 +107,8 @@ module anvil_en1_replay_workspace #(
             MEMO_CHECK = 23, SCALAR_SETUP = 24, SCALAR_FINISH = 25,
             BACKING_SEND = 26, BACKING_WAIT = 27, PUBLISH = 28,
             RESPONSE = 29, COPY_READ = 30, COPY_CAPTURE = 31,
-            COPY_WRITE = 32, PAIR_SETUP = 33, PAIR_FINISH = 34;
+            COPY_WRITE = 32, PAIR_SETUP = 33, PAIR_FINISH = 34,
+            FRAME_RESERVE = 35, MEMO_RESERVE = 36, MEMO_VALIDATE = 37;
         reg [5:0] state, backing_return;
         reg active, invalidate_hold, bank_hold, pending_push, pending_memo;
         reg hit_hold, hit_pulse, eviction_pulse, new_memo;
@@ -140,6 +141,7 @@ module anvil_en1_replay_workspace #(
         reg [31:0] memo_domains;
         reg [31:0] frame_payload_bytes, memo_payload_bytes;
         reg [31:0] shadow_frame_payload_bytes, shadow_memo_payload_bytes;
+        reg [32:0] allocation_candidate, shadow_candidate;
         reg [64*SCALAR_WORDS-1:0] scalar_occupied;
         (* ramstyle = "MLAB", nomem2reg *)
         reg [TAG_BITS-1:0] frame_tags [0:63];
@@ -169,7 +171,8 @@ module anvil_en1_replay_workspace #(
             $bits(backing_result) + $bits(copy_data) + $bits(vector_index_hold) +
             $bits(vector_present_q) + $bits(pair_active_q) + $bits(pair_component_q) +
             $bits(frame_payload_bytes) + $bits(memo_payload_bytes) +
-            $bits(shadow_frame_payload_bytes) + $bits(shadow_memo_payload_bytes);
+            $bits(shadow_frame_payload_bytes) + $bits(shadow_memo_payload_bytes) +
+            $bits(allocation_candidate) + $bits(shadow_candidate);
 
         wire [TAG_BITS-1:0] incoming_tag = {req_model, req_generation,
             req_domain, req_layer, req_token[16:0], req_length};
@@ -210,9 +213,9 @@ module anvil_en1_replay_workspace #(
         wire [31:0] memo_base = 32'(MEMO_BASE) +
             ({28'd0, slot_hold[3:0]} << (COMPACT ? 9 : 11));
         wire [31:0] scalar_base = 32'(SCALAR_BASE) +
-            ({26'd0, slot_hold} << (COMPACT ? 5 : 8));
-        wire [31:0] scalar_bit_index = ({26'd0, slot_hold} <<
-            (COMPACT ? 5 : 8)) + {24'd0, scalar_index_hold};
+            ({26'd0, slot_hold} << 5);
+        wire [31:0] scalar_bit_index = ({26'd0, slot_hold} << 5) +
+            {24'd0, scalar_index_hold};
         wire [8:0] selected_vector_index = ({3'd0, slot_hold} << 2) +
             ({3'd0, slot_hold} << 1) + (bank_hold ? 9'd3 : 9'd0) +
             {7'd0, vector_slice};
@@ -263,16 +266,24 @@ module anvil_en1_replay_workspace #(
                 32'd16 : replaced_shadow_memo_bytes;
         wire [63:0] live_frames = {32'd0, frame_payload_bytes} +
             (pending_push ? {32'd0, request_frame_bytes} : 64'd0);
-        wire [63:0] live_scalars = {56'd0, allocated_frames} << (COMPACT ? 7 : 10);
+        wire [63:0] live_scalars = {56'd0, allocated_frames} << 7;
         wire [63:0] live_memos = {32'd0, memo_payload_bytes} +
             (pending_memo ? {32'd0, request_vector_bytes} : 64'd0);
         wire [63:0] shadow_frames = {32'd0, shadow_frame_payload_bytes} +
             (pending_push ? {32'd0, request_shadow_frame_bytes} : 64'd0);
-        wire [63:0] shadow_scalars = {56'd0, allocated_frames} << 10;
+        wire [63:0] shadow_scalars = {56'd0, allocated_frames} << 7;
         wire [63:0] shadow_memos = {32'd0, shadow_memo_payload_bytes} +
             (pending_memo ? {32'd0, request_shadow_vector_bytes} : 64'd0);
         wire [31:0] continuation_word =
             continuation_hold[32*continuation_index+:32];
+        wire [31:0] replaced_live_bytes = memo_occupied[slot_hold[3:0]] ?
+            replaced_memo_bytes : 32'd0;
+        wire [31:0] replaced_shadow_bytes = memo_occupied[slot_hold[3:0]] ?
+            replaced_shadow_memo_bytes : 32'd0;
+        wire frame_capacity_ok = allocation_candidate <= 33'(MEMO_BASE*4) &&
+            shadow_candidate <= 33'(MEMO_BASE*4) && allocated_frames < 64;
+        wire memo_capacity_ok = allocation_candidate <= 33'(16*MEMO_WORDS*4) &&
+            shadow_candidate <= 33'd131072;
 
         assign control_ready = rst_n && state == IDLE;
         assign control_rsp_valid = rst_n && state == CONTROL_RESPONSE;
@@ -301,7 +312,8 @@ module anvil_en1_replay_workspace #(
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS + 7) >> 3) : 64'd0;
         assign memo_hit_event = rst_n && hit_pulse;
         assign memo_eviction_event = rst_n && eviction_pulse;
-        assign backing_valid = rst_n && state == BACKING_SEND;
+        wire backing_in_range = {14'd0, backing_address_hold} < TOTAL_WORDS;
+        assign backing_valid = rst_n && state == BACKING_SEND && backing_in_range;
         assign backing_generation = rst_n ? generation_hold : 32'd0;
         assign backing_write = rst_n && backing_write_hold;
         assign backing_addr = rst_n ? backing_address_hold : 18'd0;
@@ -383,6 +395,8 @@ module anvil_en1_replay_workspace #(
                 memo_payload_bytes <= 0;
                 shadow_frame_payload_bytes <= 0;
                 shadow_memo_payload_bytes <= 0;
+                allocation_candidate <= 0;
+                shadow_candidate <= 0;
                 scalar_occupied <= 0;
             end else begin
                 hit_pulse <= 0;
@@ -566,15 +580,27 @@ module anvil_en1_replay_workspace #(
                             state <= SCALAR_SETUP;
                     end
                     PUSH_SETUP: begin
-                        slot_hold <= depth[5:0];
-                        response_slot <= depth[5:0];
-                        pending_push <= 1;
-                        continuation_index <= 0;
-                        vector_occupied[6*depth[5:0]+:6] <= 0;
-                        pair_progress_valid[6*depth[5:0]+:6] <= 0;
-                        pair_next_component[72*depth[5:0]+:72] <= 0;
-                        scalar_occupied[32'(depth[5:0])*SCALAR_WORDS+:SCALAR_WORDS] <= 0;
-                        state <= CONT_WRITE;
+                        allocation_candidate <= {1'b0, frame_payload_bytes} +
+                            {1'b0, request_frame_bytes};
+                        shadow_candidate <= {1'b0, shadow_frame_payload_bytes} +
+                            {1'b0, request_shadow_frame_bytes};
+                        state <= FRAME_RESERVE;
+                    end
+                    FRAME_RESERVE: begin
+                        if (!frame_capacity_ok) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else begin
+                            slot_hold <= depth[5:0];
+                            response_slot <= depth[5:0];
+                            pending_push <= 1;
+                            continuation_index <= 0;
+                            vector_occupied[6*depth[5:0]+:6] <= 0;
+                            pair_progress_valid[6*depth[5:0]+:6] <= 0;
+                            pair_next_component[72*depth[5:0]+:72] <= 0;
+                            scalar_occupied[32'(depth[5:0])*SCALAR_WORDS+:SCALAR_WORDS] <= 0;
+                            state <= CONT_WRITE;
+                        end
                     end
                     UPDATE_SETUP: begin
                         continuation_index <= 0;
@@ -697,6 +723,33 @@ module anvil_en1_replay_workspace #(
                             vector_occupied[vector_bit_index] <= 0;
                             pair_progress_valid[vector_bit_index] <= 0;
                             pair_next_component[12*vector_bit_index+:12] <= 0;
+                            if (target_hold == 3)
+                                state <= COPY_READ;
+                            else
+                                state <= STREAM;
+                        end else if (memo_payload_bytes < replaced_live_bytes ||
+                            shadow_memo_payload_bytes < replaced_shadow_bytes) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else begin
+                            allocation_candidate <= {1'b0, memo_payload_bytes} -
+                                {1'b0, replaced_live_bytes};
+                            shadow_candidate <= {1'b0, shadow_memo_payload_bytes} -
+                                {1'b0, replaced_shadow_bytes};
+                            state <= MEMO_RESERVE;
+                        end
+                    end
+                    MEMO_RESERVE: begin
+                        allocation_candidate <= allocation_candidate +
+                            {1'b0, request_vector_bytes};
+                        shadow_candidate <= shadow_candidate +
+                            {1'b0, request_shadow_vector_bytes};
+                        state <= MEMO_VALIDATE;
+                    end
+                    MEMO_VALIDATE: begin
+                        if (!memo_capacity_ok) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
                         end else begin
                             pending_memo <= 1;
                             if (memo_occupied[slot_hold[3:0]]) begin
@@ -707,11 +760,11 @@ module anvil_en1_replay_workspace #(
                                 eviction_pulse <= new_memo;
                             end
                             memo_occupied[slot_hold[3:0]] <= 0;
+                            if (target_hold == 2)
+                                state <= COPY_READ;
+                            else
+                                state <= STREAM;
                         end
-                        if (target_hold == 2 || target_hold == 3)
-                            state <= COPY_READ;
-                        else
-                            state <= STREAM;
                     end
                     STREAM: if (write_valid && write_ready) begin
                         if (write_abort || !flags_valid) begin
@@ -846,8 +899,15 @@ module anvil_en1_replay_workspace #(
                             data_hold <= backing_result;
                         state <= PUBLISH;
                     end
-                    BACKING_SEND: if (backing_ready)
-                        state <= BACKING_WAIT;
+                    BACKING_SEND: begin
+                        if (!backing_in_range) begin
+                            error_hold <= 7;
+                            pending_push <= 0;
+                            pending_memo <= 0;
+                            state <= PUBLISH;
+                        end else if (backing_ready)
+                            state <= BACKING_WAIT;
+                    end
                     BACKING_WAIT: if (backing_rsp_valid && backing_rsp_ready) begin
                         if (backing_rsp_error != 0) begin
                             error_hold <= backing_rsp_error;

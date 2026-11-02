@@ -155,6 +155,8 @@ module anvil_en1_owner_replay #(
         reg [31:0] source_token_hold, source_index_hold;
         reg [15:0] source_data_hold, raw_q;
         reg source_error_hold;
+        reg source_normalized_hold, normalized_committed, normalized_bad;
+        reg [31:0] normalized_count;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] raw_payload [0:MAX_H-1];
         localparam integer CONTROLLER_BITS = $bits(state) + $bits(source_state) +
@@ -172,7 +174,8 @@ module anvil_en1_owner_replay #(
             $bits(eval_error_hold) + $bits(pair_hold) + $bits(source_model_hold) +
             $bits(source_owner_hold) + $bits(source_token_hold) +
             $bits(source_index_hold) + $bits(source_data_hold) + $bits(raw_q) +
-            $bits(source_error_hold);
+            $bits(source_error_hold) + $bits(source_normalized_hold) +
+            $bits(normalized_committed) + $bits(normalized_bad) + $bits(normalized_count);
         wire [63:0] tile_controller_bytes;
         assign controller_bytes = !rst_n ? 64'd0 :
             64'((CONTROLLER_BITS + 7) >> 3) + tile_controller_bytes;
@@ -207,8 +210,13 @@ module anvil_en1_owner_replay #(
         wire [1:0] tile_source_model;
         wire [7:0] tile_source_owner;
         wire [31:0] tile_source_token, tile_source_index, tile_data;
+        wire tile_source_normalized, tile_store_valid;
+        wire [31:0] tile_store_index;
+        wire [15:0] tile_store_data;
+        wire tile_store_ok = !normalized_bad && !normalized_committed &&
+            normalized_count < hidden_hold && tile_store_index == normalized_count;
         wire [3:0] tile_error;
-        anvil_en1_owner_kv_tile #(.COMPACT(COMPACT)) owner_tile (
+        anvil_en1_owner_kv_tile #(.COMPACT(COMPACT), .EXTERNAL_INPUT_RAM(1)) owner_tile (
             .controller_bytes(tile_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == TILE_START), .start_ready(tile_ready),
@@ -220,6 +228,9 @@ module anvil_en1_owner_replay #(
             .source_ready(rst_n && state == TILE_WAIT && source_state == SOURCE_IDLE),
             .source_model(tile_source_model), .source_owner(tile_source_owner),
             .source_token(tile_source_token), .source_index(tile_source_index),
+            .source_normalized(tile_source_normalized),
+            .input_store_valid(tile_store_valid), .input_store_index(tile_store_index),
+            .input_store_data(tile_store_data),
             .source_rsp_valid(rst_n && source_state == SOURCE_RESPONSE),
             .source_rsp_ready(tile_source_rsp_ready),
             .source_rsp_data(source_data_hold), .source_rsp_error(source_error_hold),
@@ -270,14 +281,16 @@ module anvil_en1_owner_replay #(
             {32'd0, hidden_hold} << 1 : 64'd0;
         assign raw_source_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
         assign tile_live_bytes = rst_n && tile_allocated ?
-            ({32'd0, hidden_hold} + {32'd0, dimension_hold}) << 1 : 64'd0;
-        assign tile_physical_bytes = rst_n ? (COMPACT ? 64'd32 : 64'd6144) : 64'd0;
+            {32'd0, dimension_hold} << 1 : 64'd0;
+        assign tile_physical_bytes = rst_n ? (COMPACT ? 64'd16 : 64'd1024) : 64'd0;
         assign ring_hit_event = rst_n && ring_hit_pulse;
         assign busy = rst_n && state != IDLE;
 
         always @(posedge clk) begin
             if (vector_write)
                 raw_payload[eval_output_index[H_BITS-1:0]] <= eval_output_data;
+            else if (rst_n && state == TILE_WAIT && tile_store_valid && tile_store_ok)
+                raw_payload[tile_store_index[H_BITS-1:0]] <= tile_store_data;
             if (rst_n && source_state == SOURCE_READ)
                 raw_q <= raw_payload[source_index_hold[H_BITS-1:0]];
         end
@@ -291,6 +304,7 @@ module anvil_en1_owner_replay #(
                 source_index_hold <= 0;
                 source_data_hold <= 0;
                 source_error_hold <= 0;
+                source_normalized_hold <= 0;
             end else begin
                 case (source_state)
                     SOURCE_IDLE: if (state == TILE_WAIT && tile_source_valid) begin
@@ -298,15 +312,18 @@ module anvil_en1_owner_replay #(
                         source_owner_hold <= tile_source_owner;
                         source_token_hold <= tile_source_token;
                         source_index_hold <= tile_source_index;
+                        source_normalized_hold <= tile_source_normalized;
                         source_data_hold <= 0;
                         source_error_hold <= 0;
                         source_state <= SOURCE_VALIDATE;
                     end
                     SOURCE_VALIDATE: begin
-                        if (!source_descriptor_valid || (fallback_hold && !raw_committed)) begin
+                        if (!source_descriptor_valid ||
+                            (source_normalized_hold && !normalized_committed) ||
+                            (!source_normalized_hold && fallback_hold && !raw_committed)) begin
                             source_error_hold <= 1;
                             source_state <= SOURCE_RESPONSE;
-                        end else if (fallback_hold)
+                        end else if (fallback_hold || source_normalized_hold)
                             source_state <= SOURCE_READ;
                         else
                             source_state <= FRONTIER_SEND;
@@ -343,6 +360,9 @@ module anvil_en1_owner_replay #(
                 invalidate_hold <= 0;
                 control_fallback_hold <= 0;
                 raw_allocated <= 0;
+                normalized_count <= 0;
+                normalized_committed <= 0;
+                normalized_bad <= 0;
                 raw_committed <= 0;
                 vector_bad <= 0;
                 vector_complete <= 0;
@@ -497,16 +517,39 @@ module anvil_en1_owner_replay #(
                         end
                     end
                     TILE_START: if (tile_ready) begin
+                        raw_allocated <= 1;
+                        normalized_count <= 0;
+                        normalized_committed <= 0;
+                        normalized_bad <= 0;
                         tile_allocated <= 1;
                         state <= TILE_WAIT;
                     end
-                    TILE_WAIT: if (tile_valid) begin
-                        raw_allocated <= 0;
-                        raw_committed <= 0;
-                        tile_allocated <= 0;
-                        error_hold <= tile_error;
-                        pair_hold <= tile_error == 0 ? tile_data : 32'd0;
-                        state <= PUBLISH;
+                    TILE_WAIT: begin
+                        if (tile_store_valid) begin
+                            if (!tile_store_ok)
+                                normalized_bad <= 1;
+                            else begin
+                                normalized_count <= normalized_count + 1'b1;
+                                if (tile_store_index == hidden_hold - 1'b1)
+                                    normalized_committed <= 1;
+                            end
+                        end
+                        if (tile_valid) begin
+                            raw_allocated <= 0;
+                            raw_committed <= 0;
+                            tile_allocated <= 0;
+                            if (tile_error != 0) begin
+                                error_hold <= tile_error;
+                                pair_hold <= 0;
+                            end else if (normalized_bad || !normalized_committed) begin
+                                error_hold <= 7;
+                                pair_hold <= 0;
+                            end else begin
+                                error_hold <= 0;
+                                pair_hold <= tile_data;
+                            end
+                            state <= PUBLISH;
+                        end
                     end
                     PUBLISH: state <= RESPONSE;
                     RESPONSE: if (regen_rsp_ready) begin

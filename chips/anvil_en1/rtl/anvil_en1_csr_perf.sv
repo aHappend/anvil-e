@@ -19,8 +19,12 @@ module anvil_en1_csr_perf (
     input wire [1:0] allocation_model,
     input wire [63:0] allocation_payload_bytes, allocation_replay_bytes,
     input wire [63:0] allocation_equivalent_bytes,
+    input wire traffic_valid,
+    input wire [1:0] traffic_model,
+    input wire traffic_write, traffic_input, traffic_cache,
     output wire [63:0] controller_bytes
 );
+    localparam integer METRICS = 29;
     localparam [1:0] IDLE = 0, EXECUTE = 1, RESPONSE = 2;
     reg [1:0] state;
     reg write_hold;
@@ -33,9 +37,9 @@ module anvil_en1_csr_perf (
     reg atomic_valid, atomic_bank;
     reg [4:0] atomic_metric;
     reg [31:0] atomic_high;
-    reg [63:0] counters [0:49];
-    reg [63:0] snapshots [0:49];
-    localparam integer CONTROLLER_BITS = 100*64 + $bits({
+    reg [63:0] counters [0:2*METRICS-1];
+    reg [63:0] snapshots [0:2*METRICS-1];
+    localparam integer CONTROLLER_BITS = 4*METRICS*64 + $bits({
         state, write_hold, addr_hold, wdata_hold, response_hold, error_hold,
         bank_select, request_bank, snapshot_active, status_model_hold,
         status_busy_hold, status_error_hold, atomic_valid, atomic_bank,
@@ -53,30 +57,50 @@ module anvil_en1_csr_perf (
         addr_hold == 12'h008 && control_legal && wdata_hold[2];
     wire [11:0] metric_offset = addr_hold - 12'h020;
     wire [8:0] metric_wide = metric_offset[11:3];
-    wire metric_legal = addr_hold >= 12'h020 && addr_hold <= 12'h0e4 &&
-        addr_hold[1:0] == 0 && metric_wide < 25;
+    wire metric_legal = addr_hold >= 12'h020 && addr_hold <= 12'h104 &&
+        addr_hold[1:0] == 0 && metric_wide < METRICS;
     wire [4:0] metric_index = metric_wide[4:0];
     wire [5:0] selected_index = request_bank ?
-        {1'b0, metric_index} + 6'd25 : {1'b0, metric_index};
+        {1'b0, metric_index} + 6'(METRICS) : {1'b0, metric_index};
     wire [63:0] selected_value = metric_legal ?
         (snapshot_active ? snapshots[selected_index] : counters[selected_index]) : 64'd0;
     wire event_native = event_model == 1 || event_model == 2;
+    wire traffic_native = traffic_model == 1 || traffic_model == 2;
 
     genvar bank, metric;
     generate for (bank = 0; bank < 2; bank = bank + 1) begin : metric_banks
-        for (metric = 0; metric < 25; metric = metric + 1) begin : metric_words
-            localparam integer INDEX = bank*25+metric;
+        for (metric = 0; metric < METRICS; metric = metric + 1) begin : metric_words
+            localparam integer INDEX = bank*METRICS+metric;
+            wire legacy_event;
+            wire [63:0] legacy_value;
+            if (metric < 25) begin : legacy
+                assign legacy_event = event_valid && event_mask[metric] &&
+                    (bank == 0 ? event_model == 0 : event_native);
+                assign legacy_value = event_values[64*metric+:64];
+            end else begin : appended
+                assign legacy_event = 1'b0;
+                assign legacy_value = 64'd0;
+            end
+            wire traffic_bank = bank == 0 ? traffic_model == 0 : traffic_native;
+            wire traffic_class =
+                (metric == 4 && traffic_native && traffic_cache && !traffic_write) ||
+                (metric == 5 && traffic_native && traffic_cache && traffic_write) ||
+                (metric == 25 && traffic_native && !traffic_write &&
+                    !traffic_cache && traffic_input) ||
+                (metric == 26 && traffic_native && !traffic_write &&
+                    !traffic_cache && !traffic_input) ||
+                (metric == 27 && traffic_native && traffic_write && !traffic_cache) ||
+                metric == 28;
+            wire traffic_event = traffic_valid && traffic_bank && traffic_class;
             wire allocation_event = allocation_valid &&
                 (metric == 15 || metric == 20 || metric == 24) &&
                 (bank == 0 ? allocation_model == 0 :
                     (allocation_model == 1 || allocation_model == 2));
-            wire selected_event = allocation_event ||
-                (event_valid && event_mask[metric] &&
-                    (bank == 0 ? event_model == 0 : event_native));
+            wire selected_event = allocation_event || traffic_event || legacy_event;
             wire [63:0] value = allocation_event ?
                 (metric == 15 ? allocation_payload_bytes :
                     (metric == 20 ? allocation_replay_bytes : allocation_equivalent_bytes)) :
-                event_values[64*metric+:64];
+                (traffic_event ? 64'd4 : legacy_value);
             wire [64:0] updated = {1'b0, counters[INDEX]} + {1'b0, value};
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) begin

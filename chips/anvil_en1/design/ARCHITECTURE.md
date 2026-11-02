@@ -5,7 +5,95 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: text-bank overlay and continuous vector lifetimes
+## Current saved increment: physical feature/PLE and owner-source overlays
+
+The ordinary executor now physically shares its Hmax feature RAM with the
+later PLE transport prefix, preserving the separate retained hidden vector
+needed by upper shared layers. The final successful feature callback
+releases feature visibility and reserves PLE before embedding can emit it.
+Feature fill/callback and PLE fill/source phases use one synchronous write
+port and one registered read port. Physical accounting counts this array
+once, removing 512 production / 8 compact declared payload bytes.
+
+The owner rematerializer now selects the tile's explicit
+EXTERNAL_INPUT_RAM mode. Its source RAM holds the fallback entering vector,
+then input RMS outputs overwrite only already-consumed components in
+ascending order. Ordinary execution reads original components from the
+tagged frontier and writes normalized components to that same source RAM,
+never to the frontier. Subsequent projection callbacks read the completed
+normalized source. Exact store indices/count and registered raw/normalized
+callback identity reject incomplete or malformed materialization.
+The numerical tile physically omits its duplicate Hmax input array;
+the nested replay/query default mode is unchanged. Combined owner source/
+tile reservation falls from 11264 to 6144 production bytes (48 to 32
+compact), with shared-bank and head-bank live fields kept disjoint.
+These are declared storage changes, not measured M20K inference or PPA.
+
+Changed `rtl/anvil_en1_frontier_execute.sv`,
+`rtl/anvil_en1_owner_kv_tile.sv`, `rtl/anvil_en1_owner_replay.sv`,
+`design/SPEC.md` and this document. Tools used: glob, view, rg and
+apply_patch. No commands, static elaboration, simulation, synthesis,
+installations or experiments ran; no preparation receipts exist.
+Parent, verification and runtime files remain untouched. The attempt-0003
+ownership-guard interruption is preserved without a claimed repair.
+
+Remaining: whole-system physical phase overlays, ordinary/native-scratch/
+fallback allocation-limit enforcement including forced-short-context
+production shadows, matched-baseline traffic integration, then the
+reserved static elaboration check and immediate independent Verifier
+handoff. No correctness, savings, FPGA-fit or timing result is claimed.
+Not ready for Verifier.
+
+## Prior saved increment: scalar RAM reduction, partition guards and traffic census
+
+The production continuation slot now physically contains the same 32 words
+used by the compact implementation. Actual connected checkpoint accesses
+fit indices 0..31, including the 22-word audio checkpoint and its two head
+reduction words. No checkpoint is truncated. Each live/pending frame and
+its production shadow reserve the complete 128 bytes. Production backing
+is now 231424 words / 925696 bytes; the combined ordinary-frontier/backing
+array is 1017856 words / 4071424 bytes. This removes 57344 declared payload
+bytes and 1792 visibility-metadata bytes; it is not measured M20K inference
+or FPGA PPA. Compact physical backing is unchanged.
+
+Workspace push and memo replacement now register prospective actual and
+shadow allocation totals before checking their partition ceilings and
+starting writes. Subtraction, addition and comparison occur in separate
+FSM stages. Rejected memo admission leaves the old slot intact. Out-of-range
+backing commands cannot assert valid. These are bounded partition guards,
+not the still-required whole-system ordinary/native-scratch/fallback limits.
+
+Both native memory arbiters now use READ_ONLY=1. A captured write retires
+through a registered client error response without an external command;
+drain still waits for its acceptance. Default arbiter read/write behavior
+and the immutable parent path are unchanged. Public accepted requests feed
+a dedicated model-tagged traffic census, including failed responses.
+Retained KV read/write metrics receive cache-equivalent classification;
+four appended atomic pairs separately report original-input, immutable-weight,
+non-KV-output and total external bytes. Any accepted native write is charged
+as cache-equivalent rather than mislabeled output. No normal native DDR
+output producer exists. The increased CSR reservation enters the ledger.
+Independent address scoreboards and an actual-handshake baseline remain
+mandatory; matched-baseline traffic metric 6 is still not integrated.
+
+Changed `rtl/anvil_en1_replay_workspace.sv`, `rtl/anvil_en1_frontier.sv`,
+`rtl/anvil_en1_memory_arbiter.sv`, `rtl/anvil_en1_native.sv`,
+`rtl/anvil_en1_replay_binding.sv`, `rtl/anvil_en1_csr_perf.sv`,
+`rtl/anvil_en1_top.sv` and the two design documents.
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+simulation, synthesis, installations or experiments ran; no preparation
+receipts exist. Parent, verification and runtime files remain untouched.
+The attempt-0003 ownership-guard interruption is preserved, without a
+claimed repair.
+
+Remaining: whole-system physical phase overlays and ordinary/native-scratch/
+fallback allocation-limit enforcement, including production-shadow limits
+for forced short contexts; matched-baseline traffic telemetry; then the
+reserved static elaboration check and independent Verifier handoff.
+No correctness, storage/traffic savings, FPGA-fit or timing result is claimed.
+Not ready for Verifier.
+
+## Prior saved increment: text-bank overlay and continuous vector lifetimes
 
 The asymmetric text engine now physically reuses one synchronous H-wide
 RAM for successive query heads and the later attention-output/MLP branch.

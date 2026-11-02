@@ -1,6 +1,7 @@
 module anvil_en1_owner_kv_tile #(
     parameter integer COMPACT = 0,
-    parameter integer ALLOW_QUERY = 0
+    parameter integer ALLOW_QUERY = 0,
+    parameter integer EXTERNAL_INPUT_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -19,6 +20,10 @@ module anvil_en1_owner_kv_tile #(
     output wire [1:0] source_model,
     output wire [7:0] source_owner,
     output wire [31:0] source_token, source_index,
+    output wire source_normalized,
+    output wire input_store_valid,
+    output wire [31:0] input_store_index,
+    output wire [15:0] input_store_data,
     input wire source_rsp_valid,
     output wire source_rsp_ready,
     input wire [15:0] source_rsp_data,
@@ -43,14 +48,19 @@ module anvil_en1_owner_kv_tile #(
     output wire [63:0] controller_bytes
 );
     generate if ((COMPACT != 0 && COMPACT != 1) ||
-        (ALLOW_QUERY != 0 && ALLOW_QUERY != 1)) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT and ALLOW_QUERY must be 0 or 1");
+        (ALLOW_QUERY != 0 && ALLOW_QUERY != 1) ||
+        (EXTERNAL_INPUT_RAM != 0 && EXTERNAL_INPUT_RAM != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT, ALLOW_QUERY and EXTERNAL_INPUT_RAM must be 0 or 1");
         assign start_ready = 0;
         assign source_valid = 0;
         assign source_model = 0;
         assign source_owner = 0;
         assign source_token = 0;
         assign source_index = 0;
+        assign source_normalized = 0;
+        assign input_store_valid = 0;
+        assign input_store_index = 0;
+        assign input_store_data = 0;
         assign source_rsp_ready = 0;
         assign cmd_valid = 0;
         assign cmd_write = 0;
@@ -105,7 +115,8 @@ module anvil_en1_owner_kv_tile #(
         reg [31:0] output_hold;
         reg [3:0] error_hold;
         reg scale_error_hold;
-        reg [15:0] input_q, head_q;
+        wire [15:0] input_q;
+        reg [15:0] head_q;
         localparam integer CONTROLLER_BITS = $bits({
             state, src_state, scale_state, model_hold, precision_hold, memory_owner,
             head_hold, owner_hold, token_hold, hidden_hold, dimension_hold, heads_hold,
@@ -124,8 +135,6 @@ module anvil_en1_owner_kv_tile #(
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             projection_controller_bytes + norm_controller_bytes +
             weight_controller_bytes + rotary_controller_bytes;
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] input_payload [0:MAX_H-1];
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] head_payload [0:MAX_D-1];
 
@@ -181,11 +190,16 @@ module anvil_en1_owner_kv_tile #(
             .tensor_columns(descriptor_columns), .row_stride(descriptor_stride),
             .row_index(projection_row),
             .source_valid(projection_source_valid),
-            .source_ready(rst_n && src_state == SRC_IDLE && state == PROJECTION_WAIT),
+            .source_ready(EXTERNAL_INPUT_RAM ?
+                (rst_n && state == PROJECTION_WAIT && source_ready) :
+                (rst_n && src_state == SRC_IDLE && state == PROJECTION_WAIT)),
             .source_index(projection_source_index),
-            .source_rsp_valid(rst_n && src_state == SRC_RESPONSE && src_is_projection),
+            .source_rsp_valid(EXTERNAL_INPUT_RAM ?
+                (rst_n && state == PROJECTION_WAIT && source_rsp_valid) :
+                (rst_n && src_state == SRC_RESPONSE && src_is_projection)),
             .source_rsp_ready(projection_source_rsp_ready),
-            .source_rsp_data(src_data_hold), .source_rsp_error(1'b0),
+            .source_rsp_data(EXTERNAL_INPUT_RAM ? source_rsp_data : src_data_hold),
+            .source_rsp_error(EXTERNAL_INPUT_RAM && source_rsp_error),
             .cmd_valid(projection_cmd_valid),
             .cmd_ready(rst_n && memory_owner == MEMORY_PROJECTION && cmd_ready),
             .cmd_write(), .cmd_addr(projection_cmd_addr), .cmd_wdata(),
@@ -285,26 +299,44 @@ module anvil_en1_owner_kv_tile #(
         wire [31:0] head_read_address = src_state == SRC_READ ?
             src_index_hold : (state == PAIR_FIRST_READ ?
                 pair_first_address : pair_second_address);
+        if (!EXTERNAL_INPUT_RAM) begin : internal_input_ram
+            (* ramstyle = "M20K", nomem2reg *)
+            reg [15:0] input_payload [0:MAX_H-1];
+            reg [15:0] input_ram_q;
+            assign input_q = input_ram_q;
+            always @(posedge clk) begin
+                if (scratch_norm_write && input_norm)
+                    input_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
+                if (input_read)
+                    input_ram_q <= input_payload[src_index_hold[H_BITS-1:0]];
+            end
+        end else begin : external_input_ram
+            assign input_q = 16'd0;
+        end
         always @(posedge clk) begin
-            if (scratch_norm_write && input_norm)
-                input_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
             if (scratch_projection_write)
                 head_payload[projection_index[D_BITS-1:0]] <= projection_data_hold;
             else if (scratch_norm_write && !input_norm)
                 head_payload[normalized_index[D_BITS-1:0]] <= normalized_data;
-            if (input_read)
-                input_q <= input_payload[src_index_hold[H_BITS-1:0]];
             if (head_read)
                 head_q <= head_payload[head_read_address[D_BITS-1:0]];
         end
 
         assign start_ready = rst_n && state == IDLE;
-        assign source_valid = rst_n && input_norm && norm_source_valid;
+        wire external_projection = EXTERNAL_INPUT_RAM && state == PROJECTION_WAIT;
+        assign source_valid = rst_n && (external_projection ?
+            projection_source_valid : (input_norm && norm_source_valid));
         assign source_model = rst_n ? model_hold : 2'd0;
         assign source_owner = rst_n ? owner_hold : 8'd0;
         assign source_token = rst_n ? token_hold : 32'd0;
-        assign source_index = rst_n && input_norm ? norm_source_index : 32'd0;
-        assign source_rsp_ready = rst_n && input_norm && norm_source_rsp_ready;
+        assign source_index = !rst_n ? 32'd0 : (external_projection ?
+            projection_source_index : (input_norm ? norm_source_index : 32'd0));
+        assign source_normalized = rst_n && external_projection;
+        assign source_rsp_ready = rst_n && (external_projection ?
+            projection_source_rsp_ready : (input_norm && norm_source_rsp_ready));
+        assign input_store_valid = EXTERNAL_INPUT_RAM && scratch_norm_write && input_norm;
+        assign input_store_index = rst_n && EXTERNAL_INPUT_RAM ? normalized_index : 32'd0;
+        assign input_store_data = rst_n && EXTERNAL_INPUT_RAM ? normalized_data : 16'd0;
         assign cmd_valid = rst_n && (memory_owner == MEMORY_LOOKUP ? lookup_cmd_valid :
             (memory_owner == MEMORY_PROJECTION ? projection_cmd_valid : scale_cmd_valid));
         assign cmd_write = 0;
@@ -335,7 +367,8 @@ module anvil_en1_owner_kv_tile #(
             end else begin
                 case (src_state)
                     SRC_IDLE: begin
-                        if (state == PROJECTION_WAIT && projection_source_valid) begin
+                        if (!EXTERNAL_INPUT_RAM &&
+                            state == PROJECTION_WAIT && projection_source_valid) begin
                             src_index_hold <= projection_source_index;
                             src_is_head <= 0;
                             src_is_projection <= 1;

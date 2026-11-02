@@ -142,7 +142,6 @@ module anvil_en1_frontier_execute #(
     localparam integer MAX_H = COMPACT ? 8 : 2560;
     localparam integer P = COMPACT ? 4 : 256;
     localparam integer H_BITS = $clog2(MAX_H);
-    localparam integer P_BITS = $clog2(P);
     localparam [5:0] IDLE = 0, CONTROL_VALIDATE = 1, VALIDATE = 2,
         FRONTIER_CONTROL = 3, FRONTIER_CONTROL_WAIT = 4,
         FRONTIER_RELEASED = 5, RING_CONTROL = 6, RING_CONTROL_WAIT = 7,
@@ -201,8 +200,6 @@ module anvil_en1_frontier_execute #(
     reg feature_error_hold;
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] hidden_payload [0:MAX_H-1];
-    (* ramstyle = "M20K", nomem2reg *)
-    reg [15:0] ple_payload [0:P-1];
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] feature_payload [0:MAX_H-1];
     localparam integer CONTROLLER_BITS =
@@ -570,7 +567,7 @@ module anvil_en1_frontier_execute #(
     assign vector_live_bytes = rst_n ?
         (h_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
         (p_allocated ? 64'(2*P) : 64'd0) : 64'd0;
-    assign vector_physical_bytes = rst_n ? 64'(2*MAX_H+2*P) : 64'd0;
+    assign vector_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
     assign feature_live_bytes = rst_n && feature_allocated ?
         {32'd0, hidden_hold} << 1 : 64'd0;
     assign feature_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
@@ -674,16 +671,17 @@ module anvil_en1_frontier_execute #(
         else if (rst_n && (state == LAYER_WAIT || state == EVAL_WAIT) &&
             received_valid && h_beat_ok)
             hidden_payload[received_index[H_BITS-1:0]] <= received_data;
-        if (rst_n && state == EMBED_WAIT && embed_ple_valid && ple_beat_ok)
-            ple_payload[embed_ple_index[P_BITS-1:0]] <= embed_ple_data;
         if (rst_n && state == FEATURE_WAIT && eval_output_valid && feature_beat_ok)
             feature_payload[eval_output_index[H_BITS-1:0]] <= eval_output_data;
+        else if (rst_n && state == EMBED_WAIT && embed_ple_valid && ple_beat_ok &&
+            p_allocated && !feature_allocated)
+            feature_payload[embed_ple_index[H_BITS-1:0]] <= embed_ple_data;
         if (rst_n && feature_state == FEATURE_READ)
             feature_q <= feature_payload[feature_request_index[H_BITS-1:0]];
+        else if (rst_n && source_state == S_LOCAL_READ && source_is_ple_hold)
+            ple_q <= feature_payload[source_index_hold[H_BITS-1:0]];
         if (rst_n && source_state == S_LOCAL_READ) begin
-            if (source_is_ple_hold)
-                ple_q <= ple_payload[source_index_hold[P_BITS-1:0]];
-            else
+            if (!source_is_ple_hold)
                 hidden_q <= hidden_payload[source_index_hold[H_BITS-1:0]];
         end else if (rst_n && state == WRITE_LOW_READ)
             hidden_q <= hidden_payload[write_component[H_BITS-1:0]];
@@ -1164,12 +1162,18 @@ module anvil_en1_frontier_execute #(
                     end
                 end
                 EMBED_START: if (embed_ready) begin
-                    p_allocated <= 1;
+                    p_allocated <= token_modality == 0;
                     if (operation == 1)
                         h_allocated <= 1;
                     state <= EMBED_WAIT;
                 end
                 EMBED_WAIT: begin
+                    if (feature_state == FEATURE_RESPONSE && embed_modality_rsp_ready &&
+                        !feature_error_hold && feature_request_index == hidden_hold - 1'b1) begin
+                        feature_allocated <= 0;
+                        feature_committed <= 0;
+                        p_allocated <= 1;
+                    end
                     if (embed_input_valid) begin
                         if (!input_beat_ok)
                             input_bad <= 1;
@@ -1180,7 +1184,7 @@ module anvil_en1_frontier_execute #(
                         end
                     end
                     if (embed_ple_valid) begin
-                        if (!ple_beat_ok)
+                        if (!ple_beat_ok || !p_allocated || feature_allocated)
                             p_bad <= 1;
                         else begin
                             p_count <= p_count + 1'b1;

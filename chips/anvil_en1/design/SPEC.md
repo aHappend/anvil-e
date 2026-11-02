@@ -89,10 +89,10 @@ projection results or internal source callbacks. Owner work is not
 advertised as avoided work.
 Event-model 3 updates neither bank.
 
-**Remaining integration, not zero-valued measurements:** KV-equivalent
-traffic classification and matched-baseline traffic are not yet wired.
-Their target CSR slots remain
-unmodified by this partial top; zero does not establish a measured result.
+Accepted native requests now drive dedicated KV-equivalent and
+input/weight/output/total traffic observations, as specified below.
+**Remaining integration, not a zero-valued measurement:** matched-baseline
+traffic metric 6 is not yet wired; its unchanged zero is not a measured result.
 Projection-output-byte events must not be relabeled weight-read bytes.
 Avoided shared projections, local/global component issue/availability,
 and allocation gauges/peaks now have the connected event definitions below.
@@ -156,7 +156,7 @@ of idle physical SRAM capacity supplies these totals.
 Integration reservation includes the enclosing top's complete declared
 descriptor/session/traffic registers, the immutable native bridge's
 132 register bits (state/write/address/write-data/read-data/error), the
-CSR engine's complete two counter/snapshot banks and controller/atomic
+CSR engine's complete two 29-metric counter/snapshot banks and controller/atomic
 readback state, and the ledger's own pipeline registers. Arrays already
 charged in payload or metadata fields are not added as primitive state.
 The inactive immutable parent datapath is not native cache-equivalent
@@ -245,6 +245,60 @@ baseline. Replay may increase total DDR traffic. Independent public-address
 scoreboards and the executable matched baseline remain mandatory; these
 CSR events alone do not certify the no-spill or savings requirements.
 
+### External traffic census and no-spill enforcement
+
+The native assembly and owner/replay binding instantiate the memory arbiter
+with `READ_ONLY=1`. All immutable-input and weight commands remain actual
+external reads. A client write is accepted internally, retained as an error
+transaction and retired through that client's registered result channel.
+It never enters SEND, never asserts outward cmd_valid, and never modifies
+external memory. The client receives result_error=1 and follows its existing
+memory-error unwind; drain waits for that response's actual acceptance.
+The parent bridge and the arbiter's default READ_ONLY=0 behavior are unchanged.
+READ_ONLY accepts only 0/1; illegal values use the existing diagnostic-only
+generate branch. This enforces the native no-external-spill boundary without
+claiming that input/weight reads are free, or substituting software KV data.
+
+The top sends every accepted public 32-bit memory request to a separate
+model-tagged CSR traffic channel. It uses the bridge's registered provenance,
+not the current leaf's command wires. Every native read is classified as an
+original immutable input (including positions) or immutable weight-image read.
+Any accepted native write is conservatively KV-equivalent, never reclassified
+as an innocuous output; the read-only arbiters normally prevent such a write.
+Metric 4/5 receive accepted external cache-equivalent reads/writes. Native
+cache data has no external read producer: all its responses remain in the
+on-chip materialized/rematerialized spaces. Consequently a normal native
+job has no metric-4/5 event by construction. This is not a substitute for
+the independent public-address/no-spill observer or injected-spill coverage.
+
+Four cumulative atomic low/high pairs are appended after retained metric 24:
+
+| Metric | Low/high CSR | Accepted public bytes |
+| --- | --- | --- |
+| 25 original_input_bytes | 0x0e8 / 0x0ec | Native original-input reads, ordinary and replay, including directories and positions |
+| 26 immutable_weight_bytes | 0x0f0 / 0x0f4 | Native weight-image reads, ordinary and replay, including tensor directories |
+| 27 non_kv_output_bytes | 0x0f8 / 0x0fc | Native external non-cache output writes; no such producer exists in this logit-stream implementation |
+| 28 total_external_bytes | 0x100 / 0x104 | All parent/native public reads and writes in the selected model bank |
+
+Each event adds four bytes even if its later response fails. A stalled request
+adds nothing before acceptance and no request is counted twice. Native classified
+bytes plus cache-equivalent bytes partition its total external requests.
+Parent classification is not inferred from private parent addresses:
+metrics 25..27 remain native-only; parent totals and existing read/write metrics
+remain observable. Logits are a ready/valid output stream, not external DDR.
+
+The existing 25-bit event interface and all retained offsets are unchanged.
+The additional traffic channel is traffic_valid, traffic_model[1:0],
+traffic_write, traffic_input and traffic_cache, sampled pre-edge.
+It takes priority over an ordinary event for the same metric/bank; the connected
+top does not generate duplicate ordinary traffic events for metrics 4/5.
+Allocation-report priority, clear-over-all-events, pre-update snapshots,
+saturation, held atomic high halves and invalid-bank rejection are unchanged.
+0x108 and all higher non-control addresses reject. The enlarged counter/snapshot
+reservation is included in controller_bytes and therefore the whole-system ledger.
+Metric 6 still requires matched-baseline traffic integration; none of these
+candidate counters supplies the independently executed baseline denominator.
+
 ## Connected native execution assembly
 
 `rtl/anvil_en1_native.sv` connects the existing frontier scheduler, frontier
@@ -329,12 +383,12 @@ success is inferred from them.
 | --- | --- |
 | 0 | Frontier payload RAM, including its physically disjoint replay tail |
 | 1 | Local anchor ring |
-| 2 | Ordinary hidden/PLE banks |
-| 3 | Ordinary reconstructed native-feature bank |
+| 2 | Ordinary hidden/PLE live reservations; physical field counts the hidden bank |
+| 3 | Ordinary reconstructed native-feature live reservation; physical field counts the shared feature/PLE bank |
 | 4 | Anchor materialization worker's reported vector storage |
 | 5 | Actual workspace frame/memo/scalar live payload |
-| 6 | Owner replay source vector |
-| 7 | Owner projection/normalization tile |
+| 6 | Owner raw-source/in-place normalized-source vector |
+| 7 | Owner projection/normalization head tile, excluding the shared source bank |
 | 8 | Replay text tile |
 | 9 | Replay PLE vector |
 | 10 | Replay embedding vector |
@@ -397,8 +451,11 @@ charged by the controller census after their vector bank is released.
 These are whole-bank occupied-prefix reservations, not one-word-at-a-time
 claims or physical resource measurements.
 
-The ordinary executor allocates its hidden/PLE output banks only when
+The ordinary executor allocates its hidden output bank only when
 embedding starts, not throughout preceding native-feature reconstruction.
+Its PLE reservation starts with embedding for text tokens; for native
+placeholders it starts when the final successful feature callback retires,
+as described below.
 Initial frontier fill discards PLE at embedding commit. Other layers free
 the transport PLE only after the leaf accepts its last PLE source reply;
 the leaf's own copy remains charged. Failed tasks release all abandoned
@@ -562,15 +619,28 @@ is held through request acceptance. The ordinary executor starts embedding
 only after H ascending feature values, an exact last flag and successful
 actual Eval completion have all been observed.
 
-Features have their own synchronous BF16 bank, distinct from both the
-frontier and the retained last-token hidden vector. This is necessary during
-upper shared-layer PLE reconstruction: the previous layer's hidden vector
-must survive native feature evaluation. This bank reserves 5120 bytes in
-production and 16 bytes in compact builds. `feature_live_bytes` charges the
-full selected `2*H` bytes starting at feature request acceptance, including
-partial/error reception, until failed feature completion or embedding
-completion. `feature_physical_bytes` reports the separate reservation.
-These outputs are additive, not hidden inside the H/P bank reports.
+Features and ordinary transport PLE now share one synchronous BF16 RAM,
+distinct from both the frontier and retained last-token hidden vector.
+The latter must survive native feature evaluation for upper shared layers.
+The shared bank reserves 5120 bytes in production and 16 bytes in compact
+builds, reported only by `feature_physical_bytes`; `vector_physical_bytes`
+reports the separate hidden bank, without another PLE array. This removes
+512 production or 8 compact declared payload bytes, not measured FPGA RAM.
+
+`feature_live_bytes` charges the full selected `2*H` bytes from feature
+request acceptance, including partial/error reception, through the final
+successful feature callback acceptance. That edge releases feature
+visibility and reserves the `2*P` PLE prefix in `vector_live_bytes`.
+Embedding consumes all H feature components in ascending order into its
+own input bank before projection, PLE normalization or any PLE output.
+The last callback's registered scalar remains charged in controller state.
+The feature and PLE vector lifetimes therefore do not overlap. For text,
+PLE is reserved at embedding start. PLE writes require this reservation
+and no live feature; a violating stream sets the existing input error.
+Failed feature/embedding completion releases abandoned reservations.
+The single shared RAM has one synchronous write port (feature fill or
+later PLE fill) and one synchronous read port (feature callbacks or later
+PLE source callbacks). Hidden reads/writes use their independent RAM.
 
 Embedding's native callbacks read only this completed, generation/token/kind
 tagged bank. Every callback is captured, checked, synchronously read and
@@ -601,7 +671,7 @@ mode or explicitly bound fallback mode.
 | Range/generation error | No payload access; acknowledged error 7 |
 | Reset | Public outputs/visibility zero; no initialization advertises payload as readable |
 
-The physical shared RAM reservation is now 1032192 words / 4128768 bytes in
+The physical shared RAM reservation is now 1017856 words / 4071424 bytes in
 production and 208896 words / 835584 bytes in compact builds. This is one
 array, not a simultaneous copy of ordinary and fallback payload. The
 ordinary 3 MiB cap and all live-payload acceptance limits are unchanged.
@@ -792,7 +862,7 @@ Audio frame reservation in compact geometry is also 12 KiB: native
 encoder widths are not compacted. The compact backing bank stride is
 widened to the production 1536-word stride, and its physical reservation
 is disclosed separately from live domain-specific frame allocation.
-The production shadow frame charge remains 12 KiB plus 1 KiB scalar.
+The audio production shadow frame charge is 12 KiB plus 128 scalar bytes.
 
 `replay_audio_residual` adds the default-preserving PACKED_FRAME=1 option
 for this enclosing stage: only head frame-vector traffic is redirected
@@ -1875,8 +1945,8 @@ Production uses the same domain-specific prefix accounting: text/native
 feature frames reserve two H vectors, vision two 768-vectors, and audio six
 1024-vectors; memo entries reserve one vector. Shadow counters independently
 track these production-width prefixes during compact execution. Scalar
-reservations remain 1024 bytes per production/shadow frame and 128 bytes per
-compact frame. Pending allocations count before backing writes; committed
+reservations are 128 bytes per production, shadow and compact frame.
+Pending allocations count before backing writes; committed
 totals change only on push/pop/memo commit/eviction, with reset/invalidation
 clearing all four totals. Physical layout and supported depths are unchanged.
 
@@ -2244,10 +2314,10 @@ input rule. Failed assembly or patch acknowledgments invalidate that bank.
 Push/pop/session invalidation clear both assembly progress and visibility.
 Progress is control metadata, not a hidden copy of vector payload.
 
-Production scalar slots remain 256 words. Compact slots become 32 words so
+Production and compact scalar slots contain 32 words so
 the unchanged head checkpoint at 8..14 and an enclosing projection checkpoint
 at 15..19 can coexist; words 0..7 remain scheduler-owned. Shadow accounting
-still charges the full production slot for every compact frame. The added
+charges the same full 128-byte scalar slot for every compact frame. The added
 128 12-bit next-component registers and 128 progress-valid bits occupy 208
 byte-rounded metadata bytes; existing whole-bank payload reservations do not
 grow. Dedicated progress metadata is reset, not numerical RAM payload.
@@ -2523,7 +2593,9 @@ must really evaluate `Eval(owner,token)` with its bounded stack/memo FSM.
 ascending component order. A successful producer done is necessary **and**
 exactly H accepted beats with correct last flags are necessary to commit it.
 Until both occur, the receiving bank is unreadable. The committed vector stays
-immutable through all repeated input-norm source passes of the owner tile.
+unchanged through the input-norm reduction pass. During the subsequent
+ascending output pass, each consumed component may be overwritten by its
+actual normalized BF16 result as specified below.
 An erroneous stream is drained until producer completion and returns error 7;
 a producer error is propagated. No tile command is issued for an incomplete
 or failed vector.
@@ -2537,13 +2609,16 @@ root regen channel. It owns its continuation-suspended owner-projection work,
 not a second external master. This requirement is unchanged by exposing the
 transport boundary.
 
-The transport exposes its actual raw-source payload, physical reservation,
-and completed owner-projection events. One synchronous Hmax=2560 BF16 bank
-reserves 5120 bytes (16 bytes compact); fallback receiving/committed payload
-is 2H bytes, including incomplete-vector receive lifetime. Ordinary transport
-payload is zero, apart from separately accounted response/control words.
-Tile scratch is exposed separately: 2H+2D live bytes during tile execution,
-6144 physical bytes (32 compact). These and all scalar/child state must be
+The transport exposes its shared raw/normalized-source payload, physical
+reservation, and completed owner-projection events. One synchronous
+Hmax=2560 BF16 bank reserves 5120 bytes (16 bytes compact); live payload is
+2H bytes, including incomplete fallback-vector receive lifetime and every
+ordinary/fallback tile operation. The owner tile uses EXTERNAL_INPUT_RAM=1,
+so no private H-vector is elaborated inside it. Tile scratch is separately
+2D live bytes, with 1024 physical bytes (16 compact). Combined physical
+source/tile payload is 6144 bytes (32 compact), rather than 11264 (48).
+This removes a real declared Hmax array, not just its accounting field.
+These and all scalar/child state must be
 included in the phase-overlaid text/fallback ledger. The owner tile emits a two-byte event
 for each successfully completed K/V projection row, totaling `2D` for a
 complete head. A failure before/during projection is not falsely counted as
@@ -3440,7 +3515,8 @@ access. This leaf does not implement another logical-to-anchor alias map.
 
 Source requests carry the captured model, owner and token and an H-component
 index. The caller supplies the BF16 hidden vector **entering** that owner
-layer, immutable for the whole operation. An ordinary caller reads the
+layer, immutable for the whole operation in the default private-RAM mode.
+An ordinary caller reads the
 correct tagged frontier; fallback must really evaluate that vector. A
 precomputed normalized vector or KV answer is not a native source substitute.
 The leaf validates the text image and looks up the owner's input-layernorm
@@ -3479,6 +3555,35 @@ extra normalized-head copy, score array, or external activation archive is
 allocated. These scratch reservations must ultimately be phase-overlaid
 with the controller workspace; simply instantiating private banks beside
 other complete workspace banks is not proof of the admitted full ledger.
+
+`EXTERNAL_INPUT_RAM` accepts 0/1 and defaults to 0; existing nested
+replay/query leaves keep their private normalized-input storage unchanged.
+Only the owner transport selects 1. In that mode the tile elaborates no
+input array and exports `input_store_valid/index[31:0]/data[15:0]` for each
+accepted input-normalization output. Its connected synchronous RAM always
+accepts these writes. `source_normalized` distinguishes later projection
+reads of those computed values from the original entering-vector norm
+reads. These are storage interfaces, not externally supplied numerical
+answers or external memory commands.
+
+| Shared owner source phase | RAM owner and boundary |
+| --- | --- |
+| Fallback Eval receive | Original entering vector fills the source bank; exact H-beat completion is required |
+| Input RMS reduction | Read original raw bank in fallback or tagged frontier in ordinary mode; no normalized writes yet |
+| Input RMS output | Ascending component read retires before that component's normalized write; future components remain original |
+| Normalization stores | Require exact ascending indices, no duplicates or writes past H; reserve shared source before first write |
+| Projection reads | Require successful complete normalized-vector visibility; read the same source bank, never write the ordinary frontier |
+| Head norm/RoPE | Retain normalized source reservation and separate D-bank until the real tile response retires |
+| Error/reset | Never expose partial normalization as a valid projection source; propagate errors, and invalidate visibility |
+
+The transport checks every normalized store index and completion and
+returns error 7 for a malformed/incomplete store stream even if the tile
+otherwise reports success. Original versus normalized source identity is
+registered with each callback through stalls. Input RMS reduction and
+output retain the existing binary32 reduction and BF16 materialization
+order. There is one shared synchronous write port (Eval fill or norm
+output) and one registered read port, with no simultaneous representation
+copy and no dependence on same-address RAM read-during-write behavior.
 
 | Owner tile cycle/degenerate boundary | Required behavior |
 | --- | --- |
@@ -3709,6 +3814,10 @@ error recovery. This indicator must be consumed by the final session controller.
 | Command and response same edge | Response is not ready in send state; no dependent same-edge consumption |
 | Drain and ingress same edge | Drain wins; no new client command acceptance |
 | Drain and response retirement | Retire response once, then publish drain completion |
+| READ_ONLY=1 write A0 | Capture client and command; enter registered rejection, with no outward command valid |
+| Rejected write A1 | Publish held zero-data error response; client cannot consume it until A2 or later |
+| Drain during rejected write | Preserve the error response; publish drain completion only after that client's acceptance |
+| READ_ONLY=0 | Existing read/write transaction path, one actual external response per command |
 | Reset | Zero channels and flags; enclosing bridge handles already accepted physical transactions |
 
 ## Cache, replay, and storage
@@ -3812,29 +3921,39 @@ make uninitialized words readable through the workspace's public interface.
 | --- | --- | --- |
 | 64 two-bank frame slots | 196608 / 786432 | 196608 / 786432 |
 | 16 memo vector slots | 32768 / 131072 | 8192 / 32768 |
-| 64 scalar continuation slots | 16384 / 65536 | 2048 / 8192 |
-| Backing total | 245760 / 983040 | 206848 / 827392 |
+| 64 scalar continuation slots | 2048 / 8192 | 2048 / 8192 |
+| Backing total | 231424 / 925696 | 206848 / 827392 |
 
 Frame f starts at `f*3072` words in both geometries. Each of its two
 vector banks has 1536 words. Audio slice j starts at bank_base+j*512.
 Memo slot s starts at `196608+s*2048` (compact `196608+s*512`).
-Scalar slot f starts at `229376+f*256` (compact `204800+f*32`).
+Scalar slot f starts at `229376+f*32` (compact `204800+f*32`).
 Complete domain-specific vector prefixes, including any occupied padding,
 count as live payload, not merely returned components. The reserved frame/
 memo strides in this table describe physical capacity, not occupied holes.
 Production and shadow text/feature frames charge 6144/10240 bytes by model,
 vision 3072 and audio 12288; memos charge 3072/5120, 1536 or 2048 bytes.
 Every production/shadow live or pending frame additionally reserves its
-complete 1024-byte scalar slot, including unused scalar words.
+complete 128-byte scalar slot, including unused scalar words.
+The physical and shadow scalar layouts are identical in both builds.
+Words 0..7 hold scheduler continuations, 8..14 the text attention checkpoint,
+15..19 its output-projection checkpoint, 8..23 the vision checkpoint,
+24/25 its outer projection state, 8..29 the audio checkpoint, and 30/31
+its head reduction state. These different workers share one current frame's
+scalar address space under the existing mutually exclusive domain dispatcher.
+The maximum actual scalar index is 31; requests at 32 or above reject before
+backing access. No checkpoint is shortened or moved to an uncounted register bank.
 Physical reserved backing is reported separately; in fallback it is the
 first part of the shared frontier RAM, and in ordinary mode it is its
 disjoint tail, not an extra inferred payload array. Compact physical RAM
 reserves 208896 words / 835584 bytes to cover both its ordinary partition
 and disjoint replay backing; its ordinary frontier allocation cap remains
-8192 bytes and 512 tokens. Production physical RAM reserves 1032192 words /
-4128768 bytes; the ordinary 3 MiB allocation cap is unchanged. Unused physical words
+8192 bytes and 512 tokens. Production physical RAM reserves 1017856 words /
+4071424 bytes; the ordinary 3 MiB allocation cap is unchanged. Unused physical words
 are not advertised as live payload or saved FPGA memory.
-The remaining 65536 production bytes of the admitted 1 MiB ceiling must cover
+The unreserved 122880 production bytes within the 1 MiB total do not relax
+the admitted arithmetic/control/resident partition ceiling of 65536 bytes.
+That partition must cover
 **all** workspace descriptor registers, masks, returned data, resident cache,
 primitive state and connected arithmetic buffers. These are not established
 as fitting merely by reserving this partition.
@@ -3871,6 +3990,33 @@ after acknowledged writes; unfilled scalar reads error rather than return
 RAM initialization. Only live frame handles with the complete matching
 descriptor tag are accessible for updates, vector and scalar operations.
 Pop always addresses the current top of the captured session.
+
+Before any frame continuation write, PUSH_SETUP registers prospective actual
+and production-shadow frame bytes with a carry bit. FRAME_RESERVE checks
+both against the 786432-byte vector partition and checks that another scalar
+slot fits below depth 64. Only the successful check establishes pending_push,
+invalidates the new slot and starts its eight acknowledged continuation writes.
+For a memo replacement, VECTOR_SETUP first rejects inconsistent subtraction
+accounting, then registers the total without the replaced vector.
+MEMO_RESERVE adds the new actual/shadow vector sizes in a separate cycle.
+MEMO_VALIDATE checks actual capacity (131072 production / 32768 compact bytes)
+and the 131072-byte production-shadow ceiling before invalidating an old slot,
+emitting eviction or reserving/writing the replacement. Unsuccessful admission
+preserves the prior readable memo and returns error 7. These checks do not
+silently clamp geometry or evict an in-progress frame.
+
+| Workspace allocation boundary | Registered behavior |
+| --- | --- |
+| Push calculation | One 33-bit addition per actual/shadow candidate, then a later capacity check |
+| Memo calculation | Subtract replaced bytes, add new bytes, then compare in three separate cycles |
+| Pending allocation | Full frame/scalar or memo reservation is visible before its first backing write |
+| Backing range | cmd valid is suppressed for addresses outside the current declared partition; publish error 7 without an access |
+| Depth 64 / scalar 32 | Reject before slot/address truncation can advertise a legal transaction |
+| Reset/invalidation | Existing drain/visibility rules apply; candidate registers do not grant payload visibility |
+
+These are workspace partition guards, not enforcement of whole-system ordinary
+text, native-scratch, full fallback or forced-short-context ratio limits.
+Those additional integration limits remain required before Verifier handoff.
 
 Vector store target 0 is a frame bank and target 1 a memo slot. It accepts
 exactly length/2 aligned 32-bit beats, checking first/last. The existing target

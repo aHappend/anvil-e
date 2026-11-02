@@ -1,5 +1,6 @@
 module anvil_en1_memory_arbiter #(
-    parameter integer CLIENTS = 3
+    parameter integer CLIENTS = 3,
+    parameter integer READ_ONLY = 0
 ) (
     input wire clk, rst_n,
     input wire [(CLIENTS > 0 ? CLIENTS : 1)-1:0] client_cmd_valid,
@@ -31,8 +32,9 @@ module anvil_en1_memory_arbiter #(
     output wire protocol_error,
     output wire [63:0] controller_bytes
 );
-    generate if (CLIENTS < 1 || CLIENTS > 8) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: CLIENTS must be 1..8");
+    generate if (CLIENTS < 1 || CLIENTS > 8 ||
+        (READ_ONLY != 0 && READ_ONLY != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: CLIENTS must be 1..8; READ_ONLY must be 0 or 1");
         assign client_cmd_ready = 0;
         assign client_result_valid = 0;
         assign client_result_data = 0;
@@ -51,7 +53,8 @@ module anvil_en1_memory_arbiter #(
         assign controller_bytes = 0;
     end else begin : arbiter
         localparam [2:0] IDLE = 0, SEND = 1, WAIT_RESULT = 2,
-            CLIENT_RESPONSE = 3, DRAIN_RESPONSE = 4, FAULT = 5;
+            CLIENT_RESPONSE = 3, DRAIN_RESPONSE = 4, FAULT = 5,
+            REJECT_WRITE = 6;
         reg [2:0] state, cursor, owner_hold;
         reg draining, write_hold, error_hold, fault_hold, input_hold, replay_hold;
         reg [63:0] address_hold;
@@ -114,8 +117,13 @@ module anvil_en1_memory_arbiter #(
                             input_hold <= client_input_read_event[cursor];
                             replay_hold <= client_cmd_replay[cursor];
                             read_data_hold <= 0;
-                            error_hold <= 0;
-                            state <= SEND;
+                            if (READ_ONLY && client_cmd_write[cursor]) begin
+                                error_hold <= 1;
+                                state <= REJECT_WRITE;
+                            end else begin
+                                error_hold <= 0;
+                                state <= SEND;
+                            end
                         end else begin
                             if (cursor == CLIENTS - 1)
                                 cursor <= 0;
@@ -130,6 +138,7 @@ module anvil_en1_memory_arbiter #(
                         error_hold <= result_error;
                         state <= CLIENT_RESPONSE;
                     end
+                    REJECT_WRITE: state <= CLIENT_RESPONSE;
                     CLIENT_RESPONSE: if (client_result_ready[owner_hold]) begin
                         if (owner_hold == CLIENTS - 1)
                             cursor <= 0;

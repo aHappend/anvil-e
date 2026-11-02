@@ -454,7 +454,7 @@ module anvil_en1_native #(
     assign memory_addr[128+:64] = rst_n ? mask_address : 64'd0;
     assign memory_wdata[64+:32] = 32'd0;
     assign memory_rsp_ready[2] = rst_n && mask_state == MASK_WAIT;
-    anvil_en1_memory_arbiter #(.CLIENTS(3)) memory (
+    anvil_en1_memory_arbiter #(.CLIENTS(3), .READ_ONLY(1)) memory (
         .clk(clk), .rst_n(rst_n),
         .client_cmd_valid(memory_valid), .client_cmd_ready(memory_ready),
         .client_cmd_write(memory_write), .client_cmd_addr(memory_addr),
