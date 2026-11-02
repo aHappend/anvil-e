@@ -7,6 +7,93 @@ engineering acceptance or a claim that every described engine exists.
 
 ## Native vision pooling and modality projection increment
 
+### Valid-bin ordinals and native subsampling boundaries
+
+`anvil_en1_vision_bins` maps an ordinal in the stripped soft-token stream to
+an actual physical pooled bin. Capture model, generation, patch/grid/bin
+counts, ordinal, expected placeholder count and the immutable input base.
+Validate the same coordinates and floor quotients as `vision_pool`; never
+infer a dense rectangular bin map from dimensions alone. Scan coordinates
+once for the actual max-x stride and again to set one presence bit per
+mapped physical bin, including clamped padding in bin zero. Duplicate
+coordinates set an existing bit, not another valid token. Enumerate all bins
+in ascending order, select the requested true-bin ordinal, and finish counting
+even after selecting it. Success requires the computed count to equal
+expected_soft_tokens and an actually selected bin. A count mismatch is error
+7, not successful truncation or a false-bin placeholder.
+
+The presence RAM is 456 synchronous 32-bit words (1824 physical/live bytes),
+covering the existing legal maximum of 14563 bins, with unused bits in the
+last word. Charge the full allocation from accepted start through accepted
+done, including partial initialization and errors. Clear every word
+sequentially before the two coordinate scans; never asynchronously reset RAM
+or read an uninitialized word. Bin set is a registered read/modify/write,
+with the write retired before advancing to another patch, including repeated
+patches in the same word. Enumeration reads only completed mask words and
+ignores bits outside pool_count. Reset discards visibility and the next start
+clears the whole allocation before reading. No original-input writes or
+external mask/feature archive are allowed.
+
+`anvil_en1_vision_soft_token` connects this checked ordinal to the real
+`vision_feature` pool/norm/projection. It must accept the complete successful
+mapping before dispatching the numerical feature, check that the feature
+returns a true mask, and count all H ascending output components and last.
+Mapping allocation is released before feature vector allocation starts;
+their physical reservations remain additive (6432 bytes). Actual numerical
+vector peak remains 3072 bytes, with mapping peak 1824 bytes in its separate
+phase; all directory, divider, arithmetic and controller state is additional.
+There is no H-vector copy in this wrapper. Accepted mapping and feature reads
+are separately performed and both counted as original-input traffic.
+The native session still must derive expected_soft_tokens and ordinal by
+scanning the original token stream, not trust a host feature map.
+
+The next subsampling numerical leaf, `anvil_en1_audio_conv_row`, accepts
+stage 0/1, model/precision/generation, original frames, output time/frequency/
+channel and immutable audio weights. Stage 0 has one input channel and 128
+output channels; stage 1 has 128 input channels and 32 output channels.
+Input time lengths are frames and ceil(frames/2); output time lengths are
+ceil(frames/2) and ceil(frames/4). Input frequency lengths are 128/64 and
+output frequency lengths are 64/32. All lengths are computed by shifts and
+odd-bit additions at separate registered stages. Frames are 1..131072.
+Validate time/frequency/channel ranges before any weight or source request.
+
+Use real OIHW convolution matrices 0x2000/2002, rows 128/32, columns 9/1152,
+at layer 0xffff from the audio tensor image. The existing BF16/Q4 row reader
+must enforce partial Q4 rows without reading the next row. For ascending
+flattened column j, sequentially divide by 9 for input channel and remainder,
+then by 3 for kernel y/x. Spatial input is (2*time+kernel_y-1,
+2*frequency+kernel_x-1). Out-of-domain spatial padding supplies +0; it
+issues no mask or feature source request but still participates in the
+weight multiply/reduction, including exceptional weight encodings.
+For an in-domain source, fetch the original validity mask at input_time
+for stage 0, or 2*input_time for stage 1. A mask word other than 0/1 is an
+explicit descriptor error. Stage 0 source_stage=0 supplies immutable raw
+input BF16 at (time,frequency,channel0); stage 1 source_stage=1 supplies real
+completed layer-0 norm/ReLU data at (time,frequency,channel0..127). Even a
+false mask still reads that actual source and executes BF16(source*mask),
+preserving zero-times-infinity/NaN. No host convolution answer is permitted.
+Projection uses the prescribed binary32 multiply/add order, then one BF16
+convolution materialization. It has no bias, clipping, RMS substitution,
+activation or channel normalization: the enclosing point engine must gather
+all 128/32 channel rows and execute actual learned LayerNorm followed by ReLU.
+
+| Ordinal/subsampling boundary | Registered behavior |
+| --- | --- |
+| Start/reset | Capture at pre-edge handshake; reset zeroes every public output; next job starts fresh visibility |
+| Mapping RAM | Sequential whole-RAM clear; synchronous read; separate capture/modify/write; no read/write collision |
+| Ordinal selection | Count every true bin exactly once in ascending physical order; publish only after complete-count comparison |
+| Phase handoff | Accept mapping done, register/check its descriptor, then start feature; no allocation overlap |
+| Conv geometry | Register ceil/half lengths, then classify output tuple, then validate immutable directory |
+| Conv source coordinate | Sequential floor quotients; separate doubled-origin, add, subtract and bounds stages |
+| Conv padding/mask | Padding has no source callback; real source is multiplied by actual 0/1 mask and BF16 materialized |
+| Conv callbacks | Mask/source request and response handshakes are distinct edges; payload remains stable while stalled |
+| Conv completion | Drain real projection completion, preserve first callback/memory error, register result and publish stable done |
+| Single-beat/count-one | Ordinal 0 and bin-count 1 enumerate once; a conv row returns one held BF16 result, not an empty vector |
+
+These are implementation boundaries, not simulation or synthesis results.
+Native replay must supply source callbacks, bound their continuations and
+include mask/control/scratch state in the complete live ledger.
+
 The pooling leaf accepts one physical pooled-bin index, not a host-generated
 feature or a text placeholder index. For the pinned kernel 3, patch_count
 must equal 9*pool_count; patch_rows*patch_columns must equal patch_count.
@@ -105,7 +192,7 @@ producer's responsibility; done_mask is not a placeholder-count certificate.
 `anvil_en1_audio_feedforward` selects native feed_forward1/2 with modes 1/2,
 layer 0..11 and a registered model/precision/generation/token/weight descriptor.
 It loads all 1024 actual input components, retaining the unclipped residual.
-Clamp a separate working vector to BF16 bounds -0x5015..0x5015: these are
+Clamp a separate working vector to BF16 bounds 0xd015 and 0x5015: these are
 BF16_RNE(-1e10)..BF16_RNE(1e10), matching the pinned scalar gradient_clipping.
 Apply learned pre-RMSNorm kind 0x2100/2111; execute every real clipped
 FF1/SiLU/FF2 output row through `anvil_en1_native_mlp_row` mode 1/2; clamp that
@@ -246,7 +333,7 @@ frontier cap stays 8192 bytes / 512 text tokens. Mode transition must still
 release the ordinary frontier before binding this backing; no simultaneous
 old/new representation or additional payload array is introduced.
 This is source-level layout repair, not an executed liveness/savings result.
-Native dispatch/continuations, pooling/modality projection, audio execution,
+Native dispatch/continuations, pooling/feature source integration, audio execution,
 single-token linear replay, full allocation accounting and top integration
 remain necessary before design readiness.
 
@@ -360,7 +447,7 @@ head or executor. Tile live/physical vectors and controller observations are
 forwarded separately, not included twice. All tile/head numerical children
 still require whole-system accounting and phase overlay. The connected
 vision residual/GeGLU leaf is described above; durable native continuation
-dispatch, pooling/projection and audio execution remain required. This
+dispatch, pooling/feature integration and audio execution remain required. This
 interface freeze is not functional or timing evidence.
 
 ## Native clipped-linear and vision-input implementation boundary
@@ -432,7 +519,7 @@ pixel/output bank or generated modality feature archive is allocated.
 All child arithmetic/control and tensor validator registers remain additional
 whole-system allocations. Scalar-only leaves do not prove the native scratch
 bound, physical fit, full fallback ledger or timing. Complete native
-vision/audio layer execution, pooling/projection, session/masks and compatible
+vision/audio replay binding, pooling/feature integration, session/masks and compatible
 literal top integration remain necessary before the design can be ready.
 
 ### Native vision Q/K/V tile
@@ -2193,7 +2280,8 @@ scalar-word-write/frame-pair-write (6), and scalar-word-read (7).
 Requests capture model, generation, domain, layer, token, vector length,
 frame/slot handle, bank, aligned component, scalar index, data and a 256-bit
 continuation. Domain 0 is text, 1 vision, 2 audio; 3 rejects. Text lengths
-equal the selected H, vision/audio lengths are 768/1024, or 8 in compact mode.
+equal the selected H (8 in compact mode); vision/audio lengths stay 768/1024
+in both modes.
 Text layer is 0..L, vision 0..16, audio 0..12; token is 0..131071.
 Memo tags include every descriptor field affecting the vector
 (model, generation, domain, layer, token, length).
