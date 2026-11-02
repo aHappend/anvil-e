@@ -1,5 +1,6 @@
 module anvil_en1_replay_execute #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -81,6 +82,10 @@ module anvil_en1_replay_execute #(
     output wire [63:0] ple_live_bytes, ple_physical_bytes,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
     output wire [63:0] post_vector_live_bytes, post_vector_physical_bytes,
+    output wire [3:0] vector_ram_write, vector_ram_read,
+    output wire [47:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [63:0] vector_ram_wdata,
+    input wire [63:0] vector_ram_rdata,
     output wire [63:0] vision_vector_live_bytes, vision_vector_physical_bytes,
     output wire [63:0] vision_binding_controller_bytes, vision_patch_controller_bytes,
     output wire [63:0] vision_replay_controller_bytes, vision_executor_controller_bytes,
@@ -320,7 +325,12 @@ module anvil_en1_replay_execute #(
     wire [63:0] text_cmd_addr, text_state_bytes, text_embedding_live, text_embedding_physical;
     wire text_owner_event, text_query_event, text_source_event;
     wire [31:0] text_owner_bytes, text_query_bytes, text_source_bytes;
-    anvil_en1_replay_text_layer #(.COMPACT(COMPACT)) text_layer (
+    anvil_en1_replay_text_layer #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+    ) text_layer (
+        .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
+        .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
+        .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
         .avoided_projection_event(avoided_projection_event),

@@ -1,5 +1,6 @@
 module anvil_en1_replay_text_layer #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -94,6 +95,10 @@ module anvil_en1_replay_text_layer #(
     output wire [63:0] ple_live_bytes, ple_physical_bytes,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
     output wire [63:0] post_vector_live_bytes, post_vector_physical_bytes,
+    output wire [3:0] vector_ram_write, vector_ram_read,
+    output wire [47:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [63:0] vector_ram_wdata,
+    input wire [63:0] vector_ram_rdata,
     output wire [3:0] attention_activity,
     output wire avoided_projection_event,
     output wire [31:0] avoided_projection_bytes,
@@ -346,7 +351,12 @@ module anvil_en1_replay_text_layer #(
     wire post_output_correct = post_output_index == output_count &&
         output_count < {20'd0, length_hold} &&
         post_output_last == (output_count + 1'b1 == {20'd0, length_hold});
-    anvil_en1_asym_attn_ple #(.COMPACT(COMPACT), .POST_ONLY(1)) post_attention (
+    anvil_en1_asym_attn_ple #(
+        .COMPACT(COMPACT), .POST_ONLY(1), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+    ) post_attention (
+        .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
+        .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
+        .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),
         .controller_bytes(post_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(),

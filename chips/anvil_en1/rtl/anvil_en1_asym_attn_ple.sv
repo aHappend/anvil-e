@@ -1,6 +1,7 @@
 module anvil_en1_asym_attn_ple #(
     parameter integer COMPACT = 0,
-    parameter integer POST_ONLY = 0
+    parameter integer POST_ONLY = 0,
+    parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -73,14 +74,19 @@ module anvil_en1_asym_attn_ple #(
     input wire done_ready,
     output wire [3:0] done_error,
     output wire [63:0] live_payload_bytes, physical_payload_bytes,
+    output wire [3:0] vector_ram_write, vector_ram_read,
+    output wire [47:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [63:0] vector_ram_wdata,
+    input wire [63:0] vector_ram_rdata,
     output wire [3:0] attention_activity,
     output wire avoided_projection_event,
     output wire [31:0] avoided_projection_bytes,
     output wire [63:0] controller_bytes
 );
     generate if ((COMPACT != 0 && COMPACT != 1) ||
-        (POST_ONLY != 0 && POST_ONLY != 1)) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT and POST_ONLY must be 0 or 1");
+        (POST_ONLY != 0 && POST_ONLY != 1) ||
+        (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT, POST_ONLY and EXTERNAL_VECTOR_RAM must be 0 or 1");
         assign start_ready = 0;
         assign source_valid = 0;
         assign source_model = 0;
@@ -124,6 +130,11 @@ module anvil_en1_asym_attn_ple #(
         assign done_error = 0;
         assign live_payload_bytes = 0;
         assign physical_payload_bytes = 0;
+        assign vector_ram_write = 0;
+        assign vector_ram_read = 0;
+        assign vector_ram_waddr = 0;
+        assign vector_ram_raddr = 0;
+        assign vector_ram_wdata = 0;
         assign attention_activity = 0;
         assign avoided_projection_event = 0;
         assign avoided_projection_bytes = 0;
@@ -199,7 +210,7 @@ module anvil_en1_asym_attn_ple #(
         reg [3:0] error_hold;
         reg residual_allocated, work_allocated, branch_allocated;
         reg query_allocated, attention_allocated, ple_allocated;
-        reg [15:0] residual_q, work_q, branch_q, ple_q;
+        wire [15:0] residual_q, work_q, branch_q, ple_q;
         wire [15:0] query_q = branch_q;
         wire [15:0] attention_q;
         localparam integer CONTROLLER_BITS = $bits({
@@ -222,7 +233,7 @@ module anvil_en1_asym_attn_ple #(
             residual_allocated, work_allocated, branch_allocated,
             query_allocated, attention_allocated, ple_allocated,
             residual_q, work_q, branch_q, ple_q
-        }) + (POST_ONLY ? 0 : 16);
+        }) - (EXTERNAL_VECTOR_RAM ? 64 : 0) + (POST_ONLY ? 0 : 16);
         wire [63:0] lookup_controller_bytes, norm_controller_bytes;
         wire [63:0] projection_controller_bytes, rotary_controller_bytes;
         wire [63:0] attention_controller_bytes, gated_controller_bytes;
@@ -232,16 +243,6 @@ module anvil_en1_asym_attn_ple #(
             norm_controller_bytes + projection_controller_bytes + rotary_controller_bytes +
             attention_controller_bytes + gated_controller_bytes +
             weight_controller_bytes + fp_controller_bytes;
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] residual_payload [0:MAX_H-1];
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] work_payload [0:MAX_H-1];
-        (* ramstyle = "M20K", nomem2reg *)
-        // Query heads retire before the projected attention/MLP branch is written.
-        reg [15:0] branch_payload [0:MAX_H-1];
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] ple_payload [0:P-1];
-
         wire native_model, selected_global;
         wire [7:0] layer_count;
         wire [11:0] selected_hidden;
@@ -481,35 +482,61 @@ module anvil_en1_asym_attn_ple #(
             state == ROTARY_FIRST_READ || state == ROTARY_SECOND_READ);
         wire [31:0] query_read_index = src_state == S_READ ? src_index_hold :
             (state == ROTARY_FIRST_READ ? pair_index : rotary_second_index);
-        always @(posedge clk) begin
-            if (rst_n && state == LOAD_WRITE && !load_ple && !load_branch)
-                residual_payload[index[H_BITS-1:0]] <= load_data;
-            else if (rst_n && (state == RESIDUAL_WRITE || state == SCALAR_WRITE))
-                residual_payload[index[H_BITS-1:0]] <= value_hold[15:0];
-            if (rst_n && state == LOAD_WRITE && load_ple)
-                ple_payload[index[P_BITS-1:0]] <= load_data;
-            if (norm_write && norm_destination == B_WORK)
-                work_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
-            if (norm_write && (norm_destination == B_BRANCH || norm_destination == B_QUERY))
-                branch_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
-            else if (rst_n && state == LOAD_WRITE && load_branch)
-                branch_payload[index[H_BITS-1:0]] <= load_data;
-            else if (rst_n && (state == PROJECTION_WRITE || state == GATED_WRITE))
-                branch_payload[index[H_BITS-1:0]] <= branch_data_hold;
-            else if (rst_n && state == ROTARY_FIRST_WRITE)
-                branch_payload[pair_index[H_BITS-1:0]] <= rotary_data_hold[15:0];
-            else if (rst_n && state == ROTARY_SECOND_WRITE)
-                branch_payload[rotary_second_index[H_BITS-1:0]] <= rotary_data_hold[31:16];
-            if (residual_read)
-                residual_q <= residual_payload[residual_read_index[H_BITS-1:0]];
-            if (rst_n && src_state == S_READ && src_bank == B_WORK)
-                work_q <= work_payload[src_index_hold[H_BITS-1:0]];
-            if (branch_read)
-                branch_q <= branch_payload[branch_read_index[H_BITS-1:0]];
-            else if (query_read)
-                branch_q <= branch_payload[query_read_index[H_BITS-1:0]];
-            if (rst_n && src_state == S_READ && src_bank == B_PLE)
-                ple_q <= ple_payload[src_index_hold[P_BITS-1:0]];
+        wire residual_load = state == LOAD_WRITE && !load_ple && !load_branch;
+        wire branch_norm = norm_write &&
+            (norm_destination == B_BRANCH || norm_destination == B_QUERY);
+        wire [3:0] bank_write = {
+            rst_n && state == LOAD_WRITE && load_ple,
+            rst_n && (branch_norm || (state == LOAD_WRITE && load_branch) ||
+                state == PROJECTION_WRITE || state == GATED_WRITE ||
+                state == ROTARY_FIRST_WRITE || state == ROTARY_SECOND_WRITE),
+            norm_write && norm_destination == B_WORK,
+            rst_n && (residual_load || state == RESIDUAL_WRITE || state == SCALAR_WRITE)
+        };
+        wire [3:0] bank_read = {
+            rst_n && src_state == S_READ && src_bank == B_PLE,
+            branch_read || query_read,
+            rst_n && src_state == S_READ && src_bank == B_WORK,
+            residual_read
+        };
+        wire [47:0] bank_waddr = {index[11:0],
+            (branch_norm ? normalized_index[11:0] :
+                (state == ROTARY_FIRST_WRITE ? pair_index[11:0] :
+                (state == ROTARY_SECOND_WRITE ? rotary_second_index[11:0] : index[11:0]))),
+            normalized_index[11:0], index[11:0]};
+        wire [47:0] bank_raddr = {src_index_hold[11:0],
+            (branch_read ? branch_read_index[11:0] : query_read_index[11:0]),
+            src_index_hold[11:0], residual_read_index[11:0]};
+        wire [63:0] bank_wdata = {load_data,
+            (branch_norm ? normalized_data : (state == LOAD_WRITE ? load_data :
+                (state == ROTARY_FIRST_WRITE ? rotary_data_hold[15:0] :
+                (state == ROTARY_SECOND_WRITE ? rotary_data_hold[31:16] : branch_data_hold)))),
+            normalized_data, (residual_load ? load_data : value_hold[15:0])};
+        wire [63:0] bank_rdata;
+        assign {ple_q, branch_q, work_q, residual_q} = bank_rdata;
+        assign vector_ram_write = EXTERNAL_VECTOR_RAM ? bank_write : 4'd0;
+        assign vector_ram_read = EXTERNAL_VECTOR_RAM ? bank_read : 4'd0;
+        assign vector_ram_waddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_waddr : 48'd0;
+        assign vector_ram_raddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_raddr : 48'd0;
+        assign vector_ram_wdata = rst_n && EXTERNAL_VECTOR_RAM ? bank_wdata : 64'd0;
+        if (EXTERNAL_VECTOR_RAM) begin : external_vectors
+            assign bank_rdata = vector_ram_rdata;
+        end else begin : internal_vectors
+            genvar bank;
+            for (bank=0; bank<4; bank=bank+1) begin : banks
+                localparam integer BANK_WORDS = bank == 3 ? P : MAX_H;
+                localparam integer BANK_BITS = bank == 3 ? P_BITS : H_BITS;
+                (* ramstyle = "M20K", nomem2reg *)
+                reg [15:0] payload [0:BANK_WORDS-1];
+                reg [15:0] read_q;
+                assign bank_rdata[16*bank+:16] = read_q;
+                always @(posedge clk) begin
+                    if (bank_write[bank])
+                        payload[bank_waddr[12*bank+:BANK_BITS]] <= bank_wdata[16*bank+:16];
+                    if (bank_read[bank])
+                        read_q <= payload[bank_raddr[12*bank+:BANK_BITS]];
+                end
+            end
         end
         if (POST_ONLY) begin : no_attention_payload
             assign attention_q = 16'd0;
@@ -539,7 +566,8 @@ module anvil_en1_asym_attn_ple #(
         assign live_payload_bytes = rst_n ?
             (live_residual_work + live_branch_ple) + live_attention : 64'd0;
         assign physical_payload_bytes = rst_n ?
-            64'(2*(3*MAX_H+P+(POST_ONLY ? 0 : MAX_A))) : 64'd0;
+            64'(2*((EXTERNAL_VECTOR_RAM ? 0 : 3*MAX_H+P) +
+                (POST_ONLY ? 0 : MAX_A))) : 64'd0;
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin

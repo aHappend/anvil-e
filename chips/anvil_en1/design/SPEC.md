@@ -402,7 +402,7 @@ success is inferred from them.
 | 18 | Occupied resident KV pairs |
 | 19 | Ordinary embedding reconstruction's input/PLE payload |
 | 20 | Ordinary text attention/PLE/MLP payload |
-| 21 | Final-logit head's normalized hidden vector |
+| 21 | Standalone final-head normalized vector; zero in the connected external-bank mode, charged in field 2 instead |
 | 22 | Reported replay subtree controllers, including workspace and owner-source control, excluding field 16 |
 | 23 | Native memory arbiter, frontier scheduler and cache controller registers |
 | 24 | Ordinary executor, frontier/ring control, embedding, full text, anchor and final-head scalar/numerical state |
@@ -411,7 +411,10 @@ Fields 19..21 originate at the payload owners rather than the dispatch mux.
 The embedding worker reserves its `2H` input at legal validation and its
 `2P` PLE bank before the first projection starts. Each remains charged until
 its final output handshake; error publication releases abandoned banks.
-The final head reserves `2H` through its arithmetic and output stalls.
+The standalone final head reserves `2H` through its arithmetic and output
+stalls. The connected head instead overwrites the retained field-2 hidden
+bank in place after each raw component's last normalization read. Its
+field-21 payload and physical reservation are zero, not a second copy.
 Text-bank lifetimes and their actual physical overlay are specified below.
 Replay input and text workers now forward these same embedding/post
 owner reports instead of deriving visibility from the caller's current
@@ -419,6 +422,37 @@ worker selection. Both embedding instances are summed, so a retained
 child allocation cannot disappear merely because dispatch changed.
 
 ### Text-bank lifetime and physical overlay
+
+The integrated native assembly physically overlays the ordinary full text
+worker's residual/work/branch/PLE banks with the replay text POST_ONLY
+worker's corresponding banks. Both select `EXTERNAL_VECTOR_RAM=1` through
+their enclosing wrappers; standalone defaults remain 0. For each of four
+banks (residual/work/branch/PLE in ascending packed-lane order), the
+external interface exposes write/read enables, 12-bit component addresses
+and 16-bit write/read data. Each enabled read updates its corresponding
+registered data on that rising edge, exactly like the local-RAM default.
+No ready signal, asynchronous read or added callback latency is introduced.
+The assembly owns one physical set of these four synchronous RAMs.
+
+The full worker runs only on ordinary text tasks; on that path owner misses
+read the frontier rather than running text Eval. Native-feature Eval happens
+before the ordinary text worker starts. Fallback runs text Eval instead of
+the ordinary worker. Replay POST_ONLY retains no bank across a yielded
+dependency: its result is checkpointed into the workspace before that
+worker completes. Thus these two sets cannot have concurrently live vectors.
+The assembly detects simultaneous bank requests or live allocations as
+a sticky protocol fault, not as permission to silently overwrite a worker.
+Active reset disables all shared-bank accesses; generation/visibility
+state stays in the workers and is not initialized by clearing payload RAM.
+
+Physical field 20 includes the shared bank set once, plus the full worker's
+separate attention-output bank. Physical field 11 is zero for this integrated
+POST_ONLY worker. Live fields 20/11 continue to report the actual requesting
+worker's vector lifetimes; bytes are not dropped merely because physical
+ownership moved to the assembly. This removes another 15872 production /
+56 compact declared payload bytes compared with two local bank sets;
+independent allocation observations and source-matched FPGA inference
+remain mandatory.
 
 The full and POST_ONLY workers share each query head with the subsequent
 attention-output/MLP branch in **one declared H-component synchronous RAM**.
@@ -3739,8 +3773,8 @@ does not authorize omitting them or using external generated-state storage.
 ### Native tied final-logit stream
 
 `anvil_en1_final_logits` captures model, precision and text weights base.
-The caller must preserve the complete last-layer last-token H-vector until
-completion. A public indexed BF16 source channel supplies that actual vector;
+A public indexed BF16 source channel supplies the actual last-layer
+last-token H-vector;
 no external activation region or software-produced logit is read.
 Look up final learned RMS scale kind 0x0004 at instance 0xffff, execute
 `anvil_en1_norm` with epsilon 1e-6, and retain accepted BF16 normalized outputs
@@ -3757,9 +3791,40 @@ not while a memory response remains outstanding. One logit is buffered.
 done is exposed only after the last logit handshake, or an explicit retired
 child/source error. Starting another descriptor requires done retirement.
 No final embedding copy or vocabulary-sized result array is allocated.
-Normalized payload is 2H bytes (3072 E2B, 5120 E4B, 16 compact), with 5120
-production physical reservation. Child/control/scalar state and this bank
-must be included in the enclosing arithmetic phase overlay and live ledger.
+`EXTERNAL_PAYLOAD_RAM=0` is the standalone default: preserve the caller's
+original vector until normalization completes and allocate an internal
+normalized bank of 2H bytes (3072 E2B, 5120 E4B, 16 compact), with 5120
+production physical reservation. The external-bank parameter accepts only
+0/1; illegal values use the well-formed diagnostic-only generate branch.
+
+The connected ordinary/fallback output executor selects
+`EXTERNAL_PAYLOAD_RAM=1`. This generate branch declares no normalized
+payload RAM. `normalized_store_valid/ready`, index[31:0], data[15:0] and
+last carry accepted BF16 normalization outputs to the executor's retained
+hidden bank. Store valid and payload are held through backpressure by
+the actual norm output channel. Malformed norm beats are consumed as
+errors, not stored or exposed as successful normalization.
+`source_is_normalized=0` identifies original normalization reads;
+`source_is_normalized=1` identifies tied projection reads after successful
+norm completion. The existing source ready/valid/response channels serve
+both phases, with at most one source callback outstanding.
+
+RMS reduction reads the complete original bank before the output pass.
+The output pass rereads original components in ascending index order and
+emits a normalized component only after consuming its original value.
+The executor can therefore overwrite exactly that component without
+changing the reduction order, BF16 boundaries or any later raw read.
+The executor independently checks every store's exact ascending index,
+last flag, vector generation/token/layer identity and total count; raw
+reads cannot revisit an overwritten prefix, and normalized reads reject
+until all H stores have committed. All RAM accesses remain synchronous.
+The same hidden allocation remains live through all projection/logit
+stalls and is released on actual final-head completion; its payload is
+counted once in field 2. Field 21 reports zero in this mode. This removes
+5120 production / 16 compact declared physical payload bytes, not measured
+M20K blocks or a proved FPGA resource/timing improvement.
+Child/control/scalar state, including the independent store counter and
+callback phase bit, remains in the enclosing ledger.
 The leaf alone does not complete session, cache, native modality or replay
 integration.
 
@@ -3768,6 +3833,8 @@ integration.
 | Start J0/J1/J2 | Capture descriptor, reject illegal model/precision, then begin tensor lookup; no descriptor-derived command before J2 |
 | Norm output | Check ascending index, final flag and complete H count; commit only after actual successful norm done |
 | Tied source T0/T1/T2 | Capture index, synchronous H-bank read, register data/error; hold response until accepted |
+| External-bank stores | Accept/store the matching normalized component on the same rising edge; a stalled store cannot advance the output-pass index |
+| External-bank source | Capture raw/normalized identity with index; reject overwritten raw reads or premature normalized reads before the synchronous bank access |
 | Tensor/scale/projection | Registered descriptor and retained owner; error reaches done only after child's response retirement |
 | First/last logit | Rows ascend from 0 to V-1; completion follows final acceptance, not creation |
 | Logit backpressure | Held data/index/last, no next-row projection or duplicate final completion |

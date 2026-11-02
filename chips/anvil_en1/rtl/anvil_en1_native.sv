@@ -118,7 +118,8 @@ module anvil_en1_native #(
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
     assign busy = rst_n && !core_idle;
-    assign protocol_error = rst_n && (memory_fault || binding_fault);
+    reg vector_ram_fault;
+    assign protocol_error = rst_n && (memory_fault || binding_fault || vector_ram_fault);
 
     wire [1:0] meta_valid, meta_ready, meta_rsp_valid, meta_rsp_ready;
     wire [243:0] meta_payload;
@@ -248,8 +249,69 @@ module anvil_en1_native #(
     wire [2:0] memory_rsp_valid, memory_rsp_ready, memory_error;
     wire [2:0] binding_memory_owner;
     wire executor_input_event, binding_memory_input;
+    wire [3:0] ordinary_vector_write, ordinary_vector_read;
+    wire [3:0] replay_vector_write, replay_vector_read, vector_access_fault;
+    wire [47:0] ordinary_vector_waddr, ordinary_vector_raddr;
+    wire [47:0] replay_vector_waddr, replay_vector_raddr;
+    wire [63:0] ordinary_vector_wdata, replay_vector_wdata, shared_vector_rdata;
+    wire [191:0] executor_physical_bytes;
+    assign allocation_physical_bytes[64*19+:64] = executor_physical_bytes[0+:64];
+    assign allocation_physical_bytes[64*20+:64] = executor_physical_bytes[64+:64] +
+        (rst_n ? (COMPACT ? 64'd56 : 64'd15872) : 64'd0);
+    assign allocation_physical_bytes[64*21+:64] = executor_physical_bytes[128+:64];
+    genvar vector_bank;
+    generate for (vector_bank=0; vector_bank<4; vector_bank=vector_bank+1) begin : text_banks
+        localparam integer BANK_WORDS = vector_bank == 3 ?
+            (COMPACT ? 4 : 256) : (COMPACT ? 8 : 2560);
+        localparam integer BANK_BITS = $clog2(BANK_WORDS);
+        wire ordinary_access = ordinary_vector_write[vector_bank] ||
+            ordinary_vector_read[vector_bank];
+        wire replay_access = replay_vector_write[vector_bank] ||
+            replay_vector_read[vector_bank];
+        wire [11:0] waddr = replay_access ?
+            replay_vector_waddr[12*vector_bank+:12] :
+            ordinary_vector_waddr[12*vector_bank+:12];
+        wire [11:0] raddr = replay_access ?
+            replay_vector_raddr[12*vector_bank+:12] :
+            ordinary_vector_raddr[12*vector_bank+:12];
+        wire write_enable = replay_access ?
+            replay_vector_write[vector_bank] : ordinary_vector_write[vector_bank];
+        wire read_enable = replay_access ?
+            replay_vector_read[vector_bank] : ordinary_vector_read[vector_bank];
+        wire [15:0] wdata = replay_access ?
+            replay_vector_wdata[16*vector_bank+:16] :
+            ordinary_vector_wdata[16*vector_bank+:16];
+        assign vector_access_fault[vector_bank] = rst_n &&
+            ((ordinary_access && replay_access) ||
+                (write_enable && {20'd0, waddr} >= BANK_WORDS) ||
+                (read_enable && {20'd0, raddr} >= BANK_WORDS));
+        (* ramstyle = "M20K", nomem2reg *)
+        reg [15:0] payload [0:BANK_WORDS-1];
+        reg [15:0] read_q;
+        assign shared_vector_rdata[16*vector_bank+:16] = read_q;
+        always @(posedge clk) begin
+            if (rst_n && !vector_access_fault[vector_bank]) begin
+                if (write_enable)
+                    payload[waddr[BANK_BITS-1:0]] <= wdata;
+                if (read_enable)
+                    read_q <= payload[raddr[BANK_BITS-1:0]];
+            end
+        end
+    end endgenerate
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            vector_ram_fault <= 0;
+        else if (|vector_access_fault ||
+            (|allocation_live_bytes[64*11+:64] && |allocation_live_bytes[64*20+:64]))
+            vector_ram_fault <= 1;
+    end
 
-    anvil_en1_frontier_execute #(.COMPACT(COMPACT)) frontier (
+    anvil_en1_frontier_execute #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1)
+    ) frontier (
+        .vector_ram_write(ordinary_vector_write), .vector_ram_read(ordinary_vector_read),
+        .vector_ram_waddr(ordinary_vector_waddr), .vector_ram_raddr(ordinary_vector_raddr),
+        .vector_ram_wdata(ordinary_vector_wdata), .vector_ram_rdata(shared_vector_rdata),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(executor_attention_activity),
         .avoided_projection_event(executor_avoided_event),
@@ -337,12 +399,17 @@ module anvil_en1_native #(
         .anchor_live_bytes(allocation_live_bytes[64*4+:64]),
         .anchor_physical_bytes(allocation_physical_bytes[64*4+:64]),
         .execution_live_bytes(allocation_live_bytes[64*19+:192]),
-        .execution_physical_bytes(allocation_physical_bytes[64*19+:192]),
+        .execution_physical_bytes(executor_physical_bytes),
         .reported_controller_bytes(allocation_live_bytes[64*24+:64]),
         .busy(executor_busy)
     );
 
-    anvil_en1_replay_binding #(.COMPACT(COMPACT)) binding (
+    anvil_en1_replay_binding #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1)
+    ) binding (
+        .vector_ram_write(replay_vector_write), .vector_ram_read(replay_vector_read),
+        .vector_ram_waddr(replay_vector_waddr), .vector_ram_raddr(replay_vector_raddr),
+        .vector_ram_wdata(replay_vector_wdata), .vector_ram_rdata(shared_vector_rdata),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(binding_attention_activity),
         .avoided_projection_event(binding_avoided_event),
@@ -486,7 +553,8 @@ module anvil_en1_native #(
         $bits(audio_frames_hold) + $bits(error_hold) + $bits(meta_state) +
         $bits(mask_state) + $bits(meta_owner) + $bits(meta_request) +
         $bits(meta_response) + $bits(mask_owner) + $bits(mask_value) +
-        $bits(mask_error) + $bits(mask_token_hold) + $bits(mask_address);
+        $bits(mask_error) + $bits(mask_token_hold) + $bits(mask_address) +
+        $bits(vector_ram_fault) + 64;
     assign allocation_live_bytes[64*17+:64] = rst_n ?
         64'((STATE_BITS+7) >> 3) : 64'd0;
     assign allocation_physical_bytes[64*5+:64] = 64'd0;

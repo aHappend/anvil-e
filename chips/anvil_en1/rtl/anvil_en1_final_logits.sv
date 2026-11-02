@@ -1,5 +1,6 @@
 module anvil_en1_final_logits #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_PAYLOAD_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -9,10 +10,16 @@ module anvil_en1_final_logits #(
     output wire source_valid,
     input wire source_ready,
     output wire [31:0] source_index,
+    output wire source_is_normalized,
     input wire source_rsp_valid,
     output wire source_rsp_ready,
     input wire [15:0] source_rsp_data,
     input wire source_rsp_error,
+    output wire normalized_store_valid,
+    input wire normalized_store_ready,
+    output wire [31:0] normalized_store_index,
+    output wire [15:0] normalized_store_data,
+    output wire normalized_store_last,
     output wire cmd_valid,
     input wire cmd_ready,
     output wire cmd_write,
@@ -33,12 +40,18 @@ module anvil_en1_final_logits #(
     output wire [63:0] live_payload_bytes, physical_payload_bytes,
     output wire [63:0] controller_bytes
 );
-    generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+    generate if ((COMPACT != 0 && COMPACT != 1) ||
+        (EXTERNAL_PAYLOAD_RAM != 0 && EXTERNAL_PAYLOAD_RAM != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT and EXTERNAL_PAYLOAD_RAM must be 0 or 1");
         assign start_ready = 0;
         assign source_valid = 0;
         assign source_index = 0;
+        assign source_is_normalized = 0;
         assign source_rsp_ready = 0;
+        assign normalized_store_valid = 0;
+        assign normalized_store_index = 0;
+        assign normalized_store_data = 0;
+        assign normalized_store_last = 0;
         assign cmd_valid = 0;
         assign cmd_write = 0;
         assign cmd_addr = 0;
@@ -83,7 +96,7 @@ module anvil_en1_final_logits #(
         reg payload_allocated;
         reg [31:0] raw_logit_hold;
         reg [3:0] error_hold;
-        reg [15:0] normalized_q;
+        wire [15:0] normalized_q;
         localparam integer CONTROLLER_BITS = $bits({
             state, lookup_return, scale_state, source_state, model_hold, precision_hold,
             memory_owner, weights_hold, lookup_kind, hidden_hold, normalized_count,
@@ -99,9 +112,6 @@ module anvil_en1_final_logits #(
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             norm_controller_bytes + weight_controller_bytes +
             projection_controller_bytes + cap_controller_bytes;
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] normalized_payload [0:MAX_H-1];
-
         wire lookup_ready, lookup_valid, lookup_cmd_valid, lookup_result_ready;
         wire [63:0] lookup_cmd_addr, lookup_base, lookup_bytes;
         wire [31:0] lookup_rows, lookup_columns, lookup_stride;
@@ -133,6 +143,7 @@ module anvil_en1_final_logits #(
         wire [31:0] normalized_index;
         wire [15:0] normalized_data;
         wire [3:0] norm_error;
+        wire norm_output_ready;
         anvil_en1_norm norm_unit (
             .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
@@ -152,7 +163,7 @@ module anvil_en1_final_logits #(
             .scale_rsp_ready(norm_scale_rsp_ready),
             .scale_rsp_data(scale_data_hold), .scale_rsp_error(scale_error_hold),
             .normalized_valid(normalized_valid),
-            .normalized_ready(rst_n && state == NORM_WAIT),
+            .normalized_ready(norm_output_ready),
             .normalized_index(normalized_index), .normalized_data(normalized_data),
             .normalized_last(normalized_last),
             .done_valid(norm_valid), .done_ready(rst_n && state == NORM_WAIT),
@@ -193,12 +204,15 @@ module anvil_en1_final_logits #(
             .tensor_rows(descriptor_rows), .tensor_columns(descriptor_columns),
             .row_stride(descriptor_stride), .row_index({14'd0, row_hold}),
             .source_valid(projection_source_valid),
-            .source_ready(rst_n && state == PROJECTION_WAIT && source_state == S_IDLE),
+            .source_ready(rst_n && state == PROJECTION_WAIT &&
+                (EXTERNAL_PAYLOAD_RAM ? source_ready : source_state == S_IDLE)),
             .source_index(projection_source_index),
-            .source_rsp_valid(rst_n && source_state == S_RESPONSE),
+            .source_rsp_valid(rst_n && (EXTERNAL_PAYLOAD_RAM ?
+                state == PROJECTION_WAIT && source_rsp_valid : source_state == S_RESPONSE)),
             .source_rsp_ready(projection_source_rsp_ready),
-            .source_rsp_data(projection_source_hold),
-            .source_rsp_error(projection_source_error),
+            .source_rsp_data(EXTERNAL_PAYLOAD_RAM ? source_rsp_data : projection_source_hold),
+            .source_rsp_error(EXTERNAL_PAYLOAD_RAM ?
+                source_rsp_error || !normalized_committed : projection_source_error),
             .cmd_valid(projection_cmd_valid),
             .cmd_ready(rst_n && memory_owner == M_PROJECTION && cmd_ready),
             .cmd_write(), .cmd_addr(projection_cmd_addr), .cmd_wdata(),
@@ -224,21 +238,43 @@ module anvil_en1_final_logits #(
         wire norm_beat_valid = normalized_index == normalized_count &&
             normalized_index < hidden_hold &&
             normalized_last == (normalized_index == hidden_hold - 1'b1);
-        wire norm_write = rst_n && state == NORM_WAIT &&
-            normalized_valid && norm_beat_valid;
+        assign norm_output_ready = rst_n && state == NORM_WAIT &&
+            (!EXTERNAL_PAYLOAD_RAM || !norm_beat_valid || normalized_store_ready);
+        wire norm_write = normalized_valid && norm_output_ready && norm_beat_valid;
         wire projection_read_valid = normalized_committed &&
             projection_index_hold < hidden_hold;
-        always @(posedge clk) begin
-            if (norm_write)
-                normalized_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
-            if (rst_n && source_state == S_READ && projection_read_valid)
-                normalized_q <= normalized_payload[projection_index_hold[H_BITS-1:0]];
+        if (EXTERNAL_PAYLOAD_RAM == 0) begin : internal_payload
+            (* ramstyle = "M20K", nomem2reg *)
+            reg [15:0] normalized_payload [0:MAX_H-1];
+            reg [15:0] payload_q;
+            assign normalized_q = payload_q;
+            always @(posedge clk) begin
+                if (norm_write)
+                    normalized_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
+                if (rst_n && source_state == S_READ && projection_read_valid)
+                    payload_q <= normalized_payload[projection_index_hold[H_BITS-1:0]];
+            end
+        end else begin : external_payload
+            assign normalized_q = 16'd0;
         end
 
+        assign normalized_store_valid = rst_n && EXTERNAL_PAYLOAD_RAM &&
+            state == NORM_WAIT && normalized_valid && norm_beat_valid;
+        assign normalized_store_index = rst_n && EXTERNAL_PAYLOAD_RAM ?
+            normalized_index : 32'd0;
+        assign normalized_store_data = rst_n && EXTERNAL_PAYLOAD_RAM ?
+            normalized_data : 16'd0;
+        assign normalized_store_last = rst_n && EXTERNAL_PAYLOAD_RAM && normalized_last;
+
         assign start_ready = rst_n && state == IDLE;
-        assign source_valid = rst_n && state == NORM_WAIT && norm_source_valid;
-        assign source_index = rst_n ? norm_source_index : 32'd0;
-        assign source_rsp_ready = rst_n && state == NORM_WAIT && norm_source_rsp_ready;
+        assign source_is_normalized = rst_n && EXTERNAL_PAYLOAD_RAM &&
+            state == PROJECTION_WAIT;
+        assign source_valid = rst_n && (state == NORM_WAIT ? norm_source_valid :
+            (source_is_normalized && projection_source_valid));
+        assign source_index = !rst_n ? 32'd0 :
+            (source_is_normalized ? projection_source_index : norm_source_index);
+        assign source_rsp_ready = rst_n && (state == NORM_WAIT ? norm_source_rsp_ready :
+            (source_is_normalized && projection_source_rsp_ready));
         assign cmd_valid = rst_n && (memory_owner == M_LOOKUP ? lookup_cmd_valid :
             memory_owner == M_SCALE ? scale_cmd_valid : projection_cmd_valid);
         assign cmd_write = 0;
@@ -253,9 +289,10 @@ module anvil_en1_final_logits #(
         assign logit_last = rst_n && state == LOGIT_RESPONSE && row_hold == VOCABULARY - 1;
         assign done_valid = rst_n && state == RESPONSE;
         assign done_error = rst_n ? error_hold : 4'd0;
-        assign live_payload_bytes = rst_n && payload_allocated ?
+        assign live_payload_bytes = rst_n && !EXTERNAL_PAYLOAD_RAM && payload_allocated ?
             {32'd0, hidden_hold} << 1 : 64'd0;
-        assign physical_payload_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
+        assign physical_payload_bytes = rst_n && !EXTERNAL_PAYLOAD_RAM ?
+            64'(2*MAX_H) : 64'd0;
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n)
@@ -306,7 +343,8 @@ module anvil_en1_final_logits #(
                 projection_source_error <= 0;
             end else begin
                 case (source_state)
-                    S_IDLE: if (state == PROJECTION_WAIT && projection_source_valid) begin
+                    S_IDLE: if (!EXTERNAL_PAYLOAD_RAM &&
+                        state == PROJECTION_WAIT && projection_source_valid) begin
                         projection_index_hold <= projection_source_index;
                         source_state <= S_READ;
                     end
@@ -400,7 +438,7 @@ module anvil_en1_final_logits #(
                     NORM_START: if (norm_ready)
                         state <= NORM_WAIT;
                     NORM_WAIT: begin
-                        if (normalized_valid) begin
+                        if (normalized_valid && norm_output_ready) begin
                             if (!norm_beat_valid)
                                 normalization_error <= 1;
                             if (normalized_count < hidden_hold)

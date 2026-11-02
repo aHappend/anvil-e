@@ -1,5 +1,6 @@
 module anvil_en1_frontier_execute #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire control_valid,
@@ -132,6 +133,10 @@ module anvil_en1_frontier_execute #(
     output wire [63:0] ring_live_bytes, ring_physical_bytes, ring_metadata_bytes,
     output wire [63:0] anchor_live_bytes, anchor_physical_bytes,
     output wire [191:0] execution_live_bytes, execution_physical_bytes,
+    output wire [3:0] vector_ram_write, vector_ram_read,
+    output wire [47:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [63:0] vector_ram_wdata,
+    input wire [63:0] vector_ram_rdata,
     output wire [63:0] reported_controller_bytes,
     output wire [3:0] attention_activity,
     output wire avoided_projection_event,
@@ -184,7 +189,9 @@ module anvil_en1_frontier_execute #(
     reg h_bad, h_complete, p_bad, p_complete, input_bad, input_complete;
     reg [3:0] error_hold, child_error;
     reg [31:0] write_pair;
-    reg source_is_ple_hold, source_is_logits, source_error_hold;
+    reg source_is_ple_hold, source_is_logits, source_is_normalized_hold, source_error_hold;
+    reg [31:0] logits_normalized_count;
+    reg logits_normalized_bad;
     reg [31:0] source_index_hold;
     reg [15:0] source_data_hold, hidden_q, ple_q;
     reg read_owner;
@@ -220,6 +227,8 @@ module anvil_en1_frontier_execute #(
         $bits(h_complete) + $bits(p_bad) + $bits(p_complete) + $bits(input_bad) +
         $bits(input_complete) + $bits(error_hold) + $bits(child_error) +
         $bits(write_pair) + $bits(source_is_ple_hold) + $bits(source_is_logits) +
+        $bits(source_is_normalized_hold) + $bits(logits_normalized_count) +
+        $bits(logits_normalized_bad) +
         $bits(source_error_hold) + $bits(source_index_hold) +
         $bits(source_data_hold) + $bits(hidden_q) + $bits(ple_q) +
         $bits(read_owner) + $bits(read_generation_hold) + $bits(read_token_hold) +
@@ -377,6 +386,9 @@ module anvil_en1_frontier_execute #(
     wire [31:0] layer_source_token, layer_source_index;
     wire logits_ready, logits_done, logits_cmd_valid, logits_cmd_write;
     wire logits_result_ready, logits_source_valid, logits_source_rsp_ready;
+    wire logits_source_normalized, logits_store_valid, logits_store_last;
+    wire [31:0] logits_store_index;
+    wire [15:0] logits_store_data;
     wire [31:0] logits_source_index, logits_cmd_wdata;
     wire [63:0] logits_cmd_addr;
     wire [3:0] logits_error;
@@ -433,7 +445,12 @@ module anvil_en1_frontier_execute #(
     wire anchor_selected = operation == 2 &&
         (state == ANCHOR_START || state == ANCHOR_WAIT);
     wire layer_selected = state == LAYER_START || state == LAYER_WAIT;
-    anvil_en1_asym_attn_ple #(.COMPACT(COMPACT)) text_layer (
+    anvil_en1_asym_attn_ple #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+    ) text_layer (
+        .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
+        .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
+        .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),
         .controller_bytes(layer_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
@@ -523,7 +540,7 @@ module anvil_en1_frontier_execute #(
         .done_error(anchor_error), .live_payload_bytes(anchor_live_bytes),
         .physical_payload_bytes(anchor_physical_bytes)
     );
-    anvil_en1_final_logits #(.COMPACT(COMPACT)) logits (
+    anvil_en1_final_logits #(.COMPACT(COMPACT), .EXTERNAL_PAYLOAD_RAM(1)) logits (
         .controller_bytes(logits_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOGITS_START), .start_ready(logits_ready),
@@ -531,9 +548,14 @@ module anvil_en1_frontier_execute #(
         .source_valid(logits_source_valid),
         .source_ready(rst_n && source_state == S_IDLE && state == LOGITS_WAIT),
         .source_index(logits_source_index),
+        .source_is_normalized(logits_source_normalized),
         .source_rsp_valid(rst_n && source_state == S_RESPONSE && source_is_logits),
         .source_rsp_ready(logits_source_rsp_ready), .source_rsp_data(source_data_hold),
         .source_rsp_error(source_error_hold),
+        .normalized_store_valid(logits_store_valid),
+        .normalized_store_ready(rst_n && state == LOGITS_WAIT),
+        .normalized_store_index(logits_store_index),
+        .normalized_store_data(logits_store_data), .normalized_store_last(logits_store_last),
         .cmd_valid(logits_cmd_valid), .cmd_ready(memory_owner == M_LOGITS && cmd_ready),
         .cmd_write(logits_cmd_write), .cmd_addr(logits_cmd_addr), .cmd_wdata(logits_cmd_wdata),
         .result_valid(memory_owner == M_LOGITS && result_valid),
@@ -663,6 +685,10 @@ module anvil_en1_frontier_execute #(
     wire feature_beat_ok = !feature_bad && !feature_complete &&
         feature_count < hidden_hold && eval_output_index == feature_count &&
         eval_output_last == (feature_count == hidden_hold - 1'b1);
+    wire logits_store_ok = h_allocated && final_vector_valid &&
+        !logits_normalized_bad && logits_store_index == logits_normalized_count &&
+        logits_normalized_count < hidden_hold &&
+        logits_store_last == (logits_normalized_count == hidden_hold - 1'b1);
 
     always @(posedge clk) begin
         if (rst_n && state == EMBED_WAIT && operation == 1 &&
@@ -671,6 +697,8 @@ module anvil_en1_frontier_execute #(
         else if (rst_n && (state == LAYER_WAIT || state == EVAL_WAIT) &&
             received_valid && h_beat_ok)
             hidden_payload[received_index[H_BITS-1:0]] <= received_data;
+        else if (rst_n && state == LOGITS_WAIT && logits_store_valid && logits_store_ok)
+            hidden_payload[logits_store_index[H_BITS-1:0]] <= logits_store_data;
         if (rst_n && state == FEATURE_WAIT && eval_output_valid && feature_beat_ok)
             feature_payload[eval_output_index[H_BITS-1:0]] <= eval_output_data;
         else if (rst_n && state == EMBED_WAIT && embed_ple_valid && ple_beat_ok &&
@@ -796,6 +824,7 @@ module anvil_en1_frontier_execute #(
             source_state <= S_IDLE;
             source_is_ple_hold <= 0;
             source_is_logits <= 0;
+            source_is_normalized_hold <= 0;
             source_index_hold <= 0;
             source_data_hold <= 0;
             source_error_hold <= 0;
@@ -804,6 +833,7 @@ module anvil_en1_frontier_execute #(
                 S_IDLE: begin
                     if (state == LAYER_WAIT && layer_source_valid) begin
                         source_is_logits <= 0;
+                        source_is_normalized_hold <= 0;
                         source_is_ple_hold <= layer_source_ple;
                         source_index_hold <= layer_source_index;
                         source_data_hold <= 0;
@@ -812,6 +842,7 @@ module anvil_en1_frontier_execute #(
                         source_state <= S_VALIDATE;
                     end else if (state == LOGITS_WAIT && logits_source_valid) begin
                         source_is_logits <= 1;
+                        source_is_normalized_hold <= logits_source_normalized;
                         source_is_ple_hold <= 0;
                         source_index_hold <= logits_source_index;
                         source_data_hold <= 0;
@@ -820,7 +851,12 @@ module anvil_en1_frontier_execute #(
                     end
                 end
                 S_VALIDATE: begin
-                    if (source_error_hold || (source_is_ple_hold ?
+                    if (source_error_hold ||
+                        (source_is_logits && (logits_normalized_bad ||
+                            (source_is_normalized_hold ?
+                                logits_normalized_count != hidden_hold :
+                                source_index_hold < logits_normalized_count))) ||
+                        (source_is_ple_hold ?
                         (!p_committed || source_index_hold >= P) :
                         (source_index_hold >= hidden_hold ||
                         (!source_frontier && !source_is_logits && !retained_source_valid)))) begin
@@ -912,6 +948,8 @@ module anvil_en1_frontier_execute #(
             error_hold <= 0;
             child_error <= 0;
             write_pair <= 0;
+            logits_normalized_count <= 0;
+            logits_normalized_bad <= 0;
         end else begin
             case (state)
                 IDLE: begin
@@ -1026,7 +1064,11 @@ module anvil_en1_frontier_execute #(
                                 frontier_return <= PUBLISH;
                                 state <= FRONTIER_CONTROL;
                             end
-                            6: state <= LOGITS_START;
+                            6: begin
+                                logits_normalized_count <= 0;
+                                logits_normalized_bad <= 0;
+                                state <= LOGITS_START;
+                            end
                             7: begin
                                 ordinary_configured <= 0;
                                 fallback_configured <= 0;
@@ -1315,11 +1357,21 @@ module anvil_en1_frontier_execute #(
                 end
                 LOGITS_START: if (logits_ready)
                     state <= LOGITS_WAIT;
-                LOGITS_WAIT: if (logits_done) begin
-                    error_hold <= logits_error;
-                    h_allocated <= 0;
-                    h_committed <= 0;
-                    state <= PUBLISH;
+                LOGITS_WAIT: begin
+                    if (logits_store_valid) begin
+                        if (!logits_store_ok)
+                            logits_normalized_bad <= 1;
+                        else
+                            logits_normalized_count <= logits_normalized_count + 32'd1;
+                    end
+                    if (logits_done) begin
+                        error_hold <= logits_error != 0 ? logits_error :
+                            (logits_normalized_bad || logits_normalized_count != hidden_hold ?
+                                4'd7 : 4'd0);
+                        h_allocated <= 0;
+                        h_committed <= 0;
+                        state <= PUBLISH;
+                    end
                 end
                 PUBLISH: begin
                     if (error_hold != 0) begin

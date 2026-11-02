@@ -5,7 +5,56 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: physical feature/PLE and owner-source overlays
+## Current saved increment: integrated text banks and final-head overlay
+
+The native assembly now owns one synchronous residual/work/branch/PLE
+bank set shared by ordinary full text and replay POST_ONLY execution.
+EXTERNAL_VECTOR_RAM passes through frontier/replay wrappers, with unchanged
+standalone local-RAM defaults. The bank interface preserves the original
+enabled-edge read/write timing. The assembly rejects overlapping per-bank
+accesses and out-of-range addresses, and latches a protocol fault if both
+workers report live vectors concurrently. Payload has no reset sweep.
+The physical ledger counts these banks once in field 20; replay post field
+11 remains a real live reservation but has no duplicate physical array.
+Shared read registers are counted once in native controller state, not as
+two external-worker register sets. This removes 15872 production / 56
+compact declared bytes in addition to the final-head change below.
+
+The connected final-logit engine now selects EXTERNAL_PAYLOAD_RAM and
+physically omits its duplicate normalized H-bank. Its actual BF16 norm
+outputs overwrite the executor's retained last-token hidden vector after
+the corresponding raw component's final read. The RMS reduction completes
+before this ascending output pass; no reduction or rounding is reassociated.
+The same registered source channel identifies raw normalization reads and
+committed normalized projection reads. Exact independent store count/index/
+last and retained-vector tags guard the overwritten prefix and full-vector
+visibility. The standalone default keeps its original internal bank.
+
+The existing hidden allocation remains charged through all output stalls;
+the connected final-head payload and physical field 21 are zero instead
+of counting another copy. This removes 5120 production / 16 compact
+declared payload bytes; it is not measured M20K inference, PPA or savings.
+The new counter and phase/error state enter the existing controller census.
+
+Changed `rtl/anvil_en1_final_logits.sv`,
+`rtl/anvil_en1_asym_attn_ple.sv`, `rtl/anvil_en1_frontier_execute.sv`,
+`rtl/anvil_en1_replay_text_layer.sv`, `rtl/anvil_en1_replay_execute.sv`,
+`rtl/anvil_en1_replay_binding.sv`, `rtl/anvil_en1_native.sv`,
+`design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+simulation, synthesis, installations or experiments ran; no preparation
+receipts exist. Parent, verification and runtime files remain untouched.
+The attempt-0003 ownership-guard interruption remains preserved without
+a claimed repair.
+
+Remaining: whole-system physical phase overlays, ordinary/native-scratch/
+fallback allocation-limit enforcement including forced-short-context
+production shadows, matched-baseline traffic integration, then the
+reserved static elaboration check and independent Verifier handoff.
+No correctness, savings, FPGA-fit or timing result is claimed.
+Not ready for Verifier.
+
+## Prior saved increment: physical feature/PLE and owner-source overlays
 
 The ordinary executor now physically shares its Hmax feature RAM with the
 later PLE transport prefix, preserving the separate retained hidden vector
@@ -31,6 +80,7 @@ These are declared storage changes, not measured M20K inference or PPA.
 
 Changed `rtl/anvil_en1_frontier_execute.sv`,
 `rtl/anvil_en1_owner_kv_tile.sv`, `rtl/anvil_en1_owner_replay.sv`,
+`rtl/anvil_en1_replay_kv_tile.sv` (explicit unused default-mode ports),
 `design/SPEC.md` and this document. Tools used: glob, view, rg and
 apply_patch. No commands, static elaboration, simulation, synthesis,
 installations or experiments ran; no preparation receipts exist.

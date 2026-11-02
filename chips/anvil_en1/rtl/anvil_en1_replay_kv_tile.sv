@@ -133,6 +133,8 @@ module anvil_en1_replay_kv_tile #(
         .source_ready(run && source_state == SOURCE_IDLE),
         .source_model(tile_source_model), .source_owner(tile_source_owner),
         .source_token(tile_source_token), .source_index(tile_source_index),
+        .source_normalized(), .input_store_valid(),
+        .input_store_index(), .input_store_data(),
         .source_rsp_valid(run && source_state == SOURCE_RESPONSE),
         .source_rsp_ready(tile_source_rsp_ready),
         .source_rsp_data(read_data), .source_rsp_error(read_error),

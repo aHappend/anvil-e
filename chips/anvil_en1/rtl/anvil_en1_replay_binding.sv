@@ -1,5 +1,6 @@
 module anvil_en1_replay_binding #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire control_valid,
@@ -116,6 +117,10 @@ module anvil_en1_replay_binding #(
     output wire [63:0] ple_live_bytes, ple_physical_bytes,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
     output wire [63:0] post_live_bytes, post_physical_bytes,
+    output wire [3:0] vector_ram_write, vector_ram_read,
+    output wire [47:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [63:0] vector_ram_wdata,
+    input wire [63:0] vector_ram_rdata,
     output wire [63:0] vision_live_bytes, vision_physical_bytes,
     output wire [63:0] audio_live_bytes, audio_physical_bytes,
     output wire [63:0] audio_feature_live_bytes, audio_feature_physical_bytes,
@@ -279,7 +284,12 @@ module anvil_en1_replay_binding #(
         .ring_hit_event(ring_hit_event), .busy(owner_busy)
     );
 
-    anvil_en1_replay_execute #(.COMPACT(COMPACT)) replay (
+    anvil_en1_replay_execute #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+    ) replay (
+        .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
+        .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
+        .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
         .avoided_projection_event(avoided_projection_event),
