@@ -808,6 +808,36 @@ Live bytes count the complete padded occupied frontier; metadata and physical
 reserved bytes are separately visible. Payload visibility uses token tags, not
 an external hidden-state archive or word-initialization data.
 
+`anvil_en1_local_ring` stores only the ordinary path's last local owner.
+Control captures model, generation and context length to arm the ring, or
+invalidates it. Production reserves 1 MiB; compact reserves 64 bytes for
+four local tokens with one KV head and four components. Live allocation is
+1024*w bytes for E2B, 2048*w for E4B, or 16*min(p,4) in compact mode.
+The unused second physical head in production E2B is reserved RAM, not live
+payload or claimed removed FPGA memory.
+
+Writes capture the true owner, token, selector and head, and receive one
+complete local normalized/rotated K or normalized V head in ascending aligned
+32-bit pairs. Only owner=owners-2 is writable. A wrapped slot retags the
+token and clears every selector/head valid bit before receiving new words.
+A same-token replacement clears only its selector/head valid bit.
+The final accepted RAM write precedes visibility commit. Malformed first/last
+flags reject the beat and leave that lane unreadable.
+
+Reads capture model, generation, true owner, token, selector, head and aligned
+pair index. Stale generations, nonlocal owners, inactive rings, wrapped tags,
+and unfilled lanes are explicit misses (hit=0,data=0,error=0), not a KV answer;
+owner replay must continue with a real projection. Bad native model or local
+component/head bounds returns an error. A hit returns the actual registered
+payload word. Tokens are tagged rather than assumed valid by address wrap.
+One transaction is outstanding and all results remain stable through stalls.
+Control has priority over write-start, then reads. RAM uses a dedicated
+synchronous process, resettable visibility metadata, and no payload reset sweep.
+Physical payload and token-metadata reservations are disclosed separately.
+The complete replay engine still owns session barriers, frontier/ring lifetime
+overlay, fallback allocation and cancellation; neither storage leaf completes
+a neural job by itself.
+
 ## Public interfaces
 
 `anvil_en1_top` retains all parent parameters and ports from
