@@ -488,6 +488,7 @@ module anvil_en1_owner_replay #(
                         if (eval_error_hold != 0 || vector_bad ||
                             !vector_complete || vector_count != hidden_hold) begin
                             error_hold <= eval_error_hold != 0 ? eval_error_hold : 4'd7;
+                            raw_allocated <= 0;
                             raw_committed <= 0;
                             state <= PUBLISH;
                         end else begin
@@ -500,6 +501,9 @@ module anvil_en1_owner_replay #(
                         state <= TILE_WAIT;
                     end
                     TILE_WAIT: if (tile_valid) begin
+                        raw_allocated <= 0;
+                        raw_committed <= 0;
+                        tile_allocated <= 0;
                         error_hold <= tile_error;
                         pair_hold <= tile_error == 0 ? tile_data : 32'd0;
                         state <= PUBLISH;

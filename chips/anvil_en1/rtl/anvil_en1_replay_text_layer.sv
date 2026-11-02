@@ -126,7 +126,7 @@ module anvil_en1_replay_text_layer #(
     reg [63:0] tokens_base_hold, weights_base_hold, token_address_hold;
     reg [5:0] slot_hold, dependency_slot_hold;
     reg [11:0] length_hold, dependency_length_hold;
-    reg dependency_valid_hold, attention_resume, yield_hold, ple_committed;
+    reg dependency_valid_hold, attention_resume, yield_hold, ple_allocated, ple_committed;
     reg [159:0] continuation_hold, yielded_continuation;
     reg [31:0] token_id_hold, input_count, ple_count, output_count, pair_hold;
     reg token_error_hold;
@@ -459,7 +459,7 @@ module anvil_en1_replay_text_layer #(
     assign done_dependency_layer = rst_n && yield_hold ? yielded_layer : 8'd0;
     assign done_dependency_token = rst_n && yield_hold ? yielded_token : 32'd0;
     assign done_dependency_length = rst_n && yield_hold ? length_hold : 12'd0;
-    assign ple_live_bytes = rst_n && (embedding_selected || ple_committed) ? 64'(2*P) : 64'd0;
+    assign ple_live_bytes = rst_n && ple_allocated ? 64'(2*P) : 64'd0;
     assign ple_physical_bytes = rst_n ? 64'(2*P) : 64'd0;
     assign busy = rst_n && state != IDLE;
     wire feature_source_event = rst_n && embedding_selected && source_feature_hold &&
@@ -476,7 +476,8 @@ module anvil_en1_replay_text_layer #(
         $bits(slot_hold) + $bits(dependency_slot_hold) +
         $bits(length_hold) + $bits(dependency_length_hold) +
         $bits(dependency_valid_hold) + $bits(attention_resume) + $bits(yield_hold) +
-        $bits(ple_committed) + $bits(continuation_hold) + $bits(yielded_continuation) +
+        $bits(ple_allocated) + $bits(ple_committed) +
+        $bits(continuation_hold) + $bits(yielded_continuation) +
         $bits(token_id_hold) + $bits(input_count) + $bits(ple_count) + $bits(output_count) +
         $bits(pair_hold) + $bits(token_error_hold) + $bits(low_hold) + $bits(ple_q) +
         $bits(error_hold) + $bits(pair_error_hold) + $bits(source_failure_hold) +
@@ -605,6 +606,7 @@ module anvil_en1_replay_text_layer #(
             attention_resume <= 0;
             yield_hold <= 0;
             ple_committed <= 0;
+            ple_allocated <= 0;
             continuation_hold <= 0;
             yielded_continuation <= 0;
             token_id_hold <= 0;
@@ -761,8 +763,10 @@ module anvil_en1_replay_text_layer #(
                     end else
                         state <= EMBED_START;
                 end
-                EMBED_START: if (embed_ready)
+                EMBED_START: if (embed_ready) begin
+                    ple_allocated <= 1;
                     state <= EMBED_WAIT;
+                end
                 EMBED_WAIT: begin
                     if (embed_input_valid) begin
                         if (!embed_input_correct)
@@ -835,6 +839,7 @@ module anvil_en1_replay_text_layer #(
                     state <= POST_WAIT;
                 end
                 PUBLISH: begin
+                    ple_allocated <= 0;
                     ple_committed <= 0;
                     state <= RESPONSE;
                 end

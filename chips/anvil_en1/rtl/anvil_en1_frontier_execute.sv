@@ -1012,12 +1012,12 @@ module anvil_en1_frontier_execute #(
                                 p_count <= 0;
                                 p_bad <= 0;
                                 p_complete <= 0;
-                                p_allocated <= 1;
+                                p_allocated <= 0;
                                 p_committed <= 0;
                                 feature_allocated <= 0;
                                 feature_committed <= 0;
                                 if (operation == 1) begin
-                                    h_allocated <= 1;
+                                    h_allocated <= 0;
                                     h_committed <= 0;
                                 end
                                 state <= TOKEN_ADDRESS;
@@ -1163,8 +1163,12 @@ module anvil_en1_frontier_execute #(
                         state <= EMBED_START;
                     end
                 end
-                EMBED_START: if (embed_ready)
+                EMBED_START: if (embed_ready) begin
+                    p_allocated <= 1;
+                    if (operation == 1)
+                        h_allocated <= 1;
                     state <= EMBED_WAIT;
+                end
                 EMBED_WAIT: begin
                     if (embed_input_valid) begin
                         if (!input_beat_ok)
@@ -1202,6 +1206,8 @@ module anvil_en1_frontier_execute #(
                     end else begin
                         p_committed <= 1;
                         if (operation == 1) begin
+                            p_allocated <= 0;
+                            p_committed <= 0;
                             h_committed <= 1;
                             vector_generation <= generation_hold;
                             vector_token <= token_hold;
@@ -1311,7 +1317,17 @@ module anvil_en1_frontier_execute #(
                     h_committed <= 0;
                     state <= PUBLISH;
                 end
-                PUBLISH: state <= RESPONSE;
+                PUBLISH: begin
+                    if (error_hold != 0) begin
+                        h_allocated <= 0;
+                        h_committed <= 0;
+                        p_allocated <= 0;
+                        p_committed <= 0;
+                        feature_allocated <= 0;
+                        feature_committed <= 0;
+                    end
+                    state <= RESPONSE;
+                end
                 RESPONSE: if (is_control ? control_rsp_ready : task_done_ready)
                     state <= IDLE;
                 default: begin
@@ -1322,6 +1338,12 @@ module anvil_en1_frontier_execute #(
                     state <= PUBLISH;
                 end
             endcase
+            if (state == LAYER_WAIT && source_state == S_RESPONSE &&
+                layer_source_rsp_ready && source_is_ple_hold &&
+                !source_error_hold && source_index_hold == P-1) begin
+                p_allocated <= 0;
+                p_committed <= 0;
+            end
         end
     end
 endmodule

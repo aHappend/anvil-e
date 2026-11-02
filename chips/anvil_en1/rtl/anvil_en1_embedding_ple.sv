@@ -115,7 +115,7 @@ module anvil_en1_embedding_ple #(
         reg [31:0] descriptor_rows, descriptor_columns, descriptor_stride;
         reg [2:0] fp_op;
         reg [3:0] error_hold;
-        reg payload_allocated;
+        reg input_allocated, ple_allocated;
         reg [15:0] input_q, ple_q;
         localparam integer CONTROLLER_BITS = $bits({
             state, return_state, src_state, scale_state, model_hold, precision_hold,
@@ -127,7 +127,7 @@ module anvil_en1_embedding_ple #(
             src_is_projection, src_index_hold, scale_index_hold, src_data_hold,
             scale_data_hold, scale_error_hold, lookup_kind, descriptor_base,
             descriptor_bytes, descriptor_rows, descriptor_columns, descriptor_stride,
-            fp_op, error_hold, payload_allocated, input_q, ple_q
+            fp_op, error_hold, input_allocated, ple_allocated, input_q, ple_q
         });
         wire [63:0] lookup_controller_bytes, weight_controller_bytes;
         wire [63:0] projection_controller_bytes, norm_controller_bytes;
@@ -338,19 +338,30 @@ module anvil_en1_embedding_ple #(
                 (memory_owner == MEMORY_WEIGHT ? weight_result_ready : projection_result_ready)));
         assign done_valid = rst_n && state == RESPONSE;
         assign done_error = rst_n ? error_hold : 4'd0;
-        assign live_payload_bytes = rst_n && payload_allocated ?
-            ({32'd0, hidden_hold} << 1) + 64'(2*P) : 64'd0;
+        assign live_payload_bytes = !rst_n ? 64'd0 :
+            (input_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
+            (ple_allocated ? 64'(2*P) : 64'd0);
         assign physical_payload_bytes = rst_n ? 64'(2*(MAX_H+P)) : 64'd0;
 
         always @(posedge clk or negedge rst_n) begin
-            if (!rst_n)
-                payload_allocated <= 0;
-            else if (done_valid && done_ready)
-                payload_allocated <= 0;
-            else if (state == VALIDATE && native_model && precision_hold <= 1 &&
-                modality_hold != 3 && layer_hold < layer_count &&
-                token_hold <= 131071 && tokens_hold[1:0] == 0)
-                payload_allocated <= 1;
+            if (!rst_n) begin
+                input_allocated <= 0;
+                ple_allocated <= 0;
+            end else if (state == PUBLISH) begin
+                input_allocated <= 0;
+                ple_allocated <= 0;
+            end else begin
+                if (state == VALIDATE && native_model && precision_hold <= 1 &&
+                    modality_hold != 3 && layer_hold < layer_count &&
+                    token_hold <= 131071 && tokens_hold[1:0] == 0)
+                    input_allocated <= 1;
+                if (state == PROJECTION_START && projection_ready)
+                    ple_allocated <= 1;
+                if (input_valid && input_ready && input_last)
+                    input_allocated <= 0;
+                if (ple_valid && ple_ready && ple_last)
+                    ple_allocated <= 0;
+            end
         end
 
         always @(posedge clk or negedge rst_n) begin

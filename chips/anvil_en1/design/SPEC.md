@@ -353,20 +353,65 @@ success is inferred from them.
 | 23 | Native memory arbiter, frontier scheduler and cache controller registers |
 | 24 | Ordinary executor, frontier/ring control, embedding, full text, anchor and final-head scalar/numerical state |
 
-Fields 19..21 now originate at the payload owners rather than being
-silently omitted by the ordinary executor. Legal descriptor validation
-reserves each worker's full logical vector extent; it remains charged
-through arithmetic, output stalls and accepted completion, including
-failure completion. Reset or actual completion acceptance releases it.
-The embedding extent is `2H+2P`, full text extent is
-`6H+2D+2Q*D+2P`, and final-head extent is `2H`. The POST_ONLY worker never
-uses query/attention banks and charges `6H+2P`; its physical report still
-discloses all declared banks. These reservations are conservative
-phase-local payload charges, not exact scalar/controller accounting.
+Fields 19..21 originate at the payload owners rather than the dispatch mux.
+The embedding worker reserves its `2H` input at legal validation and its
+`2P` PLE bank before the first projection starts. Each remains charged until
+its final output handshake; error publication releases abandoned banks.
+The final head reserves `2H` through its arithmetic and output stalls.
+Text-bank lifetimes and their actual physical overlay are specified below.
 Replay input and text workers now forward these same embedding/post
 owner reports instead of deriving visibility from the caller's current
 worker selection. Both embedding instances are summed, so a retained
 child allocation cannot disappear merely because dispatch changed.
+
+### Text-bank lifetime and physical overlay
+
+The full and POST_ONLY workers share each query head with the subsequent
+attention-output/MLP branch in **one declared H-component synchronous RAM**.
+There is one registered read port and one write port for this shared bank.
+Each query finishes before the next query overwrites it; the final query
+retires before the output projection first writes the branch. Norm source/
+destination selection and rotary split-half indices are unchanged.
+POST_ONLY elaborates no attention-output RAM, rather than merely reporting
+that a declared attention bank is unused.
+
+Physical payload is `2*(3*MAX_H+P+Q*MAX_D)` for full text and
+`2*(3*MAX_H+P)` for POST_ONLY. Production reservations are respectively
+24064 and 15872 bytes; compact reservations are 88 and 56 bytes.
+Residual, normalized-work, shared query/branch, attention-output and PLE
+allocations have separate registered lifetime bits:
+
+| Bank | Reservation begins | Reservation ends |
+| --- | --- | --- |
+| Residual, `2H` | Successful descriptor validation, before source loading | Accepted last output value |
+| PLE, `2P` | First accepted PLE source request | Last PLE gated-projection row is written |
+| Normalized work, `2H` | Input or pre-FF norm setup, before any write | Last attention head completes, or last MLP row is written |
+| Query, `2D`, in shared bank | Query projection descriptor | That attention head completes |
+| Branch, `2H`, in shared bank | First POST_ONLY branch-load request, output-projection start or gated-projection start | Final residual-add row is written |
+| Attention output, `2Q*D` | First attention-head start | Final output-projection row is written |
+
+Error publication releases all remaining text-bank reservations after the
+failed child has retired. Internal source replies reject an unallocated
+bank as well as an out-of-range index. Scalar output/readback copies remain
+charged by the controller census after their vector bank is released.
+These are whole-bank occupied-prefix reservations, not one-word-at-a-time
+claims or physical resource measurements.
+
+The ordinary executor allocates its hidden/PLE output banks only when
+embedding starts, not throughout preceding native-feature reconstruction.
+Initial frontier fill discards PLE at embedding commit. Other layers free
+the transport PLE only after the leaf accepts its last PLE source reply;
+the leaf's own copy remains charged. Failed tasks release all abandoned
+transport banks at publication. The owner source and tile banks retire at
+the actual tile-result handshake, while the returned pair remains charged
+as scalar state through a stalled regeneration response. Tile live bytes
+use `2*(H+D)`; its separate maximum physical reservation is unchanged.
+
+Replay text now retains a separate PLE allocation bit across
+EMBED_WAIT -> EMBED_REGISTER -> POST_START. A completed vector no longer
+disappears from the ledger for the intermediate commit cycle merely because
+the child selection changed. PLE visibility still requires successful
+component-count/tag checks; error publication releases the allocation.
 
 Fields 22..24 charge the reported registers continuously outside reset,
 including inactive instances and held payload/readback registers. This
@@ -678,10 +723,11 @@ while this task owns execution.
 | Completion | Retire actual feature done only after source/pair responses drain; require H values, exact last and no unpaired lane |
 | Failure/reset | Drain active child using explicit failed callbacks/discarded outputs; stop new pair writes after first failure; reset cancels generation validity |
 
-Domain-3 compact frames charge two H vectors (32 bytes), memos charge
-one H vector (16 bytes), plus the existing scalar frame charge. Production
-frames retain the conservative 12 KiB vector/1 KiB scalar reservation,
-and memos retain 8 KiB. Both actual and shadow allocations remain visible.
+Domain-3 frames charge two H vectors and memos one H vector, plus the
+existing scalar frame charge. Compact vector payloads are 32/16 bytes;
+production E2B payloads are 6144/3072 and E4B 10240/5120 bytes.
+Both actual and production-width shadow allocations remain visible;
+fixed physical frame/memo strides are unchanged.
 The literal audio feature worker's 1536-vector/projection banks and
 controller reports are additive, not fictitious RAM overlays.
 Whole-system session binding and primitive/scratch accounting remain
@@ -1823,8 +1869,16 @@ including pending writes/copies. Eviction first releases the old reservation,
 then charges the new one; its domain is retained as metadata. Push/pop/reset
 update the real domain-specific live totals. Unaddressable stride holes
 are unused physical capacity, not occupied tensors or claimed memory savings.
-The additional domain map and two allocation totals are 96 metadata bits.
-Production-width shadow accounting and the production layout stay unchanged.
+The memo-domain map is 32 metadata bits. Four 32-bit allocation totals
+(actual/shadow frame and memo bytes) belong to controller state, not metadata.
+Production uses the same domain-specific prefix accounting: text/native
+feature frames reserve two H vectors, vision two 768-vectors, and audio six
+1024-vectors; memo entries reserve one vector. Shadow counters independently
+track these production-width prefixes during compact execution. Scalar
+reservations remain 1024 bytes per production/shadow frame and 128 bytes per
+compact frame. Pending allocations count before backing writes; committed
+totals change only on push/pop/memo commit/eviction, with reset/invalidation
+clearing all four totals. Physical layout and supported depths are unchanged.
 
 The compact backing address space reserves 206848 words / 827392 bytes.
 The current disjoint ordinary backing physical layout is specified at the
@@ -3544,18 +3598,20 @@ Kinds 0x010d/0x010e use the current residual as gate source and the retained
 combined P-vector as `up_mode=1`; post-PLE norm and the third residual follow.
 Finally kind 0x0110 multiplies every residual component before BF16 output.
 
-Three synchronous H-banks retain the residual, normalized work and branch.
-A D-bank retains one Q head; a Q*D bank retains the attention concatenation;
-a P-bank retains combined PLE. No J-vector or probability/score array is
+Three synchronous H-banks retain residual, normalized work and the shared
+query/branch representation. A Q*D bank retains the attention concatenation;
+a P-bank retains combined PLE. No separate D-bank, J-vector or probability/score array is
 allocated. Norm may overwrite its branch/Q bank only after its complete
 reduction and consumption of the corresponding input component. MLP and
 PLE down rows write the distinct branch bank, never overwrite their gate
-source mid-matrix. Actual vector payload is at most
-`6H+2D+2Q*D+2P`: E2B global 18944 bytes, E4B global 25088 bytes.
-Production physical payload reservations are 25088 bytes; compact 104 bytes.
+source mid-matrix. The conservative full-bank live upper bound is
+`6H+2Q*D+2P`: E2B global 17920 bytes, E4B global 24064 bytes.
+Actual phase lifetimes reduce this subtotal as described at the start of
+this document; query and branch never occupy the shared bank simultaneously.
+Production physical payload reservation is 24064 bytes; compact 88 bytes.
 All returned words and scalar/child state additionally belong in the final
-workspace ledger. Private leaf/controller reservations are **not** yet an
-implemented phase overlay or an established full-system allocation bound.
+workspace ledger. This leaf implements the query/branch overlay; it does
+**not** establish the complete whole-system workspace bound.
 
 | Layer cycle/degenerate boundary | Behavior |
 | --- | --- |
@@ -3763,10 +3819,13 @@ Frame f starts at `f*3072` words in both geometries. Each of its two
 vector banks has 1536 words. Audio slice j starts at bank_base+j*512.
 Memo slot s starts at `196608+s*2048` (compact `196608+s*512`).
 Scalar slot f starts at `229376+f*256` (compact `204800+f*32`).
-Full production slot reservations and
-compact domain-specific prefixes, including occupied padding, count as live
-payload, not merely returned components. Production
-shadow frame/memo/scalar allocations always use the production slot sizes.
+Complete domain-specific vector prefixes, including any occupied padding,
+count as live payload, not merely returned components. The reserved frame/
+memo strides in this table describe physical capacity, not occupied holes.
+Production and shadow text/feature frames charge 6144/10240 bytes by model,
+vision 3072 and audio 12288; memos charge 3072/5120, 1536 or 2048 bytes.
+Every production/shadow live or pending frame additionally reserves its
+complete 1024-byte scalar slot, including unused scalar words.
 Physical reserved backing is reported separately; in fallback it is the
 first part of the shared frontier RAM, and in ordinary mode it is its
 disjoint tail, not an extra inferred payload array. Compact physical RAM

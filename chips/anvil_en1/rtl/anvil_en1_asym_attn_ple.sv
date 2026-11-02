@@ -135,7 +135,6 @@ module anvil_en1_asym_attn_ple #(
         localparam integer P = COMPACT ? 4 : 256;
         localparam integer MAX_A = Q * MAX_D;
         localparam integer H_BITS = $clog2(MAX_H);
-        localparam integer D_BITS = $clog2(MAX_D);
         localparam integer A_BITS = $clog2(MAX_A);
         localparam integer P_BITS = $clog2(P);
         localparam [5:0] IDLE = 0, VALIDATE = 1, LOAD_START = 2,
@@ -198,8 +197,11 @@ module anvil_en1_asym_attn_ple #(
         reg [15:0] branch_data_hold, residual_data_hold, rotary_first, rotary_second;
         reg [2:0] fp_op;
         reg [3:0] error_hold;
-        reg payload_allocated;
-        reg [15:0] residual_q, work_q, branch_q, query_q, attention_q, ple_q;
+        reg residual_allocated, work_allocated, branch_allocated;
+        reg query_allocated, attention_allocated, ple_allocated;
+        reg [15:0] residual_q, work_q, branch_q, ple_q;
+        wire [15:0] query_q = branch_q;
+        wire [15:0] attention_q;
         localparam integer CONTROLLER_BITS = $bits({
             state, lookup_return, fp_return, narrow_return, norm_phase, norm_bank,
             norm_destination, src_state, src_client, src_bank, scale_state,
@@ -217,8 +219,10 @@ module anvil_en1_asym_attn_ple #(
             down_rows_hold, down_columns_hold, down_stride_hold, scalar_hold,
             fp_a, fp_b, value_hold, rotary_data_hold, branch_data_hold,
             residual_data_hold, rotary_first, rotary_second, fp_op, error_hold,
-            payload_allocated, residual_q, work_q, branch_q, query_q, attention_q, ple_q
-        });
+            residual_allocated, work_allocated, branch_allocated,
+            query_allocated, attention_allocated, ple_allocated,
+            residual_q, work_q, branch_q, ple_q
+        }) + (POST_ONLY ? 0 : 16);
         wire [63:0] lookup_controller_bytes, norm_controller_bytes;
         wire [63:0] projection_controller_bytes, rotary_controller_bytes;
         wire [63:0] attention_controller_bytes, gated_controller_bytes;
@@ -233,11 +237,8 @@ module anvil_en1_asym_attn_ple #(
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] work_payload [0:MAX_H-1];
         (* ramstyle = "M20K", nomem2reg *)
+        // Query heads retire before the projected attention/MLP branch is written.
         reg [15:0] branch_payload [0:MAX_H-1];
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] query_payload [0:MAX_D-1];
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] attention_payload [0:MAX_A-1];
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] ple_payload [0:P-1];
 
@@ -489,54 +490,109 @@ module anvil_en1_asym_attn_ple #(
                 ple_payload[index[P_BITS-1:0]] <= load_data;
             if (norm_write && norm_destination == B_WORK)
                 work_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
-            if (norm_write && norm_destination == B_BRANCH)
+            if (norm_write && (norm_destination == B_BRANCH || norm_destination == B_QUERY))
                 branch_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
             else if (rst_n && state == LOAD_WRITE && load_branch)
                 branch_payload[index[H_BITS-1:0]] <= load_data;
-            else if (rst_n && ((state == PROJECTION_WRITE && !projection_query) ||
-                state == GATED_WRITE))
+            else if (rst_n && (state == PROJECTION_WRITE || state == GATED_WRITE))
                 branch_payload[index[H_BITS-1:0]] <= branch_data_hold;
-            if (norm_write && norm_destination == B_QUERY)
-                query_payload[normalized_index[D_BITS-1:0]] <= normalized_data;
-            else if (rst_n && state == PROJECTION_WRITE && projection_query)
-                query_payload[index[D_BITS-1:0]] <= branch_data_hold;
             else if (rst_n && state == ROTARY_FIRST_WRITE)
-                query_payload[pair_index[D_BITS-1:0]] <= rotary_data_hold[15:0];
+                branch_payload[pair_index[H_BITS-1:0]] <= rotary_data_hold[15:0];
             else if (rst_n && state == ROTARY_SECOND_WRITE)
-                query_payload[rotary_second_index[D_BITS-1:0]] <= rotary_data_hold[31:16];
-            if (rst_n && state == ATTENTION_WAIT && attention_component_valid)
-                attention_payload[attention_write_index[A_BITS-1:0]] <= attention_component_data;
+                branch_payload[rotary_second_index[H_BITS-1:0]] <= rotary_data_hold[31:16];
             if (residual_read)
                 residual_q <= residual_payload[residual_read_index[H_BITS-1:0]];
             if (rst_n && src_state == S_READ && src_bank == B_WORK)
                 work_q <= work_payload[src_index_hold[H_BITS-1:0]];
             if (branch_read)
                 branch_q <= branch_payload[branch_read_index[H_BITS-1:0]];
-            if (query_read)
-                query_q <= query_payload[query_read_index[D_BITS-1:0]];
-            if (rst_n && src_state == S_READ && src_bank == B_ATTENTION)
-                attention_q <= attention_payload[src_index_hold[A_BITS-1:0]];
+            else if (query_read)
+                branch_q <= branch_payload[query_read_index[H_BITS-1:0]];
             if (rst_n && src_state == S_READ && src_bank == B_PLE)
                 ple_q <= ple_payload[src_index_hold[P_BITS-1:0]];
         end
+        if (POST_ONLY) begin : no_attention_payload
+            assign attention_q = 16'd0;
+        end else begin : full_attention_payload
+            (* ramstyle = "M20K", nomem2reg *)
+            reg [15:0] payload [0:MAX_A-1];
+            reg [15:0] read_q;
+            assign attention_q = read_q;
+            always @(posedge clk) begin
+                if (rst_n && state == ATTENTION_WAIT && attention_component_valid)
+                    payload[attention_write_index[A_BITS-1:0]] <= attention_component_data;
+                if (rst_n && src_state == S_READ && src_bank == B_ATTENTION)
+                    read_q <= payload[src_index_hold[A_BITS-1:0]];
+            end
+        end
 
         assign start_ready = rst_n && state == IDLE;
-        assign live_payload_bytes = rst_n && payload_allocated ?
-            ({32'd0, hidden_hold} << 2) + ({32'd0, hidden_hold} << 1) +
-            64'(2*P) + (POST_ONLY ? 64'd0 :
-                (({32'd0, dimension_hold} << 1) +
-                 ({32'd0, dimension_hold} << (COMPACT ? 2 : 4)))) : 64'd0;
+        wire [63:0] live_residual_work =
+            (residual_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
+            (work_allocated ? {32'd0, hidden_hold} << 1 : 64'd0);
+        wire [63:0] live_branch_ple =
+            (branch_allocated ? {32'd0, hidden_hold} << 1 :
+                (query_allocated ? {32'd0, dimension_hold} << 1 : 64'd0)) +
+            (ple_allocated ? 64'(2*P) : 64'd0);
+        wire [63:0] live_attention = attention_allocated ?
+            {32'd0, dimension_hold} << (COMPACT ? 2 : 4) : 64'd0;
+        assign live_payload_bytes = rst_n ?
+            (live_residual_work + live_branch_ple) + live_attention : 64'd0;
         assign physical_payload_bytes = rst_n ?
-            64'(2*(3*MAX_H+P+MAX_D+MAX_A)) : 64'd0;
+            64'(2*(3*MAX_H+P+(POST_ONLY ? 0 : MAX_A))) : 64'd0;
 
         always @(posedge clk or negedge rst_n) begin
-            if (!rst_n)
-                payload_allocated <= 0;
-            else if (done_valid && done_ready)
-                payload_allocated <= 0;
-            else if (state == VALIDATE && native_model && precision_hold <= 1 &&
-                layer_hold < layer_count && token_hold <= 131071 && weights_hold[1:0] == 0)
-                payload_allocated <= 1;
+            if (!rst_n) begin
+                residual_allocated <= 0;
+                work_allocated <= 0;
+                branch_allocated <= 0;
+                query_allocated <= 0;
+                attention_allocated <= 0;
+                ple_allocated <= 0;
+            end else if (state == PUBLISH) begin
+                residual_allocated <= 0;
+                work_allocated <= 0;
+                branch_allocated <= 0;
+                query_allocated <= 0;
+                attention_allocated <= 0;
+                ple_allocated <= 0;
+            end else begin
+                if (state == VALIDATE && native_model && precision_hold <= 1 &&
+                    layer_hold < layer_count && token_hold <= 131071 &&
+                    weights_hold[1:0] == 0)
+                    residual_allocated <= 1;
+                if (state == LOAD_START && source_ready && load_ple)
+                    ple_allocated <= 1;
+                if (state == LOAD_START && source_ready && load_branch)
+                    branch_allocated <= 1;
+                if (state == NORM_SETUP && (norm_phase == N_INPUT || norm_phase == N_PRE_FF))
+                    work_allocated <= 1;
+                if (state == QUERY_DESCRIPTOR)
+                    query_allocated <= 1;
+                if (state == ATTENTION_START && attention_ready)
+                    attention_allocated <= 1;
+                if (state == ATTENTION_WAIT && attention_valid) begin
+                    query_allocated <= 0;
+                    if (head + 1'b1 == Q)
+                        work_allocated <= 0;
+                end
+                if ((state == PROJECTION_START && projection_ready && !projection_query) ||
+                    (state == GATED_START && gated_ready))
+                    branch_allocated <= 1;
+                if (state == PROJECTION_WRITE && !projection_query &&
+                    index + 1'b1 == hidden_hold)
+                    attention_allocated <= 0;
+                if (state == RESIDUAL_WRITE && index + 1'b1 == hidden_hold)
+                    branch_allocated <= 0;
+                if (state == GATED_WRITE && index + 1'b1 == hidden_hold) begin
+                    if (gated_ple)
+                        ple_allocated <= 0;
+                    else
+                        work_allocated <= 0;
+                end
+                if (output_valid && output_ready && output_last)
+                    residual_allocated <= 0;
+            end
         end
         assign source_valid = rst_n && state == LOAD_START;
         assign source_model = rst_n ? model_hold : 2'd0;
@@ -571,6 +627,12 @@ module anvil_en1_asym_attn_ple #(
         wire [31:0] src_limit = src_bank == B_QUERY ? dimension_hold :
             src_bank == B_ATTENTION ? dimension_hold * Q :
             src_bank == B_PLE ? 32'(P) : hidden_hold;
+        wire src_allocated = src_bank == B_RESIDUAL ? residual_allocated :
+            src_bank == B_WORK ? work_allocated :
+            src_bank == B_BRANCH ? branch_allocated :
+            src_bank == B_QUERY ? query_allocated :
+            src_bank == B_ATTENTION ? attention_allocated :
+            src_bank == B_PLE ? ple_allocated : 1'b0;
         wire src_response_ready = src_client == C_NORM ? norm_source_rsp_ready :
             src_client == C_PROJECTION ? projection_source_rsp_ready :
             src_client == C_GATED ? gated_source_rsp_ready :
@@ -620,7 +682,7 @@ module anvil_en1_asym_attn_ple #(
                         end
                     end
                     S_READ: begin
-                        src_error_hold <= src_index_hold >= src_limit;
+                        src_error_hold <= !src_allocated || src_index_hold >= src_limit;
                         src_state <= S_PUBLISH;
                     end
                     S_PUBLISH: begin

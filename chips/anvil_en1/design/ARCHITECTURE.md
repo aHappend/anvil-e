@@ -5,7 +5,49 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: arithmetic accounting and execution/allocation telemetry
+## Current saved increment: text-bank overlay and continuous vector lifetimes
+
+The asymmetric text engine now physically reuses one synchronous H-wide
+RAM for successive query heads and the later attention-output/MLP branch.
+POST_ONLY no longer declares an unused attention-output array. The RAM
+read/write schedule and operation order are unchanged; separate lifetime
+bits charge each occupied bank before writes and through its last consumer.
+Production full/post reservations are 24064/15872 bytes, compact 88/56;
+these declared capacities are not measured M20K use or a fit result.
+
+Replay PLE allocation now survives the child-done/EMBED_REGISTER boundary;
+the prior state-selected report omitted its completed vector for that cycle.
+Ordinary hidden/PLE transport reserves only at embedding start, retains
+PLE until the leaf's last source handshake, and releases failed-task banks
+after child retirement. Owner raw-source/tile banks release at tile-result
+acceptance, not after a later stalled cache response; held scalar pairs
+remain in the controller census. Embedding input/PLE banks have separate
+last-consumer release events.
+
+Workspace frame/memo live and production-shadow counters now charge full
+domain-specific occupied prefixes, rather than production stride holes:
+two text/feature H-vectors, two vision vectors, six audio vectors and one
+vector per memo. Pending writes/copies remain charged; scalar slots remain
+fully reserved. Physical strides, partition bounds and RAM capacity have
+not changed. SPEC contains the exact byte and lifetime tables.
+
+Changed `rtl/anvil_en1_asym_attn_ple.sv`,
+`rtl/anvil_en1_embedding_ple.sv`, `rtl/anvil_en1_frontier_execute.sv`,
+`rtl/anvil_en1_owner_replay.sv`, `rtl/anvil_en1_replay_text_layer.sv`,
+`rtl/anvil_en1_replay_workspace.sv` and the two design documents.
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+functional/synthesis probes or experiments ran; no preparation receipts
+exist. Parent, verification and runtime files remain untouched.
+The attempt-0003 interruption remains preserved, without a claimed repair.
+
+Remaining: complete whole-system physical phase overlays and ordinary/
+native-scratch/fallback limit enforcement, including production-shadow
+limits for forced short contexts; connect KV-equivalent/matched-baseline
+traffic telemetry. Then run the reserved static elaboration check and
+hand off to independent Verifier. No correctness, savings, FPGA-fit or
+timing result is claimed. Not ready for Verifier.
+
+## Prior saved increment: arithmetic accounting and execution/allocation telemetry
 
 Scalar/numerical state is now charged from declared register widths through
 the common arithmetic, tensor-directory, text, owner, vision and audio
@@ -1954,11 +1996,12 @@ The complete H output holds through backpressure and finishes only after the
 last component is accepted. Errors stop numerical progress and publish an
 explicit failed completion.
 
-Layer vector payload is `6H+2D+2Q*D+2P`, at most 18944 bytes for E2B global
-and 25088 bytes for E4B global. Production physical banks reserve 25088 bytes;
-compact banks reserve 104 bytes. These figures exclude scalar/child state,
-which must still be measured and counted. The final phase overlay and
-whole-system live ledger are not implemented by these private banks.
+The current query/branch overlay removes the separate D-bank. Its conservative
+full-bank bound is `6H+2Q*D+2P`, at most 17920 bytes for E2B global
+and 24064 bytes for E4B global. Production physical banks reserve 24064 bytes;
+compact banks reserve 88 bytes. These figures exclude scalar/child state,
+which remains additional. The leaf overlay and its current lifetimes are
+specified at the start of this document; they do not prove the full-system bound.
 
 `rtl/anvil_en1_memory_arbiter.sv` supplies the registered single-outstanding
 cmd/result transport needed to share the external port between suspended
