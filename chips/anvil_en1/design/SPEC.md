@@ -1367,6 +1367,24 @@ reset or invalidation cannot commit partial payload. Vector read target 0
 requires a completed frame bank. Target 1 requires a completed memo slot and
 the complete matching tag; an old evicted handle cannot read its successor.
 Component must be even and below length.
+An accepted stream beat with `write_abort=1` explicitly annuls an unfinished
+store without a backing access and returns error 7. The producer uses this
+only after draining a failed numerical/input/weight operation, then preserves
+that original failure in its task completion. An abort is never a successful
+short vector. The Eval scheduler forwards the worker's `work_write_abort`
+and accepts task completion only after the aborted workspace response retires.
+
+Vector-store target 2 copies an already committed frame bank to memo entirely
+inside the workspace. `req_slot` and `req_bank` identify the source frame;
+the complete source tag must match the requested Eval descriptor. The source
+remains live and immutable while the destination is selected by the same
+memo replacement rule. Each actual backing read is registered before its
+corresponding acknowledged destination write. Only one 32-bit copy word is
+retained, in addition to the backing response register; both belong in the
+arithmetic/control ledger. No external vector stream, hidden tensor buffer or
+DDR command is used. Destination visibility commits only after every pair,
+and `rsp_slot` returns the new memo handle. The source frame is released only
+by a subsequent pop. Backing failure leaves the memo destination unreadable.
 
 Memo lookup scans 16 occupied tags sequentially and returns a slot/hit, not a
 fabricated vector. Complete-vector memo stores first scan for an existing tag.
@@ -1394,6 +1412,89 @@ an eviction. Returned handles do not pin memo slots against later replacement.
 The workspace is required infrastructure for the genuine continuation/memo
 fallback, not evidence that fallback inference, regeneration, termination,
 full-system allocation or any acceptance case has executed.
+
+### Explicit Eval scheduling and numerical-worker boundary
+
+`anvil_en1_eval_schedule` is the nonrecursive dependency/controller half of
+fallback Eval. It owns one `anvil_en1_replay_workspace` and issues registered
+numerical tasks for a frame, rather than expanding RTL recursively or accepting
+a host-produced vector. A separate resumable numerical worker is required to
+execute the tasks; implementing this boundary does not claim that worker exists.
+The scheduler accepts a registered native model/precision/modality/generation,
+root domain/layer/token/context, and immutable original-input/weight addresses.
+It binds the workspace for that invocation, so a new invocation cannot reuse
+memo data from another precision or input image.
+
+Task mode 0 starts a fresh Eval frame. Mode 1 resumes a suspended frame with
+a successfully materialized dependency memo handle and a 160-bit worker
+continuation. Mode 2 supplies the completed preceding hidden vector to a fresh
+single-token text-layer task. The worker descriptor includes the frame slot
+and complete Eval identity. The worker uses only the forwarded workspace
+channel for frame vector/scalar storage and dependency memo reads. It cannot
+push/pop frames, store memo entries, change a parent's continuation, or write
+the scheduler's scalar words 0..7. It must serialize/drain all primitive,
+memory and workspace work before completing or yielding a task.
+
+A yielded task captures the required dependency identity and the worker
+continuation. The scheduler first looks up its complete memo tag. A hit resumes
+the original task with that memo handle. A miss pushes a strictly smaller-rank
+child, whose eight continuation words encode the parent's identity/slot and
+the exact worker continuation. Numerical loop indices and partial binary32
+reductions not in the 160-bit continuation occupy acknowledged scalar words
+8..255 (8..15 compact) of the parent's frame. The worker must freeze both parent
+vector banks before yielding; nested tasks may only use their own frame.
+
+The child must complete a real frame vector before the scheduler can copy it
+to memo. Copy commits before pop; pop retrieves the parent's saved return
+descriptor and releases the child's frame. A resumed worker may read the
+returned memo handle until its next yield, when replacement becomes possible.
+It must consume/copy needed dependency values before yielding again. No stale
+handle bypasses the workspace's full tag check.
+
+For a single-token text root, the controller evaluates entering hidden states
+0..root_layer linearly, popping each completed frame before pushing the next.
+The preceding memo handle is supplied in mode 2. This avoids a needless
+root_layer-deep stack for the one-token residual chain. Actual evicted owner
+dependencies still use the ordinary decreasing-rank child protocol; they are
+not invented K/V answers. Multiple-token and encoder dependencies use the
+explicit stack. For all paths, a completed root is read from its actual memo
+slot and emitted as a checked ascending BF16 vector, followed by completion
+only after the final component acceptance.
+
+| Eval schedule cycle/degenerate boundary | Required behavior |
+| --- | --- |
+| Start E0/E1/E2 | Capture descriptor, validate root/session/addresses, then bind workspace; no numerical task on E0/E1 |
+| Task T0 | Capture a stable frame/continuation/dependency descriptor before worker execution |
+| Worker request versus done | A done/yield is accepted only after every forwarded workspace response retires; no request/done race |
+| Dependency layer 0 | Only native reconstruction may cross to lower-rank encoder work; text cannot request text at an equal/higher layer |
+| Memo hit/miss | A hit resumes after its registered lookup response; a miss waits for actual child computation and copy completion |
+| Copy and pop | Committed frame stays live through memo copy; its final destination acknowledgment precedes frame release |
+| Single token/root layer 0 | Exactly one reconstruction task; no needless history stack or empty vector |
+| Error | Retire outstanding workspace work, invalidate all live frame/memo allocations, then publish failure; never emit a failed vector |
+| Output stall | BF16 component/index/last remain stable until accepted; no completion before final acceptance |
+| Reset | Zero all public outputs and cancel validity; backing payload is not initialized or advertised as readable |
+
+All dependency loop bounds and numerical operations still belong to the
+required resumable worker. The scheduler's rank check establishes decreasing
+dependency depth but is not a mathematical oracle for attention masks or owner
+selection. Native encoders, the numerical worker, shared-channel integration,
+and complete scalar/physical/live accounting remain implementation work.
+Its explicit register declarations occupy 1398 bits, disclosed as 175
+byte-rounded `scheduler_state_bytes`; this is additional to the workspace's
+payload/visibility figures, not a full-system resource estimate.
+
+`anvil_en1_replay_input` supplies the text-domain Eval(0,t) reconstruction
+subtask. It rereads the immutable token identity, selects each placeholder's
+native image/audio feature boundary within the captured modality domain, and
+runs the actual embedding/PLE arithmetic leaf. The complete ascending BF16
+input stream is pair-packed directly into the assigned frame bank 0 through
+the forwarded workspace store. It has no second H-vector copy. The embedding
+leaf's own H/P banks and arithmetic state still count in the live ledger.
+Its unused layer-0 PLE stream is drained, not treated as hidden-state data.
+Both the acknowledged full-vector store and the real embedding completion
+must succeed before task completion. Early numerical failure explicitly
+aborts the unfinished store and retires its response before failure completion.
+This subtask does not implement higher-layer or encoder Eval.
 
 ### Ordinary frontier storage boundary
 

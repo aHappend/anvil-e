@@ -26,6 +26,7 @@ module anvil_en1_replay_workspace #(
     output wire write_ready,
     input wire [31:0] write_data,
     input wire write_first, write_last,
+    input wire write_abort,
     output wire rsp_valid,
     input wire rsp_ready,
     output wire [3:0] rsp_error,
@@ -103,7 +104,8 @@ module anvil_en1_replay_workspace #(
             READ_SETUP = 20, READ_FINISH = 21, MEMO_SCAN = 22,
             MEMO_CHECK = 23, SCALAR_SETUP = 24, SCALAR_FINISH = 25,
             BACKING_SEND = 26, BACKING_WAIT = 27, PUBLISH = 28,
-            RESPONSE = 29;
+            RESPONSE = 29, COPY_READ = 30, COPY_CAPTURE = 31,
+            COPY_WRITE = 32;
         reg [5:0] state, backing_return;
         reg active, invalidate_hold, bank_hold, pending_push, pending_memo;
         reg hit_hold, hit_pulse, eviction_pulse, new_memo;
@@ -114,6 +116,7 @@ module anvil_en1_replay_workspace #(
         reg [11:0] length_hold, component_hold, pair_index;
         reg [2:0] op_hold;
         reg [5:0] slot_hold, response_slot;
+        reg [5:0] copy_source_slot;
         reg [6:0] depth;
         reg [4:0] memo_count;
         reg [3:0] cursor, scan_index, error_hold;
@@ -123,6 +126,7 @@ module anvil_en1_replay_workspace #(
         reg [17:0] backing_address_hold;
         reg backing_write_hold;
         reg [31:0] backing_data_hold, backing_result;
+        reg [31:0] copy_data;
         reg [63:0] frame_occupied;
         reg [127:0] vector_occupied;
         reg [15:0] memo_occupied;
@@ -164,6 +168,12 @@ module anvil_en1_replay_workspace #(
             (COMPACT ? 4 : 8)) + {24'd0, scalar_index_hold};
         wire [6:0] vector_bit_index = {slot_hold, bank_hold};
         wire [31:0] selected_vector_base = target_hold == 0 ? vector_base : memo_base;
+        wire [31:0] copy_frame_base = COMPACT ?
+            {26'd0, copy_source_slot} << 3 :
+            ({26'd0, copy_source_slot} << 11) +
+                ({26'd0, copy_source_slot} << 10);
+        wire [31:0] copy_source_base = copy_frame_base +
+            (bank_hold ? 32'(BANK_WORDS) : 32'd0);
         wire flags_valid = write_first == (pair_index == 0) &&
             write_last == (pair_index == (length_hold >> 1) - 1'b1);
         wire [7:0] allocated_frames = {1'b0, depth} + {7'd0, pending_push};
@@ -218,7 +228,7 @@ module anvil_en1_replay_workspace #(
                 memo_tag_q <= memo_tags[scan_index];
             if (rst_n && state == PUSH_COMMIT)
                 frame_tags[slot_hold] <= request_tag;
-            if (rst_n && state == VECTOR_COMMIT && target_hold == 1)
+            if (rst_n && state == VECTOR_COMMIT && target_hold != 0)
                 memo_tags[slot_hold[3:0]] <= request_tag;
         end
 
@@ -253,6 +263,7 @@ module anvil_en1_replay_workspace #(
                 op_hold <= 0;
                 slot_hold <= 0;
                 response_slot <= 0;
+                copy_source_slot <= 0;
                 depth <= 0;
                 memo_count <= 0;
                 cursor <= 0;
@@ -267,6 +278,7 @@ module anvil_en1_replay_workspace #(
                 backing_write_hold <= 0;
                 backing_data_hold <= 0;
                 backing_result <= 0;
+                copy_data <= 0;
                 frame_occupied <= 0;
                 vector_occupied <= 0;
                 memo_occupied <= 0;
@@ -292,6 +304,7 @@ module anvil_en1_replay_workspace #(
                             length_hold <= req_length;
                             component_hold <= req_component;
                             slot_hold <= req_slot;
+                            copy_source_slot <= req_slot;
                             bank_hold <= req_bank;
                             scalar_index_hold <= req_scalar_index;
                             request_data <= req_data;
@@ -348,7 +361,8 @@ module anvil_en1_replay_workspace #(
                         end else if ((op_hold == 1 || op_hold == 2) && depth == 0) begin
                             error_hold <= 7;
                             state <= PUBLISH;
-                        end else if ((op_hold == 3 || op_hold == 4) && target_hold > 1) begin
+                        end else if ((op_hold == 3 && target_hold > 2) ||
+                            (op_hold == 4 && target_hold > 1)) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else if (op_hold == 4 && (component_hold[0] ||
@@ -398,8 +412,18 @@ module anvil_en1_replay_workspace #(
                             state <= PUBLISH;
                         end else if (op_hold == 2)
                             state <= UPDATE_SETUP;
-                        else if (op_hold == 3)
-                            state <= VECTOR_SETUP;
+                        else if (op_hold == 3) begin
+                            if (target_hold == 2) begin
+                                if (!vector_occupied[vector_bit_index]) begin
+                                    error_hold <= 7;
+                                    state <= PUBLISH;
+                                end else begin
+                                    scan_index <= 0;
+                                    state <= MEMO_SCAN;
+                                end
+                            end else
+                                state <= VECTOR_SETUP;
+                        end
                         else if (op_hold == 4) begin
                             if (!vector_occupied[vector_bit_index]) begin
                                 error_hold <= 7;
@@ -526,10 +550,13 @@ module anvil_en1_replay_workspace #(
                             end
                             memo_occupied[slot_hold[3:0]] <= 0;
                         end
-                        state <= STREAM;
+                        if (target_hold == 2)
+                            state <= COPY_READ;
+                        else
+                            state <= STREAM;
                     end
                     STREAM: if (write_valid && write_ready) begin
-                        if (!flags_valid) begin
+                        if (write_abort || !flags_valid) begin
                             pending_memo <= 0;
                             error_hold <= 7;
                             state <= PUBLISH;
@@ -546,8 +573,29 @@ module anvil_en1_replay_workspace #(
                             state <= VECTOR_COMMIT;
                         else begin
                             pair_index <= pair_index + 1'b1;
-                            state <= STREAM;
+                            if (target_hold == 2)
+                                state <= COPY_READ;
+                            else
+                                state <= STREAM;
                         end
+                    end
+                    COPY_READ: begin
+                        backing_address_hold <= 18'(copy_source_base + pair_index);
+                        backing_write_hold <= 0;
+                        backing_data_hold <= 0;
+                        backing_return <= COPY_CAPTURE;
+                        state <= BACKING_SEND;
+                    end
+                    COPY_CAPTURE: begin
+                        copy_data <= backing_result;
+                        state <= COPY_WRITE;
+                    end
+                    COPY_WRITE: begin
+                        backing_address_hold <= 18'(memo_base + pair_index);
+                        backing_write_hold <= 1;
+                        backing_data_hold <= copy_data;
+                        backing_return <= STREAM_ADVANCE;
+                        state <= BACKING_SEND;
                     end
                     VECTOR_COMMIT: begin
                         if (target_hold == 0)
