@@ -1,5 +1,6 @@
 module anvil_en1_asym_attn_ple #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer POST_ONLY = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -14,6 +15,7 @@ module anvil_en1_asym_attn_ple #(
     output wire [7:0] source_layer,
     output wire [31:0] source_token, source_index,
     output wire source_is_ple,
+    output wire source_is_branch,
     input wire source_rsp_valid,
     output wire source_rsp_ready,
     input wire [15:0] source_rsp_data,
@@ -71,8 +73,9 @@ module anvil_en1_asym_attn_ple #(
     input wire done_ready,
     output wire [3:0] done_error
 );
-    generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+    generate if ((COMPACT != 0 && COMPACT != 1) ||
+        (POST_ONLY != 0 && POST_ONLY != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT and POST_ONLY must be 0 or 1");
         assign start_ready = 0;
         assign source_valid = 0;
         assign source_model = 0;
@@ -80,6 +83,7 @@ module anvil_en1_asym_attn_ple #(
         assign source_token = 0;
         assign source_index = 0;
         assign source_is_ple = 0;
+        assign source_is_branch = 0;
         assign source_rsp_ready = 0;
         assign mask_valid = 0;
         assign mask_token = 0;
@@ -164,7 +168,7 @@ module anvil_en1_asym_attn_ple #(
         reg [7:0] layer_hold;
         reg [31:0] token_hold, hidden_hold, dimension_hold;
         reg [63:0] weights_hold;
-        reg global_hold, load_ple, projection_query, gated_ple;
+        reg global_hold, load_ple, load_branch, projection_query, gated_ple;
         reg [3:0] head;
         reg [31:0] index, pair_index, norm_length, projection_row;
         reg [15:0] lookup_kind, load_data, output_hold;
@@ -429,7 +433,7 @@ module anvil_en1_asym_attn_ple #(
         wire [31:0] query_read_index = src_state == S_READ ? src_index_hold :
             (state == ROTARY_FIRST_READ ? pair_index : rotary_second_index);
         always @(posedge clk) begin
-            if (rst_n && state == LOAD_WRITE && !load_ple)
+            if (rst_n && state == LOAD_WRITE && !load_ple && !load_branch)
                 residual_payload[index[H_BITS-1:0]] <= load_data;
             else if (rst_n && (state == RESIDUAL_WRITE || state == SCALAR_WRITE))
                 residual_payload[index[H_BITS-1:0]] <= value_hold[15:0];
@@ -439,6 +443,8 @@ module anvil_en1_asym_attn_ple #(
                 work_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
             if (norm_write && norm_destination == B_BRANCH)
                 branch_payload[normalized_index[H_BITS-1:0]] <= normalized_data;
+            else if (rst_n && state == LOAD_WRITE && load_branch)
+                branch_payload[index[H_BITS-1:0]] <= load_data;
             else if (rst_n && ((state == PROJECTION_WRITE && !projection_query) ||
                 state == GATED_WRITE))
                 branch_payload[index[H_BITS-1:0]] <= branch_data_hold;
@@ -473,6 +479,7 @@ module anvil_en1_asym_attn_ple #(
         assign source_token = rst_n ? token_hold : 32'd0;
         assign source_index = rst_n ? index : 32'd0;
         assign source_is_ple = rst_n && load_ple;
+        assign source_is_branch = rst_n && load_branch;
         assign source_rsp_ready = rst_n && state == LOAD_WAIT;
         assign cmd_valid = rst_n && (memory_owner == M_LOOKUP ? lookup_cmd_valid :
             memory_owner == M_PROJECTION ? projection_cmd_valid :
@@ -619,6 +626,7 @@ module anvil_en1_asym_attn_ple #(
                 weights_hold <= 0;
                 global_hold <= 0;
                 load_ple <= 0;
+                load_branch <= 0;
                 projection_query <= 0;
                 gated_ple <= 0;
                 head <= 0;
@@ -674,6 +682,7 @@ module anvil_en1_asym_attn_ple #(
                         token_hold <= token;
                         weights_hold <= weights_base;
                         load_ple <= 0;
+                        load_branch <= 0;
                         index <= 0;
                         head <= 0;
                         gated_ple <= 0;
@@ -715,7 +724,15 @@ module anvil_en1_asym_attn_ple #(
                     LOAD_WRITE: begin
                         if (index + 1'b1 == (load_ple ? 32'(P) : hidden_hold)) begin
                             index <= 0;
-                            if (load_ple) begin
+                            if (load_branch) begin
+                                load_branch <= 0;
+                                norm_phase <= N_POST_ATTENTION;
+                                state <= NORM_SETUP;
+                            end else if (load_ple && POST_ONLY) begin
+                                load_ple <= 0;
+                                load_branch <= 1;
+                                state <= LOAD_START;
+                            end else if (load_ple) begin
                                 norm_phase <= N_INPUT;
                                 state <= NORM_SETUP;
                             end else begin

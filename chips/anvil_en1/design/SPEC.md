@@ -5,6 +5,144 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Frame-pair assembly and streamed attention output projection
+
+Operation 6 retains scalar-write target 0. Its new target 2 assembles a current
+frame vector one aligned BF16 pair per acknowledged request; target 3 patches
+one pair of an already committed current frame vector. Operation 7 remains
+scalar-read target 0. The scheduler permits both pair operations only with its
+exact current frame tag, never a dependency memo or another frame. Components
+are even and smaller than the descriptor's full H length; data is the
+little-endian BF16 pair in `req_data`. Other targets reject before backing access.
+
+Assembly starts at component 0, clearing destination visibility before its
+write. A per-bank next-component counter requires every subsequent request
+in ascending pair order. A new component-0 request explicitly restarts an
+assembly, never preserves an old readable destination. Only a successful final
+write acknowledgment commits the complete bank. Requests/responses release the
+single workspace transaction between pairs, allowing raw-input reads and child
+Eval execution while the unfinished destination remains live but unreadable.
+Patch requires a committed bank and never changes its full-vector occupancy;
+its caller must preserve the norm/output pass's no-future-read-of-overwritten-
+input rule. Failed assembly or patch acknowledgments invalidate that bank.
+Push/pop/session invalidation clear both assembly progress and visibility.
+Progress is control metadata, not a hidden copy of vector payload.
+
+Production scalar slots remain 256 words. Compact slots become 32 words so
+the unchanged head checkpoint at 8..14 and an enclosing projection checkpoint
+at 15..19 can coexist; words 0..7 remain scheduler-owned. Shadow accounting
+still charges the full production slot for every compact frame. The added
+128 12-bit next-component registers and 128 progress-valid bits occupy 208
+byte-rounded metadata bytes; existing whole-bank payload reservations do not
+grow. Dedicated progress metadata is reset, not numerical RAM payload.
+
+`anvil_en1_replay_attention_projection` streams each real BF16 head output
+through the actual 0x0106 output-matrix row decoder, separately rounded
+binary32 multiply/add in ascending head/component order, then narrows the
+completed row once. It recomputes heads for each H output row rather than
+retaining an 8192-byte global attention vector outside the frame budget.
+It writes ascending completed BF16 output pairs to the opposite frame bank
+through operation-6 target-2 assembly. The raw input bank remains immutable.
+This is the attention branch before post-attention norm and residual, not
+a completed text layer. Recomputation counts as real work and real traffic.
+
+Every accepted component is fully incorporated into the row sum before a
+head completion/yield can retire. At yield the inner head's existing 8..14
+words are already acknowledged. Its lower 160 checkpoint bits are then saved
+in five acknowledged words 15..19. Only afterward does the projection publish
+its 160-bit outer continuation:
+bits 159:128 magic `0x454e3150`, 127:116 output row, 115:112 query head,
+111:102 next component, 101:70 binary32 accumulated sum, 69:54 pending even-row
+BF16 value, and 53:0 zero. The pending low value is relevant when row is odd.
+Resume validates descriptor/ranges/magic, revalidates immutable tensor 0x0106,
+restores all five words, and resumes the actual numerical head, never restarts
+its accumulated reduction. Previously acknowledged destination pairs remain
+in that same frame while the shared numerical engine executes child work.
+
+| Pair/projection boundary | Registered behavior |
+| --- | --- |
+| Start P0/P1/P2 | Capture descriptor/continuation; validate distinct source/destination banks and frame; then issue tensor lookup |
+| Pair A0/A1/A2 | Capture request; validate aligned component and live frame; check assembly progress/committed patch destination before write |
+| Pair visibility | Final backing acknowledgment precedes complete-bank visibility and the later held response |
+| Head component | Capture BF16/index/last; read real matrix weight; registered multiply then add; only then advance component |
+| Head yield | Retire all numerical/work/memory responses; save five lower checkpoint words; publish outer continuation after final scalar acknowledgment |
+| Resume | Restore scalar words before starting the head; reacquire canonical owner metadata through the existing executor |
+| Final branch | Narrow every complete row; acknowledge final assembled pair; hold done until acceptance |
+| Error/reset | Drain any accepted weight/head/work transaction before error completion; invalidate failed pair visibility; reset cancels both checkpoints |
+
+The head executor's optional `PAUSABLE=1` mode is used only by this folded
+projection. `pause` may assert only immediately after acceptance of a head
+component with the Q/K/V service idle and no work, mask, metadata or external
+transaction outstanding. While paused, the executor gates public request/
+response handshakes and does not retire head completion. The projection reads
+the output weight and incorporates the component before releasing pause.
+If that weight/arithmetic operation fails, it releases pause with `cancel`
+asserted: new Q/fetch requests receive explicit source error and a new owner
+need decision rejects, without starting another numerical tile. The head then
+retires its actual error before projection failure completion. This is not a
+general asynchronous cancellation of an outstanding tile. PAUSABLE defaults
+off, preserving the original executor path.
+
+No functional or synthesis result is claimed by this interface freeze.
+
+### Shared post-attention numerical path
+
+`anvil_en1_asym_attn_ple` adds compile-time `POST_ONLY=0/1`, default 0.
+POST_ONLY=1 loads the original raw H input, original-input-derived combined
+P-dimensional PLE, and the complete H-dimensional output-projected attention
+branch. The existing source descriptor gains `source_is_branch`; it is mutually
+exclusive with `source_is_ple`. Raw input has both selectors zero. All three
+streams use the existing individually acknowledged source component interface.
+After the final branch load, this mode enters the same post-attention norm,
+residual, pre-FF norm, streamed GeGLU, post-FF norm, residual, gated PLE,
+post-PLE norm, residual and layer-scalar FSM used by ordinary execution.
+It does not renormalize an already computed attention input or project Q/K/V.
+Production shapes, intermediate doubling, operation boundaries and error
+handling are unchanged; POST_ONLY is not a replacement arithmetic model.
+No output is emitted until every required source component is loaded.
+The ordinary instance explicitly leaves the new branch selector unused.
+
+The replay layer dispatcher must use this mode only after the real attention
+projection has committed its opposite frame bank. It must reconstruct PLE
+from original immutable token/modality inputs for the actual layer, not from
+the preceding Eval hidden vector. It may reuse numerical scratch after a child
+has returned; there are no historical Eval yields within post-attention text
+arithmetic. Post-only residual/work/branch scratch and PLE are additional live
+allocations, not free copies of the frame banks. All instantiated numerical
+registers and any physically reserved unused Q/attention banks still require
+whole-system ledger and independent synthesis scrutiny.
+
+`anvil_en1_replay_text_layer` is the registered text Eval(l,t), l>0 dispatcher.
+Fresh/mode-2 tasks bind Eval(l-1,t) into frame bank 0 through the exact predecessor
+copy guard. A missing predecessor yields magic `0x454e3149` in continuation
+bits 159:128 with the remaining bits zero. Mode-1 resumes either that binding
+continuation or the `0x454e3150` attention-projection continuation. Other modes/
+continuations reject. Attention uses logical layer l-1 and commits branch bank
+1 before PLE reconstruction. Missing historical owner data yields its actual
+owner/token with the acknowledged projection continuation; no shared-layer
+private K/V is introduced.
+
+After attention completes, the dispatcher rereads the immutable original token
+to select permitted text/image/audio reconstruction and executes the genuine
+embedding/combined-PLE engine at layer l-1. Both its H input stream and P PLE
+stream must have correct ascending indices, length and last flags before PLE
+becomes usable. Input values are drained, not substituted for the preceding
+Eval vector. Only P PLE values are retained in an additional synchronous bank.
+The post-only numerical path reads actual committed raw/branch frame pairs
+through the tagged workspace and reads the checked PLE bank. Complete post
+outputs overwrite frame bank 1 through ascending acknowledged pair assembly
+only after the post engine has loaded its input branch. Its final done retires
+only after the last output pair acknowledgment. The scheduler, not this worker,
+then copies the completed Eval result to memo and releases its frame.
+
+The PLE bank is additional 512 live/reserved production bytes (8 compact).
+The reconstruction and post engines' vector banks and scalar registers are
+additional allocations with phase-dependent liveness, not frame aliases.
+Native modality responses still must come from the real on-chip encoder;
+this worker does not implement that encoder or authorize a host feature answer.
+This dispatcher is a text-layer implementation, not yet a connected complete
+root Eval/native/session/top system.
+
 ## Replay Q, historical fetch and frame-input increment
 
 The optional `ALLOW_QUERY=0/1` capability on `anvil_en1_owner_kv_tile`
@@ -1422,7 +1560,7 @@ The backing interface carries `backing_valid/ready`, `backing_write`,
 `backing_wdata[31:0]`, and a held `backing_rsp_valid/ready/data/error`.
 Every accepted write receives one response after the synchronous write.
 Every accepted read receives the actual synchronous RAM word. The legal
-backing range is 0..245759 in production and 0..1599 in compact mode.
+backing range is 0..245759 in production and 0..2623 in compact mode.
 No operation is accepted before op 3 binds the RAM. Backing transport does not
 make uninitialized words readable through the workspace's public interface.
 
@@ -1430,17 +1568,21 @@ make uninitialized words readable through the workspace's public interface.
 | --- | --- | --- |
 | 64 two-vector frame slots | 196608 / 786432 | 512 / 2048 |
 | 16 memo vector slots | 32768 / 131072 | 64 / 256 |
-| 64 scalar continuation slots | 16384 / 65536 | 1024 / 4096 |
-| Backing total | 245760 / 983040 | 1600 / 6400 |
+| 64 scalar continuation slots | 16384 / 65536 | 2048 / 8192 |
+| Backing total | 245760 / 983040 | 2624 / 10496 |
 
 Frame f starts at `f*3072` production words (`f*8` compact). Each of its two
 vector banks has 1536 words (4 compact). Memo slot s starts at
 `196608+s*2048` (compact `512+s*4`). Scalar slot f starts at
-`229376+f*256` (compact `576+f*16`). Full occupied slot reservations, including
+`229376+f*256` (compact `576+f*32`). Full occupied slot reservations, including
 padding, count as live payload, not merely returned components. Production
 shadow frame/memo/scalar allocations always use the production slot sizes.
 Physical reserved backing is reported separately; it is the first part of
-the existing frontier RAM, not an extra inferred payload array.
+the existing frontier RAM, not an extra inferred payload array. Compact RAM
+reserves 4096 words / 16384 bytes to cover the larger compact continuations;
+its ordinary frontier allocation cap remains 8192 bytes and 512 tokens.
+Production frontier RAM and the 3 MiB cap are unchanged. Unused physical words
+are not advertised as live payload or saved FPGA memory.
 The remaining 65536 production bytes of the admitted 1 MiB ceiling must cover
 **all** workspace descriptor registers, masks, returned data, resident cache,
 primitive state and connected arithmetic buffers. These are not established
@@ -1451,7 +1593,7 @@ It is serialized behind accepted transactions and stalled responses. Start
 clears all frame/memo/scalar visibility; invalidation releases live slots.
 The eight request ops are push-frame (0), pop-frame (1), update-continuation
 (2), complete-vector-store (3), vector-pair-read (4), memo-lookup (5),
-scalar-word-write (6), and scalar-word-read (7).
+scalar-word-write/frame-pair-write (6), and scalar-word-read (7).
 Requests capture model, generation, domain, layer, token, vector length,
 frame/slot handle, bank, aligned component, scalar index, data and a 256-bit
 continuation. Domain 0 is text, 1 vision, 2 audio; 3 rejects. Text lengths
@@ -1552,9 +1694,10 @@ channel for frame vector/scalar storage and dependency memo reads. It cannot
 push/pop frames, store memo entries, change a parent's continuation, or write
 the scheduler's scalar words 0..7. It must serialize/drain all primitive,
 memory and workspace work before completing or yielding a task.
-The sole additional data-movement request is store target 3, guarded by both
-the current frame tag and the exact returned dependency's packed source
-identity. It cannot access an arbitrary memo or another frame.
+Store target 3 is guarded by both the current frame tag and the exact returned
+dependency's packed source identity. Operation-6 pair assembly/patch targets
+are guarded by the current frame tag, alignment and workspace visibility/
+progress. Neither addition can access an arbitrary memo or another frame.
 
 A yielded task captures the required dependency identity and the worker
 continuation. The scheduler first looks up its complete memo tag. A hit resumes
@@ -1562,7 +1705,7 @@ the original task with that memo handle. A miss pushes a strictly smaller-rank
 child, whose eight continuation words encode the parent's identity/slot and
 the exact worker continuation. Numerical loop indices and partial binary32
 reductions not in the 160-bit continuation occupy acknowledged scalar words
-8..255 (8..15 compact) of the parent's frame. The worker must freeze both parent
+8..255 (8..31 compact) of the parent's frame. The worker must freeze both parent
 vector banks before yielding; nested tasks may only use their own frame.
 
 The child must complete a real frame vector before the scheduler can copy it

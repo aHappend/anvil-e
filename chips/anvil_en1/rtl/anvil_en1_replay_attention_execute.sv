@@ -1,5 +1,6 @@
 module anvil_en1_replay_attention_execute #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer PAUSABLE = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -20,6 +21,7 @@ module anvil_en1_replay_attention_execute #(
     input wire [31:0] dependency_token,
     input wire [11:0] dependency_length,
     input wire [5:0] dependency_slot,
+    input wire pause, cancel,
     output wire mask_valid,
     input wire mask_ready,
     output wire [31:0] mask_token,
@@ -137,6 +139,8 @@ module anvil_en1_replay_attention_execute #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (PAUSABLE != 0 && PAUSABLE != 1)
+            $fatal(1, "PARAMETER ERROR: PAUSABLE must be 0 or 1");
     end
 
     wire native_model, global_layer;
@@ -159,7 +163,8 @@ module anvil_en1_replay_attention_execute #(
         dependency_layer_hold < frame_layer_hold &&
         dependency_token_hold < tokens_hold &&
         dependency_length_hold == vector_length && dependency_slot_hold < 16;
-    wire run = rst_n && state == ATTENTION_RUN;
+    wire run = rst_n && state == ATTENTION_RUN && !(PAUSABLE && pause);
+    wire cancel_service = PAUSABLE && cancel;
     wire tile_selected = service_state == QUERY_START || service_state == QUERY_RUN ||
         service_state == FETCH_START || service_state == FETCH_RUN;
     wire tile_query = service_state == QUERY_START || service_state == QUERY_RUN;
@@ -194,7 +199,7 @@ module anvil_en1_replay_attention_execute #(
     wire direct_source = need_owner == layer_hold && need_token == position_hold;
     wire memo_source = dependency_valid_hold && dependency_descriptor_valid &&
         need_owner == dependency_layer_hold && need_token == dependency_token_hold;
-    wire [1:0] need_action = !need_descriptor_valid ? 2'd2 :
+    wire [1:0] need_action = cancel_service || !need_descriptor_valid ? 2'd2 :
         (direct_source || memo_source ? 2'd0 : 2'd1);
     wire need_ready = run && service_state == SERVICE_IDLE && !authorized;
     wire attention_work_valid, attention_work_rsp_ready;
@@ -205,6 +210,9 @@ module anvil_en1_replay_attention_execute #(
     wire [11:0] attention_work_length, attention_work_component;
     wire [5:0] attention_work_slot;
     wire attention_work_bank;
+    wire attention_mask_valid, attention_mask_rsp_ready;
+    wire attention_req_valid, attention_rsp_ready, attention_output_valid;
+    wire tile_cmd_valid, tile_result_ready;
 
     anvil_en1_replay_attention #(.COMPACT(COMPACT)) attention (
         .clk(clk), .rst_n(rst_n),
@@ -219,14 +227,14 @@ module anvil_en1_replay_attention_execute #(
         .query_rsp_ready(query_rsp_ready),
         .query_rsp_data(service_component[0] ? service_pair[31:16] : service_pair[15:0]),
         .query_rsp_error(service_error != 0),
-        .mask_valid(mask_valid), .mask_ready(run && mask_ready), .mask_token(mask_token),
-        .mask_rsp_valid(run && mask_rsp_valid), .mask_rsp_ready(mask_rsp_ready),
+        .mask_valid(attention_mask_valid), .mask_ready(run && mask_ready), .mask_token(mask_token),
+        .mask_rsp_valid(run && mask_rsp_valid), .mask_rsp_ready(attention_mask_rsp_ready),
         .mask_rsp_data(mask_rsp_data), .mask_rsp_error(mask_rsp_error),
-        .req_valid(req_valid), .req_ready(run && req_ready),
+        .req_valid(attention_req_valid), .req_ready(run && req_ready),
         .req_op(req_op), .req_model(req_model), .req_layer(req_layer),
         .req_token(req_token), .req_is_value(req_is_value), .req_kv_head(req_kv_head),
         .req_component(req_component), .req_base(req_base),
-        .rsp_valid(run && rsp_valid), .rsp_ready(rsp_ready),
+        .rsp_valid(run && rsp_valid), .rsp_ready(attention_rsp_ready),
         .rsp_addr(rsp_addr), .rsp_owner(rsp_owner), .rsp_alias(rsp_alias),
         .rsp_error(rsp_error), .rsp_space(rsp_space),
         .fetch_valid(fetch_valid), .fetch_ready(run && service_state == SERVICE_IDLE),
@@ -251,7 +259,7 @@ module anvil_en1_replay_attention_execute #(
         .work_rsp_valid(run && !tile_selected && work_rsp_valid),
         .work_rsp_ready(attention_work_rsp_ready),
         .work_rsp_data(work_rsp_data), .work_rsp_error(work_rsp_error),
-        .output_valid(output_valid), .output_ready(run && output_ready),
+        .output_valid(attention_output_valid), .output_ready(run && output_ready),
         .output_index(output_index), .output_data(output_data), .output_last(output_last),
         .done_valid(attention_valid), .done_ready(run && service_state == SERVICE_IDLE && !authorized),
         .done_error(attention_error), .done_yield(attention_yield),
@@ -295,9 +303,9 @@ module anvil_en1_replay_attention_execute #(
         .work_rsp_valid(run && tile_selected && work_rsp_valid),
         .work_rsp_ready(tile_work_rsp_ready),
         .work_rsp_data(work_rsp_data), .work_rsp_error(work_rsp_error),
-        .cmd_valid(cmd_valid), .cmd_ready(run && tile_selected && cmd_ready),
+        .cmd_valid(tile_cmd_valid), .cmd_ready(run && tile_selected && cmd_ready),
         .cmd_write(cmd_write), .cmd_addr(cmd_addr), .cmd_wdata(cmd_wdata),
-        .result_valid(run && tile_selected && result_valid), .result_ready(result_ready),
+        .result_valid(run && tile_selected && result_valid), .result_ready(tile_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(tile_valid), .done_ready(run &&
             (service_state == QUERY_RUN || service_state == FETCH_RUN)),
@@ -312,6 +320,13 @@ module anvil_en1_replay_attention_execute #(
     );
 
     assign start_ready = rst_n && state == IDLE;
+    assign mask_valid = run && attention_mask_valid;
+    assign mask_rsp_ready = run && attention_mask_rsp_ready;
+    assign req_valid = run && attention_req_valid;
+    assign rsp_ready = run && attention_rsp_ready;
+    assign output_valid = run && attention_output_valid;
+    assign cmd_valid = run && tile_selected && tile_cmd_valid;
+    assign result_ready = run && tile_selected && tile_result_ready;
     assign work_req_valid = run && (tile_selected ? tile_work_valid : attention_work_valid);
     assign work_req_op = !rst_n ? 3'd0 : (tile_selected ? tile_work_op : attention_work_op);
     assign work_req_domain = !rst_n ? 2'd0 :
@@ -459,7 +474,7 @@ module anvil_en1_replay_attention_execute #(
                 end
                 ATTENTION_START: if (attention_ready)
                     state <= ATTENTION_RUN;
-                ATTENTION_RUN: if (attention_valid &&
+                ATTENTION_RUN: if (run && attention_valid &&
                     service_state == SERVICE_IDLE && !authorized) begin
                     if (error_hold == 0)
                         error_hold <= attention_error;
@@ -504,7 +519,10 @@ module anvil_en1_replay_attention_execute #(
                     end
                 end
                 QUERY_VALIDATE: begin
-                    if (service_component >= dimension) begin
+                    if (cancel_service) begin
+                        service_error <= 7;
+                        service_state <= QUERY_PUBLISH;
+                    end else if (service_component >= dimension) begin
                         service_error <= 5;
                         error_hold <= 5;
                         service_state <= QUERY_PUBLISH;
@@ -533,7 +551,7 @@ module anvil_en1_replay_attention_execute #(
                 QUERY_RESPONSE: if (run && query_rsp_ready)
                     service_state <= SERVICE_IDLE;
                 FETCH_VALIDATE: begin
-                    if (!authorized || service_model != model_hold ||
+                    if (cancel_service || !authorized || service_model != model_hold ||
                         service_owner != authorized_owner || service_token != authorized_token ||
                         service_selector != authorized_selector || service_head != authorized_head ||
                         service_component != authorized_component) begin

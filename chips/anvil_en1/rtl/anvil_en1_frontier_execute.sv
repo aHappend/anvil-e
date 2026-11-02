@@ -378,6 +378,7 @@ module anvil_en1_frontier_execute #(
         .source_model(layer_source_model), .source_layer(layer_source_layer),
         .source_token(layer_source_token), .source_index(layer_source_index),
         .source_is_ple(layer_source_ple),
+        .source_is_branch(),
         .source_rsp_valid(rst_n && source_state == S_RESPONSE && !source_is_logits),
         .source_rsp_ready(layer_source_rsp_ready), .source_rsp_data(source_data_hold),
         .source_rsp_error(source_error_hold),
