@@ -1,5 +1,6 @@
 module anvil_en1_attention_head #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer REPLAY = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -8,6 +9,20 @@ module anvil_en1_attention_head #(
     input wire [7:0] layer,
     input wire [3:0] query_head,
     input wire [31:0] query_position,
+    input wire resume_valid,
+    input wire [383:0] resume_checkpoint,
+    output wire need_valid,
+    input wire need_ready,
+    input wire [1:0] need_action,
+    output wire [1:0] need_model,
+    output wire [7:0] need_owner,
+    output wire [31:0] need_token,
+    output wire need_is_value,
+    output wire [1:0] need_kv_head,
+    output wire [9:0] need_component,
+    output wire checkpoint_valid,
+    input wire checkpoint_ready,
+    output wire [383:0] checkpoint_data,
     output wire query_valid,
     input wire query_ready,
     output wire [9:0] query_component,
@@ -59,9 +74,19 @@ module anvil_en1_attention_head #(
     input wire done_ready,
     output wire [3:0] done_error
 );
-    generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+    generate if ((COMPACT != 0 && COMPACT != 1) ||
+        (REPLAY != 0 && REPLAY != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT and REPLAY must be 0 or 1");
         assign start_ready = 0;
+        assign need_valid = 0;
+        assign need_model = 0;
+        assign need_owner = 0;
+        assign need_token = 0;
+        assign need_is_value = 0;
+        assign need_kv_head = 0;
+        assign need_component = 0;
+        assign checkpoint_valid = 0;
+        assign checkpoint_data = 0;
         assign query_valid = 0;
         assign query_component = 0;
         assign query_rsp_ready = 0;
@@ -106,7 +131,8 @@ module anvil_en1_attention_head #(
             KEY_ADVANCE = 29, PASS_FINISH = 30,
             INVERSE_START = 31, INVERSE_WAIT = 32,
             OUTPUT_NARROW = 33, OUTPUT_PREPARE = 34, OUTPUT_WAIT = 35,
-            FP_START = 36, FP_WAIT = 37, PUBLISH = 38, RESPONSE = 39;
+            FP_START = 36, FP_WAIT = 37, PUBLISH = 38, RESPONSE = 39,
+            REPLAY_NEED = 40, REPLAY_YIELD = 41, REPLAY_RESTORE = 42;
         reg [5:0] state, return_state;
         reg [1:0] model_hold, phase, head_hold;
         reg [7:0] layer_hold, owner_hold;
@@ -122,6 +148,8 @@ module anvil_en1_attention_head #(
         reg [1:0] cache_space_hold;
         reg [3:0] error_hold, cache_error_hold;
         reg [2:0] fp_op;
+        reg resume_hold;
+        reg [383:0] checkpoint_hold;
         wire native_model, is_global;
         wire [7:0] layer_count;
         wire fp_ready, fp_valid, exp_ready, exp_valid, inverse_ready, inverse_valid;
@@ -130,6 +158,33 @@ module anvil_en1_attention_head #(
         wire [31:0] window_length = COMPACT ? 32'd4 : 32'd512;
         wire [9:0] selected_dimension = COMPACT ?
             (is_global ? 10'd8 : 10'd4) : (is_global ? 10'd512 : 10'd256);
+        wire [31:0] selected_first = !is_global && position_hold >= window_length ?
+            position_hold - window_length + 1'b1 : 32'd0;
+        wire [31:0] selected_keys = position_hold - selected_first + 1'b1;
+        wire checkpoint_descriptor_valid =
+            checkpoint_hold[383:352] == 32'h454e3141 &&
+            checkpoint_hold[351:343] == 0 &&
+            checkpoint_hold[342:341] == model_hold &&
+            checkpoint_hold[340:333] == layer_hold &&
+            checkpoint_hold[332:329] == query_head_hold &&
+            checkpoint_hold[328:297] == position_hold &&
+            checkpoint_hold[296:265] >= selected_first &&
+            checkpoint_hold[296:265] <= position_hold &&
+            checkpoint_hold[264:233] != 0 &&
+            checkpoint_hold[264:233] <= selected_keys &&
+            checkpoint_hold[232:231] <= 2 &&
+            checkpoint_hold[230:221] < selected_dimension &&
+            checkpoint_hold[220:211] < selected_dimension &&
+            checkpoint_hold[210:201] ==
+                (checkpoint_hold[200] ? checkpoint_hold[220:211] :
+                    checkpoint_hold[230:221]) &&
+            (!checkpoint_hold[200] || checkpoint_hold[232:231] == 2);
+        wire [383:0] live_checkpoint = {32'h454e3141, 9'd0,
+            model_hold, layer_hold, query_head_hold, position_hold,
+            token, active_keys, phase, dot_component, output_component,
+            cache_component, cache_selector, owner_hold, query_hold,
+            probability_hold, dot_accumulator, maximum, exponential_sum,
+            inverse_sum, value_accumulator};
         wire max_nan = maximum[30:23] == 255 && maximum[22:0] != 0;
         wire score_nan = dot_accumulator[30:23] == 255 &&
             dot_accumulator[22:0] != 0;
@@ -166,6 +221,15 @@ module anvil_en1_attention_head #(
         );
 
         assign start_ready = rst_n && state == IDLE;
+        assign need_valid = rst_n && REPLAY && state == REPLAY_NEED;
+        assign need_model = rst_n && REPLAY ? model_hold : 2'd0;
+        assign need_owner = rst_n && REPLAY ? owner_hold : 8'd0;
+        assign need_token = rst_n && REPLAY ? token : 32'd0;
+        assign need_is_value = rst_n && REPLAY && cache_selector;
+        assign need_kv_head = rst_n && REPLAY ? head_hold : 2'd0;
+        assign need_component = rst_n && REPLAY ? cache_component : 10'd0;
+        assign checkpoint_valid = rst_n && REPLAY && state == REPLAY_YIELD;
+        assign checkpoint_data = rst_n && REPLAY ? live_checkpoint : 384'd0;
         assign query_valid = rst_n && state == QUERY_START;
         assign query_component = rst_n ? dot_component : 10'd0;
         assign query_rsp_ready = rst_n && state == QUERY_WAIT;
@@ -239,6 +303,8 @@ module anvil_en1_attention_head #(
                 error_hold <= 0;
                 cache_error_hold <= 0;
                 fp_op <= 0;
+                resume_hold <= 0;
+                checkpoint_hold <= 0;
             end else begin
                 case (state)
                     IDLE: if (start_valid && start_ready) begin
@@ -254,6 +320,9 @@ module anvil_en1_attention_head #(
                         exponential_sum <= 0;
                         value_accumulator <= 0;
                         output_component <= 0;
+                        resume_hold <= REPLAY && resume_valid;
+                        if (REPLAY)
+                            checkpoint_hold <= resume_checkpoint;
                         state <= VALIDATE;
                     end
                     VALIDATE: begin
@@ -268,11 +337,37 @@ module anvil_en1_attention_head #(
                             dimension_hold <= selected_dimension;
                             head_hold <= COMPACT || model_hold == 1 ? 2'd0 :
                                 query_head_hold[3:2];
-                            first_token <= !is_global && position_hold >= window_length ?
-                                position_hold - window_length + 1'b1 : 32'd0;
-                            token <= !is_global && position_hold >= window_length ?
-                                position_hold - window_length + 1'b1 : 32'd0;
-                            state <= MASK_START;
+                            first_token <= selected_first;
+                            if (resume_hold)
+                                state <= REPLAY_RESTORE;
+                            else begin
+                                token <= selected_first;
+                                state <= MASK_START;
+                            end
+                        end
+                    end
+                    REPLAY_RESTORE: begin
+                        if (!REPLAY || !checkpoint_descriptor_valid) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else begin
+                            token <= checkpoint_hold[296:265];
+                            active_keys <= checkpoint_hold[264:233];
+                            phase <= checkpoint_hold[232:231];
+                            dot_component <= checkpoint_hold[230:221];
+                            output_component <= checkpoint_hold[220:211];
+                            cache_component <= checkpoint_hold[210:201];
+                            cache_selector <= checkpoint_hold[200];
+                            query_hold <= checkpoint_hold[191:176];
+                            probability_hold <= checkpoint_hold[175:160];
+                            dot_accumulator <= checkpoint_hold[159:128];
+                            maximum <= checkpoint_hold[127:96];
+                            exponential_sum <= checkpoint_hold[95:64];
+                            inverse_sum <= checkpoint_hold[63:32];
+                            value_accumulator <= checkpoint_hold[31:0];
+                            source_error_hold <= 0;
+                            cache_error_hold <= 0;
+                            state <= META_START;
                         end
                     end
                     MASK_START: if (mask_ready)
@@ -331,9 +426,23 @@ module anvil_en1_attention_head #(
                             cache_addr_hold[1:0] != 0) begin
                             error_hold <= 7;
                             state <= PUBLISH;
-                        end else
+                        end else if (REPLAY)
+                            state <= REPLAY_NEED;
+                        else
                             state <= FETCH_START;
                     end
+                    REPLAY_NEED: if (need_valid && need_ready) begin
+                        if (need_action == 0)
+                            state <= FETCH_START;
+                        else if (need_action == 1)
+                            state <= REPLAY_YIELD;
+                        else begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end
+                    end
+                    REPLAY_YIELD: if (checkpoint_valid && checkpoint_ready)
+                        state <= IDLE;
                     FETCH_START: if (fetch_ready)
                         state <= FETCH_WAIT;
                     FETCH_WAIT: if (fetch_rsp_valid) begin

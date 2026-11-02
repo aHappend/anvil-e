@@ -1495,6 +1495,104 @@ Both the acknowledged full-vector store and the real embedding completion
 must succeed before task completion. Early numerical failure explicitly
 aborts the unfinished store and retires its response before failure completion.
 This subtask does not implement higher-layer or encoder Eval.
+Its own 445 explicitly declared register bits are disclosed as 56
+byte-rounded `controller_state_bytes`, including the retained low half,
+32-bit pair, token response and command address. The embedding leaf's banks
+reserve 5632 production bytes or 24 compact bytes, with selected H/P live
+bytes reported through the full receive/consume lifetime. Those bank figures
+exclude the embedding leaf's scalar/child registers; the full allocator must
+include them independently.
+
+| Eval input cycle/degenerate boundary | Behavior |
+| --- | --- |
+| Start/validation | Descriptor captured before token address validation; Eval layer must be 0 and native text token must be in the immutable prefix |
+| Token read | Actual external response registered before placeholder/domain selection; an error returns 2 with no embedding start |
+| Workspace ingress stall | Store request and its complete frame descriptor remain valid/stable, even if embedding fails while ingress is stalled |
+| Embedding input pairs | Check every ascending index and last flag; low/high BF16 lanes form one stable acknowledged workspace beat |
+| Word stall and late error | Do not withdraw an already presented word; retire it, then abort an unfinished store or fail after a completed store |
+| Early embedding failure | Drain any accepted input/weight work, explicitly abort and retire the unfinished workspace transaction, then preserve the original failure |
+| Full vector / completion | Last accepted word is not visibility; wait for the actual store response and the real embedding completion |
+| Reset | No valid, readiness, command, data or ledger output survives active reset; no frame payload is initialized |
+
+### Resumable attention subtask boundary
+
+The numerical text worker uses one folded attention engine across suspended
+frames; it must not retain an arithmetic instance per recursive dependency.
+`anvil_en1_attention_head` gains an optional `REPLAY` parameter (0 or 1,
+default 0). The ordinary layer path explicitly disables/ties off this
+interface and keeps its existing protocol and arithmetic sequence.
+In replay mode only, a registered `need_valid/need_ready` decision follows
+successful canonical cache metadata retirement and precedes any fetch valid.
+The decision descriptor is model, actual owner, token, selector, KV head and
+component. Decision 0 authorizes the following real data fetch; decision 1
+requests a checkpoint/yield; decisions 2/3 fail with cache-state error 7.
+The need channel is not a cache request and never claims a cache hit.
+
+The yield point is deliberately between operations: no mask, query, metadata,
+fetch or arithmetic transaction remains outstanding. A successful yield
+releases the attention instance for a child and is not head completion.
+Resumption validates its saved descriptor, reobtains canonical metadata,
+and issues the need decision again. It does not resume directly into a fetch
+using a stale owner/address. An enclosing replay worker must consume the
+returned dependency memo and run real owner normalization/projection/rotary
+before authorizing that fetch. It cannot feed a host-produced K/V answer
+or wait recursively on the root cache's outstanding regen.
+
+The checkpoint is exactly 384 bits. Bit positions are frozen here before
+RTL implementation. State not listed is dead at this boundary and is
+reconstructed from the registered descriptor or the next actual response.
+No reduction is restarted, reassociated, approximated or narrowed on resume.
+
+| Checkpoint bits | Preserved state |
+| --- | --- |
+| 383:352 | Format magic `0x454e3141` |
+| 351:343 | Reserved zero |
+| 342:341, 340:333, 332:329 | Model, logical attention layer, query head |
+| 328:297, 296:265, 264:233 | Query position, current key token, active-key count |
+| 232:231 | Pass 0 max / 1 exponential sum / 2 value |
+| 230:221, 220:211, 210:201 | Dot component, output component, requested cache component |
+| 200, 199:192 | K/V selector and most recently observed canonical owner |
+| 191:176, 175:160 | BF16 query component and probability |
+| 159:128, 127:96, 95:64 | Binary32 dot accumulator, maximum, exponential sum |
+| 63:32, 31:0 | Binary32 reciprocal sum and value accumulator |
+
+`anvil_en1_replay_attention` wraps that actual numerical head and serializes
+checkpoint storage on the existing worker workspace channel. It writes
+checkpoint bits 383:160 to acknowledged scalar words 8..14 of the current
+frame in ascending word order; bits 159:0 are its subtask continuation.
+Resume reads those same seven individually visible words before starting
+the attention engine. Scalar word 15 remains available for the enclosing
+worker's stage/head continuation; words 0..7 remain scheduler-owned.
+The 28 stored bytes and all live bridge/head/child registers are part of
+the live allocation ledger, not additional uncounted RAM. The bridge has
+no vector store and does not create a separate checkpoint payload array.
+
+The subtask start captures model, attention layer/head/position and the
+complete current Eval frame identity. Precision-independent BF16 attention
+receives Q and masks from the enclosing numerical worker, and K/V exclusively
+on its public canonical metadata/data interfaces. On yield, subtask done
+contains the saved continuation and exact owner/token/selector/head/component
+descriptor needed by that worker. A yield is visible only after the final
+scalar response retires. It is not the scheduler's task completion and must
+not trigger a memo copy of an unfinished layer vector.
+
+| Resumable attention cycle/degenerate boundary | Required behavior |
+| --- | --- |
+| Start A0/A1 | Capture frame/attention/continuation fields; validate before scalar access or numerical start |
+| Need N0 | Metadata response has retired; sample allow/yield/error before ever presenting fetch valid |
+| Yield Y0 | Capture the stable checkpoint; only then release the numerical head and start scalar writes |
+| Scalar S0/S1/S2 | Hold request/tag/data through acceptance; register response/error; advance only on the following edge |
+| Resume | Read all seven saved words, validate magic/descriptor/mask bounds, then requery metadata; no stale-owner shortcut |
+| Single component / C=1,3,64 | Checkpoint format is independent of cache capacity; cache replacement may require further real owner work |
+| Need/fetch stall | Do not withdraw a presented fetch or mutate its payload; yielding is possible only before fetch valid |
+| Failed scalar access | Retire the accepted response, stop subsequent accesses and return error; never publish a successful checkpoint |
+| Done stall | Error, yield flag, continuation and dependency descriptor remain stable until accepted |
+| Reset | Cancel checkpoint/read visibility and zero every public output without clearing backing payload |
+
+This defines a resumable numerical attention subtask, not a complete Eval
+text layer. The layer worker's normalized Q generation, dependency projection
+responder, frame-vector residual/PLE/MLP stages and dispatch are still required.
+Independent functional/numerical/eviction/reset verification remains pending.
 
 ### Ordinary frontier storage boundary
 

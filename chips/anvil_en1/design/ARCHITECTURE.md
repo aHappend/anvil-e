@@ -5,6 +5,70 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
+## Current saved increment: explicit Eval control and input reconstruction
+
+`rtl/anvil_en1_eval_schedule.sv` owns the existing bounded workspace and
+implements registered dependency lookup, child push, completed-frame memo
+copy, pop/return, and worker resume. A child stores the exact parent return
+descriptor and 160-bit numerical continuation in its actual backing scalar
+slot. Worker frame accesses and dependency reads are tag-constrained; workers
+cannot allocate frames/memo, overwrite other frames or modify return words.
+Nested work requires a smaller dependency rank. Actual worker completion and
+committed source visibility are prerequisites for memo copy, not fixed-cycle
+success. Its numerical worker remains incomplete and is not tied to a
+software-produced answer.
+
+The single-token text residual chain advances linearly from Eval(0,0) through
+the requested layer, releasing each frame before the next push and supplying
+the real preceding memo handle. Evicted owner dependencies still require real
+child work. This implements the controller path, not a claim that a full
+single-token or historical-dependency neural job has executed. Root results
+stream from acknowledged memo reads, with completion after final BF16
+acceptance. Failed work invalidates the workspace before failure completion.
+The scheduler exposes its 1398 register bits as 175 byte-rounded state bytes,
+in addition to workspace allocations and visibility metadata.
+
+`rtl/anvil_en1_replay_workspace.sv` adds an internal complete-frame-to-memo
+copy. A tagged source bank remains live until its destination has received
+every actual registered backing read/acknowledged write. A 32-bit copy
+register avoids adding a second H-vector to copy between stores. Memo tags,
+visibility, replacement and eviction apply equally to internal copies.
+An explicit accepted stream-abort beat annuls unfinished storage without a
+backing access; it is never a successful partial vector. The scheduler
+forwards this abort and waits for its response before accepting worker
+failure. These additional copy/control registers still belong in the final
+whole-system arithmetic/control ledger.
+
+`rtl/anvil_en1_replay_input.sv` supplies real native text Eval(0,t)
+reconstruction using the existing numerical embedding/PLE leaf. It rereads
+the immutable token to select text or the correct permitted image/audio
+placeholder feature boundary, then pair-packs the complete checked input
+stream directly into the assigned frame bank. There is no second H-vector
+inside this controller. Input/weight errors, early embedding failure and
+malformed streams retire/abort accepted storage before failed completion.
+Held commands and store beats are not withdrawn on a late numerical error.
+The input controller discloses 445 bits as 56 byte-rounded state bytes and
+the embedding leaf's selected/physical H/P banks separately; child numerical
+registers remain additional accounting work.
+
+These sources do not complete fallback arithmetic: the resumable text-layer
+worker must still save actual reductions/loop state in its frame and resolve
+historical owner dependencies without waiting recursively on occupied cache
+regen. Native vision/audio Eval and feature production remain absent, as do
+the complete phase-overlaid liveness ledger and compatible top/session/
+arbiter/CSR integration. The reconstruction subtask is not yet dispatched
+by a complete numerical worker. No test-only fabricated task response is
+provided. The design remains **continue**, not ready for Verifier.
+
+Only the two new controller/subtask RTL files, the workspace copy/abort
+extension and SPEC/ARCHITECTURE were changed in this increment. Actual tools
+were glob, view, rg and apply_patch. No command, installation, elaboration,
+simulation, synthesis or numerical probe ran; the one reserved static check
+remains unused and there are no preparation receipts. Parent RTL,
+verification files and runtime metadata/evidence were preserved. In
+particular, the retained failure-0001/attempt-0003 ownership interruption
+is not changed or claimed repaired by these additions.
+
 ## Current saved increment: owner transport and ordinary ordering
 
 `rtl/anvil_en1_owner_replay.sv` now connects the genuine owner-projection tile

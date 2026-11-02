@@ -49,6 +49,7 @@ module anvil_en1_replay_input #(
     output wire [3:0] done_error,
     output wire done_bank,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
+    output wire [63:0] controller_state_bytes,
     output wire busy
 );
     localparam [3:0] IDLE = 0, VALIDATE = 1, TOKEN_ADDRESS = 2,
@@ -132,7 +133,7 @@ module anvil_en1_replay_input #(
     );
 
     assign start_ready = rst_n && state == IDLE;
-    assign work_req_valid = rst_n && state == STORE_SEND && !embed_valid;
+    assign work_req_valid = rst_n && state == STORE_SEND;
     assign work_req_op = rst_n ? 3'd3 : 3'd0;
     assign work_req_domain = 0;
     assign work_req_target = 0;
@@ -145,8 +146,7 @@ module anvil_en1_replay_input #(
     assign work_req_scalar_index = 0;
     assign work_req_data = 0;
     assign work_write_valid = rst_n &&
-        (state == ABORT_SEND ||
-         (state == WRITE_SEND && !premature_failure && !work_rsp_valid));
+        (state == ABORT_SEND || state == WRITE_SEND);
     assign work_write_data = rst_n ? pair_hold : 32'd0;
     assign work_write_first = rst_n && pair_index == 0;
     assign work_write_last = rst_n &&
@@ -167,6 +167,7 @@ module anvil_en1_replay_input #(
     assign embedding_live_bytes = rst_n && embed_active ?
         ({52'd0, hidden_hold} + 64'(P)) << 1 : 64'd0;
     assign embedding_physical_bytes = rst_n ? 64'(2*(MAX_H+P)) : 64'd0;
+    assign controller_state_bytes = rst_n ? 64'd56 : 64'd0;
     assign busy = rst_n && state != IDLE;
 
     always @(posedge clk or negedge rst_n) begin
@@ -270,15 +271,16 @@ module anvil_en1_replay_input #(
                     state <= STORE_SEND;
                 end
                 STORE_SEND: begin
-                    if (embed_valid) begin
-                        if (embed_error != 0)
-                            error_hold <= embed_error;
-                        else
-                            error_hold <= 7;
-                        state <= EMBED_WAIT;
-                    end else if (work_req_valid && work_req_ready) begin
+                    if (work_req_valid && work_req_ready) begin
                         store_open <= 1;
-                        state <= INPUT_LOW;
+                        if (embed_valid) begin
+                            if (embed_error != 0)
+                                error_hold <= embed_error;
+                            else
+                                error_hold <= 7;
+                            state <= ABORT_SEND;
+                        end else
+                            state <= INPUT_LOW;
                     end
                 end
                 INPUT_LOW: begin
@@ -318,12 +320,13 @@ module anvil_en1_replay_input #(
                     end
                 end
                 WRITE_SEND: begin
-                    if (premature_failure) begin
+                    if (premature_failure)
                         error_hold <= embed_error;
-                        state <= ABORT_SEND;
-                    end else if (work_write_valid && work_write_ready) begin
+                    if (work_write_valid && work_write_ready) begin
                         if (work_write_last)
                             state <= STORE_WAIT;
+                        else if (premature_failure)
+                            state <= ABORT_SEND;
                         else begin
                             pair_index <= pair_index + 1'b1;
                             state <= INPUT_LOW;
@@ -355,7 +358,9 @@ module anvil_en1_replay_input #(
             if (work_rsp_valid && work_rsp_ready) begin
                 store_open <= 0;
                 if (error_hold == 0) begin
-                    if (work_rsp_error != 0)
+                    if (embed_valid && embed_error != 0)
+                        error_hold <= embed_error;
+                    else if (work_rsp_error != 0)
                         error_hold <= work_rsp_error;
                     else if (state != STORE_WAIT)
                         error_hold <= 7;
