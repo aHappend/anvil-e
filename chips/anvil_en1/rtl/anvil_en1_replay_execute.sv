@@ -93,8 +93,11 @@ module anvil_en1_replay_execute #(
     output wire [63:0] vision_inner_controller_bytes, vision_inner_clamp_controller_bytes,
     output wire [63:0] audio_vector_live_bytes, audio_vector_physical_bytes,
     output wire [63:0] audio_input_controller_bytes, audio_nested_controller_bytes,
+    output wire [63:0] audio_layer_controller_bytes,
     output wire native_audio_point_replay_event,
     output wire [31:0] native_audio_point_replay_bytes,
+    output wire native_audio_history_replay_event, native_audio_glu_replay_event,
+    output wire [31:0] native_audio_history_replay_bytes, native_audio_glu_replay_bytes,
     output wire native_input_read_event, native_projection_event, native_intermediate_event,
     output wire [31:0] native_input_read_bytes, native_projection_bytes, native_intermediate_bytes,
     output wire memo_hit_event, memo_eviction_event,
@@ -436,41 +439,149 @@ module anvil_en1_replay_execute #(
     wire [63:0] audio_cmd_addr;
     wire audio_input_event, audio_projection_event;
     wire [31:0] audio_input_bytes, audio_projection_bytes;
+    wire audio_zero_ready, audio_zero_valid, audio_zero_bank, audio_zero_work_valid;
+    wire audio_zero_work_rsp_ready, audio_zero_cmd_valid, audio_zero_result_ready;
+    wire [3:0] audio_zero_error;
+    wire [2:0] audio_zero_op;
+    wire [1:0] audio_zero_domain, audio_zero_target;
+    wire [31:0] audio_zero_token, audio_zero_data;
+    wire [7:0] audio_zero_layer, audio_zero_scalar;
+    wire [11:0] audio_zero_length, audio_zero_component;
+    wire [5:0] audio_zero_slot;
+    wire audio_zero_work_bank;
+    wire [63:0] audio_zero_addr, audio_zero_live, audio_zero_physical, audio_zero_nested;
+    wire audio_zero_input_event, audio_zero_projection_event;
+    wire [31:0] audio_zero_input_bytes, audio_zero_projection_bytes;
     anvil_en1_replay_audio_input audio_input (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(audio_selected && state == WORKER_START), .start_ready(audio_ready),
+        .start_valid(audio_selected && state == WORKER_START), .start_ready(audio_zero_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),
         .frames(native_audio_frames_hold), .token(token_hold),
         .frame_layer(layer_hold), .frame_slot(frame_hold),
         .audio_base(native_audio_hold), .audio_weights_base(native_audio_weights_hold),
-        .work_req_valid(audio_work_valid), .work_req_ready(audio_selected && work_ready),
-        .work_req_op(audio_work_op), .work_req_domain(audio_work_domain),
-        .work_req_target(audio_work_target), .work_req_token(audio_work_token),
-        .work_req_layer(audio_work_layer), .work_req_length(audio_work_length),
-        .work_req_component(audio_work_component), .work_req_slot(audio_work_slot),
-        .work_req_bank(audio_work_bank), .work_req_scalar_index(audio_work_scalar_index),
-        .work_req_data(audio_work_data), .work_rsp_valid(audio_selected && work_rsp_valid),
-        .work_rsp_ready(audio_work_rsp_ready), .work_rsp_error(work_rsp_error),
-        .cmd_valid(audio_cmd_valid), .cmd_ready(audio_selected && cmd_ready),
-        .cmd_write(), .cmd_addr(audio_cmd_addr), .cmd_wdata(),
-        .result_valid(audio_selected && result_valid), .result_ready(audio_result_ready),
+        .work_req_valid(audio_zero_work_valid), .work_req_ready(audio_selected && work_ready),
+        .work_req_op(audio_zero_op), .work_req_domain(audio_zero_domain),
+        .work_req_target(audio_zero_target), .work_req_token(audio_zero_token),
+        .work_req_layer(audio_zero_layer), .work_req_length(audio_zero_length),
+        .work_req_component(audio_zero_component), .work_req_slot(audio_zero_slot),
+        .work_req_bank(audio_zero_work_bank), .work_req_scalar_index(audio_zero_scalar),
+        .work_req_data(audio_zero_data), .work_rsp_valid(audio_selected && work_rsp_valid),
+        .work_rsp_ready(audio_zero_work_rsp_ready), .work_rsp_error(work_rsp_error),
+        .cmd_valid(audio_zero_cmd_valid), .cmd_ready(audio_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(audio_zero_addr), .cmd_wdata(),
+        .result_valid(audio_selected && result_valid), .result_ready(audio_zero_result_ready),
         .result_data(result_data), .result_error(result_error),
-        .done_valid(audio_valid), .done_ready(audio_selected && state == WORKER_WAIT),
-        .done_error(audio_error), .done_bank(audio_bank_result),
-        .input_read_event(audio_input_event), .input_read_bytes(audio_input_bytes),
-        .projection_event(audio_projection_event), .projection_bytes(audio_projection_bytes),
+        .done_valid(audio_zero_valid), .done_ready(audio_selected && state == WORKER_WAIT),
+        .done_error(audio_zero_error), .done_bank(audio_zero_bank),
+        .input_read_event(audio_zero_input_event), .input_read_bytes(audio_zero_input_bytes),
+        .projection_event(audio_zero_projection_event), .projection_bytes(audio_zero_projection_bytes),
         .point_replay_event(native_audio_point_replay_event),
         .point_replay_bytes(native_audio_point_replay_bytes),
-        .vector_live_bytes(audio_vector_live_bytes),
-        .vector_physical_bytes(audio_vector_physical_bytes),
+        .vector_live_bytes(audio_zero_live),
+        .vector_physical_bytes(audio_zero_physical),
         .controller_bytes(audio_input_controller_bytes),
-        .nested_controller_bytes(audio_nested_controller_bytes)
+        .nested_controller_bytes(audio_zero_nested)
     );
+
+    wire audio_layer_selected = rst_n && domain_hold == 2 && layer_hold != 0 &&
+        (state == WORKER_START || state == WORKER_WAIT);
+    wire audio_layer_ready, audio_layer_valid, audio_layer_bank, audio_layer_yield;
+    wire audio_layer_work_valid, audio_layer_work_rsp_ready, audio_layer_cmd_valid;
+    wire audio_layer_result_ready;
+    wire [3:0] audio_layer_error;
+    wire [2:0] audio_layer_op;
+    wire [1:0] audio_layer_domain, audio_layer_target, audio_layer_dependency_domain;
+    wire [31:0] audio_layer_token, audio_layer_data, audio_layer_dependency_token;
+    wire [7:0] audio_layer_layer, audio_layer_scalar, audio_layer_dependency_layer;
+    wire [11:0] audio_layer_length, audio_layer_component, audio_layer_dependency_length;
+    wire [5:0] audio_layer_slot;
+    wire audio_layer_work_bank;
+    wire [159:0] audio_layer_continuation;
+    wire [63:0] audio_layer_addr, audio_layer_live, audio_layer_physical, audio_layer_nested;
+    wire audio_layer_input_event, audio_layer_projection_event, audio_layer_intermediate_event;
+    wire audio_layer_source_event;
+    wire [31:0] audio_layer_input_bytes, audio_layer_projection_bytes;
+    wire [31:0] audio_layer_intermediate_bytes, audio_layer_source_bytes;
+    anvil_en1_replay_audio_layer #(.COMPACT(COMPACT)) audio_layer (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(audio_layer_selected && state == WORKER_START),
+        .start_ready(audio_layer_ready),
+        .model(model_hold), .precision(precision_hold), .mode(mode_hold),
+        .generation(generation_hold), .frames(native_audio_frames_hold), .query_token(token_hold),
+        .frame_layer(layer_hold), .frame_slot(frame_hold),
+        .audio_base(native_audio_hold), .audio_weights_base(native_audio_weights_hold),
+        .continuation(continuation_hold),
+        .dependency_valid(dependency_valid_hold), .dependency_domain(dependency_domain_hold),
+        .dependency_layer(dependency_layer_hold), .dependency_token(dependency_token_hold),
+        .dependency_length(dependency_length_hold), .dependency_slot(dependency_slot_hold),
+        .work_req_valid(audio_layer_work_valid),
+        .work_req_ready(audio_layer_selected && work_ready),
+        .work_req_op(audio_layer_op), .work_req_domain(audio_layer_domain),
+        .work_req_target(audio_layer_target), .work_req_token(audio_layer_token),
+        .work_req_layer(audio_layer_layer), .work_req_length(audio_layer_length),
+        .work_req_component(audio_layer_component), .work_req_slot(audio_layer_slot),
+        .work_req_bank(audio_layer_work_bank), .work_req_scalar_index(audio_layer_scalar),
+        .work_req_data(audio_layer_data),
+        .work_rsp_valid(audio_layer_selected && work_rsp_valid),
+        .work_rsp_ready(audio_layer_work_rsp_ready), .work_rsp_data(work_rsp_data),
+        .work_rsp_error(work_rsp_error),
+        .cmd_valid(audio_layer_cmd_valid), .cmd_ready(audio_layer_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(audio_layer_addr), .cmd_wdata(),
+        .result_valid(audio_layer_selected && result_valid), .result_ready(audio_layer_result_ready),
+        .result_data(result_data), .result_error(result_error),
+        .done_valid(audio_layer_valid), .done_ready(audio_layer_selected && state == WORKER_WAIT),
+        .done_error(audio_layer_error), .done_yield(audio_layer_yield), .done_bank(audio_layer_bank),
+        .done_continuation(audio_layer_continuation),
+        .done_dependency_domain(audio_layer_dependency_domain),
+        .done_dependency_layer(audio_layer_dependency_layer),
+        .done_dependency_token(audio_layer_dependency_token),
+        .done_dependency_length(audio_layer_dependency_length),
+        .input_read_event(audio_layer_input_event), .input_read_bytes(audio_layer_input_bytes),
+        .projection_event(audio_layer_projection_event), .projection_bytes(audio_layer_projection_bytes),
+        .intermediate_event(audio_layer_intermediate_event),
+        .intermediate_bytes(audio_layer_intermediate_bytes),
+        .source_read_event(audio_layer_source_event), .source_read_bytes(audio_layer_source_bytes),
+        .weight_read_event(), .weight_read_bytes(),
+        .history_replay_event(native_audio_history_replay_event),
+        .history_replay_bytes(native_audio_history_replay_bytes),
+        .glu_replay_event(native_audio_glu_replay_event),
+        .glu_replay_bytes(native_audio_glu_replay_bytes),
+        .vector_live_bytes(audio_layer_live), .vector_physical_bytes(audio_layer_physical),
+        .controller_bytes(audio_layer_controller_bytes), .nested_controller_bytes(audio_layer_nested)
+    );
+    wire audio_active = audio_selected || audio_layer_selected;
+    assign audio_ready = input_worker ? audio_zero_ready : audio_layer_ready;
+    assign audio_valid = input_worker ? audio_zero_valid : audio_layer_valid;
+    assign audio_error = input_worker ? audio_zero_error : audio_layer_error;
+    assign audio_bank_result = input_worker ? audio_zero_bank : audio_layer_bank;
+    assign audio_work_valid = input_worker ? audio_zero_work_valid : audio_layer_work_valid;
+    assign audio_work_rsp_ready = input_worker ? audio_zero_work_rsp_ready : audio_layer_work_rsp_ready;
+    assign audio_work_op = input_worker ? audio_zero_op : audio_layer_op;
+    assign audio_work_domain = input_worker ? audio_zero_domain : audio_layer_domain;
+    assign audio_work_target = input_worker ? audio_zero_target : audio_layer_target;
+    assign audio_work_token = input_worker ? audio_zero_token : audio_layer_token;
+    assign audio_work_layer = input_worker ? audio_zero_layer : audio_layer_layer;
+    assign audio_work_length = input_worker ? audio_zero_length : audio_layer_length;
+    assign audio_work_component = input_worker ? audio_zero_component : audio_layer_component;
+    assign audio_work_slot = input_worker ? audio_zero_slot : audio_layer_slot;
+    assign audio_work_bank = input_worker ? audio_zero_work_bank : audio_layer_work_bank;
+    assign audio_work_scalar_index = input_worker ? audio_zero_scalar : audio_layer_scalar;
+    assign audio_work_data = input_worker ? audio_zero_data : audio_layer_data;
+    assign audio_cmd_valid = input_worker ? audio_zero_cmd_valid : audio_layer_cmd_valid;
+    assign audio_cmd_addr = input_worker ? audio_zero_addr : audio_layer_addr;
+    assign audio_result_ready = input_worker ? audio_zero_result_ready : audio_layer_result_ready;
+    assign audio_input_event = audio_zero_input_event || audio_layer_input_event;
+    assign audio_input_bytes = audio_zero_input_bytes + audio_layer_input_bytes;
+    assign audio_projection_event = audio_zero_projection_event || audio_layer_projection_event;
+    assign audio_projection_bytes = audio_zero_projection_bytes + audio_layer_projection_bytes;
+    assign audio_vector_live_bytes = !rst_n ? 64'd0 : audio_zero_live + audio_layer_live;
+    assign audio_vector_physical_bytes = !rst_n ? 64'd0 : audio_zero_physical + audio_layer_physical;
+    assign audio_nested_controller_bytes = !rst_n ? 64'd0 : audio_zero_nested + audio_layer_nested;
 
     assign task_ready = rst_n && state == IDLE;
     assign work_valid = (input_selected && input_work_valid) ||
         (text_selected && text_work_valid) || (vision_selected && vision_work_valid) ||
-        (audio_selected && audio_work_valid);
+        (audio_active && audio_work_valid);
     assign work_op = domain_hold == 2 ? audio_work_op :
         (domain_hold == 1 ? vision_work_op : (input_worker ? input_work_op : text_work_op));
     assign work_domain = domain_hold == 2 ? audio_work_domain :
@@ -501,7 +612,7 @@ module anvil_en1_replay_execute #(
     assign write_abort = input_selected && input_write_abort;
     assign work_rsp_ready = (input_selected && input_work_rsp_ready) ||
         (text_selected && text_work_rsp_ready) || (vision_selected && vision_work_rsp_ready) ||
-        (audio_selected && audio_work_rsp_ready);
+        (audio_active && audio_work_rsp_ready);
     assign modality_valid = (input_selected && input_modality_valid) ||
         (text_selected && text_modality_valid);
     assign modality_model = !rst_n ? 2'd0 :
@@ -515,29 +626,29 @@ module anvil_en1_replay_execute #(
     assign modality_rsp_ready = (input_selected && input_modality_rsp_ready) ||
         (text_selected && text_modality_rsp_ready);
     assign cmd_valid = (input_selected && input_cmd_valid) || (text_selected && text_cmd_valid) ||
-        (vision_selected && vision_cmd_valid) || (audio_selected && audio_cmd_valid);
+        (vision_selected && vision_cmd_valid) || (audio_active && audio_cmd_valid);
     assign cmd_write = 0;
     assign cmd_addr = !rst_n ? 64'd0 : (domain_hold == 2 ? audio_cmd_addr :
         (domain_hold == 1 ? vision_cmd_addr : (input_worker ? input_cmd_addr : text_cmd_addr)));
     assign cmd_wdata = 0;
     assign result_ready = (input_selected && input_result_ready) || (text_selected && text_result_ready) ||
-        (vision_selected && vision_result_ready) || (audio_selected && audio_result_ready);
+        (vision_selected && vision_result_ready) || (audio_active && audio_result_ready);
     assign native_input_read_event = vision_input_event || audio_input_event;
     assign native_input_read_bytes = vision_input_bytes + audio_input_bytes;
     assign native_projection_event = vision_projection_event || audio_projection_event;
     assign native_projection_bytes = vision_projection_bytes + audio_projection_bytes;
-    assign native_intermediate_event = vision_intermediate_event;
-    assign native_intermediate_bytes = vision_intermediate_bytes;
+    assign native_intermediate_event = vision_intermediate_event || audio_layer_intermediate_event;
+    assign native_intermediate_bytes = vision_intermediate_bytes + audio_layer_intermediate_bytes;
     assign owner_reprojection_event = text_owner_event;
     assign owner_reprojection_bytes = text_owner_bytes;
     assign query_projection_event = text_query_event;
     assign query_projection_bytes = text_query_bytes;
-    assign source_read_event = text_source_event || vision_source_event;
-    assign source_read_bytes = text_source_bytes + vision_source_bytes;
+    assign source_read_event = text_source_event || vision_source_event || audio_layer_source_event;
+    assign source_read_bytes = text_source_bytes + vision_source_bytes + audio_layer_source_bytes;
     assign embedding_live_bytes = input_worker ? input_embedding_live : text_embedding_live;
     assign embedding_physical_bytes = rst_n ? input_embedding_physical + text_embedding_physical : 64'd0;
     assign selected_worker_state_bytes = !rst_n ? 64'd0 :
-        (domain_hold == 2 ? audio_input_controller_bytes :
+        (domain_hold == 2 ? (input_worker ? audio_input_controller_bytes : audio_layer_controller_bytes) :
         (domain_hold == 1 ? vision_state_bytes : (input_worker ? input_state_bytes : text_state_bytes)));
     localparam integer DISPATCHER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
@@ -648,7 +759,7 @@ module anvil_en1_replay_execute #(
                         (COMPACT ? 12'd8 : (model_hold == 1 ? 12'd1536 : 12'd2560)))) ||
                         (domain_hold == 1 && (native_patches_hold == 0 ||
                             token_hold >= native_patches_hold)) ||
-                        (domain_hold == 2 && (layer_hold != 0 || native_audio_frames_hold == 0 ||
+                        (domain_hold == 2 && (layer_hold > 12 || native_audio_frames_hold == 0 ||
                             native_audio_frames_hold > 131072 ||
                             token_hold >= ((native_audio_frames_hold + 32'd3) >> 2))) ||
                         (input_worker && mode_hold != 0)) begin
@@ -664,6 +775,14 @@ module anvil_en1_replay_execute #(
                     if (domain_hold == 2 && audio_valid) begin
                         error_hold <= audio_error;
                         done_bank_hold <= audio_bank_result;
+                        if (!input_worker) begin
+                            done_dependency_hold <= audio_layer_yield;
+                            done_continuation_hold <= audio_layer_continuation;
+                            done_domain_hold <= audio_layer_dependency_domain;
+                            done_layer_hold <= audio_layer_dependency_layer;
+                            done_token_hold <= audio_layer_dependency_token;
+                            done_length_hold <= audio_layer_dependency_length;
+                        end
                         state <= PUBLISH;
                     end else if (domain_hold == 1 && vision_valid) begin
                         error_hold <= vision_error;

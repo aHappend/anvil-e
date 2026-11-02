@@ -1,0 +1,472 @@
+module anvil_en1_replay_audio_history #(
+    parameter integer COMPACT = 0
+) (
+    input wire clk, rst_n,
+    input wire start_valid,
+    output wire start_ready,
+    input wire [1:0] model, precision, mode,
+    input wire [31:0] generation, frames, query_token,
+    input wire [7:0] frame_layer,
+    input wire [5:0] frame_slot,
+    input wire [63:0] audio_base, audio_weights_base,
+    input wire [159:0] continuation,
+    input wire dependency_valid,
+    input wire [1:0] dependency_domain,
+    input wire [7:0] dependency_layer,
+    input wire [31:0] dependency_token,
+    input wire [11:0] dependency_length,
+    input wire [5:0] dependency_slot,
+    output wire work_req_valid,
+    input wire work_req_ready,
+    output reg [2:0] work_req_op,
+    output reg [1:0] work_req_domain, work_req_target,
+    output reg [31:0] work_req_token,
+    output reg [7:0] work_req_layer,
+    output reg [11:0] work_req_length, work_req_component,
+    output reg [5:0] work_req_slot,
+    output reg work_req_bank,
+    output reg [7:0] work_req_scalar_index,
+    output reg [31:0] work_req_data,
+    input wire work_rsp_valid,
+    output wire work_rsp_ready,
+    input wire [31:0] work_rsp_data,
+    input wire [3:0] work_rsp_error,
+    output wire cmd_valid,
+    input wire cmd_ready,
+    output wire cmd_write,
+    output wire [63:0] cmd_addr,
+    output wire [31:0] cmd_wdata,
+    input wire result_valid,
+    output wire result_ready,
+    input wire [31:0] result_data,
+    input wire result_error,
+    output wire done_valid,
+    input wire done_ready,
+    output wire [3:0] done_error,
+    output wire done_yield,
+    output wire [2:0] done_history_count,
+    output wire [159:0] done_continuation,
+    output wire [1:0] done_dependency_domain,
+    output wire [7:0] done_dependency_layer,
+    output wire [31:0] done_dependency_token,
+    output wire [11:0] done_dependency_length,
+    output wire input_read_event, projection_event, intermediate_event,
+    output wire source_read_event, weight_read_event, history_replay_event,
+    output wire [31:0] input_read_bytes, projection_bytes, intermediate_bytes,
+    output wire [31:0] source_read_bytes, weight_read_bytes, history_replay_bytes,
+    output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire [63:0] controller_bytes, nested_controller_bytes
+);
+    localparam [3:0] IDLE = 0, VALIDATE = 1, CHILD_START = 2,
+        CHILD_WAIT = 3, CHILD_CHECK = 4, READ_SEND = 5, READ_WAIT = 6,
+        READ_REGISTER = 7, WRITE_SEND = 8, WRITE_WAIT = 9,
+        WRITE_REGISTER = 10, ADVANCE = 11, PUBLISH = 12, RESPONSE = 13;
+    localparam [31:0] HISTORY_MAGIC = 32'h454e314c;
+    localparam [31:0] INPUT_MAGIC = 32'h454e3148;
+    localparam [31:0] HEAD_MAGIC = 32'h454e3141;
+    reg [3:0] state;
+    reg [1:0] model_hold, precision_hold, mode_hold, child_mode;
+    reg [1:0] dependency_domain_hold, yielded_domain;
+    reg [31:0] generation_hold, frames_hold, query_hold, dependency_token_hold;
+    reg [31:0] yielded_token, pair_hold;
+    reg [7:0] layer_hold, dependency_layer_hold, yielded_layer;
+    reg [5:0] slot_hold, dependency_slot_hold;
+    reg [11:0] dependency_length_hold, yielded_length, component_hold;
+    reg [2:0] distance_hold;
+    reg [63:0] audio_hold, weights_hold;
+    reg [159:0] continuation_hold, child_continuation, yielded_continuation;
+    reg dependency_valid_hold, child_yield_hold, child_bank_hold, yield_hold;
+    reg [3:0] error_hold, child_error_hold, work_error_hold;
+
+    initial begin
+        if (COMPACT != 0 && COMPACT != 1)
+            $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+    end
+
+    wire [7:0] logical_layer = layer_hold - 1'b1;
+    wire [31:0] tokens_hold = (frames_hold + 32'd3) >> 2;
+    wire [2:0] last_distance = query_hold < 4 ? query_hold[2:0] : 3'd4;
+    wire [31:0] historical_token = query_hold - {29'd0, distance_hold};
+    wire common_continuation_tag = continuation_hold[127:96] == generation_hold &&
+        continuation_hold[63:56] == layer_hold &&
+        continuation_hold[55:50] == slot_hold &&
+        continuation_hold[49:48] == model_hold &&
+        continuation_hold[47:46] == precision_hold &&
+        continuation_hold[45:38] == logical_layer &&
+        continuation_hold[34:0] == 0;
+    wire input_continuation_tag = common_continuation_tag &&
+        continuation_hold[159:128] == HISTORY_MAGIC &&
+        continuation_hold[95:64] == query_hold &&
+        continuation_hold[37:35] <= last_distance;
+    wire head_continuation_tag = common_continuation_tag &&
+        continuation_hold[159:128] == HEAD_MAGIC &&
+        continuation_hold[95:64] <= query_hold &&
+        query_hold - continuation_hold[95:64] <= {29'd0, last_distance};
+    wire [31:0] resumed_distance = query_hold - continuation_hold[95:64];
+    wire [159:0] input_yield_descriptor = {HISTORY_MAGIC, generation_hold,
+        query_hold, layer_hold, slot_hold, model_hold, precision_hold,
+        logical_layer, distance_hold, 35'd0};
+    wire child_selected = rst_n && (state == CHILD_START || state == CHILD_WAIT);
+    wire child_ready, child_valid, child_yield, child_bank;
+    wire child_work_valid, child_work_rsp_ready, child_cmd_valid, child_result_ready;
+    wire [3:0] child_error;
+    wire [159:0] child_done_continuation;
+    wire [1:0] child_dependency_domain;
+    wire [7:0] child_dependency_layer;
+    wire [31:0] child_dependency_token;
+    wire [11:0] child_dependency_length;
+    wire [2:0] child_op;
+    wire [1:0] child_domain, child_target;
+    wire [31:0] child_token, child_data;
+    wire [7:0] child_layer, child_scalar;
+    wire [11:0] child_length, child_component;
+    wire [5:0] child_slot;
+    wire child_work_bank;
+    wire [63:0] child_addr;
+    wire [63:0] residual_control, heads_control, binding_control, head_control;
+    wire [63:0] heads_nested_control, post_control, post_nested_control;
+    wire child_source_event;
+    wire [31:0] child_source_bytes;
+    anvil_en1_replay_audio_residual #(.COMPACT(COMPACT), .PACKED_FRAME(1)) residual (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(rst_n && state == CHILD_START), .start_ready(child_ready),
+        .model(model_hold), .precision(precision_hold), .mode(child_mode),
+        .generation(generation_hold), .frames(frames_hold), .query_token(historical_token),
+        .frame_layer(layer_hold), .frame_slot(slot_hold),
+        .audio_base(audio_hold), .audio_weights_base(weights_hold),
+        .continuation(child_continuation),
+        .dependency_valid(dependency_valid_hold), .dependency_domain(dependency_domain_hold),
+        .dependency_layer(dependency_layer_hold), .dependency_token(dependency_token_hold),
+        .dependency_length(dependency_length_hold), .dependency_slot(dependency_slot_hold),
+        .work_req_valid(child_work_valid),
+        .work_req_ready(child_selected && work_req_ready),
+        .work_req_op(child_op), .work_req_domain(child_domain),
+        .work_req_target(child_target), .work_req_token(child_token),
+        .work_req_layer(child_layer), .work_req_length(child_length),
+        .work_req_component(child_component), .work_req_slot(child_slot),
+        .work_req_bank(child_work_bank), .work_req_scalar_index(child_scalar),
+        .work_req_data(child_data),
+        .work_rsp_valid(child_selected && work_rsp_valid),
+        .work_rsp_ready(child_work_rsp_ready), .work_rsp_data(work_rsp_data),
+        .work_rsp_error(work_rsp_error),
+        .cmd_valid(child_cmd_valid), .cmd_ready(child_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(child_addr), .cmd_wdata(),
+        .result_valid(child_selected && result_valid), .result_ready(child_result_ready),
+        .result_data(result_data), .result_error(result_error),
+        .done_valid(child_valid), .done_ready(rst_n && state == CHILD_WAIT),
+        .done_error(child_error), .done_yield(child_yield), .done_bank(child_bank),
+        .done_continuation(child_done_continuation),
+        .done_dependency_domain(child_dependency_domain),
+        .done_dependency_layer(child_dependency_layer),
+        .done_dependency_token(child_dependency_token),
+        .done_dependency_length(child_dependency_length),
+        .input_read_event(input_read_event), .input_read_bytes(input_read_bytes),
+        .projection_event(projection_event), .projection_bytes(projection_bytes),
+        .intermediate_event(intermediate_event), .intermediate_bytes(intermediate_bytes),
+        .source_read_event(child_source_event), .source_read_bytes(child_source_bytes),
+        .weight_read_event(weight_read_event), .weight_read_bytes(weight_read_bytes),
+        .vector_live_bytes(vector_live_bytes), .vector_physical_bytes(vector_physical_bytes),
+        .controller_bytes(residual_control), .heads_controller_bytes(heads_control),
+        .binding_controller_bytes(binding_control), .head_controller_bytes(head_control),
+        .heads_nested_controller_bytes(heads_nested_control),
+        .post_controller_bytes(post_control), .post_nested_controller_bytes(post_nested_control)
+    );
+
+    wire frame_operation = (child_op == 4 && child_target == 0) ||
+        ((child_op == 6 || child_op == 7) && child_target == 0) ||
+        (child_op == 6 && child_target >= 2) ||
+        (child_op == 3 && (child_target == 0 || child_target == 3));
+    assign work_req_valid = (child_selected && child_work_valid) ||
+        (rst_n && (state == READ_SEND || state == WRITE_SEND));
+    assign work_rsp_ready = (child_selected && child_work_rsp_ready) ||
+        (rst_n && (state == READ_WAIT || state == WRITE_WAIT));
+    always @* begin
+        work_req_op = 0;
+        work_req_domain = 0;
+        work_req_target = 0;
+        work_req_token = 0;
+        work_req_layer = 0;
+        work_req_length = 0;
+        work_req_component = 0;
+        work_req_slot = 0;
+        work_req_bank = 0;
+        work_req_scalar_index = 0;
+        work_req_data = 0;
+        if (rst_n) begin
+            if (child_selected) begin
+                work_req_op = child_op;
+                work_req_domain = child_domain;
+                work_req_target = child_target;
+                work_req_token = frame_operation ? query_hold : child_token;
+                work_req_layer = child_layer;
+                work_req_length = child_length;
+                work_req_component = child_component;
+                work_req_slot = child_slot;
+                work_req_bank = child_work_bank;
+                work_req_scalar_index = child_scalar;
+                work_req_data = child_data;
+            end else begin
+                work_req_domain = 2;
+                work_req_token = query_hold;
+                work_req_layer = layer_hold;
+                work_req_length = 1024;
+                work_req_component = component_hold;
+                work_req_slot = slot_hold;
+                if (state == READ_SEND || state == READ_WAIT || state == READ_REGISTER)
+                    work_req_op = 4;
+                else if (state == WRITE_SEND || state == WRITE_WAIT ||
+                    state == WRITE_REGISTER) begin
+                    work_req_op = 6;
+                    work_req_target = 2;
+                    work_req_bank = distance_hold != 0;
+                    work_req_scalar_index = distance_hold == 0 ? 8'd2 :
+                        {5'd0, distance_hold} - 8'd1;
+                    work_req_data = pair_hold;
+                end
+            end
+        end
+    end
+    assign cmd_valid = child_selected && child_cmd_valid;
+    assign cmd_write = 0;
+    assign cmd_addr = child_selected ? child_addr : 64'd0;
+    assign cmd_wdata = 0;
+    assign result_ready = child_selected && child_result_ready;
+    assign start_ready = rst_n && state == IDLE;
+    assign done_valid = rst_n && state == RESPONSE;
+    assign done_error = rst_n ? error_hold : 4'd0;
+    assign done_yield = done_valid && yield_hold && error_hold == 0;
+    assign done_history_count = done_valid && !done_yield && error_hold == 0 ?
+        last_distance + 3'd1 : 3'd0;
+    assign done_continuation = done_yield ? yielded_continuation : 160'd0;
+    assign done_dependency_domain = done_yield ? yielded_domain : 2'd0;
+    assign done_dependency_layer = done_yield ? yielded_layer : 8'd0;
+    assign done_dependency_token = done_yield ? yielded_token : 32'd0;
+    assign done_dependency_length = done_yield ? yielded_length : 12'd0;
+    wire copy_read_event = rst_n && state == READ_SEND && work_req_ready;
+    assign source_read_event = child_source_event || copy_read_event;
+    assign source_read_bytes = child_source_bytes + (copy_read_event ? 32'd4 : 32'd0);
+    assign history_replay_event = rst_n && state == CHILD_START && child_ready &&
+        child_mode != 1 && distance_hold != 0;
+    assign history_replay_bytes = history_replay_event ? 32'd2048 : 32'd0;
+    assign nested_controller_bytes = !rst_n ? 64'd0 :
+        residual_control + heads_control + binding_control + head_control +
+        heads_nested_control + post_control + post_nested_control;
+    localparam integer CONTROLLER_BITS =
+        $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) +
+        $bits(child_mode) + $bits(dependency_domain_hold) + $bits(yielded_domain) +
+        $bits(generation_hold) + $bits(frames_hold) + $bits(query_hold) +
+        $bits(dependency_token_hold) + $bits(yielded_token) + $bits(pair_hold) +
+        $bits(layer_hold) + $bits(dependency_layer_hold) + $bits(yielded_layer) +
+        $bits(slot_hold) + $bits(dependency_slot_hold) + $bits(dependency_length_hold) +
+        $bits(yielded_length) + $bits(component_hold) + $bits(distance_hold) +
+        $bits(audio_hold) + $bits(weights_hold) + $bits(continuation_hold) +
+        $bits(child_continuation) + $bits(yielded_continuation) +
+        $bits(dependency_valid_hold) + $bits(child_yield_hold) + $bits(child_bank_hold) +
+        $bits(yield_hold) + $bits(error_hold) + $bits(child_error_hold) + $bits(work_error_hold);
+    assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            model_hold <= 0;
+            precision_hold <= 0;
+            mode_hold <= 0;
+            child_mode <= 0;
+            dependency_domain_hold <= 0;
+            yielded_domain <= 0;
+            generation_hold <= 0;
+            frames_hold <= 0;
+            query_hold <= 0;
+            dependency_token_hold <= 0;
+            yielded_token <= 0;
+            pair_hold <= 0;
+            layer_hold <= 0;
+            dependency_layer_hold <= 0;
+            yielded_layer <= 0;
+            slot_hold <= 0;
+            dependency_slot_hold <= 0;
+            dependency_length_hold <= 0;
+            yielded_length <= 0;
+            component_hold <= 0;
+            distance_hold <= 0;
+            audio_hold <= 0;
+            weights_hold <= 0;
+            continuation_hold <= 0;
+            child_continuation <= 0;
+            yielded_continuation <= 0;
+            dependency_valid_hold <= 0;
+            child_yield_hold <= 0;
+            child_bank_hold <= 0;
+            yield_hold <= 0;
+            error_hold <= 0;
+            child_error_hold <= 0;
+            work_error_hold <= 0;
+        end else begin
+            case (state)
+                IDLE: if (start_valid && start_ready) begin
+                    model_hold <= model;
+                    precision_hold <= precision;
+                    mode_hold <= mode;
+                    child_mode <= mode;
+                    generation_hold <= generation;
+                    frames_hold <= frames;
+                    query_hold <= query_token;
+                    layer_hold <= frame_layer;
+                    slot_hold <= frame_slot;
+                    audio_hold <= audio_base;
+                    weights_hold <= audio_weights_base;
+                    continuation_hold <= continuation;
+                    child_continuation <= 0;
+                    dependency_valid_hold <= dependency_valid;
+                    dependency_domain_hold <= dependency_domain;
+                    dependency_layer_hold <= dependency_layer;
+                    dependency_token_hold <= dependency_token;
+                    dependency_length_hold <= dependency_length;
+                    dependency_slot_hold <= dependency_slot;
+                    distance_hold <= 0;
+                    component_hold <= 0;
+                    pair_hold <= 0;
+                    error_hold <= 0;
+                    child_error_hold <= 0;
+                    work_error_hold <= 0;
+                    child_yield_hold <= 0;
+                    child_bank_hold <= 0;
+                    yield_hold <= 0;
+                    yielded_domain <= 0;
+                    yielded_layer <= 0;
+                    yielded_token <= 0;
+                    yielded_length <= 0;
+                    yielded_continuation <= 0;
+                    state <= VALIDATE;
+                end
+                VALIDATE: begin
+                    if ((model_hold != 1 && model_hold != 2) || precision_hold > 1) begin
+                        error_hold <= 6;
+                        state <= PUBLISH;
+                    end else if (generation_hold == 0 || frames_hold == 0 ||
+                        frames_hold > 131072 || query_hold >= tokens_hold ||
+                        layer_hold == 0 || layer_hold > 12 ||
+                        audio_hold[1:0] != 0 || weights_hold[1:0] != 0) begin
+                        error_hold <= 5;
+                        state <= PUBLISH;
+                    end else if (mode_hold > 2 ||
+                        (mode_hold != 1 && continuation_hold != 0) ||
+                        (mode_hold == 1 && !input_continuation_tag && !head_continuation_tag)) begin
+                        error_hold <= 7;
+                        state <= PUBLISH;
+                    end else begin
+                        if (mode_hold == 1) begin
+                            if (input_continuation_tag) begin
+                                distance_hold <= continuation_hold[37:35];
+                                child_continuation <= {INPUT_MAGIC, 128'd0};
+                            end else begin
+                                distance_hold <= resumed_distance[2:0];
+                                child_continuation <= continuation_hold;
+                            end
+                        end
+                        state <= CHILD_START;
+                    end
+                end
+                CHILD_START: if (child_ready)
+                    state <= CHILD_WAIT;
+                CHILD_WAIT: if (child_valid) begin
+                    child_error_hold <= child_error;
+                    child_yield_hold <= child_yield;
+                    child_bank_hold <= child_bank;
+                    yielded_domain <= child_dependency_domain;
+                    yielded_layer <= child_dependency_layer;
+                    yielded_token <= child_dependency_token;
+                    yielded_length <= child_dependency_length;
+                    yielded_continuation <= child_done_continuation;
+                    state <= CHILD_CHECK;
+                end
+                CHILD_CHECK: begin
+                    if (child_error_hold != 0) begin
+                        error_hold <= child_error_hold;
+                        state <= PUBLISH;
+                    end else if (child_yield_hold) begin
+                        if (yielded_domain != 2 || yielded_layer != logical_layer ||
+                            yielded_token >= tokens_hold || yielded_length != 1024)
+                            error_hold <= 7;
+                        else if (yielded_continuation == {INPUT_MAGIC, 128'd0}) begin
+                            if (yielded_token != historical_token)
+                                error_hold <= 7;
+                            else begin
+                                yielded_continuation <= input_yield_descriptor;
+                                yield_hold <= 1;
+                            end
+                        end else if (yielded_continuation[159:128] != HEAD_MAGIC ||
+                            yielded_continuation[127:96] != generation_hold ||
+                            yielded_continuation[95:64] != historical_token ||
+                            yielded_continuation[63:56] != layer_hold ||
+                            yielded_continuation[55:50] != slot_hold ||
+                            yielded_continuation[49:48] != model_hold ||
+                            yielded_continuation[47:46] != precision_hold ||
+                            yielded_continuation[45:38] != logical_layer ||
+                            yielded_continuation[34:0] != 0)
+                            error_hold <= 7;
+                        else
+                            yield_hold <= 1;
+                        state <= PUBLISH;
+                    end else if (child_bank_hold) begin
+                        error_hold <= 7;
+                        state <= PUBLISH;
+                    end else if (distance_hold == last_distance)
+                        state <= PUBLISH;
+                    else begin
+                        component_hold <= 0;
+                        state <= READ_SEND;
+                    end
+                end
+                READ_SEND: if (work_req_ready)
+                    state <= READ_WAIT;
+                READ_WAIT: if (work_rsp_valid) begin
+                    pair_hold <= work_rsp_data;
+                    work_error_hold <= work_rsp_error;
+                    state <= READ_REGISTER;
+                end
+                READ_REGISTER: begin
+                    if (work_error_hold != 0) begin
+                        error_hold <= work_error_hold;
+                        state <= PUBLISH;
+                    end else
+                        state <= WRITE_SEND;
+                end
+                WRITE_SEND: if (work_req_ready)
+                    state <= WRITE_WAIT;
+                WRITE_WAIT: if (work_rsp_valid) begin
+                    work_error_hold <= work_rsp_error;
+                    state <= WRITE_REGISTER;
+                end
+                WRITE_REGISTER: begin
+                    if (work_error_hold != 0) begin
+                        error_hold <= work_error_hold;
+                        state <= PUBLISH;
+                    end else if (component_hold == 1022)
+                        state <= ADVANCE;
+                    else begin
+                        component_hold <= component_hold + 12'd2;
+                        state <= READ_SEND;
+                    end
+                end
+                ADVANCE: begin
+                    distance_hold <= distance_hold + 3'd1;
+                    child_mode <= 0;
+                    child_continuation <= 0;
+                    dependency_valid_hold <= 0;
+                    component_hold <= 0;
+                    pair_hold <= 0;
+                    state <= CHILD_START;
+                end
+                PUBLISH: state <= RESPONSE;
+                RESPONSE: if (done_ready)
+                    state <= IDLE;
+                default: begin
+                    error_hold <= 7;
+                    yield_hold <= 0;
+                    state <= PUBLISH;
+                end
+            endcase
+        end
+    end
+endmodule

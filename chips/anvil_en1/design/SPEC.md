@@ -5,6 +5,89 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Durable causal-convolution history layout
+
+The next enclosing audio replay stage materializes the query attention
+residual and at most four causal predecessors before starting lightconv.
+Each is produced by the same numerical `replay_audio_residual` worker,
+not a same-rank Eval push. Its genuine entering-vector dependencies still
+decrease encoder layer. This bounded materialization preserves all previous
+completed histories while that worker yields for a missing lower-layer input.
+
+An audio frame uses six 1024-component BF16 subvectors, exactly 12288
+bytes, within the admitted 12 KiB vector-frame ceiling. Its two banks each
+have three slices. Scratch entering/residual is bank 0/slice 0; scratch
+heads is bank 0/slice 1. Completed residuals at distances 0,1,2,3 are
+copied respectively to bank 0/slice 2 and bank 1/slices 0,1,2.
+The oldest required residual remains in scratch bank 0/slice 0.
+For query positions less than four, only the legal causal predecessors
+are reconstructed; the last reconstructed residual likewise stays in
+scratch. No seventh vector or hidden-state archive is allocated.
+
+Workspace vector operations select slice using req_scalar_index[1:0],
+with all upper bits zero. Slice 0 retains existing behavior. Nonzero
+slices are legal only for domain 2, frame vector reads (op 4/target 0)
+and ordered frame pair writes (op 6/target 2); memo/scalar/copy ABI is
+unchanged. Each slice has independent visibility and ordered pair progress.
+Audio frame reservation in compact geometry is also 12 KiB: native
+encoder widths are not compacted. The compact backing bank stride is
+widened to the production 1536-word stride, and its physical reservation
+is disclosed separately from live domain-specific frame allocation.
+The production shadow frame charge remains 12 KiB plus 1 KiB scalar.
+
+`replay_audio_residual` adds the default-preserving PACKED_FRAME=1 option
+for this enclosing stage: only head frame-vector traffic is redirected
+from bank 1/slice 0 to bank 0/slice 1. Memo reads, scalar checkpoints and
+predecessor copies retain their semantics. The enclosing history worker
+retags frame/scalar operations with the enclosing query frame descriptor,
+while preserving actual historical tokens in memo descriptors and child
+numerical descriptors. Completed vectors are not memoized as encoder Eval.
+
+| Durable history boundary | Registered behavior |
+| --- | --- |
+| Start | Capture full session/frame/continuation/dependency descriptor; validate before child dispatch |
+| Child completion | Retire actual residual done, check error/yield/bank, then copy or finish |
+| Copy | Read one aligned scratch pair, register response, write its actual data to the selected history slice, acknowledge before advancing |
+| Yield | Forward the child's saved head continuation; predecessor-only yields carry an enclosing tagged history-offset continuation |
+| Resume | Derive and validate distance 0..min(query,4); restore the real child continuation; never restart completed histories |
+| Final history | Leave the final successful residual in scratch; finish only after all earlier copies and real child completion |
+| Reset/error | Reset cancels validity; first child/read/write failure ends the stage, never publishes completed history |
+
+The history worker is an intermediate stage, not a complete conformer or
+Eval result. Its enclosing `replay_audio_layer` connects the existing real
+lightconv, FF2, final clamp and norm_out. Lightconv receives only acknowledged
+reads of these computed causal vectors. Its immutable-weight commands cannot
+overlap a live history reconstruction: all histories finish first. No
+additional historical Eval or lightconv checkpoint is needed after that
+phase, because every lightconv historical callback is bounded by distance 4.
+
+Lightconv first copies its query residual and computes every depthwise row
+before it emits outputs. Those outputs replace scratch bank 0/slice 0 only
+after historical reads finish. FF2 reads that convolution vector, executes
+its genuine pinned 0.5 residual boundary, and emits actual values through the
+fixed clamp to bank 1/slice 0. Norm_out kind 0x2115 reads this distinct
+complete clamped source and writes bank 0/slice 0. Only norm_out completion,
+all 1024 ordered outputs and the final acknowledged pair allow bank 0 to
+be returned as an encoder Eval result.
+
+| Enclosing layer boundary | Registered behavior |
+| --- | --- |
+| History yield | Forward the real history continuation/dependency after child done retires; other engines stay idle |
+| History finish | Check complete causal count before starting lightconv; only then expose history callbacks |
+| Source callback | Capture tag/token/index, validate causal distance and slice, read aligned workspace pair, register and hold actual BF16 lane |
+| Lightconv output | Capture ordered BF16 pairs; acknowledge scratch replacement before accepting another output |
+| FF2 output | Hold FF2 after each accepted value, execute the clamp, then pair and acknowledge its actual result |
+| Norm_out | Read bank 1/slice 0 without overwriting it; pair/acknowledge bank 0/slice 0 outputs |
+| Phase completion | Retire real child done; require exact stream count/last/no unpaired lane/no failed source or pair before next engine |
+| Failure | Drain source/active child and accepted workspace responses; stop pair writes after first failure; return error instead of Eval |
+
+Each literal worker's vector and controller reports remain additive; the six
+durable vectors are already charged by the workspace frame reservation.
+No extra private durable banks or claimed physical overlays are introduced.
+Higher-layer dispatch and whole-system scratch overlays remain necessary
+before a ready handoff. No numerical, functional, synthesis or timing result
+is implied by this layout.
+
 ## Durable audio attention-residual/frame binding
 
 `anvil_en1_replay_audio_residual` connects the saved genuine eight-head
@@ -1008,13 +1091,13 @@ require complete connected allocation accounting and independent evidence.
 Compact text replay no longer substitutes H=8 for native vector frames.
 `anvil_en1_eval_schedule` and `anvil_en1_replay_workspace` select 8 for domain
 0 only, 768 for vision and 1024 for audio. Compact physical frame strides
-are 1024 words, with two 512-word banks; memo strides are 512 words; scalar
+are 3072 words, with two 1536-word banks; memo strides are 512 words; scalar
 strides remain 32 words. Frame/memo regions are disjoint for mixed-domain
 stacks, including the upper native component and the next frame/memo slot.
 The existing generation/rank/tag/committed-vector guards remain in force.
 
 Compact live reservations count both complete vector prefixes for every
-pending/live frame: 32 text, 3072 vision or 4096 audio bytes, plus 128 scalar
+pending/live frame: 32 text, 3072 vision or 12288 audio bytes, plus 128 scalar
 bytes per frame. Memo reservations count 16/1536/2048 bytes by domain,
 including pending writes/copies. Eviction first releases the old reservation,
 then charges the new one; its domain is retained as metadata. Push/pop/reset
@@ -1023,8 +1106,8 @@ are unused physical capacity, not occupied tensors or claimed memory savings.
 The additional domain map and two allocation totals are 96 metadata bits.
 Production-width shadow accounting and the production layout stay unchanged.
 
-The compact backing now reserves 75776 words / 303104 bytes inside the
-frontier's one 131072-word / 524288-byte physical payload RAM. Its ordinary
+The compact backing now reserves 206848 words / 827392 bytes inside the
+frontier's one 206848-word / 827392-byte physical payload RAM. Its ordinary
 frontier cap stays 8192 bytes / 512 text tokens. Mode transition must still
 release the ordinary frontier before binding this backing; no simultaneous
 old/new representation or additional payload array is introduced.

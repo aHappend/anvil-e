@@ -1,5 +1,6 @@
 module anvil_en1_replay_audio_residual #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer PACKED_FRAME = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -87,6 +88,8 @@ module anvil_en1_replay_audio_residual #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (PACKED_FRAME != 0 && PACKED_FRAME != 1)
+            $fatal(1, "PARAMETER ERROR: PACKED_FRAME must be 0 or 1");
     end
     wire [7:0] logical_layer = layer_hold - 1'b1;
     wire heads_selected = rst_n && (state == HEADS_START || state == HEADS_WAIT);
@@ -240,6 +243,12 @@ module anvil_en1_replay_audio_residual #(
                 work_req_bank = heads_work_bank;
                 work_req_scalar_index = heads_scalar;
                 work_req_data = heads_data;
+                if (PACKED_FRAME && heads_work_bank &&
+                    ((heads_op == 4 && heads_target == 0) ||
+                     (heads_op == 6 && heads_target == 2))) begin
+                    work_req_bank = 0;
+                    work_req_scalar_index = 1;
+                end
             end else begin
                 work_req_domain = 2;
                 work_req_token = query_hold;
@@ -248,7 +257,8 @@ module anvil_en1_replay_audio_residual #(
                 work_req_slot = slot_hold;
                 if (source_state != S_IDLE && state == POST_WAIT) begin
                     work_req_op = 4;
-                    work_req_bank = source_kind_hold;
+                    work_req_bank = PACKED_FRAME ? 1'b0 : source_kind_hold;
+                    work_req_scalar_index = PACKED_FRAME && source_kind_hold ? 8'd1 : 8'd0;
                     work_req_component = source_index_hold[11:0] & 12'hffe;
                 end else if (state == PAIR_SEND || state == PAIR_WAIT ||
                     state == PAIR_REGISTER) begin
