@@ -1,4 +1,6 @@
-module anvil_en1_rotary_pair (
+module anvil_en1_rotary_pair #(
+    parameter integer SIGNED_POSITION = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -34,6 +36,14 @@ module anvil_en1_rotary_pair (
     wire trig_ready, trig_valid, fp_ready, fp_valid;
     wire [31:0] frequency_data, position_data, trig_sine, trig_cosine, fp_data;
     wire [3:0] frequency_error, position_error, trig_error, fp_error;
+    wire negative_position = SIGNED_POSITION == 1 && position_hold[31];
+    wire [31:0] position_magnitude = negative_position ?
+        (~position_hold + 32'd1) : position_hold;
+
+    initial begin
+        if (SIGNED_POSITION != 0 && SIGNED_POSITION != 1)
+            $fatal(1, "PARAMETER ERROR: SIGNED_POSITION must be 0 or 1");
+    end
 
     anvil_en1_rope_frequency frequency_unit (
         .clk(clk), .rst_n(rst_n),
@@ -45,7 +55,7 @@ module anvil_en1_rotary_pair (
     anvil_en1_uint_to_fp32 position_converter (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POSITION_START), .start_ready(position_ready),
-        .operand(position_hold),
+        .operand(position_magnitude),
         .done_valid(position_valid), .done_ready(rst_n && state == POSITION_WAIT),
         .done_data(position_data), .done_error(position_error)
     );
@@ -105,7 +115,7 @@ module anvil_en1_rotary_pair (
                     state <= VALIDATE;
                 end
                 VALIDATE: begin
-                    if (position_hold > 131071) begin
+                    if (position_magnitude > 131071) begin
                         error_hold <= 5;
                         state <= PUBLISH;
                     end else
@@ -129,7 +139,8 @@ module anvil_en1_rotary_pair (
                         error_hold <= position_error;
                         state <= PUBLISH;
                     end else begin
-                        position_float <= position_data;
+                        position_float <= negative_position ?
+                            {1'b1, position_data[30:0]} : position_data;
                         state <= ANGLE;
                     end
                 end

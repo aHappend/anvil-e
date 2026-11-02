@@ -5,6 +5,130 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Native clipped-linear and vision-input implementation boundary
+
+The next owned increment implements scalar BF16 clamp, a real directory-driven
+native clipped projection, and the vision Eval(0,patch) input operation. These
+are numerical building blocks, not an authorization to replace either native
+encoder with patch projection or to accept a host-produced feature.
+
+`anvil_en1_bf16_clamp` captures a BF16 value and BF16 min/max. Signed zero
+compares equal irrespective of sign; equal endpoints leave the value unchanged.
+Finite/subnormal values and infinities compare by sign and magnitude. A NaN
+value becomes canonical 0x7fc0. NaN bounds or min>max return descriptor error 5,
+not a silently sorted interval. The comparisons and final selection occupy
+separate registered stages. This helper has no vectors or memory commands.
+
+`anvil_en1_clipped_projection` accepts native model/precision, image_class
+(1 vision / 2 audio), tensor_kind/layer, image_base and row_index. Only actual
+clipped matrix schema members are legal. It validates and reads each scalar
+input_min/input_max/output_min/output_max from the immutable native directory
+using kind+0x4000/5000/6000/7000, then validates the matrix itself. Bounds are
+validated before source reads or numerical matrix execution. One captured
+BF16 source value at a time is clamped with the same scalar helper and supplied
+to the existing projection's ascending-column, separate binary32 multiply/add
+path. The materialized BF16 row is output-clamped before completion. There is
+no retained clipped input vector, altered Q4 order, external activation write,
+or new numerical reduction implementation. Accepted directory/bound/matrix
+transactions, including failed responses and repeated reads, remain weight
+traffic. Future folded GeGLU/conformer controllers must use this path at every
+pinned clipped linear, not just the final projection.
+
+`anvil_en1_vision_patch` accepts model/precision, immutable image_base and
+vision_weights_base, patch_count/rows/columns, and patch_index. Geometry is
+native 768 input/output components even in a compact text build. It checks
+rows*columns exactly equals patch_count, bounds patch_count to 131072 (the
+existing Eval token domain), and requires each axis in 1..10240. The validated
+axes use a registered 16x16 product and a later extent check; no runtime divider or
+unchecked truncated extent is used. It validates input tensors 0x3000/3001
+and weight tensors 0x1000/1001 before reading numerical payload. The selected
+coordinates must be either (-1,-1) padding or nonnegative x<columns,y<rows.
+Patch order is the input directory row order, not an assumed spatial order.
+
+Each projection source request reads the actual BF16 pixel at
+[patch_index,component] from the immutable input payload. Pixel preprocessing
+uses binary32 subtract 0.5 and BF16 materialization, then binary32 multiply
+2 and BF16 materialization before the dot product. Patch projection narrows once after
+the complete ascending-column reduction. Position x and y entries are BF16:
+their binary32 sum narrows once, then its binary32 sum with the BF16 projected
+row narrows once. Padding suppresses only the position addition here; it does
+not fabricate a zero patch projection. The later pool must suppress padding
+encoder outputs as prescribed by the pinned model. The streamed patch outputs
+are ascending 0..767 and stable under backpressure. Each is genuine computed
+BF16 data; done follows acceptance of component 767. No 768-component
+pixel/output bank or generated modality feature archive is allocated.
+
+| Native leaf boundary | Registered stage and degenerate/error behavior |
+| --- | --- |
+| Clamp A0/A1/A2/A3 | Capture; classify/compare; select/error; publish held result; no same-edge consumption of first valid |
+| Clipped projection P0/P1/P2 | Capture native descriptor; validate schema/row/model/precision; dispatch first directory read |
+| Source request S0/S1/S2 | Capture the requested index; accept/register external on-chip source response; only then start clamp |
+| Source clamp response | Retire the clamp before presenting held BF16 to projection; index remains stable until it is consumed |
+| Bound read M0/M1/M2 | Accept aligned read; capture response on a later edge; use value/error on a subsequent edge |
+| Vision patch V0/V1/V2 | Capture; validate domain; register the 16x16 extent product before later extent validation |
+| Patch/source length one | Each primitive allows a single source; patch geometry itself remains fixed 768, never silently reduced |
+| Padding | (-1,-1) suppresses positions only; mixed negative/nonnegative coordinates reject before pixel/projection access |
+| Final output | Retire final streamed patch component before done; output and done payloads remain held during stalls |
+| Error/reset | Retire each accepted child/source/memory response before failure; stop new work; active reset zeros all public outputs |
+
+All child arithmetic/control and tensor validator registers remain additional
+whole-system allocations. Scalar-only leaves do not prove the native scratch
+bound, physical fit, full fallback ledger or timing. Complete native
+vision/audio layer execution, pooling/projection, session/masks and compatible
+literal top integration remain necessary before the design can be ready.
+
+### Native vision Q/K/V tile
+
+`anvil_en1_vision_qkv_tile` captures native model/precision, vision layer 0..15,
+patch index 0..131071, selector 0 Q / 1 K / 2 V, head 0..11, even aligned
+component 0..62, immutable vision_weights_base and signed x/y coordinates.
+Coordinates must be (-1,-1) padding or nonnegative values below 10240.
+Its H source request/response is an immutable on-chip Eval/frame vector, not
+an external generated-feature tensor. It executes learned 768-dimensional
+input RMSNorm, 64 actual clipped projection rows for the selected head,
+then learned 64-dimensional Q/K RMSNorm or unscaled V RMSNorm. Q/K rotate
+separate 32-dimensional x/y partitions at theta 100; V never rotates.
+Projection input rows are read in ascending-column order by the existing
+clipped projection. This tile has no text owner alias or shared K/V weights.
+
+The tile reserves one 1536-byte normalized-input bank and one 128-byte head
+bank, both synchronous M20K-candidate arrays with no asynchronous payload
+reset. Full banks become live before any partial write and remain charged
+through final result acceptance; partially initialized data is never readable.
+Projection cannot read the normalized input until its checked full stream
+and norm completion. Head norm follows all 64 projected rows. Its output pass
+may overwrite the just-read component because no later norm operation reads
+that component again. Pair reads follow the complete checked head-norm stream.
+The RAM read and capture stages are separate and serialized with source reads.
+Declared vector_live_bytes and vector_physical_bytes cover these two banks;
+all tile, directory, clipped-source, norm, scale-reader, rotary and scalar
+arithmetic registers remain additional whole-system arithmetic/control state.
+
+The existing rotary-pair leaf gains default-off `SIGNED_POSITION=0/1`.
+Default 0 preserves the unsigned text range 0..131071. Mode 1 converts the
+two's-complement position's magnitude through the existing real unsigned
+converter, restores its binary32 sign before angle multiplication, and permits
+magnitudes through 131071. No negative position is treated as zero. Vision
+enables this mode so padding coordinates -1 obey the pinned axial arithmetic;
+their attention/pooling mask remains the enclosing encoder's responsibility.
+This parameter adds no alternative trigonometric approximation or tensor
+answer. Illegal parameter values explicitly diagnose.
+
+| Vision tile boundary | Registered behavior |
+| --- | --- |
+| T0/T1/T2 | Capture full descriptor; validate all native ranges; start input-scale directory lookup |
+| Input/head visibility | Exact ascending index and last checks plus successful norm done precede use |
+| Clipped row result | Retire real projection response, write one raw head component, then advance row |
+| Scale failure | Drain the accepted weight response and norm error before tile completion; preserve external error 2 |
+| Internal source | Capture index; validate committed bank; synchronous RAM read; capture; held response |
+| Axial pair | Read i and i+16 within the selected 32-component partition; execute mode-2 rotary; select the requested lane |
+| Pair completion | Preserve first adjacent component while computing second; publish aligned 32-bit BF16 pair only after both |
+| Reset/stall/error | Zero public outputs in reset; hold request/result descriptors while stalled; no partial bank, fixed-latency success or external KV write |
+
+These native tiles still require bidirectional vision Eval/layer dispatch,
+native audio execution and complete top integration. They do not establish
+whole-model behavior, resource fit or independently observed acceptance.
+
 ## Frame-pair assembly and streamed attention output projection
 
 Operation 6 retains scalar-write target 0. Its new target 2 assembles a current
