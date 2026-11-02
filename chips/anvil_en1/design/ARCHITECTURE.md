@@ -93,10 +93,10 @@ mutation, benchmark, or engineering-acceptance result is presently claimed.
 ## Current source increment
 
 Implemented design-owned sources in this increment are the canonical geometry
-helpers, resident/metadata cache, and binary32 add/multiply/format primitive.
+helpers, resident/metadata cache, binary32 add/multiply/format primitive, and CSR.
 They do not constitute a complete product.
 The remaining arithmetic engine, tensor-image reader, owner replay/frontier/ring/
-memo allocator, native vision/audio, attention/PLE, CSR, and compatible top
+memo allocator, native vision/audio, attention/PLE, and compatible top
 remain to be implemented and connected. The pinned global proportional and
 vision multidimensional RoPE formulas are transcribed in SPEC before rotary
 arithmetic implementation.

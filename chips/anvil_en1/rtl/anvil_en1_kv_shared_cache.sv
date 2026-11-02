@@ -45,7 +45,6 @@ module anvil_en1_kv_shared_cache #(
     input wire [31:0] regen_rsp_data,
     input wire [3:0] regen_rsp_error
 );
-    import anvil_en1_geometry::*;
     localparam integer LEGAL = RESIDENT_ENTRIES >= 1 &&
         RESIDENT_ENTRIES <= 64 && (COMPACT == 0 || COMPACT == 1);
 
@@ -117,8 +116,13 @@ module anvil_en1_kv_shared_cache #(
         wire invalidating = invalidate_accept || meta_state == META_DRAIN ||
             (meta_state == META_MAP && op_hold == 2 && model_hold != 3) ||
             (meta_state == META_PUBLISH && op_hold == 2 && model_hold != 3);
-        wire [7:0] mapped_owner = logical_owner(model_hold, layer_hold);
-        wire mapped_global = global_layer(model_hold, layer_hold);
+        wire [7:0] mapped_owner, mapped_layers, mapped_owners;
+        wire mapped_global;
+        anvil_en1_geometry metadata_geometry (
+            .rst_n(rst_n), .model(model_hold), .layer(layer_hold),
+            .is_native(), .layers(mapped_layers), .owners(mapped_owners),
+            .owner(mapped_owner), .is_global(mapped_global), .hidden(), .intermediate()
+        );
         wire [9:0] mapped_dimension = COMPACT ?
             (mapped_global ? 10'd8 : 10'd4) :
             (mapped_global ? 10'd512 : 10'd256);
@@ -130,7 +134,13 @@ module anvil_en1_kv_shared_cache #(
             ({63'd0, selector_hold} << 18) |
             ({62'd0, head_hold} << 16) |
             ({55'd0, component_hold[9:1]} << 2);
-        wire data_global = global_layer(data_model, data_owner);
+        wire data_global, data_native;
+        wire [7:0] data_owners;
+        anvil_en1_geometry fetch_geometry (
+            .rst_n(rst_n), .model(data_model), .layer(data_owner),
+            .is_native(data_native), .layers(), .owners(data_owners),
+            .owner(), .is_global(data_global), .hidden(), .intermediate()
+        );
         wire [9:0] data_dimension = COMPACT ?
             (data_global ? 10'd8 : 10'd4) :
             (data_global ? 10'd512 : 10'd256);
@@ -230,11 +240,11 @@ module anvil_en1_kv_shared_cache #(
                                 owner_hold <= layer_hold;
                                 space_hold <= 0;
                             end
-                        end else if (layer_hold >= layer_count(model_hold) ||
+                        end else if (layer_hold >= mapped_layers ||
                             token_hold > 131071 || head_hold >= mapped_heads ||
                             component_hold >= mapped_dimension)
                             meta_error <= 2;
-                        else if (op_hold == 1 && layer_hold >= owner_count(model_hold))
+                        else if (op_hold == 1 && layer_hold >= mapped_owners)
                             meta_error <= 7;
                         else begin
                             addr_hold <= virtual_address;
@@ -321,10 +331,10 @@ module anvil_en1_kv_shared_cache #(
                     end
                     FETCH_READ: begin
                         hit_hold <= tree_hit[1];
-                        if (!native_model(data_model)) begin
+                        if (!data_native) begin
                             data_error <= 6;
                             hit_hold <= 0;
-                        end else if (data_owner >= owner_count(data_model)) begin
+                        end else if (data_owner >= data_owners) begin
                             data_error <= 7;
                             hit_hold <= 0;
                         end else if (data_token > 131071 ||

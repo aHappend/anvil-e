@@ -1,6 +1,13 @@
-`ifndef ANVIL_EN1_GEOMETRY_SV
-`define ANVIL_EN1_GEOMETRY_SV
-package anvil_en1_geometry;
+module anvil_en1_geometry (
+    input wire rst_n,
+    input wire [1:0] model,
+    input wire [7:0] layer,
+    output wire is_native,
+    output wire [7:0] layers, owners, owner,
+    output wire is_global,
+    output wire [11:0] hidden,
+    output wire [13:0] intermediate
+);
     function automatic native_model(input [1:0] model);
         native_model = model == 1 || model == 2;
     endfunction
@@ -78,5 +85,11 @@ package anvil_en1_geometry;
             default: intermediate_size = 0;
         endcase
     endfunction
-endpackage
-`endif
+    assign is_native = rst_n && native_model(model);
+    assign layers = rst_n ? layer_count(model) : 8'd0;
+    assign owners = rst_n ? owner_count(model) : 8'd0;
+    assign owner = rst_n ? logical_owner(model, layer) : 8'd0;
+    assign is_global = rst_n && global_layer(model, layer);
+    assign hidden = rst_n ? hidden_size(model) : 12'd0;
+    assign intermediate = rst_n ? intermediate_size(model, layer) : 14'd0;
+endmodule

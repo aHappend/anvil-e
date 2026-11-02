@@ -373,7 +373,8 @@ Arithmetic result valid is held until acceptance, not pulsed or combinational.
 
 | Primitive | Registered stages after A0 | Result |
 | --- | --- | --- |
-| FP classify/convert | A1 classify/unpack; A2 shift/guard; A3 RNE/pack | after A3 |
+| BF16 widen/narrow | A1 classify and exact widen or RNE narrow; A2 publish | after A2 |
+| FP16 widen | A1 classify; normalize subnormal one bit/cycle; exact pack; publish | completion-valid after normalization/pack |
 | FP add | A1 classify/unpack; A2 align with sticky; A3 signed sum; bounded iterative normalization; registered RNE/pack | completion-valid after normalization/pack |
 | FP multiply | A1 classify/unpack; normalize subnormal operands one bit/cycle; four registered 12x12 products; two registered reduction stages; exponent alignment; registered RNE/pack | completion-valid after normalization/pack |
 | Unsigned divide | D1 register operands; D2..D33 one restoring quotient bit per cycle; D34 RNE/pack | after D34 |
@@ -575,6 +576,38 @@ replay_activation_peak_bytes, memo_hits, memo_evictions, fallback_jobs,
 peak_live_kv_equivalent_bytes. Counters saturate 64 bits; clear wins; unknown or
 misaligned accesses error. Parent/native metrics stay separate. Actual owner
 reprojection must not be counted as avoided projection.
+
+The CSR event interface is event_valid, event_model[1:0], event_mask[24:0],
+and event_values[1599:0], with metric i in bits [64*i+:64]. One accepted
+event bundle updates parent bank 0 for model 0 or native bank 1 for models 1/2.
+The connected top guarantees legal event_model values; model 3 has no bank.
+Metric indices 15/16 are absolute live-payload gauges, 20/24 are peaks, and
+other metrics add unsigned deltas with saturation. Allocation gauges are not
+advertised as cumulative allocated traffic. Weight/input byte events include
+replay and failed accepted transactions in the appropriate class.
+
+CSR capabilities is 0x000000ff: BF16, Q4_0, owner aliases, owner replay,
+local/global attention, PLE, native vision, and native audio are bits 0..7.
+This is the target product capability word, not an assertion that disconnected
+partial sources deliver those engines. Status bits are busy[0], model[9:8],
+error[15:12], and selected metric bank[16]. Write 0x00c with only bit 16 set
+or cleared to select native/parent metrics; other writable bits reject.
+Read-only version/capabilities reject writes.
+
+Write 0x008 bit 0 to clear both banks, bit 1 to capture both banks and enable
+snapshot reads, bit 2 to release snapshot reads. Reserved bits and simultaneous
+capture/release reject. Clear plus capture creates a zero snapshot; clear
+dominates simultaneous events. Capture alone samples pre-edge counters, before
+the capture-edge event update. Write acknowledgements return zero data.
+Read 0x008 returns snapshot-active in bit 1.
+
+A metric low-word read captures its high half plus bank/index; the matching
+high-word read returns that captured high half. A high-word read without a
+matching preceding low-word read rejects rather than fabricate an atomic pair.
+Bank selection and snapshot/clear commands invalidate this pair latch. Stalled
+CSR responses retain their already captured data while counters continue.
+The internal CSR module also receives status_model[1:0], status_busy and
+status_error[3:0] from the connected job controller.
 
 The unchanged mandatory suites are contract, behavior with seeds 17,43,89,
 defects, benchmark, synthesis, and portable, through `tests/verify.py`.
