@@ -5,7 +5,100 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected durable vision replay
+## Current saved increment: connected native audio attention residual
+
+`rtl/anvil_en1_audio_attention_residual.sv` now connects the actual
+feed_forward1, attention-input clamp/RMSNorm, all eight native attention
+heads, clipped post projection, output clamp/RMSNorm and unweighted
+query residual. Its external source callback supplies actual layer-entry
+hidden components for requested tokens; it does not supply FF1, Q/K/V or
+attention answers. Historical source vectors are recomputed by the same
+real pre-attention worker and retained in one tagged synchronous on-chip
+cache. The query's FF1 residual stays immutable during those refills.
+Source/memory ownership changes only after the preceding projection
+reader has retired its response and is waiting for its source callback.
+Complete stream counts, tags, last and concrete completions precede
+vector visibility. There is no generated-feature external write port.
+
+`rtl/anvil_en1_audio_pre_attention.sv` connects the saved complete FF1
+to its pinned clamp and learned norm_pre_attn. Kind 0 emits the genuine
+unclipped FF1 residual; kind 1 emits the genuine normalized attention
+input. Raw acceptance precedes the registered clamp and synchronous
+working-bank write. FF1 remains stalled through each clamp/write.
+The complete successful bank is required before normalization.
+
+`rtl/anvil_en1_audio_attention_execute.sv` connects the attention head
+to actual immutable stride-4 original masks and the Q/K/V/relative pair
+service. It preserves the first specific input/tile error, validates
+every output and explicitly distinguishes replay yield from completed
+attention. The pair source callback is the pre-attention boundary above.
+Only its selected mask or projection reader owns external cmd/result.
+
+`rtl/anvil_en1_audio_qkv_tile.sv` executes two actual clipped Q/K/V rows
+or two actual unclipped relative-K rows. Matrix outputs materialize BF16.
+Q then uses the genuine BF16 softplus of the learned per_dim_scale
+and binary32 query scale; K uses the pinned binary32 constant. V and
+relative K are widened without invented RMSNorm or rotation.
+The 64-bit pair response contains two binary32 scaled components;
+narrowing it to a BF16 cache word would lose the pinned attention
+semantics and is not performed.
+
+`rtl/anvil_en1_audio_relative_position.sv` generates all 1024 actual
+concatenated sine/cosine source components with 512 timescales, using
+sequential conversion/division, exp and range-reduced trigonometry.
+`rtl/anvil_en1_softplus.sv` implements the stable bounded log1p series,
+the positive threshold and exceptional-value handling. Both retain
+the existing arithmetic/format boundaries; their approximation accuracy
+has not been independently established.
+
+`rtl/anvil_en1_audio_attention_head.sv` executes native 24-column
+blocked attention with strict causal distance <12. Content and relative
+dot reductions are separate; the blocked relative shift selects the
+actual distance for unmasked keys. The sum receives softcap 50 before
+the real mask. Masked logits are finite -1e9, so all-masked rows still
+execute the entire softmax and value reduction, including real masked
+values and padded +0 values. Probabilities and accumulation stay
+binary32 until each of the 128 final outputs narrows to BF16.
+Its tagged 1024-bit continuation yields only before projection service,
+after previous arithmetic/memory retirement. Only words 0..21 are live;
+the intended durable binding uses scalar words 8..29, leaving 30/31
+for output count and unpaired BF16 within the existing compact frame.
+That durable audio binding is not yet implemented.
+
+The attention-residual worker physically reserves four 2048-byte banks;
+the pre-attention worker reserves another 2048 bytes and its connected
+FF1 reserves 6144. Thus the connected physical vector reservation is
+16384 bytes. The scheduled vector-live maximum is 14336 bytes during
+historical reconstruction with query residual/head/cache allocations
+retained; this is an RTL allocation bound, not a measured result.
+Cache releases before post projection; head storage releases before
+post normalization. Concrete partial refills remain charged through
+error completion. All controller, directory/decoder and primitive
+arithmetic state remains additional; whole-system overlays and the
+native scratch/fallback ceilings still require complete integration.
+
+Remaining integration dependencies: full conformer sequencing around
+this worker, causal light convolution with real historical attention
+residual reconstruction, FF2 and final norm; durable domain-2
+continuation/memo dispatch, subsampling layer-zero reconstruction and
+completed audio output binding; text modality/placeholder/session
+mapping; owner/frontier/fallback binding; whole-system live/physical
+allocation overlays and parent-compatible top/cache/arbiter/CSR wiring.
+The attention head's replay interface exists, but the residual worker
+currently uses its non-replay mode. This is not complete native audio
+inference or a ready handoff to Verifier.
+
+Tools used: glob, view, rg, web_fetch and apply_patch. Pinned public
+model/configuration reads established the audio operation order,
+relative layout/shift, scalar scaling, finite invalid logits and mask
+stride. No commands, installation, static elaboration, simulation,
+synthesis or experiments ran. The reserved static check remains unused;
+no preparation receipt exists. Parent, verification and runtime-owned
+files remain untouched. The original ownership-guard interruption at
+`.vulcan/engineering/run-0001/attempt-0003` remains preserved without
+a claimed repair or acceptance.
+
+## Prior increment: connected durable vision replay
 
 `rtl/anvil_en1_replay_vision_layer.sv` connects real immutable patch
 reconstruction, all 12 vision attention heads, clipped output projection

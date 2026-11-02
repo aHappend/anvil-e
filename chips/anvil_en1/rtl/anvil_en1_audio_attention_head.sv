@@ -42,7 +42,7 @@ module anvil_en1_audio_attention_head #(
     input wire done_ready,
     output wire done_yield,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes
+    output wire [63:0] controller_bytes, block_controller_bytes
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, BLOCK_START = 2,
         BLOCK_WAIT = 3, BLOCK_REGISTER = 4, RESTORE = 5,
@@ -96,7 +96,7 @@ module anvil_en1_audio_attention_head #(
         .numerator(query_hold), .denominator(32'd12),
         .done_valid(block_valid), .done_ready(rst_n && state == BLOCK_WAIT),
         .quotient(block_data), .remainder(block_remainder),
-        .done_error(block_error)
+        .done_error(block_error), .controller_bytes(block_controller_bytes)
     );
     wire fp_ready, fp_valid, exp_ready, exp_valid, inverse_ready, inverse_valid;
     wire cap_ready, cap_valid;

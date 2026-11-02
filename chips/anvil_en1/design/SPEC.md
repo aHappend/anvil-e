@@ -7,7 +7,7 @@ engineering acceptance or a claim that every described engine exists.
 
 ## Native audio relative-attention boundaries
 
-The next connected attention increment uses native Ha=1024, eight heads
+The saved connected attention increment uses native Ha=1024, eight heads
 and Da=128, including compact text builds. Its tile source is the actual
 BF16 `norm_pre_attn(clamp(feed_forward1(...)))` vector; it is not an
 original audio input, a finished attention answer or a normalized K/V
@@ -72,9 +72,54 @@ The pair tile owns no hidden-vector archive. Its live/physical payload is
 controller/scalar state plus connected arithmetic and directory/decoder
 state; all of these still need the final whole-system allocation overlay.
 The head preserves one bounded scalar continuation, not a 24x128 KV tensor.
+Only checkpoint words 0..21 carry data. A durable worker must persist those
+22 words at scalar indices 8..29, reserve 30/31 for its output count and
+unpaired BF16 lane, and recreate reserved words 22..31 as zero on restore.
+This fits the existing 32-word compact scalar frame without widening it.
 These boundaries do not authorize same-layer replay recursion, a native
 feature spill or host-supplied Q/K/V. Full conformer frame dispatch remains
 an implementation dependency, not an acceptance result.
+
+### Connected audio pre-attention vector
+
+`anvil_en1_audio_pre_attention` accepts a real layer-entry source callback,
+not an already completed FF1/attention vector. It connects the saved actual
+feed_forward1 (mode 1) and then the fixed BF16 +/-1e10 clamp and learned
+norm_pre_attn 0x2104. Its ordered output_kind 0 stream is the unclipped
+FF1 residual; output_kind 1 is the complete normalized attention input.
+Every FF1 raw beat must be accepted before it is clamped and stored in the
+2048-byte synchronous working bank. While clamp/store completes, FF1 is
+stalled without relinquishing any outstanding memory response. The complete
+successful 1024-component collection is a prerequisite for normalization;
+there is no visibility through initialization or a partial bank.
+The normalization source stays immutable through all reductions and output.
+Done requires both full ordered streams, actual accepted child completions
+and no concrete child/source error.
+
+| Pre-attention boundary | Registered behavior |
+| --- | --- |
+| FF1 stream | Raw output pre-edge acceptance captures index/value and increments the raw count once |
+| Clamp/store | A later actual clamp result writes RAM; FF1 readiness stays low until the write is complete |
+| Norm | Starts after FF1 done and final clamp/store; source read/capture/response occupy distinct edges |
+| Kind transition | Full kind 0 completion precedes any kind 1 valid |
+| Reset/error | Reset drops bank visibility; errors drain children and prohibit successful done |
+| Allocation | 2048 parent bytes plus up to 6144 FF1 vector bytes; FF1 vector lifetime ends before norm starts |
+
+The connected attention-residual worker retains the query's full FF1 residual,
+collects all eight 128-component heads before clipped post matrix 0x210a,
+applies the fixed stability clamp and learned norm_post_attn 0x210b, and adds
+the corresponding unclipped query residual. It neither applies 0.5 to this
+branch nor omits its post norm. Historical normalized inputs are reconstructed
+by this real pre-attention worker from layer-entry callbacks and held in a
+single tagged on-chip vector cache. Every token change discards old visibility
+before refill; every query/head/matrix/source/output stream is checked against
+its actual tag/index/count/last. Four 2048-byte vector banks (query residual,
+head outputs, normalized source and post working) are physically separate.
+Working-bank normalization emits outward without overwriting its input.
+The source cache can remain live alongside the query/head allocations while
+pre-attention is rebuilding a different token; its partial refill is charged,
+but not readable. Generated features are never issued on the external port.
+Durable continuation/memo binding and the complete conformer remain required.
 
 ## Native causal audio light-convolution increment
 

@@ -55,7 +55,8 @@ module anvil_en1_audio_attention_execute #(
     output wire [31:0] weight_read_bytes,
     output wire projection_event,
     output wire [31:0] projection_bytes,
-    output wire [63:0] controller_bytes, head_controller_bytes, input_controller_bytes,
+    output wire [63:0] controller_bytes, head_controller_bytes, block_controller_bytes,
+    output wire [63:0] input_controller_bytes,
     output wire [63:0] tile_controller_bytes, clipped_controller_bytes, clamp_controller_bytes,
     output wire [63:0] position_controller_bytes, softplus_controller_bytes
 );
@@ -120,7 +121,8 @@ module anvil_en1_audio_attention_execute #(
         .output_index(head_output_index), .output_data(head_output_data),
         .output_last(head_output_last), .done_valid(head_valid),
         .done_ready(run && service_idle), .done_yield(head_yield),
-        .done_error(head_error), .controller_bytes(head_controller_bytes)
+        .done_error(head_error), .controller_bytes(head_controller_bytes),
+        .block_controller_bytes(block_controller_bytes)
     );
     wire mask_ready, mask_valid, mask_cmd_valid, mask_result_ready;
     wire [31:0] mask_data;
