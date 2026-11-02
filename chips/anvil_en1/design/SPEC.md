@@ -277,12 +277,14 @@ wrapper exports the existing two-bank enabled-edge interface; it does not
 add an arbitration cycle. The native assembly selects 1 on both paths.
 
 Ordinary feature reconstruction completes before ordinary embedding starts.
-Ordinary text can request owner replay, but that text worker uses the
-separate retained full-text banks, not the ordinary embedding banks.
+Ordinary text can request owner replay. In the ordinary path that owner
+projection reads the retained frontier/local ring, without executing an
+embedding worker.
 Replay input/text embedding reservations do not survive a yielded worker.
 Thus no correctly scheduled ordinary embedding payload must coexist with
-replay embedding payload. Surviving feature, frontier, frame, text and
-anchor storage are not aliased into this pair.
+replay embedding payload. The phase overlay below additionally shares this
+pair with the full/post text banks. Surviving feature, frontier, frame and
+anchor storage are not aliased into these banks.
 
 | Shared embedding boundary | Behavior |
 | --- | --- |
@@ -292,7 +294,7 @@ anchor storage are not aliased into this pair.
 | Both paths retain embedding payload | Latch the same fault even without current port enables |
 | Reset | Disable all bank enables and exported payloads; do not initialize payload RAM |
 | Read response | Preserve the registered read word until the next enabled read; charge this register once in native state |
-| Physical disclosure | Charge the single 5632-byte production / 24-byte compact pair once in field 19; external child payload reservations are zero |
+| Physical disclosure | The text/embedding phase overlay below charges this pair inside field 20, not again in field 19; external child payload reservations are zero |
 | Live/shadow disclosure | Keep fields 10 and 19 and their original lifetime flags separately; do not subtract nominal overlap from live totals |
 
 The two read registers move from replay dispatcher accounting into native
@@ -303,6 +305,61 @@ original register/physical counts, and their external bank outputs are zero.
 This removes a duplicate declared physical pair, not a simultaneous live
 reservation. It does not complete grant-time whole-system limiting and is
 not a measured M20K inference or resource-fit result.
+
+### Text/embedding phase overlay and model-width access partitions
+
+The connected native assembly uses text banks 0/3 for the embedding worker's
+hidden/PLE payload, respectively. Banks 1/2 retain the text work and
+branch/query payload. No separate integrated embedding payload arrays or
+read registers remain. Standalone child defaults and their enabled-edge
+interfaces are unchanged.
+
+Ordinary embedding finishes and retires before the full-text worker starts.
+Ordinary owner reprojection reads the frontier/ring, not a recursive text
+embedding. Fallback does not run the ordinary full-text worker. In fallback,
+input reconstruction and text embedding retire before POST_ONLY starts;
+their durable results are in the bounded replay frame and separate retained
+PLE bank. Native feature reconstruction also completes before ordinary
+embedding starts. These phase relationships, not simultaneous port idleness,
+permit the overlay. Retained hidden/feature/frame/PLE/anchor copies remain
+separately allocated and charged.
+
+The assembly's registered owner selects one of ordinary full text, replay
+post text, ordinary embedding or replay embedding from their existing
+whole-vector reservation flags (fields 20/11/19/10). Allocation precedes
+memory access: text reserves its residual at descriptor validation and
+performs its source callback before loading RAM; embedding reserves its
+input at validation and performs token/tensor/weight work before its first
+store. The following ownership edge therefore precedes every legal first
+RAM access without adding a source-response or RAM-read cycle. The flags
+continue through their final retained input/PLE/residual use; stalled
+operations do not release them.
+
+| Phase-overlay boundary | Behavior |
+| --- | --- |
+| Unique reservation | Register its owner; only that owner may drive any shared-bank enable |
+| No reservation | Release ownership; suppress accesses without an owner |
+| Ownership transition | A new unique reservation may replace a released owner on the next edge, never while an old representation is still charged |
+| Multiple reservations | Preserve the prior owner, suppress accesses, and latch native protocol error 7 even if all RAM ports are currently idle |
+| Foreign access | Suppress the affected bank and latch the same error; an access cannot acquire ownership |
+| Address partition | Compare the complete supplied address before indexing, against both physical capacity and selected-model H (1536/2560 production, 8 compact) or P (256 production, 4 compact) |
+| Read | Keep the original enabled-edge synchronous read and later capture; embedding reads reuse banks 0/3's registered words |
+| Reset | Owner and fault reset; RAM remains uninitialized and unreadable without the existing owning worker's visibility rules |
+
+This removes another 5632 production / 24 compact bytes of declared physical
+payload and two duplicate 16-bit read registers. Physical field 20 includes
+the four banks once (15872 production / 56 compact bytes), plus the full
+worker's separate attention payload; field 19 has only its external child's
+physical count, which is zero. Live/shadow fields 10/11/19/20 retain their
+original complete charges. Native controller accounting replaces the prior
+96 read-register bits with 64 bits and includes the three-bit owner.
+
+These are local storage ownership and address-partition guards, not the
+context-dependent whole-system scratch/fallback/ratio allocator. No legal
+capacity-pressure case is declared solved by the invariant error path.
+Ordinary total-workspace partition enforcement, whole-system grants with
+eviction/recomputation, and independent allocation/traffic verification
+remain required.
 
 ### Replay vision projection/branch physical overlay
 

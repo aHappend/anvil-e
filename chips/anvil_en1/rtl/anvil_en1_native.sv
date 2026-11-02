@@ -8,6 +8,7 @@ module anvil_en1_native #(
     input wire [1:0] model, precision, modality,
     input wire [31:0] generation, tokens,
     input wire force_fallback,
+    input wire [63:0] integration_bytes, matched_payload_bytes,
     input wire [63:0] tokens_base, weights_base, mask_base,
     input wire [63:0] image_base, vision_weights_base,
     input wire [31:0] patches, patch_rows, patch_columns,
@@ -156,6 +157,7 @@ module anvil_en1_native #(
         state >= SCHEDULE_SEND && state <= RESPONSE;
     assign allocation_fallback = rst_n && selected_fallback;
     reg vector_ram_fault;
+    reg [2:0] text_ram_owner;
     assign protocol_error = rst_n && (memory_fault || binding_fault || vector_ram_fault);
 
     wire [1:0] meta_valid, meta_ready, meta_rsp_valid, meta_rsp_ready;
@@ -273,6 +275,28 @@ module anvil_en1_native #(
     wire [31:0] backing_generation, backing_wdata, backing_data;
     wire [17:0] backing_addr;
     wire [3:0] backing_error;
+    wire grant_valid, grant_ready, grant_rsp_valid, grant_rsp_ready, grant_allowed;
+    wire [63:0] grant_payload_bytes, grant_shadow_bytes;
+    wire [63:0] grant_native_bytes, grant_native_shadow_bytes;
+    wire [63:0] admission_controller_bytes;
+    wire [255:0] shadow_metadata_bytes = !rst_n ? 256'd0 :
+        {allocation_metadata_bytes[255:128], 64'd2304, 64'd1152};
+    anvil_en1_allocation_admission memo_admission (
+        .clk(clk), .rst_n(rst_n),
+        .req_valid(grant_valid), .req_ready(grant_ready),
+        .model(model_hold), .fallback(selected_fallback),
+        .component_live_bytes(allocation_live_bytes),
+        .component_shadow_bytes(allocation_shadow_bytes),
+        .metadata_bytes(allocation_metadata_bytes),
+        .shadow_metadata_bytes(shadow_metadata_bytes),
+        .integration_bytes(integration_bytes), .matched_payload_bytes(matched_payload_bytes),
+        .native_controller_bytes(native_reconstruction_controller_bytes),
+        .candidate_bytes(grant_payload_bytes), .candidate_shadow_bytes(grant_shadow_bytes),
+        .candidate_native_bytes(grant_native_bytes),
+        .candidate_native_shadow_bytes(grant_native_shadow_bytes),
+        .rsp_valid(grant_rsp_valid), .rsp_ready(grant_rsp_ready),
+        .rsp_allowed(grant_allowed), .controller_bytes(admission_controller_bytes)
+    );
     wire [1:0] masks_valid, masks_ready, masks_rsp_valid, masks_rsp_ready;
     wire [63:0] masks_token;
     wire masks_accept = rst_n && mask_state == MASK_IDLE;
@@ -297,82 +321,101 @@ module anvil_en1_native #(
     wire [63:0] replay_embedding_waddr, replay_embedding_raddr;
     wire [31:0] ordinary_embedding_wdata, replay_embedding_wdata, shared_embedding_rdata;
     wire [191:0] executor_physical_bytes;
-    assign allocation_physical_bytes[64*19+:64] = executor_physical_bytes[0+:64] +
-        (rst_n ? (COMPACT ? 64'd24 : 64'd5632) : 64'd0);
+    assign allocation_physical_bytes[64*19+:64] = executor_physical_bytes[0+:64];
     assign allocation_physical_bytes[64*20+:64] = executor_physical_bytes[64+:64] +
         (rst_n ? (COMPACT ? 64'd56 : 64'd15872) : 64'd0);
     assign allocation_physical_bytes[64*21+:64] = executor_physical_bytes[128+:64];
+    wire [3:0] text_ram_reservations = {
+        |allocation_live_bytes[64*10+:64],
+        |allocation_live_bytes[64*19+:64],
+        |allocation_live_bytes[64*11+:64],
+        |allocation_live_bytes[64*20+:64]};
+    wire [2:0] text_ram_request_owner =
+        text_ram_reservations == 4'b0001 ? 3'd1 :
+        text_ram_reservations == 4'b0010 ? 3'd2 :
+        text_ram_reservations == 4'b0100 ? 3'd3 :
+        text_ram_reservations == 4'b1000 ? 3'd4 : 3'd0;
+    wire text_ram_overlap = |text_ram_reservations && text_ram_request_owner == 0;
+    wire text_ram_owned = text_ram_owner != 0 &&
+        text_ram_owner == text_ram_request_owner && !text_ram_overlap;
+    wire [31:0] text_hidden_words = COMPACT ? 32'd8 :
+        (model_hold == 1 ? 32'd1536 : 32'd2560);
+    assign shared_embedding_rdata = {shared_vector_rdata[48+:16],
+        shared_vector_rdata[0+:16]};
+    genvar embedding_client;
+    generate for (embedding_client=0; embedding_client<2;
+        embedding_client=embedding_client+1) begin : embedding_ownership
+        wire ordinary_access = ordinary_embedding_write[embedding_client] ||
+            ordinary_embedding_read[embedding_client];
+        wire replay_access = replay_embedding_write[embedding_client] ||
+            replay_embedding_read[embedding_client];
+        assign embedding_access_fault[embedding_client] = rst_n &&
+            ((ordinary_access && (!text_ram_owned || text_ram_owner != 3)) ||
+             (replay_access && (!text_ram_owned || text_ram_owner != 4)));
+    end endgenerate
     genvar vector_bank;
     generate for (vector_bank=0; vector_bank<4; vector_bank=vector_bank+1) begin : text_banks
         localparam integer BANK_WORDS = vector_bank == 3 ?
             (COMPACT ? 4 : 256) : (COMPACT ? 8 : 2560);
         localparam integer BANK_BITS = $clog2(BANK_WORDS);
+        localparam integer EMBEDDING_BANK = vector_bank == 3 ? 1 : 0;
+        wire [31:0] logical_words = vector_bank == 3 ?
+            (COMPACT ? 32'd4 : 32'd256) : text_hidden_words;
         wire ordinary_access = ordinary_vector_write[vector_bank] ||
             ordinary_vector_read[vector_bank];
         wire replay_access = replay_vector_write[vector_bank] ||
             replay_vector_read[vector_bank];
-        wire [11:0] waddr = replay_access ?
-            replay_vector_waddr[12*vector_bank+:12] :
-            ordinary_vector_waddr[12*vector_bank+:12];
-        wire [11:0] raddr = replay_access ?
-            replay_vector_raddr[12*vector_bank+:12] :
-            ordinary_vector_raddr[12*vector_bank+:12];
-        wire write_enable = replay_access ?
-            replay_vector_write[vector_bank] : ordinary_vector_write[vector_bank];
-        wire read_enable = replay_access ?
-            replay_vector_read[vector_bank] : ordinary_vector_read[vector_bank];
-        wire [15:0] wdata = replay_access ?
-            replay_vector_wdata[16*vector_bank+:16] :
-            ordinary_vector_wdata[16*vector_bank+:16];
+        wire ordinary_embed_access = (vector_bank == 0 || vector_bank == 3) &&
+            (ordinary_embedding_write[EMBEDDING_BANK] ||
+             ordinary_embedding_read[EMBEDDING_BANK]);
+        wire replay_embed_access = (vector_bank == 0 || vector_bank == 3) &&
+            (replay_embedding_write[EMBEDDING_BANK] ||
+             replay_embedding_read[EMBEDDING_BANK]);
+        wire write_enable = text_ram_owner == 1 ? ordinary_vector_write[vector_bank] :
+            (text_ram_owner == 2 ? replay_vector_write[vector_bank] :
+            (text_ram_owner == 3 ? ordinary_embed_access &&
+                ordinary_embedding_write[EMBEDDING_BANK] :
+            (text_ram_owner == 4 ? replay_embed_access &&
+                replay_embedding_write[EMBEDDING_BANK] : 1'b0)));
+        wire read_enable = text_ram_owner == 1 ? ordinary_vector_read[vector_bank] :
+            (text_ram_owner == 2 ? replay_vector_read[vector_bank] :
+            (text_ram_owner == 3 ? ordinary_embed_access &&
+                ordinary_embedding_read[EMBEDDING_BANK] :
+            (text_ram_owner == 4 ? replay_embed_access &&
+                replay_embedding_read[EMBEDDING_BANK] : 1'b0)));
+        wire [31:0] waddr = text_ram_owner == 1 ?
+            {20'd0, ordinary_vector_waddr[12*vector_bank+:12]} :
+            (text_ram_owner == 2 ?
+                {20'd0, replay_vector_waddr[12*vector_bank+:12]} :
+            (text_ram_owner == 3 ?
+                ordinary_embedding_waddr[32*EMBEDDING_BANK+:32] :
+                replay_embedding_waddr[32*EMBEDDING_BANK+:32]));
+        wire [31:0] raddr = text_ram_owner == 1 ?
+            {20'd0, ordinary_vector_raddr[12*vector_bank+:12]} :
+            (text_ram_owner == 2 ?
+                {20'd0, replay_vector_raddr[12*vector_bank+:12]} :
+            (text_ram_owner == 3 ?
+                ordinary_embedding_raddr[32*EMBEDDING_BANK+:32] :
+                replay_embedding_raddr[32*EMBEDDING_BANK+:32]));
+        wire [15:0] wdata = text_ram_owner == 1 ?
+            ordinary_vector_wdata[16*vector_bank+:16] :
+            (text_ram_owner == 2 ? replay_vector_wdata[16*vector_bank+:16] :
+            (text_ram_owner == 3 ?
+                ordinary_embedding_wdata[16*EMBEDDING_BANK+:16] :
+                replay_embedding_wdata[16*EMBEDDING_BANK+:16]));
         assign vector_access_fault[vector_bank] = rst_n &&
-            ((ordinary_access && replay_access) ||
-                (write_enable && {20'd0, waddr} >= BANK_WORDS) ||
-                (read_enable && {20'd0, raddr} >= BANK_WORDS));
+            ((ordinary_access && (!text_ram_owned || text_ram_owner != 1)) ||
+             (replay_access && (!text_ram_owned || text_ram_owner != 2)) ||
+             (ordinary_embed_access && (!text_ram_owned || text_ram_owner != 3)) ||
+             (replay_embed_access && (!text_ram_owned || text_ram_owner != 4)) ||
+             (write_enable && (waddr >= BANK_WORDS || waddr >= logical_words)) ||
+             (read_enable && (raddr >= BANK_WORDS || raddr >= logical_words)));
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] payload [0:BANK_WORDS-1];
         reg [15:0] read_q;
         assign shared_vector_rdata[16*vector_bank+:16] = read_q;
         always @(posedge clk) begin
-            if (rst_n && !vector_access_fault[vector_bank]) begin
-                if (write_enable)
-                    payload[waddr[BANK_BITS-1:0]] <= wdata;
-                if (read_enable)
-                    read_q <= payload[raddr[BANK_BITS-1:0]];
-            end
-        end
-    end endgenerate
-    genvar embedding_bank;
-    generate for (embedding_bank=0; embedding_bank<2; embedding_bank=embedding_bank+1) begin : embedding_banks
-        localparam integer BANK_WORDS = embedding_bank == 0 ?
-            (COMPACT ? 8 : 2560) : (COMPACT ? 4 : 256);
-        localparam integer BANK_BITS = $clog2(BANK_WORDS);
-        wire ordinary_access = ordinary_embedding_write[embedding_bank] ||
-            ordinary_embedding_read[embedding_bank];
-        wire replay_access = replay_embedding_write[embedding_bank] ||
-            replay_embedding_read[embedding_bank];
-        wire write_enable = replay_access ? replay_embedding_write[embedding_bank] :
-            ordinary_embedding_write[embedding_bank];
-        wire read_enable = replay_access ? replay_embedding_read[embedding_bank] :
-            ordinary_embedding_read[embedding_bank];
-        wire [31:0] waddr = replay_access ?
-            replay_embedding_waddr[32*embedding_bank+:32] :
-            ordinary_embedding_waddr[32*embedding_bank+:32];
-        wire [31:0] raddr = replay_access ?
-            replay_embedding_raddr[32*embedding_bank+:32] :
-            ordinary_embedding_raddr[32*embedding_bank+:32];
-        wire [15:0] wdata = replay_access ?
-            replay_embedding_wdata[16*embedding_bank+:16] :
-            ordinary_embedding_wdata[16*embedding_bank+:16];
-        assign embedding_access_fault[embedding_bank] = rst_n &&
-            ((ordinary_access && replay_access) ||
-                (write_enable && waddr >= BANK_WORDS) ||
-                (read_enable && raddr >= BANK_WORDS));
-        (* ramstyle = "M20K", nomem2reg *)
-        reg [15:0] payload [0:BANK_WORDS-1];
-        reg [15:0] read_q;
-        assign shared_embedding_rdata[16*embedding_bank+:16] = read_q;
-        always @(posedge clk) begin
-            if (rst_n && !embedding_access_fault[embedding_bank]) begin
+            if (rst_n && text_ram_owned && !vector_access_fault[vector_bank]) begin
                 if (write_enable)
                     payload[waddr[BANK_BITS-1:0]] <= wdata;
                 if (read_enable)
@@ -381,12 +424,15 @@ module anvil_en1_native #(
         end
     end endgenerate
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
+        if (!rst_n) begin
             vector_ram_fault <= 0;
-        else if (|vector_access_fault || |embedding_access_fault ||
-            (|allocation_live_bytes[64*11+:64] && |allocation_live_bytes[64*20+:64]) ||
-            (|allocation_live_bytes[64*10+:64] && |allocation_live_bytes[64*19+:64]))
-            vector_ram_fault <= 1;
+            text_ram_owner <= 0;
+        end else begin
+            if (!text_ram_overlap)
+                text_ram_owner <= text_ram_request_owner;
+            if (|vector_access_fault || |embedding_access_fault || text_ram_overlap)
+                vector_ram_fault <= 1;
+        end
     end
 
     anvil_en1_frontier_execute #(
@@ -498,6 +544,12 @@ module anvil_en1_native #(
     anvil_en1_replay_binding #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
     ) binding (
+        .grant_valid(grant_valid), .grant_ready(grant_ready),
+        .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
+        .grant_native_bytes(grant_native_bytes),
+        .grant_native_shadow_bytes(grant_native_shadow_bytes),
+        .grant_rsp_valid(grant_rsp_valid), .grant_rsp_ready(grant_rsp_ready),
+        .grant_allowed(grant_allowed),
         .embedding_ram_write(replay_embedding_write),
         .embedding_ram_read(replay_embedding_read),
         .embedding_ram_waddr(replay_embedding_waddr),
@@ -657,7 +709,7 @@ module anvil_en1_native #(
         $bits(mask_state) + $bits(meta_owner) + $bits(meta_request) +
         $bits(meta_response) + $bits(mask_owner) + $bits(mask_value) +
         $bits(mask_error) + $bits(mask_token_hold) + $bits(mask_address) +
-        $bits(vector_ram_fault) + 96;
+        $bits(vector_ram_fault) + $bits(text_ram_owner) + 64;
     assign allocation_live_bytes[64*17+:64] = rst_n ?
         64'((STATE_BITS+7) >> 3) : 64'd0;
     assign allocation_physical_bytes[64*5+:64] = 64'd0;
@@ -665,7 +717,8 @@ module anvil_en1_native #(
     assign allocation_physical_bytes[64*17+:64] = allocation_live_bytes[64*17+:64];
     assign allocation_physical_bytes[64*22+:64] = allocation_live_bytes[64*22+:64];
     assign allocation_live_bytes[64*23+:64] = rst_n ?
-        schedule_controller_bytes + memory_controller_bytes + cache_controller_bytes : 64'd0;
+        schedule_controller_bytes + memory_controller_bytes + cache_controller_bytes +
+            admission_controller_bytes : 64'd0;
     assign allocation_physical_bytes[64*23+:64] = allocation_live_bytes[64*23+:64];
     assign allocation_physical_bytes[64*24+:64] = allocation_live_bytes[64*24+:64];
 

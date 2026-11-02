@@ -5,7 +5,46 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: cross-domain replay vision/audio scratch overlay
+## Current saved increment: text/embedding phase overlay
+
+`rtl/anvil_en1_native.sv` now shares the existing full/post text banks
+0/3 with the ordinary/replay embedding hidden/PLE payload. The separate
+integrated embedding pair and its read registers are removed. A registered
+four-client owner is selected from the existing complete-vector reservations
+before the first legal access. Only the registered, still-reserved owner
+may access RAM. Overlapping reservations and foreign enables suppress
+accesses and retain the existing native protocol fault. Selected-model
+H/P limits are checked in addition to physical capacity before indexing.
+
+Ordinary embedding retires before full text; ordinary owner projection
+uses the preserved frontier/ring without embedding replay. Fallback uses
+no ordinary full-text worker, and its embedding/input workers retire before
+POST_ONLY starts. Retained frame, feature, hidden, PLE and anchor copies
+remain separate. The existing enabled-edge read and subsequent capture
+cycles are preserved.
+
+This removes 5632 production / 24 compact declared payload bytes and two
+duplicate 16-bit read registers. Physical field 20 counts the four-bank
+set once, with its separate full-text attention bank; field 19 no longer
+adds an embedding pair. All live/production-shadow charges remain complete.
+Native state accounting includes the three-bit owner and four, rather than
+six, shared read registers.
+
+Changed that RTL file, `design/SPEC.md` and this document. Tools used:
+view, rg and apply_patch only. No command, static check, simulation,
+synthesis, installation or experiment ran; there is no new preparation
+receipt. Parent, verification and runtime files remain untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+Remaining closure milestones: context-dependent whole-system
+frame/native-worker/memo/arithmetic grants with exact eviction/recomputation,
+ordinary total-workspace partition enforcement and any remaining physical
+overlays; then the reserved fast static elaboration check and immediate
+independent Verifier handoff. This local ownership/access partition does
+not establish whole-system limiting, live-footprint savings, M20K inference,
+resource fit, timing or acceptance. Not ready.
+
+## Prior saved increment: cross-domain replay vision/audio scratch overlay
 
 The connected replay dispatcher now declares the three 1024-word synchronous
 BF16 scratch banks shared by its audio-layer convolution/feed-forward/GLU

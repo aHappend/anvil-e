@@ -1,0 +1,111 @@
+module anvil_en1_allocation_admission (
+    input wire clk, rst_n,
+    input wire req_valid,
+    output wire req_ready,
+    input wire [1:0] model,
+    input wire fallback,
+    input wire [1599:0] component_live_bytes, component_shadow_bytes,
+    input wire [255:0] metadata_bytes, shadow_metadata_bytes,
+    input wire [63:0] integration_bytes, matched_payload_bytes,
+    input wire [63:0] native_controller_bytes,
+    input wire [63:0] candidate_bytes, candidate_shadow_bytes,
+    input wire [63:0] candidate_native_bytes, candidate_native_shadow_bytes,
+    output wire rsp_valid,
+    input wire rsp_ready,
+    output wire rsp_allowed,
+    output wire [63:0] controller_bytes
+);
+    localparam [1:0] IDLE = 0, WAIT_REPORT = 1, COMPARE = 2, RESPONSE = 3;
+    reg [1:0] state;
+    reg [63:0] baseline_hold;
+    reg [68:0] scaled_payload, scaled_shadow, scaled_baseline;
+    reg limit_failure, allowed_hold;
+    wire [1599:0] prospective_live = {
+        component_live_bytes[1599:384], candidate_bytes, component_live_bytes[319:0]};
+    wire [1599:0] prospective_shadow = {
+        component_shadow_bytes[1599:384], candidate_shadow_bytes,
+        component_shadow_bytes[319:0]};
+    wire report_valid, report_fallback, report_overlap;
+    wire [1:0] report_model;
+    wire [63:0] equivalent, equivalent_shadow, scratch, scratch_shadow;
+    wire [63:0] ledger_controller_bytes;
+    wire [63:0] scratch_limit = baseline_hold[63:3] > 61'd1048576 ?
+        64'd1048576 : {3'd0, baseline_hold[63:3]};
+    wire [68:0] payload_wide = {5'd0, equivalent};
+    wire [68:0] shadow_wide = {5'd0, equivalent_shadow};
+    wire [68:0] baseline_wide = {5'd0, baseline_hold};
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(baseline_hold) +
+        $bits(scaled_payload) + $bits(scaled_shadow) + $bits(scaled_baseline) +
+        $bits(limit_failure) + $bits(allowed_hold);
+
+    assign req_ready = rst_n && state == IDLE;
+    assign rsp_valid = rst_n && state == RESPONSE;
+    assign rsp_allowed = rst_n && state == RESPONSE && allowed_hold;
+    assign controller_bytes = rst_n ?
+        64'((CONTROLLER_BITS+7) >> 3) + ledger_controller_bytes : 64'd0;
+
+    anvil_en1_allocation_ledger prospective (
+        .clk(clk), .rst_n(rst_n),
+        .observation_valid(req_valid && req_ready), .observation_model(model),
+        .component_live_bytes(prospective_live),
+        .component_shadow_bytes(prospective_shadow),
+        .metadata_bytes(metadata_bytes), .shadow_metadata_bytes(shadow_metadata_bytes),
+        .integration_bytes(integration_bytes),
+        .native_workspace_bytes(candidate_native_bytes),
+        .native_workspace_shadow_bytes(candidate_native_shadow_bytes),
+        .native_controller_bytes(native_controller_bytes),
+        .observation_check_valid(1'b1), .observation_fallback(fallback),
+        .report_valid(report_valid), .report_check_valid(),
+        .report_fallback(report_fallback), .report_overlap(report_overlap),
+        .report_model(report_model), .payload_bytes(), .replay_bytes(),
+        .equivalent_bytes(equivalent), .equivalent_shadow_bytes(equivalent_shadow),
+        .native_scratch_bytes(scratch), .native_scratch_shadow_bytes(scratch_shadow),
+        .controller_bytes(ledger_controller_bytes)
+    );
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= IDLE;
+            baseline_hold <= 0;
+            scaled_payload <= 0;
+            scaled_shadow <= 0;
+            scaled_baseline <= 0;
+            limit_failure <= 0;
+            allowed_hold <= 0;
+        end else begin
+            case (state)
+                IDLE: if (req_valid && req_ready) begin
+                    baseline_hold <= matched_payload_bytes;
+                    allowed_hold <= 0;
+                    state <= WAIT_REPORT;
+                end
+                WAIT_REPORT: if (report_valid) begin
+                    scaled_payload <= (payload_wide << 4) + (payload_wide << 2);
+                    scaled_shadow <= (shadow_wide << 4) + (shadow_wide << 2);
+                    scaled_baseline <= (baseline_wide << 3) + baseline_wide;
+                    limit_failure <= baseline_hold == 0 ||
+                        (report_model != 1 && report_model != 2) ||
+                        report_overlap || equivalent_shadow < equivalent ||
+                        scratch_shadow < scratch ||
+                        (report_fallback ?
+                            (equivalent > 64'd1048576 ||
+                             equivalent_shadow > 64'd1048576) :
+                            (scratch > scratch_limit || scratch_shadow > scratch_limit));
+                    state <= COMPARE;
+                end
+                COMPARE: begin
+                    allowed_hold <= !limit_failure &&
+                        scaled_payload < scaled_baseline &&
+                        scaled_shadow < scaled_baseline;
+                    state <= RESPONSE;
+                end
+                RESPONSE: if (rsp_ready)
+                    state <= IDLE;
+                default: begin
+                    allowed_hold <= 0;
+                    state <= RESPONSE;
+                end
+            endcase
+        end
+    end
+endmodule

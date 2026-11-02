@@ -67,6 +67,13 @@ module anvil_en1_eval_schedule #(
     output wire [63:0] live_payload_bytes, production_shadow_bytes,
     output wire [63:0] native_payload_bytes, native_production_shadow_bytes,
     output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
+    output wire grant_valid,
+    input wire grant_ready,
+    output wire [63:0] grant_payload_bytes, grant_shadow_bytes,
+    output wire [63:0] grant_native_bytes, grant_native_shadow_bytes,
+    input wire grant_rsp_valid,
+    output wire grant_rsp_ready,
+    input wire grant_allowed,
     output wire memo_hit_event, memo_eviction_event,
     output wire backing_valid,
     input wire backing_ready,
@@ -205,6 +212,12 @@ module anvil_en1_eval_schedule #(
     wire [11:0] ws_result_length;
     anvil_en1_replay_workspace #(.COMPACT(COMPACT)) workspace (
         .clk(clk), .rst_n(rst_n),
+        .grant_valid(grant_valid), .grant_ready(grant_ready),
+        .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
+        .grant_native_bytes(grant_native_bytes),
+        .grant_native_shadow_bytes(grant_native_shadow_bytes),
+        .grant_rsp_valid(grant_rsp_valid), .grant_rsp_ready(grant_rsp_ready),
+        .grant_allowed(grant_allowed),
         .control_valid(rst_n &&
             (state == BIND_SEND || state == INVALIDATE_SEND)),
         .control_ready(ws_control_ready),

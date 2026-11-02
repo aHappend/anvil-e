@@ -293,6 +293,8 @@ module anvil_en1_top #(
     );
     anvil_en1_native #(.COMPACT(COMPACT), .RESIDENT_ENTRIES(RESIDENT_ENTRIES)) native (
         .clk(clk), .rst_n(rst_n),
+        .integration_bytes(integration_bytes),
+        .matched_payload_bytes({32'd0, production_baseline_payload}),
         .attention_activity(attention_activity),
         .avoided_projection_event(avoided_projection_event),
         .avoided_projection_bytes(avoided_projection_bytes),

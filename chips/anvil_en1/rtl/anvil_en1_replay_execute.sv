@@ -76,6 +76,13 @@ module anvil_en1_replay_execute #(
     output wire [63:0] live_payload_bytes, production_shadow_bytes,
     output wire [63:0] native_payload_bytes, native_production_shadow_bytes,
     output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
+    output wire grant_valid,
+    input wire grant_ready,
+    output wire [63:0] grant_payload_bytes, grant_shadow_bytes,
+    output wire [63:0] grant_native_bytes, grant_native_shadow_bytes,
+    input wire grant_rsp_valid,
+    output wire grant_rsp_ready,
+    input wire grant_allowed,
     output wire [63:0] scheduler_state_bytes, dispatcher_state_bytes,
     output wire [63:0] selected_worker_state_bytes,
     output wire [63:0] binding_controller_bytes, projection_controller_bytes,
@@ -158,6 +165,8 @@ module anvil_en1_replay_execute #(
     wire [2:0] audio_vector_write, audio_vector_read;
     wire [95:0] audio_vector_waddr, audio_vector_raddr;
     wire [47:0] audio_vector_wdata, native_vector_rdata;
+    localparam integer NATIVE_VECTOR_BITS = $bits(native_vector_owner) +
+        $bits(native_vector_fault) + $bits(native_vector_rdata);
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -194,6 +203,12 @@ module anvil_en1_replay_execute #(
     wire [63:0] workspace_controller_bytes;
     anvil_en1_eval_schedule #(.COMPACT(COMPACT)) scheduler (
         .clk(clk), .rst_n(rst_n),
+        .grant_valid(grant_valid), .grant_ready(grant_ready),
+        .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
+        .grant_native_bytes(grant_native_bytes),
+        .grant_native_shadow_bytes(grant_native_shadow_bytes),
+        .grant_rsp_valid(grant_rsp_valid), .grant_rsp_ready(grant_rsp_ready),
+        .grant_allowed(grant_allowed),
         .start_valid(start_valid), .start_ready(start_ready),
         .model(model), .precision(precision), .modality(modality), .domain(eval_domain),
         .generation(generation), .tokens(tokens), .token(token), .layer(layer),
@@ -1022,7 +1037,7 @@ module anvil_en1_replay_execute #(
         $bits(dependency_domain_hold) + $bits(done_domain_hold) + $bits(done_layer_hold) +
         $bits(done_token_hold) + $bits(done_length_hold) + $bits(error_hold) +
         $bits(embedding_ram_fault) + (EXTERNAL_EMBEDDING_RAM ? 0 : 32) +
-        $bits(native_vector_owner) + $bits(native_vector_fault) + 48;
+        NATIVE_VECTOR_BITS;
     assign dispatcher_state_bytes = rst_n ? 64'((DISPATCHER_BITS + 7) >> 3) : 64'd0;
     wire [63:0] text_reported_controllers = input_state_bytes + text_state_bytes +
         binding_controller_bytes + projection_controller_bytes +
@@ -1042,7 +1057,8 @@ module anvil_en1_replay_execute #(
         audio_feature_controller_bytes + audio_feature_nested_controller_bytes;
     assign native_reconstruction_controller_bytes = !rst_n ? 64'd0 :
         input_state_bytes + vision_reported_controllers + audio_reported_controllers +
-        image_feature_controller_bytes + image_feature_nested_controller_bytes + 64'd7;
+        image_feature_controller_bytes + image_feature_nested_controller_bytes +
+        64'((NATIVE_VECTOR_BITS + 7) >> 3);
     assign reported_controller_bytes = !rst_n ? 64'd0 :
         scheduler_state_bytes + dispatcher_state_bytes + workspace_controller_bytes +
         text_reported_controllers + vision_reported_controllers +
