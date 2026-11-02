@@ -895,6 +895,45 @@ continuation/memo fallback, encoder production, final norm/tied logits and
 session arbitration remain enclosing-engine responsibilities. This boundary
 does not authorize omitting them or using external generated-state storage.
 
+### Registered single-transaction memory arbiter
+
+`anvil_en1_memory_arbiter` multiplexes `CLIENTS=1..8` standard cmd/result
+channels. Packed lane c uses bits `[64*c+:64]` for addresses and
+`[32*c+:32]` for data; valid/ready/write/error use bit c. Illegal client
+counts have well-formed diagnostic-only ports and an explicit parameter
+rejection; they are not silently clamped into a functioning configuration.
+
+In idle, a registered round-robin pointer examines one client per clock.
+An absent client advances the pointer; an accepted command retains that
+client until its response retires. There is no unregistered external
+request passthrough or fixed grant-latency promise. Acceptance A0 registers
+address, write flag and payload. External valid first appears after A0.
+External acceptance M0 enters the response-wait state; a response accepted
+M1 registers data/error; client result valid appears after M1 and cannot
+retire until M2 or later. The next command may be accepted only on a later
+edge than response retirement. `cmd_owner[2:0]` identifies the captured
+client for traffic classification at the actual external handshake, not
+an additional transaction or an alias-derived byte count.
+
+Drain acceptance closes all client ingress immediately, without changing a
+stalled external command or client response. An already captured command
+must still issue, receive its actual external response and deliver that
+response to the original client. Only then is `drain_done_valid` held until
+accepted. Drain does not cancel a memory response, reset an engine, complete
+a session or invalidate a generation by itself. The enclosing session
+controller must retire engine work and generation state around this barrier.
+Reset gates all public outputs to zero; no payload/state validity survives it.
+
+| Arbiter boundary | Behavior |
+| --- | --- |
+| CLIENTS=1/3/8 | Explicit terminal-pointer wrap, no modulo operator or power-of-two assumption |
+| Client/external command stalls | Captured address/write/data/client remain stable until actual acceptance |
+| External/client response stalls | Buffer actual data/error; preserve validity until original client accepts |
+| Command and response same edge | Response is not ready in send state; no dependent same-edge consumption |
+| Drain and ingress same edge | Drain wins; no new client command acceptance |
+| Drain and response retirement | Retire response once, then publish drain completion |
+| Reset | Zero channels and flags; enclosing bridge handles already accepted physical transactions |
+
 ## Cache, replay, and storage
 
 Logical pages are immutable owner aliases. A commit-owner-page is legal only
