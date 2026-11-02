@@ -10,7 +10,8 @@ engineering acceptance or a claim that every described engine exists.
 The 32 files in `anvil_e3_reference/rtl/` are immutable parent compatibility
 references. Model 0 must instantiate the parent top with every named parameter,
 port width, and signedness unchanged. Parent fixed-point multimodal execution
-is not a substitute for either native model's BF16 computation. The current `design/GENERATIONAL_HANDOFF.md` lists the inherited modules but
+is not a substitute for either native model's BF16 computation. The current
+`design/GENERATIONAL_HANDOFF.md` lists the inherited modules but
 reports all historical STA/PPA/HIL quantities as N/A. It supplies no numerical
 parent signoff evidence. No parent timing, resource, throughput, or quality
 result is asserted here.
@@ -763,6 +764,136 @@ external transaction. Session invalidation/cancellation is owned by the
 generation-aware replay/arbiter barrier, still required above this leaf.
 This connected tile does not certify the repeated-root RoPE approximation,
 normalization arithmetic, production-width thresholds, or full inference.
+
+### Original embedding and combined PLE reconstruction leaf
+
+`anvil_en1_embedding_ple` captures native model/precision, a requested layer,
+absolute token index, tokens_base, weights_base, and modality selector
+0=text, 1=image feature, 2=audio feature. Selector 3 rejects. It reads the
+actual unsigned32 token ID from tokens_base+4*index using a carry-checked
+aligned address, checks vocabulary bounds, and validates the selector
+against the original placeholder ID. Compact fixtures reserve image=28,
+audio=29, boi=24, boa=25, eoi=26, eoa=27; production IDs remain unchanged.
+An image/audio placeholder with selector 0 is a cache-state error, not a
+text embedding shortcut. Other text tokens, including explicit modality
+markers, use their own identities. Placeholder identity PLE uses token 0.
+
+Text input reconstruction validates/looks up kind 0x0000, decodes the
+actual token embedding row, multiplies by BF16_RNE(sqrt(H)), and materializes
+each H component. Modality reconstruction instead requests each BF16 native
+projected feature component through modality_valid/modality_ready with
+model, kind, token and index. This is an internal generated-feature interface:
+its producer must execute the pinned native encoder and modality projection
+on-chip. It is not a public host-supplied hidden-state archive, does not
+complete an encoder, and cannot count as multimodal execution by itself.
+
+The leaf constructs context PLE by projecting the immutable reconstructed
+H-vector with kind 0x0002, rows layer*P+i, then separately multiplying the
+materialized projection by BF16_RNE(1/sqrt(H)) and materializing again.
+It normalizes that P-slice with kind 0x0003 and epsilon 1e-6. It decodes
+identity kind 0x0001 at the selected token row and columns layer*P+i,
+multiplies by BF16_RNE(sqrt(P)), materializes, adds to normalized context,
+materializes, multiplies by BF16_RNE(1/sqrt(2))=0x3f35, and materializes
+the combined P-vector. This vector is intended for the existing real
+gated-projection leaf's up_mode=1; it is not an additive layer residual.
+
+sqrt(H) and reciprocal sqrt(H) are independently computed from the exact
+binary32 H through the root engine and narrowed once to BF16. sqrt(P)
+is exactly 16 in production or 2 in compact mode. Projection reductions
+and all multiply/add calls preserve the existing ascending-column and
+separate-rounding rules. The complete native H and combined P vectors stream
+in ascending order on separate input/ple output channels. H is emitted
+first, then P; completion follows acceptance of the last P component.
+Neither stream is a host-produced numerical answer.
+
+| Embedding/PLE cycle and boundary | Behavior |
+| --- | --- |
+| E0/E1/E2 | Capture descriptor, validate model/layer/precision/index, form address; no original-input command before E2 |
+| Token request/response | Stable aligned read, one accepted response, register before ID checks or payload lookup |
+| Feature request | Hold kind/token/component until accepted; register response/error before scratch write |
+| Scalar stages | Register root result, BF16 conversion, weight multiply and each subsequent narrow/add/multiply |
+| Scratch source F0/F1/F2 | Capture source index, synchronous read, register payload; response valid after F2 |
+| In-place P norm/combination | All norm reductions precede output writes; identity combination replaces only its fully consumed P component |
+| Output stall | Valid/index/data/last remain stable; last creation is not completion |
+| Single output/degenerated index | First/last flags derive from the actual length; layer 0 and last layer retain complete P slices |
+| Invalid selector/ID/overflow | Error before offending payload read; no ID clamping or success-shaped substitute |
+| Reset/session reuse | Zero public outputs/valids, gate RAM writes; enclosing arbiter drains accepted work before invalidating session |
+
+One H-component and one P-component BF16 scratch bank reserve 5632 bytes
+in production (Hmax=2560,P=256), or 24 bytes compact (H=8,P=4). Live vectors
+are 2H+2P bytes plus scalar/control/child temporaries. Only the actual
+layer's P slice is stored, not L*P, and no external activation commands
+exist. Input and combined-P scratch remain live through their accepted
+streams; any frontier or frame copy concurrently receiving those streams
+must also appear in the complete liveness ledger. Final controller integration
+must overlay this workspace with owner/text arithmetic phases as admitted.
+
+This leaf has no session manager, native encoder, layer residual controller,
+replay stack or memo. Its feature interface does not waive those missing
+connected engines. Production and compact numerical comparisons remain
+independent Verifier work, not assertions established by this design table.
+
+### Complete text-layer controller boundary
+
+`anvil_en1_asym_attn_ple` captures model, precision, layer, absolute token
+position and text weights base. It evaluates one full text layer, not final
+logits or a session. Its `source_valid/source_ready` channel requests the
+captured entering H-vector or the original-input-derived combined P-vector:
+`source_is_ple=0/1`, with an ascending component index and captured
+model/layer/token. The caller must supply immutable on-chip vectors, not
+normalized values or software-generated layer answers. Responses have BF16
+data and an explicit error. H then P are copied before numerical work begins.
+
+The controller connects one projection, one norm, one rotary-pair, one
+attention-head, one gated-projection, one weight reader, the tensor-image
+validator and binary32 residual/scalar arithmetic. The attention leaf's mask,
+canonical cache metadata and cache fetch channels are exposed unchanged.
+No logical owner map or external KV address is recreated in this controller.
+The enclosing scheduler must service a miss using the cache's actual owner.
+
+Input RMSNorm produces the work vector. For each query head, project D rows
+of kind 0x0101, normalize with the shared D-scale 0x0102, rotate all half-head
+pairs, then run the actual attention leaf and store its accepted D outputs
+in head-major concatenation order. Query-head outputs do not complete the
+layer. Kind 0x0106 projects that concatenation to an H-branch vector.
+Post-attention norm precedes a separately rounded residual add. Pre-FF norm
+produces the immutable MLP source; kinds 0x0109/0x010a/0x010b perform real
+GeGLU/down projection. The validator supplies the actual J width, including
+E2B shared doubling. Post-FF norm precedes the second residual add.
+Kinds 0x010d/0x010e use the current residual as gate source and the retained
+combined P-vector as `up_mode=1`; post-PLE norm and the third residual follow.
+Finally kind 0x0110 multiplies every residual component before BF16 output.
+
+Three synchronous H-banks retain the residual, normalized work and branch.
+A D-bank retains one Q head; a Q*D bank retains the attention concatenation;
+a P-bank retains combined PLE. No J-vector or probability/score array is
+allocated. Norm may overwrite its branch/Q bank only after its complete
+reduction and consumption of the corresponding input component. MLP and
+PLE down rows write the distinct branch bank, never overwrite their gate
+source mid-matrix. Actual vector payload is at most
+`6H+2D+2Q*D+2P`: E2B global 18944 bytes, E4B global 25088 bytes.
+Production physical payload reservations are 25088 bytes; compact 104 bytes.
+All returned words and scalar/child state additionally belong in the final
+workspace ledger. Private leaf/controller reservations are **not** yet an
+implemented phase overlay or an established full-system allocation bound.
+
+| Layer cycle/degenerate boundary | Behavior |
+| --- | --- |
+| L0/L1/L2 | Capture descriptor, validate native model/precision/layer/position, then issue first vector request; no tensor command before L2 |
+| Entering/PLE source | Stable captured index/kind/descriptor until acceptance; register response/error before RAM write |
+| Internal source S0/S1/S2 | Capture bank/index, synchronous read, register payload/error; hold response until child accepts |
+| Tensor/norm ownership | Validate/lookup descriptor, register it, select reader, then start norm/projection; change external owner only after active child and response retirement |
+| Head boundaries | Complete Q projection, Q norm and paired rotary before attention; finish every accepted head component before next head |
+| Residual/scalar | Synchronous bank read, register operands, separate binary32 operation and BF16 narrow, then write |
+| Output | Ascending H BF16 stream; stalled data/index/last stay stable; done follows acceptance of final component |
+| Errors/reset | Propagate actual child/source errors, zero all public outputs during reset, never expose an incomplete layer as successful |
+| Single/last component | Component counters terminate by comparison, not modulo; final creation is not acceptance |
+| Concurrent banks | Source reads and corresponding in-place writes are serialized; distinct branch protects gate-source liveness |
+
+Generation cancellation, descending frontier order, ring materialization,
+continuation/memo fallback, encoder production, final norm/tied logits and
+session arbitration remain enclosing-engine responsibilities. This boundary
+does not authorize omitting them or using external generated-state storage.
 
 ## Cache, replay, and storage
 

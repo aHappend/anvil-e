@@ -129,7 +129,7 @@ but introduce quadratic immutable-input/weight work. The weight reader also
 rereads Q4 scales/packed words. Count every accepted read; no total-traffic or
 latency improvement is asserted.
 
-## Current third increment
+## Saved third increment
 
 This continuation freezes the new scalar, attention, gated-row and ordinary
 storage interfaces/stages in SPEC and adds these design-owned leaves:
@@ -212,3 +212,85 @@ elaborated. No retained diagnostic failure was overwritten or repaired.
 Do not hand this increment to verification as a ready design. Continue from
 these saved sources under an independently admitted continuation; never
 replace it with an older checkout or treat this status as a waiver.
+
+## Current recovery continuation increment
+
+The saved earlier RTL was retained, not rebuilt from an older checkout. This
+increment freezes the owner-tile and embedding/PLE interfaces, numerical
+boundaries, cycle tables and scratch lifetimes in SPEC before implementation.
+It adds two connected numerical leaves:
+
+| Source | Implemented behavior |
+| --- | --- |
+| `rtl/anvil_en1_owner_kv_tile.sv` | Actual owner input norm, distinct K/V projections, learned K/unscaled V head normalization, half-head rotary pairing and aligned adjacent BF16 completion |
+| `rtl/anvil_en1_embedding_ple.sv` | Actual original token reads, scaled token embedding, internal native-feature ingress, scaled/normalized context PLE and combined identity/context PLE |
+
+The owner tile rejects shared-layer descriptors before directory accesses;
+it accepts the actual owner supplied by the cache/controller, not a logical
+consumer. It connects the image validator, projection, norm, scale reader and
+rotary modules. It normalizes the entering H vector, projects every component
+of the selected owner KV head, normalizes the complete D vector and returns
+the requested adjacent component pair. V has a distinct projection and no
+learned head-scale or rotary operation. K applies the owner's learned scale
+and uses two real half-head rotary calls to obtain an adjacent resident pair.
+No nonexistent shared-layer projection tensor is read.
+
+The embedding/PLE leaf connects the image validator, matrix reader,
+projection, norm, root and primitive FP modules. It rereads an actual original
+token ID, validates vocabulary/placeholder selection, and constructs ordinary
+text input and the layer's combined PLE from real weights. Modality placeholders
+request internal generated native features; the leaf does **not** implement
+the required native encoder or permit the host to supply generated features.
+Those producers remain necessary above the leaf. Its combined P vector is
+the up-vector for the existing GELU-gated PLE projection, not an ungated
+embedding residual.
+
+Both leaves use bounded FSMs and synchronous scratch RAM reads/writes.
+Their norm output phases overwrite head/P scratch only after complete scalar
+reductions. The internal source transactors capture an index, read RAM on the
+next edge, then register a held response on the following edge. External
+memory-owner selection changes only after the active child's response has
+retired. Completion streams obey backpressure and do not complete when their
+last beat is merely created. Each leaf has one external transaction outstanding
+and emits only read commands.
+
+Production owner-tile payload reservation is 6144 bytes (2560+512 BF16
+components); production embedding/PLE reservation is 5632 bytes (2560+256
+BF16 components). Compact reservations are 32 and 24 bytes. These are actual
+private banks in the saved leaves, not a claim that final top-level RAM has
+already been overlaid. The future controller must integrate or refactor these
+scratch banks into the admitted phase-overlaid workspace, count all scalar
+child/control registers and concurrently streamed copies, and expose complete
+allocation/liveness events. Instantiating every leaf's private reservation
+alongside a separately allocated full workspace would be a ledger violation.
+No complete allocation ratio, M20K mapping, physical fit or timing is established.
+
+The current generational handoff file is now present and reports historical
+STA/PPA/HIL as N/A. SPEC distinguishes this from numerical parent signoff
+evidence; no historical results were manufactured. Its parent source locator
+was made project-relative without changing any N/A quantity.
+
+Remaining implementation starts with the actual complete text-layer
+attention/PLE/residual/scalar controller (`anvil_en1_asym_attn_ple`) and the
+generation-aware owner-replay scheduler (`anvil_en1_owner_replay`), wiring the
+new leaves to correct tagged frontier/local-ring reads and writes. It must
+then complete explicit continuation-stack Eval, bounded memo eviction and
+regeneration, linear single-token replay, RAM overlay and complete liveness,
+native vision/audio encoders and placeholder mapping, sole registered memory
+arbitration, session/error/cancellation handling and the parent-compatible
+literal `anvil_en1_top`. No required top/replay/layer module or functional
+fallback is claimed present by adding these leaves.
+
+Designer changed only the two new RTL leaves and directly related design
+documents; the parent reference RTL and verification sources were not edited.
+Actual tools were glob, view and apply_patch. No command, installation,
+simulation, synthesis, numerical experiment or static elaboration ran.
+The one reserved fast static elaboration remains unused for the complete
+connected design. There are no preparation receipts to cite.
+
+The earlier ownership-guard interruption and failure-0001 remain unchanged;
+this source increment does not diagnose or claim to repair the shared runtime's
+guard. No original failing command, output path, acceptance command, threshold
+or runtime metadata was changed. Independent Verifier must follow only after
+the full design handoff; engineering acceptance and the product PDF remain
+future shared-runtime work. This is a saved **continue**, not ready or accepted.
