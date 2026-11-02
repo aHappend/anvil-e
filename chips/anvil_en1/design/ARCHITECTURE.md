@@ -5,7 +5,63 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected durable audio attention residual
+## Current saved increment: connected durable full audio-layer replay
+
+`rtl/anvil_en1_replay_audio_history.sv` reconstructs actual attention
+residuals for the query and its at most four causal lightconv predecessors.
+The literal residual worker retains genuine lower-layer head continuations.
+Completed histories survive those yields in four frame slices; scratch
+entering/residual and heads use the remaining two. The last history remains
+in scratch. Six native 1024-component BF16 vectors total exactly 12 KiB,
+not an additional hidden-state archive or same-rank Eval stack.
+
+`rtl/anvil_en1_replay_audio_layer.sv` connects those genuine histories to
+the existing lightconv, FF2, final stability clamp and learned norm_out.
+Source callbacks read actual acknowledged frame pairs with checked
+generation/layer/token/index and causal distance. Lightconv emits only
+after its historical reads; its outputs may then replace scratch.
+FF2's real half-weighted residual passes through the clamp into a distinct
+source bank. Norm_out reads that bank and writes the final bank-0 vector.
+Every phase requires actual completion, exactly 1024 ordered values,
+correct last and all pair acknowledgments. Source callbacks have priority
+over simultaneous output/completion so no outstanding read is stranded.
+Errors drain the selected numerical engine and workspace response.
+
+`rtl/anvil_en1_replay_execute.sv` now dispatches domain-2 layers 1..12
+through this complete conformer worker, retaining its layer-zero native
+input worker. Yield descriptors return to the existing bounded scheduler;
+only final norm_out returns a completed encoder Eval vector. Audio
+history/GLU events and connected live/physical/controller reports are
+exposed alongside the earlier input/vision/text observations.
+
+`replay_workspace` has independent visibility and ordered pair progress
+for three audio slices per bank. Slice-zero interfaces remain compatible;
+nonzero slices reject other domains/operations. Its compact frame stride
+now matches production because native encoder widths are not compacted.
+Audio compact live frames charge all 12 KiB plus scalar storage. The
+compact backing and the frontier's reused payload RAM both reserve
+206848 words / 827392 bytes; ordinary compact capacity remains 8192 bytes.
+Production reservations and the 3 MiB frontier cap are unchanged.
+`replay_audio_residual` redirects only head-vector traffic with its
+default-preserving PACKED_FRAME option. There is no second backing RAM.
+
+These are saved source changes, not executed correctness, M20K inference,
+resource fit or timing results. All literal workers' physical reservations
+remain additive. Whole-system primitive/controller accounting and scratch
+overlays are still required to meet the complete fallback ceiling.
+Next concrete dependency: connect completed audio-feature production to
+the domain-2 replay result and native modality/session placeholder routing,
+then owner/frontier/fallback binding and top/cache/arbiter/CSR integration.
+The design is not ready for Verifier.
+
+Tools used: glob, view, rg and apply_patch. No commands, static elaboration,
+simulation, synthesis, installation or experiments ran; no preparation
+receipt exists and the reserved static check remains unused. Parent,
+verification and runtime metadata remain untouched. The original
+`.vulcan/engineering/run-0001/attempt-0003` interruption remains preserved
+without a claimed repair.
+
+## Prior saved increment: connected durable audio attention residual
 
 `rtl/anvil_en1_replay_audio_residual.sv` now connects the literal durable
 eight-head worker to the genuine post-attention residual execution. The

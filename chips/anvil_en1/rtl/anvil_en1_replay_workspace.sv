@@ -131,6 +131,9 @@ module anvil_en1_replay_workspace #(
         reg [383:0] vector_occupied;
         reg [383:0] pair_progress_valid;
         reg [4607:0] pair_next_component;
+        reg [8:0] vector_index_hold;
+        reg vector_present_q, pair_active_q;
+        reg [11:0] pair_component_q;
         reg [15:0] memo_occupied;
         reg [31:0] memo_domains;
         reg [31:0] compact_frame_bytes, compact_memo_bytes;
@@ -145,27 +148,30 @@ module anvil_en1_replay_workspace #(
         wire native_model = model_hold == 1 || model_hold == 2;
         wire [7:0] layer_limit = model_hold == 1 ? 8'd35 : 8'd42;
         wire [11:0] expected_length =
-            (domain_hold == 0 ? (COMPACT ? 12'd8 :
+            (domain_hold == 0 || domain_hold == 3 ? (COMPACT ? 12'd8 :
                 (model_hold == 1 ? 12'd1536 : 12'd2560)) :
             (domain_hold == 1 ? 12'd768 : 12'd1024));
-        wire descriptor_valid = domain_hold != 3 && token_hold <= 131071 &&
+        wire descriptor_valid = token_hold <= 131071 &&
             length_hold == expected_length &&
+            (domain_hold == 3 ? (layer_hold == 1 || layer_hold == 2) :
             (domain_hold == 0 ? layer_hold <= layer_limit :
-            (domain_hold == 1 ? layer_hold <= 16 : layer_hold <= 12));
+            (domain_hold == 1 ? layer_hold <= 16 : layer_hold <= 12)));
         wire [6:0] request_rank = domain_hold == 0 ?
-            {1'b0, layer_hold[5:0]} + 7'd18 : {1'b0, layer_hold[5:0]} + 7'd1;
+            {1'b0, layer_hold[5:0]} + 7'd19 :
+            (domain_hold == 3 ? 7'd18 : {1'b0, layer_hold[5:0]} + 7'd1);
         wire [6:0] parent_rank = frame_tag_q[38:37] == 0 ?
-            {1'b0, frame_tag_q[34:29]} + 7'd18 :
-            {1'b0, frame_tag_q[34:29]} + 7'd1;
+            {1'b0, frame_tag_q[34:29]} + 7'd19 :
+            (frame_tag_q[38:37] == 3 ? 7'd18 : {1'b0, frame_tag_q[34:29]} + 7'd1);
         wire request_session_valid = active && native_model &&
             request_generation == generation_hold;
         wire [5:0] top_slot = depth[5:0] - 6'd1;
         wire [5:0] tag_frame_slot = op_hold <= 2 ? top_slot : slot_hold;
         wire [31:0] frame_base =
             ({26'd0, slot_hold} << 11) + ({26'd0, slot_hold} << 10);
-        wire [1:0] vector_slice = domain_hold == 2 ? scalar_index_hold[1:0] : 2'd0;
         wire vector_operation = op_hold == 3 || op_hold == 4 ||
             (op_hold == 6 && target_hold >= 2);
+        wire [1:0] vector_slice = domain_hold == 2 && vector_operation ?
+            scalar_index_hold[1:0] : 2'd0;
         wire slice_valid = scalar_index_hold == 0 ||
             (domain_hold == 2 && scalar_index_hold < 3 &&
                 ((op_hold == 4 && target_hold == 0) ||
@@ -179,11 +185,11 @@ module anvil_en1_replay_workspace #(
             ({26'd0, slot_hold} << (COMPACT ? 5 : 8));
         wire [31:0] scalar_bit_index = ({26'd0, slot_hold} <<
             (COMPACT ? 5 : 8)) + {24'd0, scalar_index_hold};
-        wire [8:0] vector_bit_index = ({3'd0, slot_hold} << 2) +
+        wire [8:0] selected_vector_index = ({3'd0, slot_hold} << 2) +
             ({3'd0, slot_hold} << 1) + (bank_hold ? 9'd3 : 9'd0) +
             {7'd0, vector_slice};
-        wire [11:0] expected_pair_component =
-            pair_next_component[12*vector_bit_index+:12];
+        wire [8:0] vector_bit_index = vector_index_hold;
+        wire [11:0] expected_pair_component = pair_component_q;
         wire [31:0] selected_vector_base = target_hold == 0 ? vector_base : memo_base;
         wire [31:0] copy_frame_base =
             ({26'd0, copy_source_slot} << 11) +
@@ -200,14 +206,16 @@ module anvil_en1_replay_workspace #(
             write_last == (pair_index == (length_hold >> 1) - 1'b1);
         wire [7:0] allocated_frames = {1'b0, depth} + {7'd0, pending_push};
         wire [5:0] allocated_memos = {1'b0, memo_count} + {5'd0, pending_memo};
-        wire [31:0] compact_request_frame_bytes = domain_hold == 0 ? 32'd32 :
+        wire [31:0] compact_request_frame_bytes = domain_hold == 0 || domain_hold == 3 ? 32'd32 :
             (domain_hold == 1 ? 32'd3072 : 32'd12288);
-        wire [31:0] compact_popped_frame_bytes = response_tag[38:37] == 0 ? 32'd32 :
+        wire [31:0] compact_popped_frame_bytes =
+            response_tag[38:37] == 0 || response_tag[38:37] == 3 ? 32'd32 :
             (response_tag[38:37] == 1 ? 32'd3072 : 32'd12288);
-        wire [31:0] compact_request_memo_bytes = domain_hold == 0 ? 32'd16 :
+        wire [31:0] compact_request_memo_bytes = domain_hold == 0 || domain_hold == 3 ? 32'd16 :
             (domain_hold == 1 ? 32'd1536 : 32'd2048);
         wire [1:0] replaced_memo_domain = memo_domains[2*slot_hold[3:0]+:2];
-        wire [31:0] compact_replaced_memo_bytes = replaced_memo_domain == 0 ? 32'd16 :
+        wire [31:0] compact_replaced_memo_bytes =
+            replaced_memo_domain == 0 || replaced_memo_domain == 3 ? 32'd16 :
             (replaced_memo_domain == 1 ? 32'd1536 : 32'd2048);
         wire [63:0] live_frames = COMPACT ?
             {32'd0, compact_frame_bytes} +
@@ -246,7 +254,7 @@ module anvil_en1_replay_workspace #(
         assign production_shadow_bytes = rst_n ? shadow_frames + shadow_memos : 64'd0;
         assign backing_reserved_bytes = rst_n ? 64'(TOTAL_WORDS * 4) : 64'd0;
         assign visibility_metadata_bytes = rst_n ?
-            64'((80*TAG_BITS + 64 + 384 + 384 + 4608 + 16 + 32 + 64 +
+            64'((80*TAG_BITS + 64 + 384 + 384 + 4608 + 23 + 16 + 32 + 64 +
                 64*SCALAR_WORDS + 7) >> 3) : 64'd0;
         assign memo_hit_event = rst_n && hit_pulse;
         assign memo_eviction_event = rst_n && eviction_pulse;
@@ -258,6 +266,11 @@ module anvil_en1_replay_workspace #(
         assign backing_rsp_ready = rst_n && state == BACKING_WAIT;
 
         always @(posedge clk) begin
+            if (rst_n && state == TAG_READ) begin
+                vector_present_q <= vector_occupied[vector_index_hold];
+                pair_active_q <= pair_progress_valid[vector_index_hold];
+                pair_component_q <= pair_next_component[12*vector_index_hold+:12];
+            end
             if (rst_n && state == TAG_READ && depth != 0)
                 frame_tag_q <= frame_tags[tag_frame_slot];
             if (rst_n && state == MEMO_SCAN)
@@ -320,6 +333,7 @@ module anvil_en1_replay_workspace #(
                 vector_occupied <= 0;
                 pair_progress_valid <= 0;
                 pair_next_component <= 0;
+                vector_index_hold <= 0;
                 memo_occupied <= 0;
                 memo_domains <= 0;
                 compact_frame_bytes <= 0;
@@ -393,6 +407,7 @@ module anvil_en1_replay_workspace #(
                     CONTROL_RESPONSE: if (control_rsp_ready)
                         state <= IDLE;
                     VALIDATE: begin
+                        vector_index_hold <= selected_vector_index;
                         if (request_tag[72:71] != 1 && request_tag[72:71] != 2) begin
                             error_hold <= 6;
                             state <= PUBLISH;
@@ -473,7 +488,7 @@ module anvil_en1_replay_workspace #(
                             state <= UPDATE_SETUP;
                         else if (op_hold == 3) begin
                             if (target_hold == 2) begin
-                                if (!vector_occupied[vector_bit_index]) begin
+                                if (!vector_present_q) begin
                                     error_hold <= 7;
                                     state <= PUBLISH;
                                 end else begin
@@ -493,7 +508,7 @@ module anvil_en1_replay_workspace #(
                                 state <= VECTOR_SETUP;
                         end
                         else if (op_hold == 4) begin
-                            if (!vector_occupied[vector_bit_index]) begin
+                            if (!vector_present_q) begin
                                 error_hold <= 7;
                                 state <= PUBLISH;
                             end else
@@ -721,9 +736,9 @@ module anvil_en1_replay_workspace #(
                     end
                     PAIR_SETUP: begin
                         response_slot <= slot_hold;
-                        if ((target_hold == 3 && !vector_occupied[vector_bit_index]) ||
+                        if ((target_hold == 3 && !vector_present_q) ||
                             (target_hold == 2 && component_hold != 0 &&
-                                (!pair_progress_valid[vector_bit_index] ||
+                                (!pair_active_q ||
                                  component_hold != expected_pair_component))) begin
                             error_hold <= 7;
                             state <= PUBLISH;

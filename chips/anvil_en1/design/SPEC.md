@@ -7,7 +7,64 @@ engineering acceptance or a claim that every described engine exists.
 
 ## Durable causal-convolution history layout
 
-The next enclosing audio replay stage materializes the query attention
+### Completed audio-feature replay binding
+
+Domain 3 is the internal completed-modality feature domain. Layer 2
+identifies audio; layer 1 is reserved for the image feature worker.
+Its vector length is the selected text H (8 in compact builds), not the
+native encoder width. This domain does not change the public job descriptor
+or introduce host-generated features. Its dependency rank is 18; text
+Eval rank is 19+l, vision/audio encoder Eval rank remains 1+l. Thus text
+input may depend on a completed feature, and a feature may depend on a
+completed encoder, with strict rank descent and the same 64-frame bound.
+Domain-3 layer 0 and other feature kinds reject before work.
+
+Domain-3 token is the original text-stream placeholder position, not a
+host-provided encoder ordinal. `anvil_en1_native_token_map` scans the
+entire immutable token stream, validates vocabulary and permitted modality
+placeholders, and derives the requested same-kind ordinal and total count.
+For audio it scans the actual immutable validity mask at source frame
+4*s for every subsampled token s, selects the requested true-mask ordinal,
+and requires total true masks to equal the audio placeholder count.
+Image mapping returns the ordinal/count for the existing vision-bin mapper;
+it does not assume all physical bins are valid. A wrong target identity,
+missing ordinal, malformed mask or count mismatch is an explicit error.
+All accepted scan/directory/mask reads, even failed responses, are original
+input bytes. The mapper has bounded scalar state and no feature archive.
+
+`anvil_en1_replay_audio_feature` maps the text placeholder before yielding
+for domain-2 Eval(12,mapped_token), before numerical feature production.
+Resume requires the exact model/session/mapped-token, 1024-component
+dependency and bounded memo slot, with continuation
+`{0x454e3146,mapped_token[31:0],96'b0}`. The continuation retains only
+the checked mapping, not an encoder vector. No encoder or feature answer
+enters the immutable-input memory port. The existing `audio_feature`
+worker performs the genuine 1024-to-1536 native projection with bias,
+unscaled RMS normalization and selected-H modality projection.
+All layer-12 callbacks read the matching scheduler-owned memo through
+op 4/target 1, aligned BF16 pairs. The scheduler cannot evict that memo
+while this task owns execution.
+
+| Feature boundary | Registered behavior |
+| --- | --- |
+| Start | Capture session/frame/dependency descriptor; validate before yield or child dispatch |
+| Mapping | Execute actual immutable token/mask scans and retire/check their result before publishing any encoder dependency |
+| Missing dependency | Publish the checked mapped-token lower-rank dependency without starting numerical work |
+| Source | Capture callback, validate model/generation/layer/token/index, accept memo read, register response and hold actual BF16 lane |
+| Output | Accept ordered H values, form aligned pairs, await each op 6/target 2 frame write acknowledgment |
+| Completion | Retire actual feature done only after source/pair responses drain; require H values, exact last and no unpaired lane |
+| Failure/reset | Drain active child using explicit failed callbacks/discarded outputs; stop new pair writes after first failure; reset cancels generation validity |
+
+Domain-3 compact frames charge two H vectors (32 bytes), memos charge
+one H vector (16 bytes), plus the existing scalar frame charge. Production
+frames retain the conservative 12 KiB vector/1 KiB scalar reservation,
+and memos retain 8 KiB. Both actual and shadow allocations remain visible.
+The literal feature worker's 1536-vector/projection banks and controller
+reports are additive, not fictitious RAM overlays. Image feature execution,
+text placeholder/session binding and whole-system primitive/scratch
+accounting remain integration obligations before a ready handoff.
+
+`anvil_en1_replay_audio_history` materializes the query attention
 residual and at most four causal predecessors before starting lightconv.
 Each is produced by the same numerical `replay_audio_residual` worker,
 not a same-rank Eval push. Its genuine entering-vector dependencies still
@@ -29,6 +86,10 @@ with all upper bits zero. Slice 0 retains existing behavior. Nonzero
 slices are legal only for domain 2, frame vector reads (op 4/target 0)
 and ordered frame pair writes (op 6/target 2); memo/scalar/copy ABI is
 unchanged. Each slice has independent visibility and ordered pair progress.
+Validation first registers the selected slice index. TAG_READ synchronously
+registers that slice's visibility, pair-progress flag and next component;
+TAG_CHECK and PAIR_SETUP consume those registered observations, not a
+combinational progress-array lookup followed by a same-stage comparison.
 Audio frame reservation in compact geometry is also 12 KiB: native
 encoder widths are not compacted. The compact backing bank stride is
 widened to the production 1536-word stride, and its physical reservation
@@ -84,9 +145,11 @@ be returned as an encoder Eval result.
 Each literal worker's vector and controller reports remain additive; the six
 durable vectors are already charged by the workspace frame reservation.
 No extra private durable banks or claimed physical overlays are introduced.
-Higher-layer dispatch and whole-system scratch overlays remain necessary
-before a ready handoff. No numerical, functional, synthesis or timing result
-is implied by this layout.
+`replay_execute` dispatches encoder frames 1..12 through this layer worker
+and returns its real yielded dependencies to `eval_schedule`. Completed
+audio-feature/session routing and whole-system scratch overlays remain
+necessary before a ready handoff. No numerical, functional, synthesis or
+timing result is implied by this layout.
 
 ## Durable audio attention-residual/frame binding
 
@@ -160,10 +223,11 @@ bytes. The real head worker's original-mask, weight, projection and
 intermediate events remain connected. All of these events are advisory DUT
 observations; independent handshake/address classification remains mandatory.
 
-Full historical light-convolution continuations, FF2/norm_out, higher-layer
-audio replay, modality/session routing and whole-system integration remain
-unfinished. The compound attention residual must not be dispatched or
-memoized as Eval(frame_layer,query) before those operations are connected.
+The enclosing history/layer workers described above now connect historical
+light convolution and FF2/norm_out. Modality/session routing and whole-system
+integration remain unfinished. This compound attention residual itself must
+not be dispatched or memoized as Eval(frame_layer,query); only the enclosing
+layer's completed norm_out may supply that result.
 No functional, numerical, synthesis or timing check has run for this binding.
 
 ## Complete native conformer and durable audio-head binding
@@ -271,9 +335,9 @@ handshake/address-classification scoreboard.
 | Failure | Retire executor completion before returning errors; failed scalar writes never become a successful continuation |
 
 These bindings are implementation contracts, not verified numerical, RAM,
-timing or hardware results. Domain-2 full-layer continuation/memo dispatch,
-completed audio-feature routing and whole-system allocation accounting
-remain required.
+timing or hardware results. Domain-2 full-layer continuation/memo dispatch
+is connected through the enclosing layer worker; completed audio-feature
+routing and whole-system allocation accounting remain required.
 
 ### Durable eight-head audio/frame stage
 
@@ -338,9 +402,12 @@ alongside its existing immutable vision fields. Its registered domain-2
 layer-0 dispatch selects only this input worker for external commands,
 workspace requests and completion. Native source, projection, point-replay
 and vector/controller allocation outputs separately expose actual audio
-reconstruction. Higher domain-2 layers still reject explicitly until the
-durable conformer dispatcher is connected; that remains an incomplete
-product, not permission to omit native audio acceptance.
+reconstruction. Higher domain-2 layers 1..12 now select
+`replay_audio_layer`, with registered workspace/command/completion selection.
+Its genuine yielded continuation and strictly lower-layer dependency return
+to the existing scheduler. Only final successful norm_out returns an Eval
+vector. The extended audio layer-controller and history/GLU events expose
+actual connected work, not numerical or timing acceptance.
 
 | Audio Eval(0) boundary | Registered behavior |
 | --- | --- |
@@ -422,8 +489,9 @@ Only checkpoint words 0..21 carry data. A durable worker must persist those
 unpaired BF16 lane, and recreate reserved words 22..31 as zero on restore.
 This fits the existing 32-word compact scalar frame without widening it.
 These boundaries do not authorize same-layer replay recursion, a native
-feature spill or host-supplied Q/K/V. Full conformer frame dispatch remains
-an implementation dependency, not an acceptance result.
+feature spill or host-supplied Q/K/V. Full conformer frame dispatch is now
+connected through the enclosing history/layer workers, not independently
+accepted as numerically or physically correct.
 
 ### Connected audio pre-attention vector
 
@@ -552,9 +620,9 @@ and payload traffic classification must still scoreboard the external
 address map; native input/projection events are not a replacement for
 that independent public-handshake ledger.
 
-The dispatcher now reconstructs domain-2 layer zero from actual immutable
-audio inputs, but still rejects higher audio layers because its durable
-conformer worker is not connected. Text modality callbacks still require
+The dispatcher reconstructs domain-2 layer zero from actual immutable
+audio inputs and layers 1..12 through the durable conformer worker.
+Text modality callbacks still require
 their native session/placeholder dispatcher. Those are implementation
 gaps, not authorized removal of native audio or multimodal acceptance.
 No functional or synthesis pass is established for the saved workers.
@@ -3021,27 +3089,28 @@ The backing interface carries `backing_valid/ready`, `backing_write`,
 `backing_wdata[31:0]`, and a held `backing_rsp_valid/ready/data/error`.
 Every accepted write receives one response after the synchronous write.
 Every accepted read receives the actual synchronous RAM word. The legal
-backing range is 0..245759 in production and 0..2623 in compact mode.
+backing range is 0..245759 in production and 0..206847 in compact mode.
 No operation is accepted before op 3 binds the RAM. Backing transport does not
 make uninitialized words readable through the workspace's public interface.
 
 | Partition | Production words / bytes | Compact words / bytes |
 | --- | --- | --- |
-| 64 two-vector frame slots | 196608 / 786432 | 65536 / 262144 |
+| 64 two-bank frame slots | 196608 / 786432 | 196608 / 786432 |
 | 16 memo vector slots | 32768 / 131072 | 8192 / 32768 |
 | 64 scalar continuation slots | 16384 / 65536 | 2048 / 8192 |
-| Backing total | 245760 / 983040 | 75776 / 303104 |
+| Backing total | 245760 / 983040 | 206848 / 827392 |
 
-Frame f starts at `f*3072` production words (`f*1024` compact). Each of its two
-vector banks has 1536 words (512 compact). Memo slot s starts at
-`196608+s*2048` (compact `65536+s*512`). Scalar slot f starts at
-`229376+f*256` (compact `73728+f*32`). Full production slot reservations and
+Frame f starts at `f*3072` words in both geometries. Each of its two
+vector banks has 1536 words. Audio slice j starts at bank_base+j*512.
+Memo slot s starts at `196608+s*2048` (compact `196608+s*512`).
+Scalar slot f starts at `229376+f*256` (compact `204800+f*32`).
+Full production slot reservations and
 compact domain-specific prefixes, including occupied padding, count as live
 payload, not merely returned components. Production
 shadow frame/memo/scalar allocations always use the production slot sizes.
 Physical reserved backing is reported separately; it is the first part of
 the existing frontier RAM, not an extra inferred payload array. Compact RAM
-reserves 131072 words / 524288 bytes to cover native vector strides and continuations;
+reserves 206848 words / 827392 bytes to cover native vector strides and continuations;
 its ordinary frontier allocation cap remains 8192 bytes and 512 tokens.
 Production frontier RAM and the 3 MiB cap are unchanged. Unused physical words
 are not advertised as live payload or saved FPGA memory.

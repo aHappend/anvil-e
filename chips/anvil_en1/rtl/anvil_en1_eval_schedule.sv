@@ -135,30 +135,32 @@ module anvil_en1_eval_schedule #(
     wire [11:0] text_length = COMPACT ? 12'd8 :
         (model_hold == 1 ? 12'd1536 : 12'd2560);
     wire [11:0] root_length =
-        (root_domain == 0 ? text_length :
+        (root_domain == 0 || root_domain == 3 ? text_length :
         (root_domain == 1 ? 12'd768 : 12'd1024));
     wire [11:0] selected_dependency_length =
-        (dependency_domain == 0 ? text_length :
+        (dependency_domain == 0 || dependency_domain == 3 ? text_length :
         (dependency_domain == 1 ? 12'd768 : 12'd1024));
-    wire root_valid = root_domain != 3 &&
+    wire root_valid =
         (root_domain == 0 ? root_token < tokens_hold : root_token <= 131071) &&
+        (root_domain == 3 ? (root_layer == 1 || root_layer == 2) :
         (root_domain == 0 ? root_layer <= text_layers :
-        (root_domain == 1 ? root_layer <= 16 : root_layer <= 12));
+        (root_domain == 1 ? root_layer <= 16 : root_layer <= 12)));
     wire [64:0] tokens_end = {1'b0, tokens_base_hold} +
         {31'd0, tokens_hold, 2'd0} - 65'd1;
     wire [6:0] current_rank = current_domain == 0 ?
-        {1'b0, current_layer[5:0]} + 7'd18 :
-        {1'b0, current_layer[5:0]} + 7'd1;
+        {1'b0, current_layer[5:0]} + 7'd19 :
+        (current_domain == 3 ? 7'd18 : {1'b0, current_layer[5:0]} + 7'd1);
     wire [6:0] dependency_rank = dependency_domain == 0 ?
-        {1'b0, dependency_layer[5:0]} + 7'd18 :
-        {1'b0, dependency_layer[5:0]} + 7'd1;
-    wire dependency_descriptor_valid = dependency_domain != 3 &&
+        {1'b0, dependency_layer[5:0]} + 7'd19 :
+        (dependency_domain == 3 ? 7'd18 : {1'b0, dependency_layer[5:0]} + 7'd1);
+    wire dependency_descriptor_valid =
         (dependency_domain == 0 ? dependency_token < tokens_hold :
             dependency_token <= 131071) &&
         dependency_length == selected_dependency_length &&
+        (dependency_domain == 3 ? (dependency_layer == 1 || dependency_layer == 2) :
         (dependency_domain == 0 ? dependency_layer <= text_layers :
         (dependency_domain == 1 ? dependency_layer <= 16 :
-            dependency_layer <= 12));
+            dependency_layer <= 12)));
     wire [255:0] return_record = {RETURN_MAGIC, current_domain, current_layer,
         current_token, current_length, current_frame, 4'd0, continuation_hold};
     wire parent_record_valid = ws_response_continuation[255:224] == RETURN_MAGIC &&
