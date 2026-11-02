@@ -30,7 +30,8 @@ module anvil_en1_final_logits #(
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
-    output wire [63:0] live_payload_bytes, physical_payload_bytes
+    output wire [63:0] live_payload_bytes, physical_payload_bytes,
+    output wire [63:0] controller_bytes
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
@@ -51,6 +52,7 @@ module anvil_en1_final_logits #(
         assign done_error = 0;
         assign live_payload_bytes = 0;
         assign physical_payload_bytes = 0;
+        assign controller_bytes = 0;
     end else begin : final_head
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer H_BITS = $clog2(MAX_H);
@@ -82,6 +84,21 @@ module anvil_en1_final_logits #(
         reg [31:0] raw_logit_hold;
         reg [3:0] error_hold;
         reg [15:0] normalized_q;
+        localparam integer CONTROLLER_BITS = $bits({
+            state, lookup_return, scale_state, source_state, model_hold, precision_hold,
+            memory_owner, weights_hold, lookup_kind, hidden_hold, normalized_count,
+            row_hold, descriptor_base, descriptor_bytes, descriptor_rows,
+            descriptor_columns, descriptor_stride, scale_index_hold,
+            projection_index_hold, scale_data_hold, projection_source_hold,
+            logit_hold, scale_error_hold, projection_source_error, normalization_error,
+            normalized_committed, payload_allocated, raw_logit_hold, error_hold, normalized_q
+        });
+        wire [63:0] lookup_controller_bytes, norm_controller_bytes;
+        wire [63:0] weight_controller_bytes, projection_controller_bytes, cap_controller_bytes;
+        assign controller_bytes = !rst_n ? 64'd0 :
+            64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
+            norm_controller_bytes + weight_controller_bytes +
+            projection_controller_bytes + cap_controller_bytes;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] normalized_payload [0:MAX_H-1];
 
@@ -90,6 +107,7 @@ module anvil_en1_final_logits #(
         wire [31:0] lookup_rows, lookup_columns, lookup_stride;
         wire [3:0] lookup_error;
         anvil_en1_tensor_image #(.COMPACT(COMPACT)) tensor_lookup (
+            .controller_bytes(lookup_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
             .model(model_hold), .precision(precision_hold),
@@ -116,6 +134,7 @@ module anvil_en1_final_logits #(
         wire [15:0] normalized_data;
         wire [3:0] norm_error;
         anvil_en1_norm norm_unit (
+            .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
             .layer_norm(1'b0), .learned_scale(1'b1),
@@ -144,6 +163,7 @@ module anvil_en1_final_logits #(
         wire [31:0] scale_data;
         wire [3:0] scale_error;
         anvil_en1_weight_read scale_reader (
+            .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && scale_state == W_START), .start_ready(scale_ready),
             .precision(2'd0), .tensor_base(descriptor_base),
@@ -165,6 +185,7 @@ module anvil_en1_final_logits #(
         wire [31:0] projection_source_index, projection_data;
         wire [3:0] projection_error;
         anvil_en1_projection projection_unit (
+            .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START),
             .start_ready(projection_ready), .precision(precision_hold),
@@ -192,6 +213,7 @@ module anvil_en1_final_logits #(
         wire [31:0] softcap_data;
         wire [3:0] softcap_error;
         anvil_en1_softcap softcap_unit (
+            .controller_bytes(cap_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == SOFTCAP_START), .start_ready(softcap_ready),
             .cap_50(1'b0), .input_binary32(1'b0), .output_binary32(1'b0),

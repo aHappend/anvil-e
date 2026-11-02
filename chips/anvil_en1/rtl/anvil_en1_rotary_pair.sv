@@ -12,7 +12,8 @@ module anvil_en1_rotary_pair #(
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, FREQUENCY_START = 2,
         FREQUENCY_WAIT = 3, POSITION_START = 4, POSITION_WAIT = 5,
@@ -32,6 +33,18 @@ module anvil_en1_rotary_pair #(
     reg [15:0] sine_bf16, cosine_bf16, first_output;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(mode_hold) + $bits(dimension_hold) + $bits(index_hold) +
+        $bits(position_hold) + $bits(pair_hold) + $bits(frequency_hold) +
+        $bits(position_float) + $bits(angle_hold) + $bits(sine_float) +
+        $bits(cosine_float) + $bits(value_hold) + $bits(product_hold) +
+        $bits(fp_a) + $bits(fp_b) + $bits(output_hold) + $bits(sine_bf16) +
+        $bits(cosine_bf16) + $bits(first_output) + $bits(fp_op) + $bits(error_hold);
+    wire [63:0] frequency_controller_bytes, convert_controller_bytes;
+    wire [63:0] trig_controller_bytes, fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + frequency_controller_bytes +
+        convert_controller_bytes + trig_controller_bytes + fp_controller_bytes;
     wire frequency_ready, frequency_valid, position_ready, position_valid;
     wire trig_ready, trig_valid, fp_ready, fp_valid;
     wire [31:0] frequency_data, position_data, trig_sine, trig_cosine, fp_data;
@@ -46,6 +59,7 @@ module anvil_en1_rotary_pair #(
     end
 
     anvil_en1_rope_frequency frequency_unit (
+        .controller_bytes(frequency_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FREQUENCY_START), .start_ready(frequency_ready),
         .mode(mode_hold), .dimension(dimension_hold), .pair_index(index_hold),
@@ -53,6 +67,7 @@ module anvil_en1_rotary_pair #(
         .done_data(frequency_data), .done_error(frequency_error)
     );
     anvil_en1_uint_to_fp32 position_converter (
+        .controller_bytes(convert_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POSITION_START), .start_ready(position_ready),
         .operand(position_magnitude),
@@ -60,6 +75,7 @@ module anvil_en1_rotary_pair #(
         .done_data(position_data), .done_error(position_error)
     );
     anvil_en1_sincos trig_unit (
+        .controller_bytes(trig_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == TRIG_START), .start_ready(trig_ready),
         .operand(angle_hold),
@@ -67,6 +83,7 @@ module anvil_en1_rotary_pair #(
         .done_sin(trig_sine), .done_cos(trig_cosine), .done_error(trig_error)
     );
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

@@ -81,6 +81,7 @@ module anvil_en1_replay_attention_projection #(
     output wire [63:0] controller_state_bytes,
     output wire [63:0] executor_controller_bytes, checkpoint_controller_bytes,
     output wire [63:0] tile_controller_bytes, tile_live_bytes, tile_physical_bytes,
+    output wire [3:0] attention_activity,
     output wire busy
 );
     localparam [4:0] IDLE = 0, VALIDATE = 1, LOOKUP_START = 2,
@@ -230,6 +231,7 @@ module anvil_en1_replay_attention_projection #(
         (state == HEAD_RUN || state == DRAIN_HEAD) && !executor_output_valid;
     anvil_en1_replay_attention_execute #(.COMPACT(COMPACT), .PAUSABLE(1)) executor (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
         .start_valid(rst_n && state == HEAD_START), .start_ready(executor_ready),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold),
         .query_head(head), .query_position(token_hold), .tokens(tokens_hold),

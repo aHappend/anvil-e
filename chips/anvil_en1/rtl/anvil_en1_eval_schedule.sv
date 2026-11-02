@@ -63,6 +63,7 @@ module anvil_en1_eval_schedule #(
     output wire [3:0] done_error,
     output wire [6:0] frame_depth,
     output wire [63:0] scheduler_state_bytes,
+    output wire [63:0] workspace_controller_bytes,
     output wire [63:0] live_payload_bytes, production_shadow_bytes,
     output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
     output wire memo_hit_event, memo_eviction_event,
@@ -245,6 +246,7 @@ module anvil_en1_eval_schedule #(
         .production_shadow_bytes(production_shadow_bytes),
         .backing_reserved_bytes(backing_reserved_bytes),
         .visibility_metadata_bytes(visibility_metadata_bytes),
+        .controller_bytes(workspace_controller_bytes),
         .memo_hit_event(memo_hit_event), .memo_eviction_event(memo_eviction_event),
         .backing_valid(backing_valid), .backing_ready(backing_ready),
         .backing_generation(backing_generation), .backing_write(backing_write),
@@ -295,7 +297,28 @@ module anvil_en1_eval_schedule #(
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
     assign busy = rst_n && state != IDLE;
-    assign scheduler_state_bytes = rst_n ? 64'd175 : 64'd0;
+    localparam integer SCHEDULER_BITS =
+        $bits(state) + $bits(ws_return) + $bits(model_hold) + $bits(precision_hold) +
+        $bits(modality_hold) + $bits(root_domain) + $bits(generation_hold) +
+        $bits(tokens_hold) + $bits(root_token) + $bits(root_layer) +
+        $bits(tokens_base_hold) + $bits(weights_base_hold) + $bits(current_domain) +
+        $bits(mode_hold) + $bits(dependency_domain) + $bits(push_kind) +
+        $bits(current_layer) + $bits(dependency_layer) + $bits(current_token) +
+        $bits(dependency_token) + $bits(current_length) + $bits(dependency_length) +
+        $bits(current_frame) + $bits(dependency_slot) + $bits(continuation_hold) +
+        $bits(dependency_valid_hold) + $bits(lookup_dependency) + $bits(linear_hold) +
+        $bits(result_bank) + $bits(completed_domain) + $bits(completed_layer) +
+        $bits(completed_token) + $bits(completed_length) + $bits(completed_slot) +
+        $bits(output_component) + $bits(output_pair) + $bits(error_hold) +
+        $bits(worker_error) + $bits(pass_busy) + $bits(pass_invalid) + $bits(ws_op) +
+        $bits(ws_domain) + $bits(ws_target) + $bits(ws_token) + $bits(ws_data) +
+        $bits(ws_layer) + $bits(ws_scalar_index) + $bits(ws_length) +
+        $bits(ws_component) + $bits(ws_slot) + $bits(ws_bank) +
+        $bits(ws_continuation) + $bits(ws_hit_hold) + $bits(ws_response_slot) +
+        $bits(ws_response_data) + $bits(ws_response_continuation) +
+        $bits(ws_response_domain) + $bits(ws_response_token) +
+        $bits(ws_response_layer) + $bits(ws_response_length);
+    assign scheduler_state_bytes = rst_n ? 64'((SCHEDULER_BITS+7) >> 3) : 64'd0;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

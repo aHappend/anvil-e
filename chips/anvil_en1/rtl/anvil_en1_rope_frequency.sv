@@ -8,7 +8,8 @@ module anvil_en1_rope_frequency (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [3:0] IDLE = 0, VALIDATE = 1, ROOT_START = 2,
         ROOT_WAIT = 3, TEST_BIT = 4, PRODUCT_START = 5,
@@ -20,6 +21,12 @@ module anvil_en1_rope_frequency (
     reg [8:0] index_hold, bit_hold;
     reg [31:0] root_hold, product_hold, output_hold;
     reg [3:0] error_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(mode_hold) +
+        $bits(dimension_hold) + $bits(index_hold) + $bits(bit_hold) +
+        $bits(root_hold) + $bits(product_hold) + $bits(output_hold) + $bits(error_hold);
+    wire [63:0] div_controller_bytes, fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + div_controller_bytes + fp_controller_bytes;
     wire root_ready, root_valid, product_ready, product_valid;
     wire [31:0] root_data, product_data;
     wire [3:0] root_error, product_error;
@@ -31,6 +38,7 @@ module anvil_en1_rope_frequency (
         (state == ROOT_START || state == RECIPROCAL_START);
 
     anvil_en1_fp32_divsqrt root_divider (
+        .controller_bytes(div_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(root_request), .start_ready(root_ready),
         .operation(state == RECIPROCAL_START ? 2'd0 : 2'd1),
@@ -41,6 +49,7 @@ module anvil_en1_rope_frequency (
         .done_data(root_data), .done_error(root_error)
     );
     anvil_en1_fp32 multiplier (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PRODUCT_START), .start_ready(product_ready),
         .operation(3'd1), .operand_a(product_hold), .operand_b(root_hold),

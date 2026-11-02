@@ -6,7 +6,8 @@ module anvil_en1_sincos (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_sin, done_cos,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [5:0] IDLE = 0, CLASSIFY = 1, FIXED_SETUP = 2,
         REDUCE = 3, QUADRANT = 4, NORMALIZE = 5, ROUND = 6,
@@ -68,6 +69,19 @@ module anvil_en1_sincos (
     wire [31:0] signed_coefficient = {coefficient_negative, div_data[30:0]};
     wire [31:0] signed_sine = {reduced_negative ^ sine_hold[31], sine_hold[30:0]};
     reg [31:0] quadrant_sine, quadrant_cosine;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(angle_hold) + $bits(reduced_float) + $bits(squared) +
+        $bits(polynomial) + $bits(coefficient_hold) + $bits(value_hold) +
+        $bits(sine_hold) + $bits(cosine_hold) + $bits(fp_a) + $bits(fp_b) +
+        $bits(factorial_float) + $bits(fp_op) + $bits(error_hold) +
+        $bits(degree) + $bits(cosine_phase) + $bits(first_coefficient) +
+        $bits(reduced_negative) + $bits(quadrant_hold) + $bits(reduction_bit) +
+        $bits(remainder_hold) + $bits(fixed_normal) + $bits(fixed_exponent) +
+        $bits(quadrant_sine) + $bits(quadrant_cosine);
+    wire [63:0] fp_controller_bytes, convert_controller_bytes, div_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + fp_controller_bytes +
+        convert_controller_bytes + div_controller_bytes;
 
     always @* begin
         quadrant_sine = 0;
@@ -95,6 +109,7 @@ module anvil_en1_sincos (
     end
 
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -102,6 +117,7 @@ module anvil_en1_sincos (
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_uint_to_fp32 factorial_converter (
+        .controller_bytes(convert_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == COEFFICIENT_START), .start_ready(uint_ready),
         .operand(factorial_integer),
@@ -109,6 +125,7 @@ module anvil_en1_sincos (
         .done_data(uint_data), .done_error(uint_error)
     );
     anvil_en1_fp32_divsqrt coefficient_divider (
+        .controller_bytes(div_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DIV_START), .start_ready(div_ready),
         .operation(2'd0), .operand_a(32'h3f800000), .operand_b(factorial_float),

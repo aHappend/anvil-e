@@ -7,7 +7,8 @@ module anvil_en1_geglu_pair (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [3:0] IDLE = 0, VALIDATE = 1, ACTIVATION_START = 2,
         ACTIVATION_WAIT = 3, MATERIALIZE_GATE = 4, MULTIPLY = 5,
@@ -19,11 +20,19 @@ module anvil_en1_geglu_pair (
     reg [31:0] value_hold, fp_a, fp_b, output_hold;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(op_hold) + $bits(activation_op) + $bits(gate_hold) + $bits(up_hold) +
+        $bits(value_hold) + $bits(fp_a) + $bits(fp_b) + $bits(output_hold) +
+        $bits(fp_op) + $bits(error_hold);
+    wire [63:0] activation_controller_bytes, fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + activation_controller_bytes + fp_controller_bytes;
     wire activation_ready, activation_valid, fp_ready, fp_valid;
     wire [31:0] activation_data, fp_data;
     wire [3:0] activation_error, fp_error;
 
     anvil_en1_activation activation_unit (
+        .controller_bytes(activation_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ACTIVATION_START), .start_ready(activation_ready),
         .operation(activation_op), .operand({gate_hold, 16'd0}),
@@ -31,6 +40,7 @@ module anvil_en1_geglu_pair (
         .done_data(activation_data), .done_error(activation_error)
     );
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

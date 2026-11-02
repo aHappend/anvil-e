@@ -7,7 +7,8 @@ module anvil_en1_softcap (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [3:0] IDLE = 0, DIV_START = 1, DIV_WAIT = 2,
         TANH_START = 3, TANH_WAIT = 4, MULTIPLY = 5,
@@ -18,11 +19,20 @@ module anvil_en1_softcap (
     reg [2:0] fp_op;
     reg [3:0] error_hold;
     reg output_binary32_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(operand_hold) + $bits(cap_hold) + $bits(value_hold) + $bits(fp_a) +
+        $bits(fp_b) + $bits(output_hold) + $bits(fp_op) + $bits(error_hold) +
+        $bits(output_binary32_hold);
+    wire [63:0] div_controller_bytes, activation_controller_bytes, fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + div_controller_bytes +
+        activation_controller_bytes + fp_controller_bytes;
     wire div_ready, div_valid, tanh_ready, tanh_valid, fp_ready, fp_valid;
     wire [31:0] div_data, tanh_data, fp_data;
     wire [3:0] div_error, tanh_error, fp_error;
 
     anvil_en1_fp32_divsqrt cap_divider (
+        .controller_bytes(div_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DIV_START), .start_ready(div_ready),
         .operation(2'd0), .operand_a(operand_hold), .operand_b(cap_hold),
@@ -30,6 +40,7 @@ module anvil_en1_softcap (
         .done_data(div_data), .done_error(div_error)
     );
     anvil_en1_activation tanh_unit (
+        .controller_bytes(activation_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == TANH_START), .start_ready(tanh_ready),
         .operation(2'd0), .operand(value_hold),
@@ -37,6 +48,7 @@ module anvil_en1_softcap (
         .done_data(tanh_data), .done_error(tanh_error)
     );
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

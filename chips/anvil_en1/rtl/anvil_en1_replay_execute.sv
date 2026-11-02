@@ -111,6 +111,10 @@ module anvil_en1_replay_execute #(
     output wire [31:0] query_projection_bytes,
     output wire source_read_event,
     output wire [31:0] source_read_bytes,
+    output wire [63:0] reported_controller_bytes,
+    output wire [3:0] attention_activity,
+    output wire avoided_projection_event,
+    output wire [31:0] avoided_projection_bytes,
     output wire busy
 );
     localparam [2:0] IDLE = 0, VALIDATE = 1, WORKER_START = 2,
@@ -164,6 +168,7 @@ module anvil_en1_replay_execute #(
     wire work_bank, write_valid, write_ready, write_first, write_last, write_abort;
     wire [31:0] write_data;
     wire [3:0] work_rsp_error;
+    wire [63:0] workspace_controller_bytes;
     anvil_en1_eval_schedule #(.COMPACT(COMPACT)) scheduler (
         .clk(clk), .rst_n(rst_n),
         .start_valid(start_valid), .start_ready(start_ready),
@@ -208,6 +213,7 @@ module anvil_en1_replay_execute #(
         .output_index(output_index), .output_data(output_data), .output_last(output_last),
         .done_valid(done_valid), .done_ready(done_ready), .done_error(done_error),
         .frame_depth(frame_depth), .scheduler_state_bytes(scheduler_state_bytes),
+        .workspace_controller_bytes(workspace_controller_bytes),
         .live_payload_bytes(live_payload_bytes), .production_shadow_bytes(production_shadow_bytes),
         .backing_reserved_bytes(backing_reserved_bytes),
         .visibility_metadata_bytes(visibility_metadata_bytes),
@@ -316,6 +322,9 @@ module anvil_en1_replay_execute #(
     wire [31:0] text_owner_bytes, text_query_bytes, text_source_bytes;
     anvil_en1_replay_text_layer #(.COMPACT(COMPACT)) text_layer (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
+        .avoided_projection_event(avoided_projection_event),
+        .avoided_projection_bytes(avoided_projection_bytes),
         .start_valid(text_selected && state == WORKER_START), .start_ready(text_ready),
         .model(model_hold), .precision(precision_hold), .modality(modality_hold), .mode(mode_hold),
         .frame_layer(layer_hold), .token(token_hold), .tokens(tokens_hold),
@@ -823,6 +832,27 @@ module anvil_en1_replay_execute #(
         $bits(dependency_domain_hold) + $bits(done_domain_hold) + $bits(done_layer_hold) +
         $bits(done_token_hold) + $bits(done_length_hold) + $bits(error_hold);
     assign dispatcher_state_bytes = rst_n ? 64'((DISPATCHER_BITS + 7) >> 3) : 64'd0;
+    wire [63:0] text_reported_controllers = input_state_bytes + text_state_bytes +
+        binding_controller_bytes + projection_controller_bytes +
+        executor_controller_bytes + checkpoint_controller_bytes + tile_controller_bytes;
+    wire [63:0] vision_reported_controllers = vision_state_bytes +
+        vision_binding_controller_bytes + vision_patch_controller_bytes +
+        vision_replay_controller_bytes + vision_executor_controller_bytes +
+        vision_head_controller_bytes + vision_tile_controller_bytes +
+        vision_clipped_controller_bytes + vision_clamp_controller_bytes +
+        vision_output_controller_bytes + vision_output_clamp_controller_bytes +
+        vision_post_controller_bytes + vision_norm_controller_bytes +
+        vision_mlp_controller_bytes + vision_down_controller_bytes +
+        vision_down_clamp_controller_bytes + vision_inner_controller_bytes +
+        vision_inner_clamp_controller_bytes;
+    wire [63:0] audio_reported_controllers = audio_input_controller_bytes +
+        audio_layer_controller_bytes + audio_nested_controller_bytes +
+        audio_feature_controller_bytes + audio_feature_nested_controller_bytes;
+    assign reported_controller_bytes = !rst_n ? 64'd0 :
+        scheduler_state_bytes + dispatcher_state_bytes + workspace_controller_bytes +
+        text_reported_controllers + vision_reported_controllers +
+        audio_reported_controllers + image_feature_controller_bytes +
+        image_feature_nested_controller_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

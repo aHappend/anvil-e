@@ -39,7 +39,8 @@ module anvil_en1_owner_kv_tile #(
     output wire projection_event,
     output wire [31:0] projection_bytes,
     output wire query_projection_event,
-    output wire [31:0] query_projection_bytes
+    output wire [31:0] query_projection_bytes,
+    output wire [63:0] controller_bytes
 );
     generate if ((COMPACT != 0 && COMPACT != 1) ||
         (ALLOW_QUERY != 0 && ALLOW_QUERY != 1)) begin : invalid_parameters
@@ -63,6 +64,7 @@ module anvil_en1_owner_kv_tile #(
         assign projection_bytes = 0;
         assign query_projection_event = 0;
         assign query_projection_bytes = 0;
+        assign controller_bytes = 0;
     end else begin : tile
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer MAX_D = COMPACT ? 8 : 512;
@@ -104,6 +106,24 @@ module anvil_en1_owner_kv_tile #(
         reg [3:0] error_hold;
         reg scale_error_hold;
         reg [15:0] input_q, head_q;
+        localparam integer CONTROLLER_BITS = $bits({
+            state, src_state, scale_state, model_hold, precision_hold, memory_owner,
+            head_hold, owner_hold, token_hold, hidden_hold, dimension_hold, heads_hold,
+            weights_hold, component_hold, current_component, pair_base, selector_hold,
+            query_hold, global_hold, input_norm, second_component, src_is_head,
+            src_is_projection, src_index_hold, scale_index_hold, projection_index,
+            src_data_hold, scale_data_hold, first_source, second_source, first_output,
+            component_output, lookup_kind, descriptor_base, descriptor_bytes,
+            scale_base, scale_bytes, descriptor_rows, descriptor_columns,
+            descriptor_stride, scale_columns, scale_stride, projection_data_hold,
+            output_hold, error_hold, scale_error_hold, input_q, head_q
+        });
+        wire [63:0] lookup_controller_bytes, projection_controller_bytes;
+        wire [63:0] norm_controller_bytes, weight_controller_bytes, rotary_controller_bytes;
+        assign controller_bytes = !rst_n ? 64'd0 :
+            64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
+            projection_controller_bytes + norm_controller_bytes +
+            weight_controller_bytes + rotary_controller_bytes;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] input_payload [0:MAX_H-1];
         (* ramstyle = "M20K", nomem2reg *)
@@ -126,6 +146,7 @@ module anvil_en1_owner_kv_tile #(
         wire lookup_cmd_valid, lookup_result_ready;
         wire [63:0] lookup_cmd_addr;
         anvil_en1_tensor_image #(.COMPACT(COMPACT)) tensor_lookup (
+            .controller_bytes(lookup_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
             .model(model_hold), .precision(precision_hold), .image_class(2'd0),
@@ -152,6 +173,7 @@ module anvil_en1_owner_kv_tile #(
         wire [31:0] projection_row =
             (32'(head_hold) * dimension_hold) + projection_index;
         anvil_en1_projection projection_unit (
+            .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
             .precision(precision_hold), .tensor_base(descriptor_base),
@@ -192,6 +214,7 @@ module anvil_en1_owner_kv_tile #(
         assign norm_source_data = input_norm ? source_rsp_data : src_data_hold;
         assign norm_source_error = input_norm && source_rsp_error;
         anvil_en1_norm norm_unit (
+            .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
             .layer_norm(1'b0), .learned_scale(input_norm || query_hold || !selector_hold),
@@ -220,6 +243,7 @@ module anvil_en1_owner_kv_tile #(
         wire scale_cmd_valid, scale_result_ready;
         wire [63:0] scale_cmd_addr;
         anvil_en1_weight_read scale_reader (
+            .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && scale_state == SCALE_START), .start_ready(scale_ready),
             .precision(2'd0), .tensor_base(scale_base), .tensor_bytes(scale_bytes),
@@ -238,6 +262,7 @@ module anvil_en1_owner_kv_tile #(
         wire [31:0] rotary_data;
         wire [3:0] rotary_error;
         anvil_en1_rotary_pair rotary_unit (
+            .controller_bytes(rotary_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == ROTARY_START), .start_ready(rotary_ready),
             .mode(global_hold ? 2'd1 : 2'd0), .dimension(dimension_hold[9:0]),

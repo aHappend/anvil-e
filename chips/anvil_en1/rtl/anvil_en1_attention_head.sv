@@ -72,7 +72,9 @@ module anvil_en1_attention_head #(
     output wire component_last,
     output wire done_valid,
     input wire done_ready,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [3:0] attention_activity,
+    output wire [63:0] controller_bytes
 );
     generate if ((COMPACT != 0 && COMPACT != 1) ||
         (REPLAY != 0 && REPLAY != 1)) begin : invalid_parameters
@@ -117,6 +119,8 @@ module anvil_en1_attention_head #(
         assign component_last = 0;
         assign done_valid = 0;
         assign done_error = 0;
+        assign attention_activity = 0;
+        assign controller_bytes = 0;
     end else begin : attention
         localparam [5:0] IDLE = 0, VALIDATE = 1, MASK_START = 2,
             MASK_WAIT = 3, MASK_REGISTER = 4, QUERY_START = 5,
@@ -150,6 +154,20 @@ module anvil_en1_attention_head #(
         reg [2:0] fp_op;
         reg resume_hold;
         reg [383:0] checkpoint_hold;
+        localparam integer CONTROLLER_BITS = $bits({
+            state, return_state, model_hold, phase, head_hold, layer_hold, owner_hold,
+            query_head_hold, position_hold, first_token, token, active_keys,
+            dimension_hold, dot_component, output_component, cache_component,
+            cache_selector, mask_hold, source_error_hold, query_hold, cache_hold,
+            probability_hold, output_hold, dot_accumulator, maximum, exponential_sum,
+            inverse_sum, value_accumulator, value_hold, exponential, fp_a, fp_b,
+            exp_a, cache_addr_hold, cache_alias_hold, cache_space_hold, error_hold,
+            cache_error_hold, fp_op, resume_hold, checkpoint_hold
+        });
+        wire [63:0] fp_controller_bytes, exp_controller_bytes, div_controller_bytes;
+        assign controller_bytes = !rst_n ? 64'd0 :
+            64'((CONTROLLER_BITS+7) >> 3) + fp_controller_bytes +
+            exp_controller_bytes + div_controller_bytes;
         wire native_model, is_global;
         wire [7:0] layer_count;
         wire fp_ready, fp_valid, exp_ready, exp_valid, inverse_ready, inverse_valid;
@@ -199,6 +217,7 @@ module anvil_en1_attention_head #(
             .owner(), .is_global(is_global), .hidden(), .intermediate()
         );
         anvil_en1_fp32 fp_unit (
+            .controller_bytes(fp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
             .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -206,6 +225,7 @@ module anvil_en1_attention_head #(
             .done_data(fp_data), .done_error(fp_error)
         );
         anvil_en1_exp exp_unit (
+            .controller_bytes(exp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
             .operand(exp_a),
@@ -213,6 +233,7 @@ module anvil_en1_attention_head #(
             .done_data(exp_data), .done_error(exp_error)
         );
         anvil_en1_fp32_divsqrt inverse_unit (
+            .controller_bytes(div_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == INVERSE_START), .start_ready(inverse_ready),
             .operation(2'd0), .operand_a(32'h3f800000), .operand_b(exponential_sum),
@@ -261,6 +282,15 @@ module anvil_en1_attention_head #(
             output_component == dimension_hold - 1'b1;
         assign done_valid = rst_n && state == RESPONSE;
         assign done_error = rst_n ? error_hold : 4'd0;
+        wire lane_available = rst_n && native_model && layer_hold < layer_count &&
+            state != IDLE && state != VALIDATE && state != PUBLISH &&
+            state != RESPONSE;
+        wire component_issue = lane_available && state == FP_START && fp_ready &&
+            fp_op == 1 && (return_state == DOT_ADD || return_state == VALUE_ADD);
+        assign attention_activity = {
+            lane_available && is_global, lane_available && !is_global,
+            component_issue && is_global, component_issue && !is_global
+        };
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin

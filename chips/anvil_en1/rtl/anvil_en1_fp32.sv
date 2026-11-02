@@ -7,7 +7,8 @@ module anvil_en1_fp32 (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [4:0] IDLE = 0, CLASSIFY = 1, ADD_ALIGN = 2, ADD_SUM = 3,
         ADD_NORMALIZE = 4, MUL_NORMALIZE = 5, MUL_PARTIAL = 6,
@@ -25,6 +26,15 @@ module anvil_en1_fp32 (
     reg [47:0] partial_lo, partial_hi, product;
     reg [10:0] half_mantissa;
     reg signed [11:0] half_exponent;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(op) +
+        $bits(a) + $bits(b) + $bits(output_hold) + $bits(error_hold) +
+        $bits(sign_a) + $bits(sign_b) + $bits(sign_result) +
+        $bits(exponent_a) + $bits(exponent_b) + $bits(exponent_result) +
+        $bits(mantissa_a) + $bits(mantissa_b) + $bits(aligned_a) +
+        $bits(aligned_b) + $bits(sum_mantissa) + $bits(p00) + $bits(p01) +
+        $bits(p10) + $bits(p11) + $bits(partial_lo) + $bits(partial_hi) +
+        $bits(product) + $bits(half_mantissa) + $bits(half_exponent);
+    assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
 
     function automatic [27:0] shift_sticky(
         input [27:0] value, input [11:0] amount

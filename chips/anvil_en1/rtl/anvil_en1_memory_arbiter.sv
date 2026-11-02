@@ -28,7 +28,8 @@ module anvil_en1_memory_arbiter #(
     output wire drain_ready,
     output wire drain_done_valid,
     input wire drain_done_ready,
-    output wire protocol_error
+    output wire protocol_error,
+    output wire [63:0] controller_bytes
 );
     generate if (CLIENTS < 1 || CLIENTS > 8) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: CLIENTS must be 1..8");
@@ -47,6 +48,7 @@ module anvil_en1_memory_arbiter #(
         assign drain_ready = 0;
         assign drain_done_valid = 0;
         assign protocol_error = 0;
+        assign controller_bytes = 0;
     end else begin : arbiter
         localparam [2:0] IDLE = 0, SEND = 1, WAIT_RESULT = 2,
             CLIENT_RESPONSE = 3, DRAIN_RESPONSE = 4, FAULT = 5;
@@ -54,6 +56,12 @@ module anvil_en1_memory_arbiter #(
         reg draining, write_hold, error_hold, fault_hold, input_hold, replay_hold;
         reg [63:0] address_hold;
         reg [31:0] write_data_hold, read_data_hold;
+        localparam integer CONTROLLER_BITS = $bits(state) + $bits(cursor) +
+            $bits(owner_hold) + $bits(draining) + $bits(write_hold) +
+            $bits(error_hold) + $bits(fault_hold) + $bits(input_hold) +
+            $bits(replay_hold) + $bits(address_hold) + $bits(write_data_hold) +
+            $bits(read_data_hold);
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         wire drain_accept = drain_valid && drain_ready;
         wire ingress_open = rst_n && state == IDLE && !draining && !drain_valid;
         wire [CLIENTS-1:0] cursor_mask = {{(CLIENTS-1){1'b0}}, 1'b1} << cursor;

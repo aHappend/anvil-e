@@ -82,14 +82,15 @@ and clear-priority behavior is unchanged. Current connected event metrics
 are busy cycles, successful jobs, accepted public read/write bytes
 (including failed transactions), accepted alias responses, resident hits,
 failed jobs, real owner/replay-owner reprojection bytes, memo hits/evictions
-and completed fallback jobs. Replay original-input and weight-image bytes
+and completed fallback jobs. The matched-unshared payload gauge (metric 16)
+is now connected as described below. Replay original-input and weight-image bytes
 now update metrics 18/19 on accepted public memory requests, not on
 projection results or internal source callbacks. Owner work is not
 advertised as avoided work.
 Event-model 3 updates neither bank.
 
 **Remaining integration, not zero-valued measurements:** KV-equivalent
-traffic classification, matched-baseline traffic/payload, avoided work,
+traffic classification, matched-baseline traffic, avoided work,
 local/global utilization and aggregate live/
 peak allocation events are not yet wired. Their target CSR slots remain
 unmodified by this partial top; zero does not establish a measured result.
@@ -98,6 +99,30 @@ Complete whole-system allocation/overlay enforcement, primitive/controller
 accounting and these telemetry connections remain required before handoff.
 No static elaboration, simulation, synthesis, timing or hardware result is
 claimed for the top.
+
+### Matched-unshared payload gauge
+
+Metric 16 records the full padded matched-unshared payload when the native
+engine accepts a validated job, after the successful positions scan.
+For production E2B it is `1024*(28*w+14*p)` bytes and for production E4B
+`2048*(35*w+14*p)` bytes, where `p=16*ceil(N/16)` and `w=min(p,512)`.
+The 28/35 local and seven global layers all retain distinct K/V in this
+comparison, including each shared logical consumer's materialized owner copy.
+Both precision modes have the same BF16 KV payload. COMPACT uses
+`16*(L*w+14*p)`, with `L=28/35` and `w=min(p,4)`, reflecting its actual
+one KV head and local/global dimensions 4/8, not production-width savings.
+
+The descriptor-validation edge registers local/global unit counts; the
+subsequent position-request edge registers their scaled sum. No memory
+access or native dispatch is created by this accounting. Job acceptance
+clears these private calculation registers; rejected jobs do not update
+the CSR gauge. A CSR clear simultaneous with the native-start event still
+wins through the unchanged CSR engine.
+
+This gauge is a model-geometry calculation, not an observed external
+traffic baseline or an allocation/savings pass. Metric 6 remains unconnected.
+The independent executable baseline must still handshake and scoreboard
+its real writes/reads; it cannot take its traffic denominator from metric 16.
 
 ### Accepted replay traffic classification
 
@@ -216,7 +241,7 @@ this complete-context execution interface.
 
 ### Allocation observation vector
 
-`allocation_live_bytes` and `allocation_physical_bytes` contain 22 unsigned
+`allocation_live_bytes` and `allocation_physical_bytes` contain 25 unsigned
 64-bit fields, field i at `[64*i+:64]`. These are named component reports,
 not a complete accepted live ledger. No aggregate savings or allocator
 success is inferred from them.
@@ -245,6 +270,9 @@ success is inferred from them.
 | 19 | Ordinary embedding reconstruction's input/PLE payload |
 | 20 | Ordinary text attention/PLE/MLP payload |
 | 21 | Final-logit head's normalized hidden vector |
+| 22 | Reported replay subtree controllers, including workspace and owner-source control, excluding field 16 |
+| 23 | Native memory arbiter, frontier scheduler and cache controller registers |
+| 24 | Ordinary executor, frontier RAM and local-ring controller registers |
 
 Fields 19..21 now originate at the payload owners rather than being
 silently omitted by the ordinary executor. Legal descriptor validation
@@ -261,13 +289,38 @@ owner reports instead of deriving visibility from the caller's current
 worker selection. Both embedding instances are summed, so a retained
 child allocation cannot disappear merely because dispatch changed.
 
+Fields 22..24 charge the reported registers continuously outside reset,
+including inactive instances and held payload/readback registers. This
+is a conservative reservation, not a phase-dependent claim that idle
+registers have been physically removed. Their physical fields equal
+their live reservation fields. They include no vector/tag RAM already
+charged in other fields.
+
+Field 22 sums the existing text, vision, audio and feature-controller
+reports across **all** literal instances, not the selected worker mux.
+The selected-worker report remains available at the replay leaf but is
+not added again. Eval scheduling and workspace controllers are included
+once, with scheduler size derived from its declared register widths
+instead of the previous fixed 175-byte value. The binding's own
+controller remains separately charged in field 16.
+
+Workspace metadata now counts exactly its two tag arrays, frame/vector/
+pair/memo visibility maps, pair-progress components, memo domains and
+scalar occupancy bitmap. All other workspace registers, including tag
+readback copies, continuations, partial-copy words and pending-allocation
+counters, belong to its controller report. This partitions that leaf's
+declared state rather than hiding control words in a tag-array subtotal.
+Cache, frontier and ring controllers likewise exclude their separately
+reported resident/frontier/ring payload and tag/occupied arrays while
+including returned/stalled data copies.
+
 Physical field 5 is zero **only because** the actual backing RAM is
 physically counted once in field 0. `workspace_reserved_bytes` separately
 reports the logical backing partition, and `workspace_shadow_bytes` the
 existing production-width shadow allocation. Neither may be silently
 substituted for live bytes. Metadata has four separate 64-bit fields:
 frontier token tags, ring token/lane tags, workspace visibility metadata,
-and resident tags/occupied bits. Child controllers, primitive state,
+and resident tags/occupied bits. Unreported child controllers, primitive state,
 additional transient vectors and the enclosing top remain to be accounted;
 short-context native scratch and the full fallback ceiling remain to be
 enforced. Physical field 0 is not a claim that all its reserved words are

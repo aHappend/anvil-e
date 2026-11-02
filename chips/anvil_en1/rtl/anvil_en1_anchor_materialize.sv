@@ -52,7 +52,8 @@ module anvil_en1_anchor_materialize #(
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
-    output wire [63:0] live_payload_bytes, physical_payload_bytes
+    output wire [63:0] live_payload_bytes, physical_payload_bytes,
+    output wire [63:0] controller_bytes
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
@@ -91,6 +92,7 @@ module anvil_en1_anchor_materialize #(
         assign done_error = 0;
         assign live_payload_bytes = 0;
         assign physical_payload_bytes = 0;
+        assign controller_bytes = 0;
     end else begin : materialize
         localparam integer PAIRS = COMPACT ? 2 : 128;
         localparam integer PAIR_BITS = $clog2(PAIRS);
@@ -112,6 +114,14 @@ module anvil_en1_anchor_materialize #(
         reg [1:0] metadata_space;
         reg [15:0] fetched_component, low_component;
         reg [31:0] pair_hold, buffer_q;
+        localparam integer CONTROLLER_BITS = $bits({
+            state, model_hold, head_hold, head_count, owner_hold, canonical_owner,
+            generation_hold, token_hold, selector_hold, high_component, buffer_live,
+            lane_complete, pair_index, error_hold, metadata_error, fetch_error_hold,
+            metadata_alias, metadata_space, fetched_component, low_component,
+            pair_hold, buffer_q
+        });
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         (* ramstyle = "M20K", nomem2reg *)
         reg [31:0] payload [0:PAIRS-1];
 

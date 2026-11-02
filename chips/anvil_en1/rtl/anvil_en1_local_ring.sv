@@ -11,6 +11,7 @@ module anvil_en1_local_ring #(
     input wire control_rsp_ready,
     output wire [3:0] control_error,
     output wire [63:0] live_bytes, physical_payload_bytes, token_metadata_bytes,
+    output wire [63:0] controller_bytes,
     input wire write_start_valid,
     output wire write_start_ready,
     input wire [1:0] write_model,
@@ -47,6 +48,7 @@ module anvil_en1_local_ring #(
         assign live_bytes = 0;
         assign physical_payload_bytes = 0;
         assign token_metadata_bytes = 0;
+        assign controller_bytes = 0;
         assign write_start_ready = 0;
         assign write_ready = 0;
         assign write_done_valid = 0;
@@ -88,6 +90,17 @@ module anvil_en1_local_ring #(
         reg [31:0] payload [0:WORD_COUNT-1];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [31:0] token_tags [0:WINDOW-1];
+        localparam integer CONTROLLER_BITS = $bits(state) +
+            $bits(control_invalidate_hold) + $bits(active) + $bits(is_write) +
+            $bits(selector_hold) + $bits(hit_hold) + $bits(control_model_hold) +
+            $bits(model_hold) + $bits(request_model) + $bits(head_hold) +
+            $bits(control_generation_hold) + $bits(control_tokens_hold) +
+            $bits(generation_hold) + $bits(padded_window) + $bits(allocation_hold) +
+            $bits(token_hold) + $bits(request_generation) + $bits(word_address) +
+            $bits(write_base) + $bits(owner_hold) + $bits(anchor_hold) +
+            $bits(pair_index) + $bits(component_hold) + $bits(error_hold) +
+            $bits(lane_valid_hold) + $bits(tag_q) + $bits(payload_q) + $bits(read_hold);
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         wire selected_native;
         wire [7:0] selected_owners;
         anvil_en1_geometry geometry (

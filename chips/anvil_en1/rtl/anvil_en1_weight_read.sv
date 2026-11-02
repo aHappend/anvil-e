@@ -18,7 +18,8 @@ module anvil_en1_weight_read (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [4:0] IDLE = 0, EXTENT_PRODUCTS = 1, EXTENT_REDUCE = 2,
         EXTENT_SUM = 3, VALIDATE = 4, ROW_ADDRESS = 5,
@@ -39,6 +40,21 @@ module anvil_en1_weight_read (
     reg [3:0] error_hold;
     reg memory_error_hold, reading_nibble;
     reg [1:0] lane_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(precision_hold) + $bits(base_hold) + $bits(bytes_hold) +
+        $bits(row_base) + $bits(address_hold) + $bits(rows_hold) +
+        $bits(columns_hold) + $bits(stride_hold) + $bits(row_hold) +
+        $bits(column_hold) + $bits(expected_stride) + $bits(column_offset) +
+        $bits(nibble_offset) + $bits(rp00) + $bits(rp01) + $bits(rp10) +
+        $bits(rp11) + $bits(ep00) + $bits(ep01) + $bits(ep10) + $bits(ep11) +
+        $bits(row_partial_a) + $bits(row_partial_b) + $bits(extent_partial_a) +
+        $bits(extent_partial_b) + $bits(row_offset) + $bits(required_bytes) +
+        $bits(word_hold) + $bits(scale_hold) + $bits(output_hold) +
+        $bits(fp_a) + $bits(fp_b) + $bits(fp_op) + $bits(error_hold) +
+        $bits(memory_error_hold) + $bits(reading_nibble) + $bits(lane_hold);
+    wire [63:0] fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + fp_controller_bytes;
     wire fp_ready, fp_valid;
     wire [31:0] fp_data;
     wire [3:0] fp_error;
@@ -82,6 +98,7 @@ module anvil_en1_weight_read (
     wire [31:0] nibble_value = nibble_float(nibble);
 
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

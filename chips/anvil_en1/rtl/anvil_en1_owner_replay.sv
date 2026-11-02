@@ -69,6 +69,7 @@ module anvil_en1_owner_replay #(
     input wire result_error,
     output wire [63:0] raw_source_live_bytes, raw_source_physical_bytes,
     output wire [63:0] tile_live_bytes, tile_physical_bytes,
+    output wire [63:0] controller_bytes,
     output wire owner_reprojection_event,
     output wire [31:0] owner_reprojection_bytes,
     output wire ring_hit_event,
@@ -117,6 +118,7 @@ module anvil_en1_owner_replay #(
         assign raw_source_physical_bytes = 0;
         assign tile_live_bytes = 0;
         assign tile_physical_bytes = 0;
+        assign controller_bytes = 0;
         assign owner_reprojection_event = 0;
         assign owner_reprojection_bytes = 0;
         assign ring_hit_event = 0;
@@ -155,6 +157,25 @@ module anvil_en1_owner_replay #(
         reg source_error_hold;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] raw_payload [0:MAX_H-1];
+        localparam integer CONTROLLER_BITS = $bits(state) + $bits(source_state) +
+            $bits(active) + $bits(fallback_hold) + $bits(invalidate_hold) +
+            $bits(control_fallback_hold) + $bits(raw_allocated) +
+            $bits(raw_committed) + $bits(vector_bad) + $bits(vector_complete) +
+            $bits(tile_allocated) + $bits(ring_hit_pulse) + $bits(model_hold) +
+            $bits(precision_hold) + $bits(control_model_hold) +
+            $bits(control_precision_hold) + $bits(generation_hold) + $bits(tokens_hold) +
+            $bits(control_generation_hold) + $bits(control_tokens_hold) +
+            $bits(weights_hold) + $bits(control_weights_hold) + $bits(request_model) +
+            $bits(head_hold) + $bits(owner_hold) + $bits(token_hold) +
+            $bits(hidden_hold) + $bits(dimension_hold) + $bits(vector_count) +
+            $bits(selector_hold) + $bits(component_hold) + $bits(error_hold) +
+            $bits(eval_error_hold) + $bits(pair_hold) + $bits(source_model_hold) +
+            $bits(source_owner_hold) + $bits(source_token_hold) +
+            $bits(source_index_hold) + $bits(source_data_hold) + $bits(raw_q) +
+            $bits(source_error_hold);
+        wire [63:0] tile_controller_bytes;
+        assign controller_bytes = !rst_n ? 64'd0 :
+            64'((CONTROLLER_BITS + 7) >> 3) + tile_controller_bytes;
 
         wire native_owner, global_owner;
         wire [7:0] owners;
@@ -188,6 +209,7 @@ module anvil_en1_owner_replay #(
         wire [31:0] tile_source_token, tile_source_index, tile_data;
         wire [3:0] tile_error;
         anvil_en1_owner_kv_tile #(.COMPACT(COMPACT)) owner_tile (
+            .controller_bytes(tile_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == TILE_START), .start_ready(tile_ready),
             .model(request_model), .precision(precision_hold), .owner(owner_hold),

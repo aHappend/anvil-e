@@ -94,6 +94,9 @@ module anvil_en1_replay_text_layer #(
     output wire [63:0] ple_live_bytes, ple_physical_bytes,
     output wire [63:0] embedding_live_bytes, embedding_physical_bytes,
     output wire [63:0] post_vector_live_bytes, post_vector_physical_bytes,
+    output wire [3:0] attention_activity,
+    output wire avoided_projection_event,
+    output wire [31:0] avoided_projection_bytes,
     output wire busy
 );
     localparam integer P = COMPACT ? 4 : 256;
@@ -228,6 +231,7 @@ module anvil_en1_replay_text_layer #(
     wire [63:0] attention_cmd_addr;
     anvil_en1_replay_attention_projection #(.COMPACT(COMPACT)) attention_branch (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
         .start_valid(rst_n && state == ATTENTION_START), .start_ready(attention_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),
         .frame_layer(frame_layer_hold), .token(token_hold), .tokens(tokens_hold),
@@ -342,6 +346,9 @@ module anvil_en1_replay_text_layer #(
         post_output_last == (output_count + 1'b1 == {20'd0, length_hold});
     anvil_en1_asym_attn_ple #(.COMPACT(COMPACT), .POST_ONLY(1)) post_attention (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(),
+        .avoided_projection_event(avoided_projection_event),
+        .avoided_projection_bytes(avoided_projection_bytes),
         .start_valid(rst_n && state == POST_START), .start_ready(post_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),
         .token(token_hold), .weights_base(weights_base_hold),

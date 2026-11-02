@@ -41,6 +41,7 @@ module anvil_en1_replay_workspace #(
     output wire [6:0] frame_depth,
     output wire [63:0] live_payload_bytes, production_shadow_bytes,
     output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
+    output wire [63:0] controller_bytes,
     output wire memo_hit_event, memo_eviction_event,
     output wire backing_valid,
     input wire backing_ready,
@@ -77,6 +78,7 @@ module anvil_en1_replay_workspace #(
         assign production_shadow_bytes = 0;
         assign backing_reserved_bytes = 0;
         assign visibility_metadata_bytes = 0;
+        assign controller_bytes = 0;
         assign memo_hit_event = 0;
         assign memo_eviction_event = 0;
         assign backing_valid = 0;
@@ -142,6 +144,30 @@ module anvil_en1_replay_workspace #(
         reg [TAG_BITS-1:0] frame_tags [0:63];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [TAG_BITS-1:0] memo_tags [0:15];
+        localparam integer METADATA_BITS = 80*TAG_BITS +
+            $bits(frame_occupied) + $bits(vector_occupied) +
+            $bits(pair_progress_valid) + $bits(pair_next_component) +
+            $bits(memo_occupied) + $bits(memo_domains) + $bits(scalar_occupied);
+        localparam integer CONTROLLER_BITS =
+            $bits(state) + $bits(backing_return) + $bits(active) +
+            $bits(invalidate_hold) + $bits(bank_hold) + $bits(pending_push) +
+            $bits(pending_memo) + $bits(hit_hold) + $bits(hit_pulse) +
+            $bits(eviction_pulse) + $bits(new_memo) + $bits(model_hold) +
+            $bits(control_model_hold) + $bits(domain_hold) + $bits(target_hold) +
+            $bits(generation_hold) + $bits(control_generation_hold) +
+            $bits(request_generation) + $bits(token_hold) + $bits(request_data) +
+            $bits(data_hold) + $bits(layer_hold) + $bits(scalar_index_hold) +
+            $bits(length_hold) + $bits(component_hold) + $bits(pair_index) +
+            $bits(op_hold) + $bits(slot_hold) + $bits(response_slot) +
+            $bits(copy_source_slot) + $bits(depth) + $bits(memo_count) +
+            $bits(cursor) + $bits(scan_index) + $bits(error_hold) +
+            $bits(continuation_index) + $bits(continuation_hold) +
+            $bits(continuation_result) + $bits(request_tag) + $bits(response_tag) +
+            $bits(frame_tag_q) + $bits(memo_tag_q) + $bits(backing_address_hold) +
+            $bits(backing_write_hold) + $bits(backing_data_hold) +
+            $bits(backing_result) + $bits(copy_data) + $bits(vector_index_hold) +
+            $bits(vector_present_q) + $bits(pair_active_q) + $bits(pair_component_q) +
+            $bits(compact_frame_bytes) + $bits(compact_memo_bytes);
 
         wire [TAG_BITS-1:0] incoming_tag = {req_model, req_generation,
             req_domain, req_layer, req_token[16:0], req_length};
@@ -254,8 +280,8 @@ module anvil_en1_replay_workspace #(
         assign production_shadow_bytes = rst_n ? shadow_frames + shadow_memos : 64'd0;
         assign backing_reserved_bytes = rst_n ? 64'(TOTAL_WORDS * 4) : 64'd0;
         assign visibility_metadata_bytes = rst_n ?
-            64'((80*TAG_BITS + 64 + 384 + 384 + 4608 + 23 + 16 + 32 + 64 +
-                64*SCALAR_WORDS + 7) >> 3) : 64'd0;
+            64'((METADATA_BITS + 7) >> 3) : 64'd0;
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS + 7) >> 3) : 64'd0;
         assign memo_hit_event = rst_n && hit_pulse;
         assign memo_eviction_event = rst_n && eviction_pulse;
         assign backing_valid = rst_n && state == BACKING_SEND;

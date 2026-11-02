@@ -45,6 +45,7 @@ module anvil_en1_kv_shared_cache #(
     input wire [31:0] regen_rsp_data,
     input wire [3:0] regen_rsp_error,
     output wire [63:0] resident_live_bytes, resident_physical_bytes, metadata_bytes,
+    output wire [63:0] controller_bytes,
     output wire resident_hit_event, resident_miss_event, alias_event
 );
     localparam integer LEGAL = RESIDENT_ENTRIES >= 1 &&
@@ -74,6 +75,7 @@ module anvil_en1_kv_shared_cache #(
         assign resident_live_bytes = 0;
         assign resident_physical_bytes = 0;
         assign metadata_bytes = 0;
+        assign controller_bytes = 0;
         assign resident_hit_event = 0;
         assign resident_miss_event = 0;
         assign alias_event = 0;
@@ -119,6 +121,18 @@ module anvil_en1_kv_shared_cache #(
         reg [TAG_WIDTH-1:0] tags [0:RESIDENT_ENTRIES-1];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [31:0] payload [0:RESIDENT_ENTRIES-1];
+        localparam integer CONTROLLER_BITS = $bits(meta_state) + $bits(fetch_state) +
+            $bits(generation) + $bits(replace_index) + $bits(resident_count) +
+            $bits(op_hold) + $bits(model_hold) + $bits(layer_hold) +
+            $bits(token_hold) + $bits(selector_hold) + $bits(head_hold) +
+            $bits(component_hold) + $bits(base_hold) + $bits(addr_hold) +
+            $bits(owner_hold) + $bits(alias_hold) + $bits(meta_error) +
+            $bits(space_hold) + $bits(data_model) + $bits(data_owner) +
+            $bits(data_token) + $bits(data_selector) + $bits(data_head) +
+            $bits(data_component) + $bits(data_tag) + $bits(data_response) +
+            $bits(data_error) + $bits(pair_hold) + $bits(pair_cancelled) +
+            $bits(pair_error) + $bits(hit_hold) + $bits(payload_q);
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
 
         wire invalidate_accept = req_valid && req_ready && req_op == 2 &&
             req_model != 3;

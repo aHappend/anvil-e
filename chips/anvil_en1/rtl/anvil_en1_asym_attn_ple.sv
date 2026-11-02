@@ -72,7 +72,11 @@ module anvil_en1_asym_attn_ple #(
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
-    output wire [63:0] live_payload_bytes, physical_payload_bytes
+    output wire [63:0] live_payload_bytes, physical_payload_bytes,
+    output wire [3:0] attention_activity,
+    output wire avoided_projection_event,
+    output wire [31:0] avoided_projection_bytes,
+    output wire [63:0] controller_bytes
 );
     generate if ((COMPACT != 0 && COMPACT != 1) ||
         (POST_ONLY != 0 && POST_ONLY != 1)) begin : invalid_parameters
@@ -120,6 +124,10 @@ module anvil_en1_asym_attn_ple #(
         assign done_error = 0;
         assign live_payload_bytes = 0;
         assign physical_payload_bytes = 0;
+        assign attention_activity = 0;
+        assign avoided_projection_event = 0;
+        assign avoided_projection_bytes = 0;
+        assign controller_bytes = 0;
     end else begin : engine
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer MAX_D = COMPACT ? 8 : 512;
@@ -192,6 +200,34 @@ module anvil_en1_asym_attn_ple #(
         reg [3:0] error_hold;
         reg payload_allocated;
         reg [15:0] residual_q, work_q, branch_q, query_q, attention_q, ple_q;
+        localparam integer CONTROLLER_BITS = $bits({
+            state, lookup_return, fp_return, narrow_return, norm_phase, norm_bank,
+            norm_destination, src_state, src_client, src_bank, scale_state,
+            model_hold, precision_hold, memory_owner, residual_phase, layer_hold,
+            token_hold, hidden_hold, dimension_hold, weights_hold, global_hold,
+            load_ple, load_branch, projection_query, gated_ple, head, index,
+            pair_index, norm_length, projection_row, lookup_kind, load_data,
+            output_hold, load_error, src_error_hold, scale_error_hold, src_index_hold,
+            scale_index_hold, src_data_hold, scale_data_hold, descriptor_base,
+            descriptor_bytes, scale_base, scale_bytes, descriptor_rows,
+            descriptor_columns, descriptor_stride, scale_columns, scale_stride,
+            gate_base_hold, gate_bytes_hold, up_base_hold, up_bytes_hold,
+            down_base_hold, down_bytes_hold, gate_rows_hold, gate_columns_hold,
+            gate_stride_hold, up_rows_hold, up_columns_hold, up_stride_hold,
+            down_rows_hold, down_columns_hold, down_stride_hold, scalar_hold,
+            fp_a, fp_b, value_hold, rotary_data_hold, branch_data_hold,
+            residual_data_hold, rotary_first, rotary_second, fp_op, error_hold,
+            payload_allocated, residual_q, work_q, branch_q, query_q, attention_q, ple_q
+        });
+        wire [63:0] lookup_controller_bytes, norm_controller_bytes;
+        wire [63:0] projection_controller_bytes, rotary_controller_bytes;
+        wire [63:0] attention_controller_bytes, gated_controller_bytes;
+        wire [63:0] weight_controller_bytes, fp_controller_bytes;
+        assign controller_bytes = !rst_n ? 64'd0 :
+            64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
+            norm_controller_bytes + projection_controller_bytes + rotary_controller_bytes +
+            attention_controller_bytes + gated_controller_bytes +
+            weight_controller_bytes + fp_controller_bytes;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] residual_payload [0:MAX_H-1];
         (* ramstyle = "M20K", nomem2reg *)
@@ -218,6 +254,7 @@ module anvil_en1_asym_attn_ple #(
         wire [31:0] lookup_rows, lookup_columns, lookup_stride;
         wire [3:0] lookup_error;
         anvil_en1_tensor_image #(.COMPACT(COMPACT)) tensor_lookup (
+            .controller_bytes(lookup_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
             .model(model_hold), .precision(precision_hold), .image_class(2'd0),
@@ -240,6 +277,7 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] projection_cmd_addr;
         wire [3:0] projection_error;
         anvil_en1_projection projection_unit (
+            .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
             .precision(precision_hold), .tensor_base(descriptor_base),
@@ -267,6 +305,7 @@ module anvil_en1_asym_attn_ple #(
         wire [15:0] normalized_data;
         wire [3:0] norm_error;
         anvil_en1_norm norm_unit (
+            .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
             .layer_norm(1'b0), .learned_scale(1'b1),
@@ -294,6 +333,7 @@ module anvil_en1_asym_attn_ple #(
         wire [31:0] rotary_data;
         wire [3:0] rotary_error;
         anvil_en1_rotary_pair rotary_unit (
+            .controller_bytes(rotary_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == ROTARY_START), .start_ready(rotary_ready),
             .mode(global_hold ? 2'd1 : 2'd0), .dimension(dimension_hold[9:0]),
@@ -308,6 +348,7 @@ module anvil_en1_asym_attn_ple #(
         wire [15:0] attention_component_data;
         wire [3:0] attention_error;
         anvil_en1_attention_head #(.COMPACT(COMPACT)) attention_unit (
+            .controller_bytes(attention_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == ATTENTION_START), .start_ready(attention_ready),
             .model(model_hold), .layer(layer_hold), .query_head(head),
@@ -345,7 +386,7 @@ module anvil_en1_asym_attn_ple #(
             .component_data(attention_component_data),
             .component_last(attention_component_last),
             .done_valid(attention_valid), .done_ready(rst_n && state == ATTENTION_WAIT),
-            .done_error(attention_error)
+            .done_error(attention_error), .attention_activity(attention_activity)
         );
         wire gated_ready, gated_valid, gated_cmd_valid, gated_result_ready;
         wire gated_source_valid, gated_source_rsp_ready, gated_up_valid, gated_up_rsp_ready;
@@ -353,6 +394,7 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] gated_cmd_addr;
         wire [3:0] gated_error;
         anvil_en1_gated_projection gated_unit (
+            .controller_bytes(gated_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == GATED_START), .start_ready(gated_ready),
             .precision(precision_hold), .activation(2'd0), .up_mode(gated_ple ? 2'd1 : 2'd0),
@@ -390,6 +432,7 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] weight_cmd_addr;
         wire [3:0] weight_error;
         anvil_en1_weight_read weight_reader (
+            .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && (scale_state == W_START || state == SCALAR_START)),
             .start_ready(weight_ready), .precision(2'd0),
@@ -412,6 +455,7 @@ module anvil_en1_asym_attn_ple #(
         wire [31:0] fp_data;
         wire [3:0] fp_error;
         anvil_en1_fp32 fp_unit (
+            .controller_bytes(fp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
             .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -519,6 +563,10 @@ module anvil_en1_asym_attn_ple #(
         assign output_last = rst_n && state == OUTPUT_WAIT && index == hidden_hold - 1'b1;
         assign done_valid = rst_n && state == RESPONSE;
         assign done_error = rst_n ? error_hold : 4'd0;
+        assign avoided_projection_event = done_valid && done_ready && error_hold == 0 &&
+            layer_hold >= (model_hold == 1 ? 8'd15 : 8'd24);
+        assign avoided_projection_bytes = !avoided_projection_event ? 32'd0 :
+            dimension_hold << ((COMPACT || model_hold == 1) ? 2 : 3);
 
         wire [31:0] src_limit = src_bank == B_QUERY ? dimension_hold :
             src_bank == B_ATTENTION ? dimension_hold * Q :

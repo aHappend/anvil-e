@@ -33,7 +33,8 @@ module anvil_en1_gated_projection (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [4:0] IDLE = 0, VALIDATE = 1, GATE_SETUP = 2,
         PROJECTION_START = 3, PROJECTION_WAIT = 4, UP_SETUP = 5,
@@ -55,6 +56,24 @@ module anvil_en1_gated_projection (
     reg source_error_hold, projection_is_up, memory_down;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(precision_hold) + $bits(activation_hold) + $bits(up_mode_hold) +
+        $bits(gate_base_hold) + $bits(gate_bytes_hold) + $bits(up_base_hold) +
+        $bits(up_bytes_hold) + $bits(down_base_hold) + $bits(down_bytes_hold) +
+        $bits(projection_base) + $bits(projection_bytes) + $bits(gate_rows_hold) +
+        $bits(gate_columns_hold) + $bits(gate_stride_hold) + $bits(up_rows_hold) +
+        $bits(up_columns_hold) + $bits(up_stride_hold) + $bits(down_rows_hold) +
+        $bits(down_columns_hold) + $bits(down_stride_hold) + $bits(down_row_hold) +
+        $bits(projection_rows) + $bits(projection_columns) + $bits(projection_stride) +
+        $bits(index) + $bits(accumulator) + $bits(value_hold) + $bits(down_weight) +
+        $bits(output_hold) + $bits(fp_a) + $bits(fp_b) + $bits(gate_hold) +
+        $bits(up_hold) + $bits(gated_hold) + $bits(source_error_hold) +
+        $bits(projection_is_up) + $bits(memory_down) + $bits(fp_op) + $bits(error_hold);
+    wire [63:0] projection_controller_bytes, gated_controller_bytes;
+    wire [63:0] weight_controller_bytes, fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + projection_controller_bytes +
+        gated_controller_bytes + weight_controller_bytes + fp_controller_bytes;
     wire projection_ready, projection_valid, gated_ready, gated_valid;
     wire down_ready, down_valid, fp_ready, fp_valid;
     wire [31:0] projection_data, gated_data, down_data, fp_data;
@@ -65,6 +84,7 @@ module anvil_en1_gated_projection (
     wire [31:0] projection_cmd_wdata, down_cmd_wdata;
 
     anvil_en1_projection projection_unit (
+        .controller_bytes(projection_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .precision(precision_hold),
@@ -86,6 +106,7 @@ module anvil_en1_gated_projection (
         .done_data(projection_data), .done_error(projection_error)
     );
     anvil_en1_geglu_pair gated_unit (
+        .controller_bytes(gated_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == GATED_START), .start_ready(gated_ready),
         .operation(activation_hold), .gate_data(gate_hold), .up_data(up_hold),
@@ -93,6 +114,7 @@ module anvil_en1_gated_projection (
         .done_data(gated_data), .done_error(gated_error)
     );
     anvil_en1_weight_read down_reader (
+        .controller_bytes(weight_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_START), .start_ready(down_ready),
         .precision(precision_hold),
@@ -107,6 +129,7 @@ module anvil_en1_gated_projection (
         .done_data(down_data), .done_error(down_error)
     );
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

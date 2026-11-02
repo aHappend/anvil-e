@@ -23,7 +23,8 @@ module anvil_en1_tensor_image #(
     output wire [63:0] done_base, done_bytes,
     output wire [31:0] done_rows, done_columns, done_stride,
     output wire [7:0] done_type,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam integer LEGAL = COMPACT == 0 || COMPACT == 1;
     generate if (!LEGAL) begin : invalid_parameters
@@ -42,6 +43,7 @@ module anvil_en1_tensor_image #(
         assign done_stride = 0;
         assign done_type = 0;
         assign done_error = 0;
+        assign controller_bytes = 0;
     end else begin : reader
         localparam [4:0] IDLE = 0, BASE_VALIDATE = 1, MEMORY_START = 2,
             MEMORY_WAIT = 3, MEMORY_REGISTER = 4, HEADER_ADVANCE = 5,
@@ -67,6 +69,19 @@ module anvil_en1_tensor_image #(
         reg [63:0] output_base, output_bytes;
         reg [31:0] output_rows, output_columns, output_stride;
         reg [7:0] output_type;
+        localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+            $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
+            $bits(audio_hold) + $bits(items_hold) + $bits(kind_hold) +
+            $bits(layer_hold) + $bits(base_hold) + $bits(directory_base) +
+            $bits(address_hold) + $bits(header) + $bits(entry) +
+            $bits(prior_entry) + $bits(word_hold) + $bits(memory_error_hold) +
+            $bits(found) + $bits(word_index) + $bits(error_hold) +
+            $bits(entry_index) + $bits(prior_index) + $bits(ep00) + $bits(ep01) +
+            $bits(ep10) + $bits(ep11) + $bits(extent_partial_a) +
+            $bits(extent_partial_b) + $bits(required_bytes) + $bits(output_base) +
+            $bits(output_bytes) + $bits(output_rows) + $bits(output_columns) +
+            $bits(output_stride) + $bits(output_type);
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         wire requested_valid, shape_valid;
         wire [31:0] expected_count, shape_rows, shape_columns;
         wire [31:0] shape_d0, shape_d1, shape_d2, shape_d3;

@@ -26,7 +26,8 @@ module anvil_en1_norm (
     output wire normalized_last,
     output wire done_valid,
     input wire done_ready,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, LENGTH_START = 2,
         LENGTH_WAIT = 3, SOURCE_START = 4, SOURCE_WAIT = 5,
@@ -49,11 +50,24 @@ module anvil_en1_norm (
     reg [2:0] fp_op;
     reg [1:0] rd_op;
     reg [3:0] error_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(layer_hold) + $bits(learned_hold) + $bits(length_hold) +
+        $bits(epsilon_hold) + $bits(index) + $bits(length_float) + $bits(phase) +
+        $bits(accumulator) + $bits(mean_hold) + $bits(inverse_hold) +
+        $bits(value_hold) + $bits(normalized_hold) + $bits(source_hold) +
+        $bits(scale_hold) + $bits(output_hold) + $bits(response_error_hold) +
+        $bits(fp_a) + $bits(fp_b) + $bits(rd_a) + $bits(rd_b) +
+        $bits(fp_op) + $bits(rd_op) + $bits(error_hold);
+    wire [63:0] convert_controller_bytes, fp_controller_bytes, div_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + convert_controller_bytes +
+        fp_controller_bytes + div_controller_bytes;
     wire length_ready, length_valid, fp_ready, fp_valid, rd_ready, rd_valid;
     wire [31:0] length_data, fp_data, rd_data;
     wire [3:0] length_error, fp_error, rd_error;
 
     anvil_en1_uint_to_fp32 length_converter (
+        .controller_bytes(convert_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LENGTH_START), .start_ready(length_ready),
         .operand(length_hold),
@@ -61,6 +75,7 @@ module anvil_en1_norm (
         .done_data(length_data), .done_error(length_error)
     );
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -68,6 +83,7 @@ module anvil_en1_norm (
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_fp32_divsqrt root_divider (
+        .controller_bytes(div_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == RD_START), .start_ready(rd_ready),
         .operation(rd_op), .operand_a(rd_a), .operand_b(rd_b),

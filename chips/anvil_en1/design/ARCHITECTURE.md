@@ -5,7 +5,56 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: accepted replay traffic and owned payload reports
+## Current saved increment: connected controller reservations and payload baseline
+
+The native component vector now has 25 fields. New fields 22..24 carry
+previously disconnected controller reservations through the real replay
+binding and native assembly: all reported replay workers (not just the
+selected worker), Eval scheduler, workspace, owner-source control, both
+memory arbiters, cache control, frontier schedule, ordinary executor,
+frontier RAM control and local-ring control. Binding/native own registers
+remain in their existing fields. The same register reservation is
+disclosed physically; idle controllers are not advertised as removed RAM.
+
+New leaf censuses use declared register widths and exclude payload/tag
+arrays already accounted elsewhere. Workspace metadata and controller
+state now have disjoint explicit partitions, including partial-copy and
+stalled-return registers. Eval scheduling no longer reports a fixed
+175-byte size. Existing nested worker reports remain subtotals: unreported
+primitive and child state must still be added before claiming complete
+allocation accounting.
+
+The top now registers the matched-unshared BF16 payload calculation and
+updates CSR metric 16 only at actual validated native-job dispatch.
+Production formulas retain the admitted padding, window, per-model KV
+heads and complete logical-layer copies. COMPACT reports its own geometry,
+not a production savings result. Rejected descriptors/position scans do
+not update the gauge. This is an analytical payload denominator only;
+metric 6 and independent external-handshake baseline execution are not
+replaced by it.
+
+Changed RTL: `anvil_en1_memory_arbiter.sv`,
+`anvil_en1_replay_workspace.sv`, `anvil_en1_eval_schedule.sv`,
+`anvil_en1_replay_execute.sv`, `anvil_en1_owner_replay.sv`,
+`anvil_en1_replay_binding.sv`, `anvil_en1_frontier_schedule.sv`,
+`anvil_en1_kv_shared_cache.sv`, `anvil_en1_frontier.sv`,
+`anvil_en1_local_ring.sv`, `anvil_en1_frontier_execute.sv`,
+`anvil_en1_native.sv` and `anvil_en1_top.sv`; updated `SPEC.md`
+and this document. Tools used: glob, view, rg and apply_patch.
+No commands, static checks, simulation, synthesis, installations or
+experiments ran, and no preparation receipts exist. Parent, verification
+and runtime files remain untouched. The original attempt-0003
+ownership-guard interruption is preserved without a claimed repair.
+
+Remaining: finish unreported numerical/child/top register and transient
+allocation accounting, physical phase overlays and short-context
+native-scratch/full fallback enforcement; connect remaining actual
+traffic, avoided work, local/global utilization and complete live/peak
+events. Then run the reserved static elaboration check and hand off to
+independent Verifier. No correctness, savings, FPGA-fit or timing result
+is claimed. Not ready for Verifier.
+
+## Prior saved increment: accepted replay traffic and owned payload reports
 
 The registered arbiters now capture original-input versus weight-image
 provenance and replay-path identity with real accepted commands. These

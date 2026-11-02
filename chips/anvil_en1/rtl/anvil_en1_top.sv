@@ -68,6 +68,9 @@ module anvil_en1_top #(
     reg [63:0] session_weights, session_vision_weights, session_audio_weights;
     reg [63:0] session_image, session_audio, session_ids, session_positions, session_masks;
     reg [31:0] session_rows, session_columns, session_frames;
+    reg [14:0] baseline_local_units;
+    reg [20:0] baseline_global_units;
+    reg [31:0] baseline_payload;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -107,6 +110,12 @@ module anvil_en1_top #(
     wire native_session_bad = decode_hold ?
         (!session_matches || position_hold != session_tokens ||
             tokens_hold != session_tokens + 32'd1) : position_hold != 0;
+    wire [31:0] padded_context = (tokens_hold + 32'd15) & 32'hfffffff0;
+    wire [9:0] baseline_window = padded_context > (COMPACT ? 32'd4 : 32'd512) ?
+        (COMPACT ? 10'd4 : 10'd512) : padded_context[9:0];
+    wire [21:0] baseline_units = {7'd0, baseline_local_units} +
+        {1'b0, baseline_global_units};
+    wire [31:0] baseline_units_wide = {10'd0, baseline_units};
     assign job_ready = rst_n && state == IDLE;
     assign busy = rst_n && state != IDLE;
     assign done_valid = rst_n && state == RESPONSE;
@@ -175,7 +184,7 @@ module anvil_en1_top #(
     wire native_selected = rst_n && state == NATIVE_WAIT;
     wire fallback_active;
     wire [6:0] frame_depth;
-    wire [1407:0] live_bytes, physical_bytes;
+    wire [1599:0] live_bytes, physical_bytes;
     wire [255:0] metadata_bytes;
     wire [63:0] shadow_bytes, reserved_bytes;
     wire resident_hit, resident_miss, alias_hit, memo_hit, memo_eviction, ring_hit;
@@ -183,10 +192,16 @@ module anvil_en1_top #(
     wire replay_intermediate_event, native_fault;
     wire [31:0] owner_bytes, replay_owner_bytes, replay_input_bytes;
     wire [31:0] replay_projection_bytes, replay_intermediate_bytes;
+    wire [7:0] attention_activity;
+    wire avoided_projection_event;
+    wire [63:0] avoided_projection_bytes;
     wire bridge_ready, bridge_valid, bridge_error;
     wire [31:0] bridge_data;
     anvil_en1_native #(.COMPACT(COMPACT), .RESIDENT_ENTRIES(RESIDENT_ENTRIES)) native (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
+        .avoided_projection_event(avoided_projection_event),
+        .avoided_projection_bytes(avoided_projection_bytes),
         .start_valid(rst_n && state == NATIVE_START), .start_ready(native_ready),
         .model(model_hold), .precision(precision_hold), .modality(modality_hold),
         .generation(generation), .tokens(tokens_hold), .force_fallback(FORCE_FALLBACK != 0),
@@ -271,13 +286,24 @@ module anvil_en1_top #(
             assign perf_mask[metric] = accepted_memory &&
                 (metric == 3 ? mem_req_write : !mem_req_write);
             assign perf_values[64*metric+:64] = 64'd4;
+        end else if (metric == 7) begin
+            assign perf_mask[metric] = native_selected && avoided_projection_event;
+            assign perf_values[64*metric+:64] = avoided_projection_bytes;
         end else if (metric == 8 || metric == 9) begin
             assign perf_mask[metric] = native_selected &&
                 (metric == 8 ? alias_hit : resident_hit);
             assign perf_values[64*metric+:64] = 64'd1;
+        end else if (metric >= 10 && metric <= 13) begin
+            assign perf_mask[metric] = native_selected &&
+                |attention_activity[2*(metric-10)+:2];
+            assign perf_values[64*metric+:64] =
+                {62'd0, attention_activity[2*(metric-10)+:2]};
         end else if (metric == 14) begin
             assign perf_mask[metric] = completed_job && error_hold != 0;
             assign perf_values[64*metric+:64] = 64'd1;
+        end else if (metric == 16) begin
+            assign perf_mask[metric] = rst_n && state == NATIVE_START && native_ready;
+            assign perf_values[64*metric+:64] = {32'd0, baseline_payload};
         end else if (metric == 17) begin
             assign perf_mask[metric] = native_selected && (owner_event || replay_owner_event);
             assign perf_values[64*metric+:64] =
@@ -300,6 +326,30 @@ module anvil_en1_top #(
             assign perf_values[64*metric+:64] = 64'd0;
         end
     end endgenerate
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            baseline_local_units <= 0;
+            baseline_global_units <= 0;
+            baseline_payload <= 0;
+        end else if (job_valid && job_ready) begin
+            baseline_local_units <= 0;
+            baseline_global_units <= 0;
+            baseline_payload <= 0;
+        end else if (state == VALIDATE && model_hold != 0 &&
+            model_hold != 3 && precision_hold <= 1 &&
+            !native_descriptor_bad && !native_session_bad) begin
+            baseline_local_units <= {5'd0, baseline_window} *
+                (model_hold == 1 ? 15'd28 : 15'd35);
+            baseline_global_units <= {3'd0, padded_context[17:0]} * 21'd14;
+        end else if (state == POSITION_SEND) begin
+            if (COMPACT)
+                baseline_payload <= baseline_units_wide << 4;
+            else if (model_hold == 1)
+                baseline_payload <= baseline_units_wide << 10;
+            else
+                baseline_payload <= baseline_units_wide << 11;
+        end
+    end
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             bridge_input <= 0;

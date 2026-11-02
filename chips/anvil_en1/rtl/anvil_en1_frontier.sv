@@ -12,6 +12,7 @@ module anvil_en1_frontier #(
     output wire fallback_needed,
     output wire [31:0] padded_tokens,
     output wire [63:0] live_bytes, physical_payload_bytes, token_metadata_bytes,
+    output wire [63:0] controller_bytes,
     input wire write_start_valid,
     output wire write_start_ready,
     input wire [31:0] write_generation, write_token,
@@ -54,6 +55,7 @@ module anvil_en1_frontier #(
         assign live_bytes = 0;
         assign physical_payload_bytes = 0;
         assign token_metadata_bytes = 0;
+        assign controller_bytes = 0;
         assign write_start_ready = 0;
         assign write_ready = 0;
         assign write_done_valid = 0;
@@ -100,6 +102,20 @@ module anvil_en1_frontier #(
         reg [31:0] payload [0:WORD_COUNT-1];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [7:0] layer_tags [0:MAX_TOKENS-1];
+        localparam integer CONTROLLER_BITS = $bits(state) + $bits(op_hold) +
+            $bits(control_model_hold) + $bits(model_hold) +
+            $bits(control_generation_hold) + $bits(control_tokens_hold) +
+            $bits(generation_hold) + $bits(tokens_hold) + $bits(padded_hold) +
+            $bits(allocation_hold) + $bits(token_hold) + $bits(request_generation) +
+            $bits(vector_base) + $bits(pair_index) + $bits(word_address) +
+            $bits(component_hold) + $bits(hidden_hold) + $bits(pair_count) +
+            $bits(layer_hold) + $bits(owners_hold) + $bits(error_hold) +
+            $bits(active) + $bits(frozen) + $bits(fallback_hold) +
+            $bits(is_write) + $bits(token_valid_hold) + $bits(read_hold) +
+            $bits(bound_hold) + $bits(backing_write_hold) +
+            $bits(backing_address_hold) + $bits(backing_generation_hold) +
+            $bits(backing_data_hold) + $bits(layer_q) + $bits(payload_q);
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         wire control_native;
         wire [7:0] selected_owners;
         wire [11:0] selected_hidden;

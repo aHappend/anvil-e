@@ -34,7 +34,7 @@ module anvil_en1_native #(
     output wire [3:0] done_error,
     output wire fallback_active,
     output wire [6:0] frame_depth,
-    output wire [1407:0] allocation_live_bytes, allocation_physical_bytes,
+    output wire [1599:0] allocation_live_bytes, allocation_physical_bytes,
     output wire [255:0] allocation_metadata_bytes,
     output wire [63:0] workspace_shadow_bytes, workspace_reserved_bytes,
     output wire resident_hit_event, resident_miss_event, alias_event,
@@ -43,6 +43,9 @@ module anvil_en1_native #(
     output wire [31:0] owner_reprojection_bytes, replay_owner_reprojection_bytes,
     output wire replay_input_event, replay_projection_event, replay_intermediate_event,
     output wire [31:0] replay_input_bytes, replay_projection_bytes, replay_intermediate_bytes,
+    output wire [7:0] attention_activity,
+    output wire avoided_projection_event,
+    output wire [63:0] avoided_projection_bytes,
     output wire protocol_error,
     output wire busy
 );
@@ -93,6 +96,18 @@ module anvil_en1_native #(
         {31'd0, mask_token_hold, 2'd0};
     wire [64:0] mask_end = mask_sum + 65'd3;
     wire executor_busy, binding_busy, schedule_busy;
+    wire [3:0] executor_attention_activity, binding_attention_activity;
+    wire executor_avoided_event, binding_avoided_event;
+    wire [31:0] executor_avoided_bytes, binding_avoided_bytes;
+    genvar activity;
+    generate for (activity=0; activity<4; activity=activity+1) begin : attention_events
+        assign attention_activity[2*activity+:2] =
+            {1'b0, executor_attention_activity[activity]} +
+            {1'b0, binding_attention_activity[activity]};
+    end endgenerate
+    assign avoided_projection_event = executor_avoided_event || binding_avoided_event;
+    assign avoided_projection_bytes = {32'd0, executor_avoided_bytes} +
+        {32'd0, binding_avoided_bytes};
     wire memory_fault, binding_fault;
     wire drain_ready, drain_done;
     wire core_idle = state == IDLE && meta_state == META_IDLE &&
@@ -133,6 +148,7 @@ module anvil_en1_native #(
     wire [31:0] regen_token, regen_data;
     wire [9:0] regen_component;
     wire [3:0] regen_error;
+    wire [63:0] cache_controller_bytes;
     anvil_en1_kv_shared_cache #(
         .COMPACT(COMPACT), .RESIDENT_ENTRIES(RESIDENT_ENTRIES)
     ) cache (
@@ -161,6 +177,7 @@ module anvil_en1_native #(
         .resident_live_bytes(allocation_live_bytes[64*18+:64]),
         .resident_physical_bytes(allocation_physical_bytes[64*18+:64]),
         .metadata_bytes(allocation_metadata_bytes[64*3+:64]),
+        .controller_bytes(cache_controller_bytes),
         .resident_hit_event(resident_hit_event), .resident_miss_event(resident_miss_event),
         .alias_event(alias_event)
     );
@@ -173,6 +190,7 @@ module anvil_en1_native #(
     wire [3:0] task_error;
     wire schedule_ready, schedule_done;
     wire [3:0] schedule_error;
+    wire [63:0] schedule_controller_bytes, memory_controller_bytes;
     anvil_en1_frontier_schedule #(.COMPACT(COMPACT)) schedule (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == SCHEDULE_SEND), .start_ready(schedule_ready),
@@ -185,7 +203,8 @@ module anvil_en1_native #(
         .task_done_valid(task_done), .task_done_ready(task_done_ready),
         .task_done_error(task_error), .done_valid(schedule_done),
         .done_ready(rst_n && state == SCHEDULE_WAIT), .done_error(schedule_error),
-        .fallback_active(fallback_active), .busy(schedule_busy)
+        .fallback_active(fallback_active), .busy(schedule_busy),
+        .controller_bytes(schedule_controller_bytes)
     );
 
     wire executor_control_ready, executor_control_valid;
@@ -232,6 +251,9 @@ module anvil_en1_native #(
 
     anvil_en1_frontier_execute #(.COMPACT(COMPACT)) frontier (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(executor_attention_activity),
+        .avoided_projection_event(executor_avoided_event),
+        .avoided_projection_bytes(executor_avoided_bytes),
         .control_valid(rst_n && state == FRONTIER_SEND),
         .control_ready(executor_control_ready), .control_invalidate(1'b0),
         .control_model(model_hold), .control_precision(precision_hold),
@@ -316,11 +338,15 @@ module anvil_en1_native #(
         .anchor_physical_bytes(allocation_physical_bytes[64*4+:64]),
         .execution_live_bytes(allocation_live_bytes[64*19+:192]),
         .execution_physical_bytes(allocation_physical_bytes[64*19+:192]),
+        .reported_controller_bytes(allocation_live_bytes[64*24+:64]),
         .busy(executor_busy)
     );
 
     anvil_en1_replay_binding #(.COMPACT(COMPACT)) binding (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(binding_attention_activity),
+        .avoided_projection_event(binding_avoided_event),
+        .avoided_projection_bytes(binding_avoided_bytes),
         .control_valid(rst_n && state == BIND_SEND), .control_ready(binding_control_ready),
         .control_invalidate(1'b0), .control_fallback(selected_fallback),
         .control_model(model_hold), .control_precision(precision_hold),
@@ -410,6 +436,7 @@ module anvil_en1_native #(
         .image_feature_live_bytes(allocation_live_bytes[64*15+:64]),
         .image_feature_physical_bytes(allocation_physical_bytes[64*15+:64]),
         .binding_state_bytes(allocation_live_bytes[64*16+:64]),
+        .reported_controller_bytes(allocation_live_bytes[64*22+:64]),
         .memo_hit_event(memo_hit_event), .memo_eviction_event(memo_eviction_event),
         .ring_hit_event(ring_hit_event), .owner_reprojection_event(owner_reprojection_event),
         .replay_owner_reprojection_event(replay_owner_reprojection_event),
@@ -447,7 +474,7 @@ module anvil_en1_native #(
         .drain_valid(rst_n && state == DRAIN_SEND && workers_drained),
         .drain_ready(drain_ready),
         .drain_done_valid(drain_done), .drain_done_ready(rst_n && state == DRAIN_WAIT),
-        .protocol_error(memory_fault)
+        .protocol_error(memory_fault), .controller_bytes(memory_controller_bytes)
     );
 
     localparam integer STATE_BITS = $bits(state) + $bits(model_hold) +
@@ -465,6 +492,11 @@ module anvil_en1_native #(
     assign allocation_physical_bytes[64*5+:64] = 64'd0;
     assign allocation_physical_bytes[64*16+:64] = allocation_live_bytes[64*16+:64];
     assign allocation_physical_bytes[64*17+:64] = allocation_live_bytes[64*17+:64];
+    assign allocation_physical_bytes[64*22+:64] = allocation_live_bytes[64*22+:64];
+    assign allocation_live_bytes[64*23+:64] = rst_n ?
+        schedule_controller_bytes + memory_controller_bytes + cache_controller_bytes : 64'd0;
+    assign allocation_physical_bytes[64*23+:64] = allocation_live_bytes[64*23+:64];
+    assign allocation_physical_bytes[64*24+:64] = allocation_live_bytes[64*24+:64];
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

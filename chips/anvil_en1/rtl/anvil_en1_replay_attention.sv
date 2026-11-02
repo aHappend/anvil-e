@@ -94,6 +94,7 @@ module anvil_en1_replay_attention #(
     output wire [1:0] done_kv_head,
     output wire [9:0] done_component,
     output wire [63:0] controller_state_bytes,
+    output wire [3:0] attention_activity,
     output wire busy
 );
     localparam [3:0] IDLE = 0, VALIDATE = 1,
@@ -144,6 +145,7 @@ module anvil_en1_replay_attention #(
 
     anvil_en1_attention_head #(.COMPACT(COMPACT), .REPLAY(1)) attention (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
         .start_valid(rst_n && state == HEAD_START), .start_ready(head_ready),
         .model(model_hold), .layer(layer_hold), .query_head(query_head_hold),
         .query_position(position_hold),

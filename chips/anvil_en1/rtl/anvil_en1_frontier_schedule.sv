@@ -23,6 +23,7 @@ module anvil_en1_frontier_schedule #(
     output wire fallback_active,
     output wire [31:0] padded_tokens,
     output wire [63:0] required_frontier_bytes,
+    output wire [63:0] controller_bytes,
     output wire busy
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
@@ -43,6 +44,7 @@ module anvil_en1_frontier_schedule #(
         assign fallback_active = 0;
         assign padded_tokens = 0;
         assign required_frontier_bytes = 0;
+        assign controller_bytes = 0;
         assign busy = 0;
     end else begin : schedule
         localparam [2:0] IDLE = 0, VALIDATE = 1, SELECT_MODE = 2,
@@ -58,6 +60,12 @@ module anvil_en1_frontier_schedule #(
         reg [7:0] layer_hold, layer_count, owner_count;
         reg forced_hold, fallback_hold;
         reg [3:0] error_hold;
+        localparam integer CONTROLLER_BITS = $bits(state) + $bits(operation) +
+            $bits(model_hold) + $bits(precision_hold) + $bits(generation_hold) +
+            $bits(tokens_hold) + $bits(token_hold) + $bits(padded_hold) +
+            $bits(layer_hold) + $bits(layer_count) + $bits(owner_count) +
+            $bits(forced_hold) + $bits(fallback_hold) + $bits(error_hold);
+        assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
 
         wire native_model;
         wire [7:0] selected_layers, selected_owners;

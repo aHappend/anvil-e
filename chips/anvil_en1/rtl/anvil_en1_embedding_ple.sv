@@ -39,7 +39,8 @@ module anvil_en1_embedding_ple #(
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
-    output wire [63:0] live_payload_bytes, physical_payload_bytes
+    output wire [63:0] live_payload_bytes, physical_payload_bytes,
+    output wire [63:0] controller_bytes
 );
     generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
         initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
@@ -68,6 +69,7 @@ module anvil_en1_embedding_ple #(
         assign done_error = 0;
         assign live_payload_bytes = 0;
         assign physical_payload_bytes = 0;
+        assign controller_bytes = 0;
     end else begin : frontend
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer P = COMPACT ? 4 : 256;
@@ -115,6 +117,25 @@ module anvil_en1_embedding_ple #(
         reg [3:0] error_hold;
         reg payload_allocated;
         reg [15:0] input_q, ple_q;
+        localparam integer CONTROLLER_BITS = $bits({
+            state, return_state, src_state, scale_state, model_hold, precision_hold,
+            modality_hold, memory_owner, layer_hold, token_hold, token_id,
+            hidden_hold, vocabulary_hold, tokens_hold, weights_hold, token_address_hold,
+            index, value_hold, fp_a, fp_b, hidden_float, root_data_hold, hidden_scale,
+            inverse_hidden_scale, output_hold, feature_hold, root_inverse,
+            token_error_hold, feature_error_hold, weight_is_identity, src_is_ple,
+            src_is_projection, src_index_hold, scale_index_hold, src_data_hold,
+            scale_data_hold, scale_error_hold, lookup_kind, descriptor_base,
+            descriptor_bytes, descriptor_rows, descriptor_columns, descriptor_stride,
+            fp_op, error_hold, payload_allocated, input_q, ple_q
+        });
+        wire [63:0] lookup_controller_bytes, weight_controller_bytes;
+        wire [63:0] projection_controller_bytes, norm_controller_bytes;
+        wire [63:0] div_controller_bytes, fp_controller_bytes;
+        assign controller_bytes = !rst_n ? 64'd0 :
+            64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
+            weight_controller_bytes + projection_controller_bytes +
+            norm_controller_bytes + div_controller_bytes + fp_controller_bytes;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] input_payload [0:MAX_H-1];
         (* ramstyle = "M20K", nomem2reg *)
@@ -140,6 +161,7 @@ module anvil_en1_embedding_ple #(
         wire [31:0] lookup_rows, lookup_columns, lookup_stride;
         wire [3:0] lookup_error;
         anvil_en1_tensor_image #(.COMPACT(COMPACT)) tensor_lookup (
+            .controller_bytes(lookup_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
             .model(model_hold), .precision(precision_hold), .image_class(2'd0),
@@ -166,6 +188,7 @@ module anvil_en1_embedding_ple #(
         wire [31:0] weight_column = norm_weight ? scale_index_hold :
             (weight_is_identity ? layer_slice + index : index);
         anvil_en1_weight_read weight_reader (
+            .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && (state == WEIGHT_START || scale_state == SCALE_START)),
             .start_ready(weight_ready), .precision(norm_weight ? 2'd0 : precision_hold),
@@ -188,6 +211,7 @@ module anvil_en1_embedding_ple #(
         wire [63:0] projection_cmd_addr;
         wire [3:0] projection_error;
         anvil_en1_projection projection_unit (
+            .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
             .precision(precision_hold), .tensor_base(descriptor_base),
@@ -215,6 +239,7 @@ module anvil_en1_embedding_ple #(
         wire [15:0] normalized_data;
         wire [3:0] norm_error;
         anvil_en1_norm norm_unit (
+            .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
             .layer_norm(1'b0), .learned_scale(1'b1), .vector_length(32'(P)),
@@ -242,6 +267,7 @@ module anvil_en1_embedding_ple #(
         wire [31:0] root_data, fp_data;
         wire [3:0] root_error, fp_error;
         anvil_en1_fp32_divsqrt root_unit (
+            .controller_bytes(div_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == ROOT_START), .start_ready(root_ready),
             .operation(root_inverse ? 2'd2 : 2'd1),
@@ -250,6 +276,7 @@ module anvil_en1_embedding_ple #(
             .done_data(root_data), .done_error(root_error)
         );
         anvil_en1_fp32 fp_unit (
+            .controller_bytes(fp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
             .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

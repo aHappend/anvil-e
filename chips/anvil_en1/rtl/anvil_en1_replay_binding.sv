@@ -121,11 +121,15 @@ module anvil_en1_replay_binding #(
     output wire [63:0] audio_feature_live_bytes, audio_feature_physical_bytes,
     output wire [63:0] image_feature_live_bytes, image_feature_physical_bytes,
     output wire [63:0] binding_state_bytes,
+    output wire [63:0] reported_controller_bytes,
     output wire memo_hit_event, memo_eviction_event, ring_hit_event,
     output wire owner_reprojection_event, replay_owner_reprojection_event,
     output wire [31:0] owner_reprojection_bytes, replay_owner_reprojection_bytes,
     output wire replay_input_event, replay_projection_event, replay_intermediate_event,
     output wire [31:0] replay_input_bytes, replay_projection_bytes, replay_intermediate_bytes,
+    output wire [3:0] attention_activity,
+    output wire avoided_projection_event,
+    output wire [31:0] avoided_projection_bytes,
     output wire protocol_error,
     output wire busy
 );
@@ -212,6 +216,9 @@ module anvil_en1_replay_binding #(
         $bits(root_layer) + $bits(root_tokens_base) + $bits(root_weights_base) +
         $bits(control_error_hold) + $bits(root_error_hold);
     assign binding_state_bytes = rst_n ? 64'((BINDING_BITS + 7) >> 3) : 64'd0;
+    wire [63:0] owner_controller_bytes, replay_controller_bytes, memory_controller_bytes;
+    assign reported_controller_bytes = !rst_n ? 64'd0 :
+        owner_controller_bytes + replay_controller_bytes + memory_controller_bytes;
 
     anvil_en1_owner_replay #(.COMPACT(COMPACT)) owner_replay (
         .clk(clk), .rst_n(rst_n),
@@ -266,6 +273,7 @@ module anvil_en1_replay_binding #(
         .raw_source_live_bytes(owner_source_live_bytes),
         .raw_source_physical_bytes(owner_source_physical_bytes),
         .tile_live_bytes(owner_tile_live_bytes), .tile_physical_bytes(owner_tile_physical_bytes),
+        .controller_bytes(owner_controller_bytes),
         .owner_reprojection_event(owner_reprojection_event),
         .owner_reprojection_bytes(owner_reprojection_bytes),
         .ring_hit_event(ring_hit_event), .busy(owner_busy)
@@ -273,6 +281,9 @@ module anvil_en1_replay_binding #(
 
     anvil_en1_replay_execute #(.COMPACT(COMPACT)) replay (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
+        .avoided_projection_event(avoided_projection_event),
+        .avoided_projection_bytes(avoided_projection_bytes),
         .start_valid(rst_n && root_state == ROOT_SEND), .start_ready(engine_ready),
         .model(root_model), .precision(root_precision), .modality(root_modality),
         .eval_domain(root_domain), .generation(root_generation),
@@ -336,6 +347,7 @@ module anvil_en1_replay_binding #(
         .native_projection_bytes(replay_projection_bytes),
         .native_intermediate_event(replay_intermediate_event),
         .native_intermediate_bytes(replay_intermediate_bytes),
+        .reported_controller_bytes(replay_controller_bytes),
         .busy(replay_busy)
     );
 
@@ -353,7 +365,8 @@ module anvil_en1_replay_binding #(
         .cmd_input(cmd_input), .cmd_replay(),
         .result_valid(result_valid), .result_ready(result_ready),
         .result_data(result_data), .result_error(result_error),
-        .drain_valid(1'b0), .drain_done_ready(1'b1), .protocol_error(protocol_error)
+        .drain_valid(1'b0), .drain_done_ready(1'b1), .protocol_error(protocol_error),
+        .controller_bytes(memory_controller_bytes)
     );
 
     always @(posedge clk or negedge rst_n) begin

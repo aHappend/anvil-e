@@ -7,7 +7,8 @@ module anvil_en1_fp32_divsqrt (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [3:0] IDLE = 0, CLASSIFY = 1, NORMALIZE = 2,
         DIV_SETUP = 3, DIV_DIGIT = 4, SQRT_SETUP = 5, SQRT_DIGIT = 6,
@@ -30,6 +31,16 @@ module anvil_en1_fp32_divsqrt (
     reg [25:0] reciprocal_remainder;
     reg [24:0] reciprocal_denominator;
     reg [6:0] reciprocal_digits_left;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(op) +
+        $bits(sign_hold) + $bits(a) + $bits(b) + $bits(output_hold) +
+        $bits(error_hold) + $bits(mantissa_a) + $bits(mantissa_b) +
+        $bits(exponent_a) + $bits(exponent_b) + $bits(exponent_hold) +
+        $bits(div_remainder) + $bits(quotient) + $bits(root) +
+        $bits(digits_left) + $bits(radicand) + $bits(root_remainder) +
+        $bits(round_input) + $bits(reciprocal_radicand) +
+        $bits(reciprocal_remainder) + $bits(reciprocal_denominator) +
+        $bits(reciprocal_digits_left);
+    assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
 
     function automatic [27:0] shift_sticky(
         input [27:0] value, input [11:0] amount

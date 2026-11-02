@@ -24,7 +24,8 @@ module anvil_en1_projection (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [3:0] IDLE = 0, VALIDATE = 1, WEIGHT_START = 2,
         WEIGHT_WAIT = 3, SOURCE_START = 4, SOURCE_WAIT = 5,
@@ -40,11 +41,22 @@ module anvil_en1_projection (
     reg source_error_hold;
     reg [3:0] error_hold;
     reg [2:0] fp_op;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(precision_hold) + $bits(base_hold) + $bits(bytes_hold) +
+        $bits(rows_hold) + $bits(columns_hold) + $bits(stride_hold) +
+        $bits(row_hold) + $bits(column) + $bits(weight_hold) +
+        $bits(accumulator) + $bits(value_hold) + $bits(output_hold) +
+        $bits(fp_a) + $bits(fp_b) + $bits(source_hold) +
+        $bits(source_error_hold) + $bits(error_hold) + $bits(fp_op);
+    wire [63:0] weight_controller_bytes, fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + weight_controller_bytes + fp_controller_bytes;
     wire weight_ready, weight_valid, fp_ready, fp_valid;
     wire [31:0] weight_data, fp_data;
     wire [3:0] weight_error, fp_error;
 
     anvil_en1_weight_read weight_reader (
+        .controller_bytes(weight_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == WEIGHT_START), .start_ready(weight_ready),
         .precision(precision_hold), .tensor_base(base_hold), .tensor_bytes(bytes_hold),
@@ -58,6 +70,7 @@ module anvil_en1_projection (
         .done_data(weight_data), .done_error(weight_error)
     );
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

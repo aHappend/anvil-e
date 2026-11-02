@@ -6,7 +6,8 @@ module anvil_en1_exp (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [3:0] IDLE = 0, CLASSIFY = 1, REDUCE = 2,
         MUL_START = 3, MUL_WAIT = 4, ADD_START = 5, ADD_WAIT = 6,
@@ -21,6 +22,13 @@ module anvil_en1_exp (
     reg [3:0] error_hold;
     reg signed [9:0] power;
     reg [3:0] coefficient_index;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(x) + $bits(remainder_hold) + $bits(polynomial) + $bits(output_hold) +
+        $bits(fp_a) + $bits(fp_b) + $bits(fp_op) + $bits(error_hold) +
+        $bits(power) + $bits(coefficient_index);
+    wire [63:0] fp_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + fp_controller_bytes;
     wire fp_start_ready, fp_done_valid;
     wire [31:0] fp_done_data;
     wire [3:0] fp_done_error;
@@ -55,6 +63,7 @@ module anvil_en1_exp (
     wire fp_done_ready = rst_n && (state == MUL_WAIT || state == ADD_WAIT);
 
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(fp_start_valid), .start_ready(fp_start_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),

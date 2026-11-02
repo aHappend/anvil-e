@@ -94,6 +94,7 @@ module anvil_en1_replay_attention_execute #(
     output wire [63:0] checkpoint_controller_bytes, tile_controller_bytes,
     output wire [63:0] tile_live_bytes, tile_physical_bytes,
     output wire [63:0] pair_live_bytes,
+    output wire [3:0] attention_activity,
     output wire busy
 );
     localparam [2:0] IDLE = 0, VALIDATE = 1, ATTENTION_START = 2,
@@ -216,6 +217,7 @@ module anvil_en1_replay_attention_execute #(
 
     anvil_en1_replay_attention #(.COMPACT(COMPACT)) attention (
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
         .start_valid(rst_n && state == ATTENTION_START), .start_ready(attention_ready),
         .model(model_hold), .layer(layer_hold), .query_head(query_head_hold),
         .query_position(position_hold), .tokens(tokens_hold),

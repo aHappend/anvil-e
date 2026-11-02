@@ -132,6 +132,10 @@ module anvil_en1_frontier_execute #(
     output wire [63:0] ring_live_bytes, ring_physical_bytes, ring_metadata_bytes,
     output wire [63:0] anchor_live_bytes, anchor_physical_bytes,
     output wire [191:0] execution_live_bytes, execution_physical_bytes,
+    output wire [63:0] reported_controller_bytes,
+    output wire [3:0] attention_activity,
+    output wire avoided_projection_event,
+    output wire [31:0] avoided_projection_bytes,
     output wire backing_bound,
     output wire busy
 );
@@ -201,6 +205,41 @@ module anvil_en1_frontier_execute #(
     reg [15:0] ple_payload [0:P-1];
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] feature_payload [0:MAX_H-1];
+    localparam integer CONTROLLER_BITS =
+        $bits(state) + $bits(frontier_return) + $bits(ring_return) +
+        $bits(operation) + $bits(source_state) + $bits(model_hold) +
+        $bits(precision_hold) + $bits(modality_hold) + $bits(frontier_operation) +
+        $bits(read_state) + $bits(feature_state) + $bits(generation_hold) +
+        $bits(tokens_hold) + $bits(token_hold) + $bits(hidden_hold) +
+        $bits(tokens_base_hold) + $bits(weights_base_hold) + $bits(token_address_hold) +
+        $bits(token_id_hold) + $bits(token_error_hold) + $bits(token_modality) +
+        $bits(layer_hold) + $bits(active) + $bits(is_control) +
+        $bits(invalidate_hold) + $bits(source_frontier) + $bits(ordinary_configured) +
+        $bits(fallback_configured) + $bits(frontier_frozen) + $bits(ring_invalidate) +
+        $bits(h_allocated) + $bits(h_committed) + $bits(p_allocated) +
+        $bits(p_committed) + $bits(vector_layer) + $bits(vector_token) +
+        $bits(vector_generation) + $bits(h_count) + $bits(p_count) +
+        $bits(input_count) + $bits(write_component) + $bits(h_bad) +
+        $bits(h_complete) + $bits(p_bad) + $bits(p_complete) + $bits(input_bad) +
+        $bits(input_complete) + $bits(error_hold) + $bits(child_error) +
+        $bits(write_pair) + $bits(source_is_ple_hold) + $bits(source_is_logits) +
+        $bits(source_error_hold) + $bits(source_index_hold) +
+        $bits(source_data_hold) + $bits(hidden_q) + $bits(ple_q) +
+        $bits(read_owner) + $bits(read_generation_hold) + $bits(read_token_hold) +
+        $bits(read_data_hold) + $bits(read_layer_hold) + $bits(read_component_hold) +
+        $bits(read_error_hold) + $bits(feature_allocated) + $bits(feature_committed) +
+        $bits(feature_bad) + $bits(feature_complete) + $bits(feature_count) +
+        $bits(feature_generation) + $bits(feature_token) + $bits(feature_kind) +
+        $bits(feature_request_model) + $bits(feature_request_kind) +
+        $bits(feature_request_token) + $bits(feature_request_index) +
+        $bits(feature_q) + $bits(feature_data_hold) + $bits(feature_error_hold);
+    wire [63:0] frontier_controller_bytes, ring_controller_bytes;
+    wire [63:0] embed_controller_bytes, layer_controller_bytes;
+    wire [63:0] anchor_controller_bytes, logits_controller_bytes;
+    assign reported_controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + frontier_controller_bytes + ring_controller_bytes +
+        embed_controller_bytes + layer_controller_bytes +
+        anchor_controller_bytes + logits_controller_bytes;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -259,6 +298,7 @@ module anvil_en1_frontier_execute #(
         .control_error(frontier_control_error), .fallback_needed(frontier_capacity_fallback),
         .padded_tokens(), .live_bytes(frontier_live_bytes),
         .physical_payload_bytes(frontier_physical_bytes),
+        .controller_bytes(frontier_controller_bytes),
         .token_metadata_bytes(frontier_metadata_bytes),
         .write_start_valid(rst_n && state == WRITE_START && read_state == READ_IDLE),
         .write_start_ready(f_write_start_ready),
@@ -302,6 +342,7 @@ module anvil_en1_frontier_execute #(
         .control_rsp_ready(rst_n && state == RING_CONTROL_WAIT),
         .control_error(ring_control_error), .live_bytes(ring_live_bytes),
         .physical_payload_bytes(ring_physical_bytes), .token_metadata_bytes(ring_metadata_bytes),
+        .controller_bytes(ring_controller_bytes),
         .write_start_valid(anchor_write_start_valid), .write_start_ready(anchor_write_start_ready),
         .write_model(anchor_write_model), .write_generation(anchor_write_generation),
         .write_token(anchor_write_token), .write_owner(anchor_write_owner),
@@ -352,6 +393,7 @@ module anvil_en1_frontier_execute #(
     wire [1:0] embed_modality_model, embed_modality_kind;
     wire [31:0] embed_modality_token, embed_modality_index;
     anvil_en1_embedding_ple #(.COMPACT(COMPACT)) embedding (
+        .controller_bytes(embed_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EMBED_START), .start_ready(embed_ready),
         .model(model_hold), .precision(precision_hold), .modality(token_modality),
@@ -395,7 +437,11 @@ module anvil_en1_frontier_execute #(
         (state == ANCHOR_START || state == ANCHOR_WAIT);
     wire layer_selected = state == LAYER_START || state == LAYER_WAIT;
     anvil_en1_asym_attn_ple #(.COMPACT(COMPACT)) text_layer (
+        .controller_bytes(layer_controller_bytes),
         .clk(clk), .rst_n(rst_n),
+        .attention_activity(attention_activity),
+        .avoided_projection_event(avoided_projection_event),
+        .avoided_projection_bytes(avoided_projection_bytes),
         .start_valid(rst_n && state == LAYER_START), .start_ready(layer_ready),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold),
         .token(token_hold), .weights_base(weights_base_hold),
@@ -450,6 +496,7 @@ module anvil_en1_frontier_execute #(
     wire [9:0] anchor_fetch_component;
     wire [3:0] anchor_error;
     anvil_en1_anchor_materialize #(.COMPACT(COMPACT)) anchor (
+        .controller_bytes(anchor_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ANCHOR_START), .start_ready(anchor_ready),
         .model(model_hold), .owner(layer_hold), .generation(generation_hold), .token(token_hold),
@@ -480,6 +527,7 @@ module anvil_en1_frontier_execute #(
         .physical_payload_bytes(anchor_physical_bytes)
     );
     anvil_en1_final_logits #(.COMPACT(COMPACT)) logits (
+        .controller_bytes(logits_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOGITS_START), .start_ready(logits_ready),
         .model(model_hold), .precision(precision_hold), .weights_base(weights_base_hold),

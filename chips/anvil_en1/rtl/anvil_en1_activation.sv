@@ -7,7 +7,8 @@ module anvil_en1_activation (
     output wire done_valid,
     input wire done_ready,
     output wire [31:0] done_data,
-    output wire [3:0] done_error
+    output wire [3:0] done_error,
+    output wire [63:0] controller_bytes
 );
     localparam [4:0] IDLE = 0, CLASSIFY = 1, GELU_SQUARE = 2,
         GELU_CUBE = 3, GELU_CUBIC_SCALE = 4, GELU_SUM = 5,
@@ -24,6 +25,15 @@ module anvil_en1_activation (
     reg [31:0] fp_a, fp_b, exp_a, div_a, div_b, output_hold;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
+    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        $bits(op) + $bits(x) + $bits(value_hold) + $bits(exponential) +
+        $bits(numerator) + $bits(factor) + $bits(tanh_argument) + $bits(fp_a) +
+        $bits(fp_b) + $bits(exp_a) + $bits(div_a) + $bits(div_b) +
+        $bits(output_hold) + $bits(fp_op) + $bits(error_hold);
+    wire [63:0] fp_controller_bytes, exp_controller_bytes, div_controller_bytes;
+    assign controller_bytes = !rst_n ? 64'd0 :
+        64'((CONTROLLER_BITS+7) >> 3) + fp_controller_bytes +
+        exp_controller_bytes + div_controller_bytes;
     wire fp_ready, fp_valid, exp_ready, exp_valid, div_ready, div_valid;
     wire [31:0] fp_data, exp_data, div_data;
     wire [3:0] fp_error, exp_error, div_error;
@@ -35,6 +45,7 @@ module anvil_en1_activation (
     wire [31:0] tanh_signed = {tanh_negative, value_hold[30:0]};
 
     anvil_en1_fp32 fp_unit (
+        .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
         .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
@@ -42,12 +53,14 @@ module anvil_en1_activation (
         .done_data(fp_data), .done_error(fp_error)
     );
     anvil_en1_exp exp_unit (
+        .controller_bytes(exp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
         .operand(exp_a), .done_valid(exp_valid), .done_ready(exp_accept),
         .done_data(exp_data), .done_error(exp_error)
     );
     anvil_en1_fp32_divsqrt div_unit (
+        .controller_bytes(div_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DIV_START), .start_ready(div_ready),
         .operation(2'd0), .operand_a(div_a), .operand_b(div_b),
