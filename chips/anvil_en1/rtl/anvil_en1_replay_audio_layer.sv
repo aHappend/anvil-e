@@ -1,5 +1,6 @@
 module anvil_en1_replay_audio_layer #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -54,6 +55,10 @@ module anvil_en1_replay_audio_layer #(
     output wire [31:0] input_read_bytes, projection_bytes, intermediate_bytes,
     output wire [31:0] source_read_bytes, weight_read_bytes, history_replay_bytes, glu_replay_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire [2:0] vector_ram_write, vector_ram_read,
+    output wire [95:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [47:0] vector_ram_wdata,
+    input wire [47:0] vector_ram_rdata,
     output wire [63:0] controller_bytes, nested_controller_bytes
 );
     localparam [4:0] IDLE = 0, VALIDATE = 1, HISTORY_START = 2,
@@ -89,6 +94,8 @@ module anvil_en1_replay_audio_layer #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_VECTOR_RAM must be 0 or 1");
     end
     wire [7:0] logical_layer = layer_hold - 1'b1;
     wire [31:0] tokens_hold = (frames_hold + 32'd3) >> 2;
@@ -172,9 +179,9 @@ module anvil_en1_replay_audio_layer #(
     wire [15:0] conv_output_data;
     wire [3:0] conv_error;
     wire [63:0] conv_addr, conv_live, conv_physical, conv_control, conv_nested;
-    wire [1:0] conv_ram_write, conv_ram_read, ff_ram_write, ff_ram_read;
-    wire [63:0] conv_ram_waddr, conv_ram_raddr, ff_ram_waddr, ff_ram_raddr;
-    wire [31:0] conv_ram_wdata, ff_ram_wdata, shared_ram_rdata;
+    wire [2:0] conv_ram_write, conv_ram_read, ff_ram_write, ff_ram_read;
+    wire [95:0] conv_ram_waddr, conv_ram_raddr, ff_ram_waddr, ff_ram_raddr;
+    wire [47:0] conv_ram_wdata, ff_ram_wdata, shared_ram_rdata;
     wire conv_projection_event;
     wire [31:0] conv_projection_bytes;
     wire conv_start = rst_n && state == CONV_START && vector_owner == 0;
@@ -410,7 +417,8 @@ module anvil_en1_replay_audio_layer #(
     assign weight_read_bytes = history_weight_bytes + (weight_event ? 32'd4 : 32'd0);
     assign vector_live_bytes = !rst_n ? 64'd0 : history_live + conv_live + ff_live;
     assign vector_physical_bytes = !rst_n ? 64'd0 :
-        history_physical + conv_physical + ff_physical + 64'd4096;
+        history_physical + conv_physical + ff_physical +
+            (EXTERNAL_VECTOR_RAM ? 64'd0 : 64'd6144);
     assign nested_controller_bytes = !rst_n ? 64'd0 :
         history_control + history_nested + conv_control + conv_nested +
         ff_control + ff_norm_control + ff_clamp_control + ff_mlp_control +
@@ -432,7 +440,8 @@ module anvil_en1_replay_audio_layer #(
         $bits(clamp_input_hold) + $bits(clamp_data_hold) + $bits(source_data_hold) +
         $bits(error_hold) + $bits(child_error_hold) + $bits(work_error_hold) +
         $bits(source_error_hold) + $bits(first_source_error) +
-        $bits(vector_ram_fault) + $bits(vector_owner) + 32;
+        $bits(vector_ram_fault) + $bits(vector_owner) +
+        (EXTERNAL_VECTOR_RAM ? 0 : 48);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
 
     wire conv_ram_access = |conv_ram_write || |conv_ram_read;
@@ -444,12 +453,10 @@ module anvil_en1_replay_audio_layer #(
          (conv_ram_access && vector_owner != 1) ||
          (ff_ram_access && vector_owner != 2) ||
          (|conv_live && |ff_live));
-    wire [1:0] vector_range_fault;
+    wire [2:0] vector_range_fault;
     wire vector_access_fault = vector_owner_fault || |vector_range_fault;
     genvar bank;
-    generate for (bank=0; bank<2; bank=bank+1) begin : shared_vectors
-        (* ramstyle = "M20K", nomem2reg *) reg [15:0] payload [0:1023];
-        reg [15:0] read_q;
+    generate for (bank=0; bank<3; bank=bank+1) begin : shared_vectors
         wire [31:0] conv_waddr = conv_ram_waddr[32*bank+:32];
         wire [31:0] conv_raddr = conv_ram_raddr[32*bank+:32];
         wire [31:0] ff_waddr = ff_ram_waddr[32*bank+:32];
@@ -459,17 +466,35 @@ module anvil_en1_replay_audio_layer #(
              (conv_ram_read[bank] && conv_raddr >= 1024) ||
              (ff_ram_write[bank] && ff_waddr >= 1024) ||
              (ff_ram_read[bank] && ff_raddr >= 1024));
-        assign shared_ram_rdata[16*bank+:16] = read_q;
-        always @(posedge clk) begin
-            if (rst_n && !vector_access_fault) begin
-                if (conv_ram_write[bank])
-                    payload[conv_waddr[9:0]] <= conv_ram_wdata[16*bank+:16];
-                else if (ff_ram_write[bank])
-                    payload[ff_waddr[9:0]] <= ff_ram_wdata[16*bank+:16];
-                if (conv_ram_read[bank])
-                    read_q <= payload[conv_raddr[9:0]];
-                else if (ff_ram_read[bank])
-                    read_q <= payload[ff_raddr[9:0]];
+        wire write_enable = conv_ram_write[bank] || ff_ram_write[bank];
+        wire read_enable = conv_ram_read[bank] || ff_ram_read[bank];
+        wire [31:0] waddr = conv_ram_write[bank] ? conv_waddr : ff_waddr;
+        wire [31:0] raddr = conv_ram_read[bank] ? conv_raddr : ff_raddr;
+        wire [15:0] wdata = conv_ram_write[bank] ?
+            conv_ram_wdata[16*bank+:16] : ff_ram_wdata[16*bank+:16];
+        assign vector_ram_write[bank] = rst_n && EXTERNAL_VECTOR_RAM &&
+            !vector_access_fault && write_enable;
+        assign vector_ram_read[bank] = rst_n && EXTERNAL_VECTOR_RAM &&
+            !vector_access_fault && read_enable;
+        assign vector_ram_waddr[32*bank+:32] =
+            rst_n && EXTERNAL_VECTOR_RAM ? waddr : 32'd0;
+        assign vector_ram_raddr[32*bank+:32] =
+            rst_n && EXTERNAL_VECTOR_RAM ? raddr : 32'd0;
+        assign vector_ram_wdata[16*bank+:16] =
+            rst_n && EXTERNAL_VECTOR_RAM ? wdata : 16'd0;
+        if (EXTERNAL_VECTOR_RAM == 1) begin : external_bank
+            assign shared_ram_rdata[16*bank+:16] = vector_ram_rdata[16*bank+:16];
+        end else begin : local_bank
+            (* ramstyle = "M20K", nomem2reg *) reg [15:0] payload [0:1023];
+            reg [15:0] read_q;
+            assign shared_ram_rdata[16*bank+:16] = read_q;
+            always @(posedge clk) begin
+                if (rst_n && !vector_access_fault) begin
+                    if (write_enable)
+                        payload[waddr[9:0]] <= wdata;
+                    if (read_enable)
+                        read_q <= payload[raddr[9:0]];
+                end
             end
         end
     end endgenerate

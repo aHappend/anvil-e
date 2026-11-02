@@ -1,5 +1,6 @@
 module anvil_en1_replay_vision_layer #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_BRANCH_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -58,6 +59,10 @@ module anvil_en1_replay_vision_layer #(
     output wire source_read_event,
     output wire [31:0] source_read_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire branch_ram_write, branch_ram_read,
+    output wire [31:0] branch_ram_waddr, branch_ram_raddr,
+    output wire [15:0] branch_ram_wdata,
+    input wire [15:0] branch_ram_rdata,
     output wire [63:0] controller_bytes, binding_controller_bytes,
     output wire [63:0] patch_controller_bytes, replay_controller_bytes,
     output wire [63:0] executor_controller_bytes, head_controller_bytes,
@@ -97,15 +102,17 @@ module anvil_en1_replay_vision_layer #(
     reg [159:0] continuation_hold, yield_continuation;
     reg [31:0] received, row_hold, source_index_hold, source_token_hold;
     reg [31:0] pair_hold, scalar_hold, source_pair_hold, projected_hold, restored_head_word;
-    reg [15:0] low_hold, copy_low, projected_q, source_data_hold;
+    reg [15:0] low_hold, copy_low, source_data_hold;
+    wire [15:0] projected_q;
     reg [3:0] head_hold, child_error_hold, error_hold, work_error_hold, source_error_hold;
     reg [31:0] yielded_patch;
     reg branch_ram_fault;
-    (* ramstyle = "M20K", nomem2reg *) reg [15:0] projected [0:767];
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (EXTERNAL_BRANCH_RAM != 0 && EXTERNAL_BRANCH_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_BRANCH_RAM must be 0 or 1");
     end
     wire [7:0] logical_layer = layer_hold - 1'b1;
     wire input_continuation = continuation_hold == {INPUT_MAGIC, 128'd0};
@@ -383,14 +390,28 @@ module anvil_en1_replay_vision_layer #(
         received : post_branch_raddr;
     wire [15:0] shared_branch_wdata = state == PROJECTION_STORE ?
         projected_hold[15:0] : post_branch_wdata;
-    always @(posedge clk) begin
-        if (rst_n && !branch_access_fault) begin
-            if (shared_branch_write)
-                projected[shared_branch_waddr[9:0]] <= shared_branch_wdata;
-            if (shared_branch_read)
-                projected_q <= projected[shared_branch_raddr[9:0]];
+    assign branch_ram_write = rst_n && EXTERNAL_BRANCH_RAM &&
+        !branch_access_fault && shared_branch_write;
+    assign branch_ram_read = rst_n && EXTERNAL_BRANCH_RAM &&
+        !branch_access_fault && shared_branch_read;
+    assign branch_ram_waddr = rst_n && EXTERNAL_BRANCH_RAM ? shared_branch_waddr : 32'd0;
+    assign branch_ram_raddr = rst_n && EXTERNAL_BRANCH_RAM ? shared_branch_raddr : 32'd0;
+    assign branch_ram_wdata = rst_n && EXTERNAL_BRANCH_RAM ? shared_branch_wdata : 16'd0;
+    generate if (EXTERNAL_BRANCH_RAM == 1) begin : external_branch
+        assign projected_q = branch_ram_rdata;
+    end else begin : local_branch
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] projected [0:767];
+        reg [15:0] read_q;
+        assign projected_q = read_q;
+        always @(posedge clk) begin
+            if (rst_n && !branch_access_fault) begin
+                if (shared_branch_write)
+                    projected[shared_branch_waddr[9:0]] <= shared_branch_wdata;
+                if (shared_branch_read)
+                    read_q <= projected[shared_branch_raddr[9:0]];
+            end
         end
-    end
+    end endgenerate
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             branch_ram_fault <= 0;
@@ -500,7 +521,8 @@ module anvil_en1_replay_vision_layer #(
     assign source_read_bytes = source_read_event ? 32'd2 : 32'd0;
     assign vector_live_bytes = !rst_n ? 64'd0 :
         (projected_allocated ? 64'd1536 : 64'd0) + tile_live + post_live;
-    assign vector_physical_bytes = rst_n ? 64'd1536 + tile_physical + post_physical : 64'd0;
+    assign vector_physical_bytes = !rst_n ? 64'd0 :
+        (EXTERNAL_BRANCH_RAM ? 64'd0 : 64'd1536) + tile_physical + post_physical;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(pair_return) + $bits(source_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) +
@@ -516,7 +538,7 @@ module anvil_en1_replay_vision_layer #(
         $bits(row_hold) + $bits(source_index_hold) + $bits(source_token_hold) +
         $bits(pair_hold) + $bits(scalar_hold) + $bits(source_pair_hold) +
         $bits(projected_hold) + $bits(restored_head_word) +
-        $bits(low_hold) + $bits(copy_low) + $bits(projected_q) +
+        $bits(low_hold) + $bits(copy_low) + (EXTERNAL_BRANCH_RAM ? 0 : 16) +
         $bits(source_data_hold) + $bits(head_hold) + $bits(child_error_hold) +
         $bits(error_hold) + $bits(work_error_hold) + $bits(source_error_hold) +
         $bits(yielded_patch) + $bits(branch_ram_fault);

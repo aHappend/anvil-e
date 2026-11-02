@@ -1,4 +1,6 @@
-module anvil_en1_audio_glu_component (
+module anvil_en1_audio_glu_component #(
+    parameter integer EXTERNAL_VECTOR_RAM = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -33,6 +35,10 @@ module anvil_en1_audio_glu_component (
     output wire projection_event,
     output wire [31:0] projection_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
+    output wire vector_ram_write, vector_ram_read,
+    output wire [31:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [15:0] vector_ram_wdata,
+    input wire [15:0] vector_ram_rdata,
     output wire [63:0] controller_bytes, norm_controller_bytes,
     output wire [63:0] projection_controller_bytes, clamp_controller_bytes
 );
@@ -49,10 +55,14 @@ module anvil_en1_audio_glu_component (
     reg [31:0] generation_hold, token_hold, channel_hold, received, bank_index;
     reg [63:0] weights_hold;
     reg second_half, vector_allocated, vector_visible, receive_bad, bank_error;
-    reg [15:0] first_half, gate_hold, projected_hold, bank_q, bank_data;
+    reg [15:0] first_half, gate_hold, projected_hold, bank_data;
+    wire [15:0] bank_q;
     reg [31:0] output_hold;
     reg [3:0] child_error_hold, error_hold;
-    (* ramstyle = "M20K", nomem2reg *) reg [15:0] normalized [0:1023];
+    initial begin
+        if (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_VECTOR_RAM must be 0 or 1");
+    end
 
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     wire norm_ready, norm_valid, norm_cmd_valid, norm_result_ready;
@@ -128,13 +138,27 @@ module anvil_en1_audio_glu_component (
 
     wire norm_beat_good = received < 1024 && norm_output_index == received &&
         norm_output_last == (received == 1023);
-    always @(posedge clk) begin
-        if (rst_n && state == NORM_WAIT && norm_output_valid &&
-            norm_beat_good && !receive_bad)
-            normalized[norm_output_index[9:0]] <= norm_output_data;
-        if (rst_n && state == PROJECTION_WAIT && source_state == S_READ)
-            bank_q <= normalized[bank_index[9:0]];
-    end
+    wire bank_write = rst_n && state == NORM_WAIT && norm_output_valid &&
+        norm_beat_good && !receive_bad;
+    wire bank_read = rst_n && state == PROJECTION_WAIT && source_state == S_READ;
+    assign vector_ram_write = EXTERNAL_VECTOR_RAM && bank_write;
+    assign vector_ram_read = EXTERNAL_VECTOR_RAM && bank_read;
+    assign vector_ram_waddr = rst_n && EXTERNAL_VECTOR_RAM ? norm_output_index : 32'd0;
+    assign vector_ram_raddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_index : 32'd0;
+    assign vector_ram_wdata = rst_n && EXTERNAL_VECTOR_RAM ? norm_output_data : 16'd0;
+    generate if (EXTERNAL_VECTOR_RAM == 1) begin : external_vector
+        assign bank_q = vector_ram_rdata;
+    end else begin : local_vector
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] normalized [0:1023];
+        reg [15:0] read_q;
+        assign bank_q = read_q;
+        always @(posedge clk) begin
+            if (bank_write && norm_output_index < 1024)
+                normalized[norm_output_index[9:0]] <= norm_output_data;
+            if (bank_read && bank_index < 1024)
+                read_q <= normalized[bank_index[9:0]];
+        end
+    end endgenerate
     assign start_ready = rst_n && state == IDLE;
     assign source_valid = norm_selected && norm_source_valid;
     assign source_rsp_ready = norm_selected && norm_source_rsp_ready;
@@ -160,14 +184,15 @@ module anvil_en1_audio_glu_component (
     assign projection_bytes = !projection_event ? 32'd0 :
         (precision_hold == 0 ? 32'd2048 : 32'd576);
     assign vector_live_bytes = rst_n && vector_allocated ? 64'd2048 : 64'd0;
-    assign vector_physical_bytes = rst_n ? 64'd2048 : 64'd0;
+    assign vector_physical_bytes = rst_n && !EXTERNAL_VECTOR_RAM ? 64'd2048 : 64'd0;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(layer_hold) + $bits(generation_hold) + $bits(token_hold) +
         $bits(channel_hold) + $bits(received) + $bits(bank_index) + $bits(weights_hold) +
         $bits(second_half) + $bits(vector_allocated) + $bits(vector_visible) +
         $bits(receive_bad) + $bits(bank_error) + $bits(first_half) + $bits(gate_hold) +
-        $bits(projected_hold) + $bits(bank_q) + $bits(bank_data) + $bits(output_hold) +
+        $bits(projected_hold) + (EXTERNAL_VECTOR_RAM ? 0 : 16) +
+        $bits(bank_data) + $bits(output_hold) +
         $bits(child_error_hold) + $bits(error_hold);
     assign controller_bytes = !rst_n ? 64'd0 :
         64'((CONTROLLER_BITS + 7) >> 3) + primitive_geglu_bytes;

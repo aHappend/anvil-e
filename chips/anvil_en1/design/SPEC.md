@@ -346,19 +346,22 @@ live-savings, resource-fit or timing result.
 
 ### Replay audio convolution/feed-forward physical overlay
 
-`anvil_en1_replay_audio_layer` owns two synchronous 1024-component BF16
+`anvil_en1_replay_audio_layer` owns three synchronous 1024-component BF16
 banks, shared between its convolution residual/working vectors and its
 second feed-forward residual/working vectors. Bank 0 is residual; bank 1
-is working. The convolution completes all output-to-frame pair writes
+is working. Bank 2 is the convolution GLU child's normalized vector or
+the second feed-forward output branch. Within either child all three
+vectors may be simultaneously live, so no two bank indices alias.
+The convolution completes all output-to-frame pair writes
 before its done is accepted. Feed-forward subsequently reloads that frame;
-it never consumes the former owner's stale RAM contents. Its output-branch
-bank remains private because it is simultaneously live with both input
-banks. The convolution GLU child's normalized bank also remains private.
-History/frame storage is not aliased by this change.
+it never consumes the former owner's stale RAM contents. The GLU child
+reconstructs and validates its complete normalized vector before each pair
+of projection rows. Feed-forward completes its MLP branch before post-norm
+visibility. History/frame storage is not aliased by this change.
 
 Both `anvil_en1_audio_lightconv` and `anvil_en1_audio_feedforward` add
 `EXTERNAL_VECTOR_RAM=0/1`, default 0. The default retains local banks.
-At 1, bit b of `vector_ram_write/read[1:0]` enables bank b;
+At 1, bit b of `vector_ram_write/read[2:0]` enables bank b;
 `vector_ram_waddr/raddr[32*b+:32]` carries the full component address,
 and `vector_ram_wdata/rdata[16*b+:16]` carries BF16 data. These are
 enabled-edge synchronous RAM ports, not a decoupled request protocol.
@@ -368,10 +371,19 @@ remain uninitialized and unreadable until the existing visibility
 conditions permit access. All exported enables/addresses/write data
 are zero during active reset.
 
+`anvil_en1_audio_glu_component` also accepts `EXTERNAL_VECTOR_RAM=0/1`,
+default 0, and exposes the same enabled-edge single-bank interface
+(one-bit enables, 32-bit component addresses, 16-bit data). Lightconv
+propagates its parameter and connects this child's port to bank 2.
+Local-mode elaboration retains the original GLU bank and three independent
+feed-forward banks; it does not depend on unconnected external inputs.
+Illegal parameter values retain an explicit parameter diagnostic.
+
 | Audio shared-bank boundary | Behavior |
 | --- | --- |
-| Child start | Grant the complete two-bank reservation only when the registered owner is free; child and parent advance on the same accepted start |
+| Child start | Grant the complete three-bank reservation only when the registered owner is free; child and parent advance on the same accepted start |
 | Convolution lifetime | Hold ownership through source, weight, output and acknowledged frame-write stalls |
+| Nested GLU | Bank 2 remains owned by convolution through every nested normalization, projection and held GLU completion; no separate feed-forward grant can intervene |
 | Convolution completion | Release only on actual accepted child done, including failure retirement |
 | Feed-forward start | Acquire the released banks; load every input from the completed replay frame before norm/MLP visibility |
 | Feed-forward lifetime | Hold through branch-clamp, frame-write and output stalls; release only on accepted done |
@@ -381,21 +393,117 @@ are zero during active reset.
 | Fault completion | Retire the child normally; preserve an earlier specific error, otherwise expose error 7 and disallow a successful yield |
 | Reset/new task | Reset releases ownership and disables RAM accesses without clearing payload; a new task clears the prior task's fault only after retirement |
 
-The wrapper declares 4096 shared payload bytes once. The external
-feed-forward worker declares its remaining 2048-byte branch; the external
-convolution worker declares only its unchanged GLU-child payload.
-Thus this pair removes 4096 bytes of duplicate physical vector declarations.
+The wrapper declares 6144 shared payload bytes once. The external
+feed-forward worker and external convolution/GLU worker declare no local
+vector payload. Compared with the preceding two-bank implementation
+(4096 shared bytes plus two private 2048-byte banks), this removes another
+2048 bytes of duplicate physical vector declarations. Compared with the
+original separate local child payloads it removes 6144 bytes in total.
 The unchanged, separate child lifetime reports still charge complete
 4096/6144-byte convolution/feed-forward reservations, plus the GLU child's
 live payload, to the actual and production-shadow ledger. No live payload
 is subtracted merely because the declarations share RAM.
-The two shared 16-bit read registers and owner/fault registers are charged
+The three shared 16-bit read registers and owner/fault registers are charged
 to wrapper control state; external children do not charge those read
-registers again. The feed-forward branch read register remains local,
-is reused for its disjoint branch callbacks, and is counted once.
-This local two-bank ownership grant is not the
+registers again. The branch/GLU read register is physically shared, while
+each child's independently held callback response remains counted locally.
+This local three-bank ownership grant is not the
 whole-system native-scratch/fallback limiter, a synthesis result or a
 measured memory/timing improvement.
+
+### Cross-domain replay vision/audio physical overlay
+
+The connected replay dispatcher now owns the three synchronous 1024-word
+BF16 scratch banks previously declared by its audio-layer wrapper. Vision
+projection staging and post-branch storage use the first 768 words of bank 0
+during a vision task. Audio convolution/feed-forward/GLU use all three banks
+during an audio-layer task. The dispatcher runs only one worker task at a time;
+a yielded task has retired its child and retained required state in the
+workspace before another worker can start. Neither a suspended continuation
+nor a memo refers to stale contents of these scratch banks.
+
+`anvil_en1_replay_vision_layer.EXTERNAL_BRANCH_RAM` and
+`anvil_en1_replay_audio_layer.EXTERNAL_VECTOR_RAM` accept 0/1, default 0,
+with explicit diagnostics otherwise. Standalone defaults retain their former
+local RAMs and read registers. At 1, each wrapper exports its existing
+full-address, enabled-edge RAM accesses instead of declaring payload RAM;
+the dispatcher selects both external modes. Child arithmetic, internal
+projection/post and convolution/feed-forward ownership, read/capture cycles,
+BF16 boundaries and workspace callbacks are unchanged.
+
+| Dispatcher shared-bank boundary | Behavior |
+| --- | --- |
+| Worker start | Register vision/audio ownership on the actual accepted child start; do not advance the dispatcher without that acceptance |
+| Worker lifetime | Retain ownership through all source, weight, frame-write, child-output and completion stalls |
+| Accepted done/yield | Release only on the child's accepted done; its task-local scratch cannot survive into the next worker |
+| Enabled RAM edge | Preserve independent synchronous read-before-write behavior in each bank; hold read registers without an enabled read |
+| Port validation | Check full vision addresses against 768 and full audio addresses against 1024 before index truncation |
+| Ownership conflict | Suppress all three banks on concurrent ports, wrong owner, accesses outside the selected worker phase, or overlapping live vision/audio-layer payload |
+| Fault retirement | Retire the worker normally; preserve an earlier specific failure, otherwise expose error 7 and suppress a successful dependency yield |
+| Reset/new task | Disable RAM accesses and release ownership on reset without clearing payload; clear the task fault only at a new accepted dispatcher task |
+
+The dispatcher declares 6144 payload bytes, reported once in the audio
+physical-allocation field. The connected vision wrapper no longer declares
+its 1536-byte projected/branch bank, and the connected audio wrapper no longer
+declares its 6144 scratch bytes. Thus this cross-domain overlay removes
+1536 bytes from their combined physical declarations. The children retain
+their original separate live/production-shadow reservations; physical sharing
+does not subtract either live charge. The three read registers plus the
+registered owner/fault (51 bits, rounded to 7 bytes for the native subset)
+are counted in dispatcher state, not again in external children. All unrelated
+private tile/residual/MLP/history banks remain separately reported.
+
+This closes one cross-domain physical duplication, not whole-system
+grant-time native-scratch/fallback/ordinary partition enforcement. No
+functional, synthesis, M20K inference, resource-fit or timing result is
+established by these declarations.
+
+### Replay-frame vector grants and lifetime
+
+The workspace now separates frame ownership, vector reservation and completed
+vector visibility. Accepting a frame push reserves its full 128-byte scalar
+slot before its first continuation write, but does not allocate unused vector
+banks. Each first vector stream, memo-to-frame copy or ordered pair-write
+sequence must pass a registered vector grant before its first backing access.
+The grant reserves the **entire** selected domain-width vector, not just its
+first pair: 16 compact text/feature bytes, 3072/5120 production text/feature
+bytes, 1536 vision bytes or 2048 audio bytes. Production shadows reserve the
+production vector width on the same edge.
+
+There are six reservation bits per frame, using the existing bank/slice layout.
+Non-audio frames can address only slice 0 of each bank; audio can use all six.
+A reservation is distinct from readable visibility and ordered pair progress:
+granting storage never makes an unfilled vector readable. Rewrites reuse the
+existing reservation. A partial write, explicit stream abort or backing error
+does not release that frame vector's reservation. It remains charged until the
+frame is successfully popped or the workspace is invalidated/reset. Thus
+partial/error tensors are not hidden by clearing visibility.
+
+| Frame boundary | Registered action before any dependent backing access |
+| --- | --- |
+| Push grant | Reserve the scalar slot, clear the new frame's vector reservations and visibility; then write the continuation |
+| First vector request | Register actual/shadow candidate totals; do not enter stream, copy or pair backing states |
+| Vector grant | Check frame ownership and both physical frame-payload ceilings, set one reservation bit and update actual/shadow/native subtotals |
+| Granted request | On a later edge resume the original vector operation; existing per-pair/last-word completion rules establish visibility |
+| Rewrite | Keep the same whole-vector reservation while invalidating/rebuilding visibility |
+| Read/copy source | Reject visible or partially written frame state without its reservation as error 7 |
+| Pop census | Capture the popped frame's six reservation bits, register their count, then register domain-width actual/shadow byte amounts |
+| Pop validation | Check scalar visibility and subtotal underflow on a later edge before reading continuations |
+| Pop commit | Release exactly those vector reservations and the scalar slot; clear all of the popped frame's visibility/progress |
+| Reset/invalidation | Annul all frame reservations with their counters; do not initialize payload RAM |
+
+The physical frame-payload ceiling is 786432 bytes in both builds, independently
+enforced against actual and production-shadow candidates. Frame depth remains
+1..64 with the existing decreasing-rank checks; no stride, stack depth,
+arithmetic boundary or public port changes. Reservation bits are metadata;
+registered mask/count/readback and candidate/return-state storage is controller
+state. The physical backing RAM capacity is unchanged and separately disclosed.
+
+This closes local whole-vector-before-write frame allocation and exact release,
+not the remaining whole-system grant-time native-scratch/fallback/ordinary
+partition limits. In particular, these local grants do not authorize exceeding
+the context-dependent scratch or 45%-baseline limits. No executed liveness,
+numerical, synthesis, timing or hardware result is claimed.
 
 ### Context-bounded memo grants and exact eviction
 
@@ -447,7 +555,8 @@ Budget scan/control/candidate registers enter the workspace controller census;
 unused physical memo capacity is still disclosed, not advertised as removed RAM.
 
 This closes a context-sensitive **memo** grant path with real eviction and
-recomputation. It does not yet grant/limit the full frame, native-worker,
+recomputation. The separate frame-vector grants above enforce local capacity,
+not the context-dependent native-worker,
 arithmetic/controller or whole-system concurrent reservations. In particular,
 the outer completion-time allocation guard is still an observer; its failures
 cannot be relabeled as successful legal execution.
@@ -457,21 +566,22 @@ cannot be relabeled as successful legal execution.
 The replay workspace additionally reports `native_payload_bytes` and
 `native_production_shadow_bytes`. These are subsets of the existing
 workspace totals, not new allocations. Domain 0 is text; domains 1, 2
-and 3 are vision, audio and reconstructed native features. Charge both
-vector banks and the complete 128-byte scalar reservation of every live
-or pending native frame, and every live or pending native memo vector.
+and 3 are vision, audio and reconstructed native features. Charge every
+reserved complete vector slice and the complete 128-byte scalar reservation
+of every live or pending native frame, and every live or pending native memo vector.
 Keep ordinary and production-shadow vector widths separate. The native
 parent frame remains charged while a dependency executes, even if the
 dispatcher currently selects text work.
 
 | Workspace event | Native subset update |
 | --- | --- |
-| Frame reserve | Include the pending frame's vectors and scalars before the first continuation write |
-| Frame commit | Transfer the pending reservation to committed totals without a zero or double-counted cycle |
-| Pop | Remove the actual popped frame's domain/width, not the incoming request's domain |
+| Frame reserve | Include the pending frame's complete scalar slot before the first continuation write; vectors start unreserved |
+| Frame commit | Transfer the pending scalar reservation to committed depth without a zero or double-counted cycle |
+| Vector grant | Add the selected complete vector slice before its first backing access, retaining it through partial/error states |
+| Pop | Remove the actual popped frame's reserved vector slices and scalar slot using its stored domain, not the incoming request's domain |
 | Memo replacement | Remove the victim's stored domain and width; add the pending new vector before its first backing write |
 | Memo commit | Transfer pending to committed, retaining the new memo domain |
-| Aborted copy or backing error | Release pending storage; keep surviving committed frames/memos charged until invalidation |
+| Aborted copy or backing error | Release pending memo/push storage; retain granted frame-vector reservations and surviving committed frames/memos until pop/invalidation |
 | Reset/session invalidation | Clear both domain subtotals and native-frame count with the existing visibility state |
 
 Native-subtotal underflow or inconsistency is a cache-state error (7),
@@ -923,8 +1033,8 @@ once, with scheduler size derived from its declared register widths
 instead of the previous fixed 175-byte value. The binding's own
 controller remains separately charged in field 16.
 
-Workspace metadata now counts exactly its two tag arrays, frame/vector/
-pair/memo visibility maps, pair-progress components, memo domains and
+Workspace metadata now counts exactly its two tag arrays, frame/vector
+reservation/visibility maps, pair/memo visibility maps, pair-progress components, memo domains and
 scalar occupancy bitmap. All other workspace registers, including tag
 readback copies, continuations, partial-copy words and pending-allocation
 counters, belong to its controller report. This partitions that leaf's
@@ -1231,9 +1341,9 @@ while this task owns execution.
 | Completion | Retire actual feature done only after source/pair responses drain; require H values, exact last and no unpaired lane |
 | Failure/reset | Drain active child using explicit failed callbacks/discarded outputs; stop new pair writes after first failure; reset cancels generation validity |
 
-Domain-3 frames charge two H vectors and memos one H vector, plus the
-existing scalar frame charge. Compact vector payloads are 32/16 bytes;
-production E2B payloads are 6144/3072 and E4B 10240/5120 bytes.
+Domain-3 frames charge each granted H vector, up to two, and memos one H
+vector, plus the existing scalar frame charge. Compact per-vector payload
+is 16 bytes; production E2B/E4B per-vector payloads are 3072/5120 bytes.
 Both actual and production-width shadow allocations remain visible;
 fixed physical frame/memo strides are unchanged.
 The literal audio feature worker's 1536-vector/projection banks and
@@ -1277,8 +1387,8 @@ not a same-rank Eval push. Its genuine entering-vector dependencies still
 decrease encoder layer. This bounded materialization preserves all previous
 completed histories while that worker yields for a missing lower-layer input.
 
-An audio frame uses six 1024-component BF16 subvectors, exactly 12288
-bytes, within the admitted 12 KiB vector-frame ceiling. Its two banks each
+An audio frame supports six 1024-component BF16 subvectors, at most 12288
+live vector bytes, within the admitted 12 KiB vector-frame ceiling. Its two banks each
 have three slices. Scratch entering/residual is bank 0/slice 0; scratch
 heads is bank 0/slice 1. Completed residuals at distances 0,1,2,3 are
 copied respectively to bank 0/slice 2 and bank 1/slices 0,1,2.
@@ -1296,11 +1406,12 @@ Validation first registers the selected slice index. TAG_READ synchronously
 registers that slice's visibility, pair-progress flag and next component;
 TAG_CHECK and PAIR_SETUP consume those registered observations, not a
 combinational progress-array lookup followed by a same-stage comparison.
-Audio frame reservation in compact geometry is also 12 KiB: native
-encoder widths are not compacted. The compact backing bank stride is
+Audio vector grants in compact geometry also reserve 2048 bytes per slice:
+native encoder widths are not compacted. The compact backing bank stride is
 widened to the production 1536-word stride, and its physical reservation
 is disclosed separately from live domain-specific frame allocation.
-The audio production shadow frame charge is 12 KiB plus 128 scalar bytes.
+The audio production shadow frame charge is the same reserved slices, up to
+12 KiB, plus 128 scalar bytes from frame push.
 
 `replay_audio_residual` adds the default-preserving PACKED_FRAME=1 option
 for this enclosing stage: only head frame-vector traffic is redirected
@@ -1900,8 +2011,9 @@ controller outputs include connected child controller reports. Final system
 overlay/replay accounting must also charge arithmetic leaf state not already
 included by those reports. Reprojection increases weight and native-source
 reads and is not avoided computation. No practical latency claim is made.
-The replay audio wrapper instead selects the external two-bank overlay
-specified above; it owns and reports the 4096 outer physical bytes once.
+The replay audio wrapper instead selects the external three-bank overlay
+specified above; it owns and reports all 6144 physical bytes once, including
+the nested GLU bank shared with the later feed-forward branch.
 
 These modules supply an actual light-convolution sublayer, not complete
 audio attention, a complete conformer, durable native replay or system
@@ -2375,28 +2487,28 @@ require complete connected allocation accounting and independent evidence.
 
 Compact text replay no longer substitutes H=8 for native vector frames.
 `anvil_en1_eval_schedule` and `anvil_en1_replay_workspace` select 8 for domain
-0 only, 768 for vision and 1024 for audio. Compact physical frame strides
+0/3, 768 for vision and 1024 for audio. Compact physical frame strides
 are 3072 words, with two 1536-word banks; memo strides are 512 words; scalar
 strides remain 32 words. Frame/memo regions are disjoint for mixed-domain
 stacks, including the upper native component and the next frame/memo slot.
 The existing generation/rank/tag/committed-vector guards remain in force.
 
-Compact live reservations count both complete vector prefixes for every
-pending/live frame: 32 text, 3072 vision or 12288 audio bytes, plus 128 scalar
-bytes per frame. Memo reservations count 16/1536/2048 bytes by domain,
+Compact live reservations count each granted complete vector prefix:
+16 text/feature, 1536 vision or 2048 audio bytes per reserved slice, plus
+128 scalar bytes per pending/live frame. Memo reservations count 16/1536/2048 bytes by domain,
 including pending writes/copies. Eviction first releases the old reservation,
 then charges the new one; its domain is retained as metadata. Push/pop/reset
 update the real domain-specific live totals. Unaddressable stride holes
 are unused physical capacity, not occupied tensors or claimed memory savings.
 The memo-domain map is 32 metadata bits. Four 32-bit allocation totals
 (actual/shadow frame and memo bytes) belong to controller state, not metadata.
-Production uses the same domain-specific prefix accounting: text/native
-feature frames reserve two H vectors, vision two 768-vectors, and audio six
+Production uses the same domain-specific grants: text/native feature frames
+can reserve two H vectors, vision two 768-vectors, and audio six
 1024-vectors; memo entries reserve one vector. Shadow counters independently
-track these production-width prefixes during compact execution. Scalar
+track the production-width counterpart of every granted prefix during compact execution. Scalar
 reservations are 128 bytes per production, shadow and compact frame.
 Pending allocations count before backing writes; committed
-totals change only on push/pop/memo commit/eviction, with reset/invalidation
+totals change on vector grant/pop/memo commit/eviction, with reset/invalidation
 clearing all four totals. Physical layout and supported depths are unchanged.
 
 The compact backing address space reserves 206848 words / 827392 bytes.
@@ -4413,8 +4525,11 @@ Scalar slot f starts at `229376+f*32` (compact `204800+f*32`).
 Complete domain-specific vector prefixes, including any occupied padding,
 count as live payload, not merely returned components. The reserved frame/
 memo strides in this table describe physical capacity, not occupied holes.
-Production and shadow text/feature frames charge 6144/10240 bytes by model,
-vision 3072 and audio 12288; memos charge 3072/5120, 1536 or 2048 bytes.
+Production and shadow text/feature frames charge 3072/5120 bytes by model
+per granted vector, vision 1536 and audio 2048 per granted slice. Maximum
+vector payloads remain 6144/10240, 3072 and 12288 per frame respectively;
+unused frame banks/slices are unallocated, not prematurely readable.
+Memos charge 3072/5120, 1536 or 2048 bytes.
 Every production/shadow live or pending frame additionally reserves its
 complete 128-byte scalar slot, including unused scalar words.
 The physical and shadow scalar layouts are identical in both builds.
@@ -4460,13 +4575,13 @@ Token is 0..131071.
 Memo tags include every descriptor field affecting the vector
 (model, generation, domain, layer, token, length).
 
-Push allocates the next of 64 frame slots, invalidates both vectors and its
-scalar visibility, writes the eight continuation words, and commits depth
+Push allocates the next of 64 frame slots, clears its vector reservations/
+visibility and scalar visibility, writes the eight continuation words, and commits depth
 only after all backing responses. Rank is `text_layer+19`, `vision_layer+1`,
 `audio_layer+1`, or 18 for completed features: child pushes must strictly decrease rank. This enforces
 bounded dependency descent; it does not implement the neural operator that
 must request the correct child. Pop reads the top continuation from backing
-RAM, then releases both frame and scalar slots. Update writes only the top
+RAM, then releases the frame's reserved vector slices and scalar slot. Update writes only the top
 frame's continuation. Additional scalar words are individually valid only
 after acknowledged writes; unfilled scalar reads error rather than return
 RAM initialization. Only live frame handles with the complete matching
@@ -4474,10 +4589,15 @@ descriptor tag are accessible for updates, vector and scalar operations.
 Pop always addresses the current top of the captured session.
 
 Before any frame continuation write, PUSH_SETUP registers prospective actual
-and production-shadow frame bytes with a carry bit. FRAME_RESERVE checks
+and production-shadow frame bytes with a carry bit, using the new frame's
+maximum vector requirement as a conservative capacity precheck, not a live
+vector reservation. FRAME_RESERVE checks
 both against the 786432-byte vector partition and checks that another scalar
 slot fits below depth 64. Only the successful check establishes pending_push,
 invalidates the new slot and starts its eight acknowledged continuation writes.
+Only the complete scalar slot is charged at this boundary. Subsequent
+FRAME_VECTOR_RESERVE/GRANT states register and check a selected whole-vector
+candidate before its first backing access, as specified above.
 For a memo replacement, VECTOR_SETUP first rejects inconsistent subtraction
 accounting, then registers the total without the replaced vector.
 MEMO_RESERVE adds the new actual/shadow vector sizes in a separate cycle.
@@ -4491,7 +4611,10 @@ silently clamp geometry or evict an in-progress frame.
 | --- | --- |
 | Push calculation | One 33-bit addition per actual/shadow candidate, then a later capacity check |
 | Memo calculation | Subtract replaced bytes, add new bytes, then compare in three separate cycles |
-| Pending allocation | Full frame/scalar or memo reservation is visible before its first backing write |
+| Push reservation | Complete scalar slot is visible before its first continuation backing write; vectors are initially unreserved |
+| Vector reservation | Complete selected frame vector and its production shadow are charged before any stream/copy/pair backing access, including partial/error tensors |
+| Memo reservation | Complete pending replacement is visible before its first backing write |
+| Pop release | Register the reservation-mask count, then actual/shadow bytes, then check subtotal consistency before reading continuations and releasing the frame |
 | Backing range | cmd valid is suppressed for addresses outside the current declared partition; publish error 7 without an access |
 | Depth 64 / scalar 32 | Reject before slot/address truncation can advertise a legal transaction |
 | Reset/invalidation | Existing drain/visibility rules apply; candidate registers do not grant payload visibility |

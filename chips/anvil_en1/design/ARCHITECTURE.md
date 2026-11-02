@@ -5,7 +5,115 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: replay audio residual/working physical overlay
+## Current saved increment: cross-domain replay vision/audio scratch overlay
+
+The connected replay dispatcher now declares the three 1024-word synchronous
+BF16 scratch banks shared by its audio-layer convolution/feed-forward/GLU
+workers. Its mutually exclusive vision-layer task uses bank 0's first 768
+words for the already overlaid projected/post-branch representation.
+Optional external-RAM parameters in both wrappers retain local storage by
+default; the dispatcher enables the external paths.
+
+Registered ownership is acquired at the actual child-start handshake and
+released only at accepted child done/yield. Full-address, selected-phase,
+concurrent-port and live-overlap checks suppress conflicting accesses and
+retain error 7 without hiding earlier child errors. The same enabled-edge
+read/write and capture cycles remain; no tensor or arithmetic order changes.
+The physical declaration sum drops by 1536 bytes. All original separate
+live/shadow charges remain. Shared read/owner/fault registers move to
+dispatcher accounting and its native-controller subset.
+
+Changed `rtl/anvil_en1_replay_execute.sv`,
+`rtl/anvil_en1_replay_vision_layer.sv`,
+`rtl/anvil_en1_replay_audio_layer.sv`, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch only. No command, static check,
+simulation, synthesis, installation or experiment ran; there is no new
+preparation receipt. Parent, verification and runtime files remain untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+Remaining closure milestones: context-dependent whole-system
+frame/native-worker/memo/arithmetic grants with exact eviction/recomputation,
+ordinary workspace partition enforcement and remaining overlays; then the
+reserved fast static elaboration check and immediate independent Verifier
+handoff. This physical overlay does not establish live-footprint savings,
+M20K inference, resource fit, timing or acceptance. Not ready.
+
+## Prior saved increment: replay-frame vector grants and release census
+
+`rtl/anvil_en1_replay_workspace.sv` now separates frame ownership from
+whole-vector reservation and completed-vector visibility. Push reserves the
+complete scalar slot, not unused vector banks. A first stream, memo-to-frame
+copy or ordered pair sequence registers its actual/production-shadow candidates,
+checks frame ownership and both physical frame-payload ceilings, then reserves
+the complete selected domain-width vector before any backing access. Rewrites
+reuse that reservation. Partial writes, stream aborts and backing errors retain
+the granted vector charge until pop/invalidation; clearing visibility cannot
+hide an incomplete tensor.
+
+Six reservation bits use each frame's existing bank/slice layout. Pop reads
+the actual popped frame's mask, registers its slice count and byte amounts,
+checks subtotal underflow, then releases precisely those vectors and its scalar
+slot. Native subsets follow the same domain-tagged grants/releases, including
+suspended parents. The new reservation bitmap is metadata and new readback,
+count, candidate and return-state registers enter controller accounting.
+Physical backing capacity, legal depths, numerical operations and ports remain
+unchanged. This is a real allocation-lifetime change, not a smaller charge for
+an already allocated full frame.
+
+Changed that RTL file, `design/SPEC.md` and this document. Tools used:
+glob, view, rg and apply_patch only. No command, static check, simulation,
+synthesis, installation or experiment ran; there is no new preparation receipt.
+Parent, verification and runtime files remain untouched. Attempt-0003 remains
+preserved without a claimed repair.
+
+Remaining closure milestones: connect context-dependent whole-system
+frame/native-worker/memo/arithmetic grants (with exact eviction/recomputation),
+ordinary workspace partition limits and remaining physical overlays; then run
+the reserved fast static elaboration check and hand off immediately to the
+independent Verifier. Local frame-payload capacity grants do not complete
+native-scratch, fallback-total or strict 45%-baseline enforcement. Not ready.
+
+## Prior saved increment: replay audio GLU/branch physical overlay
+
+The existing audio ownership reservation now spans three synchronous BF16
+1024-component banks. Residual and working remain banks 0/1; bank 2
+serves the nested convolution GLU normalized vector or the subsequent
+feed-forward output branch. Each child may need all three banks at once;
+the overlay is only across their disjoint complete task lifetimes.
+
+`anvil_en1_audio_glu_component` gains an optional external enabled-edge
+RAM port. Lightconv propagates its existing storage parameter to that
+child and forwards bank 2. Feed-forward exports its existing branch
+accesses on bank 2 of its widened external port. Local defaults preserve
+independent payload and the existing synchronous read/capture cycles.
+The replay wrapper extends its existing registered ownership, full-address
+range checks and conflict suppression to the third bank. It does not
+release convolution ownership between nested GLU requests or before
+accepted convolution done.
+
+The connected declarations now contain 6144 bytes instead of the prior
+8192 (two shared banks and two private banks). Live and production-shadow
+reservations are unchanged. The shared read register is counted in the
+wrapper, not duplicated in the external GLU/feed-forward children.
+This is a physical declaration reduction, not measured live savings,
+M20K inference, timing closure or whole-system allocation enforcement.
+
+Changed `rtl/anvil_en1_audio_glu_component.sv`,
+`rtl/anvil_en1_audio_lightconv.sv`,
+`rtl/anvil_en1_audio_feedforward.sv`,
+`rtl/anvil_en1_replay_audio_layer.sv`, `design/SPEC.md` and this document.
+Tools used: glob, view, rg and apply_patch only. No command, static check,
+simulation, synthesis, installation or experiment ran; there is no new
+preparation receipt. Parent, verification and runtime files remain untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+Remaining: whole-system grant-time ordinary/native-scratch/fallback limits,
+including forced-short-context production-shadow limits, and remaining
+physical phase overlays. Then run the reserved fast static elaboration
+check and immediately hand the completed design to independent Verifier.
+Not ready.
+
+## Prior saved increment: replay audio residual/working physical overlay
 
 `rtl/anvil_en1_replay_audio_layer.sv` now owns two synchronous BF16
 1024-component banks shared by convolution and second feed-forward.

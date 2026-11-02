@@ -150,6 +150,14 @@ module anvil_en1_replay_execute #(
     reg [31:0] done_token_hold;
     reg [11:0] done_length_hold;
     reg [3:0] error_hold;
+    reg [1:0] native_vector_owner;
+    reg native_vector_fault;
+    wire vision_branch_write, vision_branch_read;
+    wire [31:0] vision_branch_waddr, vision_branch_raddr;
+    wire [15:0] vision_branch_wdata;
+    wire [2:0] audio_vector_write, audio_vector_read;
+    wire [95:0] audio_vector_waddr, audio_vector_raddr;
+    wire [47:0] audio_vector_wdata, native_vector_rdata;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -510,9 +518,13 @@ module anvil_en1_replay_execute #(
     wire [63:0] vision_cmd_addr, vision_state_bytes;
     wire vision_input_event, vision_projection_event, vision_intermediate_event;
     wire [31:0] vision_input_bytes, vision_projection_bytes, vision_intermediate_bytes;
-    anvil_en1_replay_vision_layer #(.COMPACT(COMPACT)) vision_layer (
+    wire vision_start = vision_selected && state == WORKER_START &&
+        native_vector_owner == 0;
+    anvil_en1_replay_vision_layer #(
+        .COMPACT(COMPACT), .EXTERNAL_BRANCH_RAM(1)
+    ) vision_layer (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(vision_selected && state == WORKER_START), .start_ready(vision_ready),
+        .start_valid(vision_start), .start_ready(vision_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),
         .generation(generation_hold), .patches(native_patches_hold),
         .patch_rows(native_rows_hold), .patch_columns(native_columns_hold), .query_patch(token_hold),
@@ -544,6 +556,9 @@ module anvil_en1_replay_execute #(
         .intermediate_event(vision_intermediate_event), .intermediate_bytes(vision_intermediate_bytes),
         .source_read_event(vision_source_event), .source_read_bytes(vision_source_bytes),
         .vector_live_bytes(vision_vector_live_bytes), .vector_physical_bytes(vision_vector_physical_bytes),
+        .branch_ram_write(vision_branch_write), .branch_ram_read(vision_branch_read),
+        .branch_ram_waddr(vision_branch_waddr), .branch_ram_raddr(vision_branch_raddr),
+        .branch_ram_wdata(vision_branch_wdata), .branch_ram_rdata(native_vector_rdata[15:0]),
         .controller_bytes(vision_state_bytes), .binding_controller_bytes(vision_binding_controller_bytes),
         .patch_controller_bytes(vision_patch_controller_bytes),
         .replay_controller_bytes(vision_replay_controller_bytes),
@@ -637,9 +652,13 @@ module anvil_en1_replay_execute #(
     wire audio_layer_source_event;
     wire [31:0] audio_layer_input_bytes, audio_layer_projection_bytes;
     wire [31:0] audio_layer_intermediate_bytes, audio_layer_source_bytes;
-    anvil_en1_replay_audio_layer #(.COMPACT(COMPACT)) audio_layer (
+    wire audio_layer_start = audio_layer_selected && state == WORKER_START &&
+        native_vector_owner == 0;
+    anvil_en1_replay_audio_layer #(
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1)
+    ) audio_layer (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(audio_layer_selected && state == WORKER_START),
+        .start_valid(audio_layer_start),
         .start_ready(audio_layer_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),
         .generation(generation_hold), .frames(native_audio_frames_hold), .query_token(token_hold),
@@ -682,6 +701,9 @@ module anvil_en1_replay_execute #(
         .glu_replay_event(native_audio_glu_replay_event),
         .glu_replay_bytes(native_audio_glu_replay_bytes),
         .vector_live_bytes(audio_layer_live), .vector_physical_bytes(audio_layer_physical),
+        .vector_ram_write(audio_vector_write), .vector_ram_read(audio_vector_read),
+        .vector_ram_waddr(audio_vector_waddr), .vector_ram_raddr(audio_vector_raddr),
+        .vector_ram_wdata(audio_vector_wdata), .vector_ram_rdata(native_vector_rdata),
         .controller_bytes(audio_layer_controller_bytes), .nested_controller_bytes(audio_layer_nested)
     );
     wire audio_active = audio_selected || audio_layer_selected;
@@ -710,8 +732,66 @@ module anvil_en1_replay_execute #(
     assign audio_projection_event = audio_zero_projection_event || audio_layer_projection_event;
     assign audio_projection_bytes = audio_zero_projection_bytes + audio_layer_projection_bytes;
     assign audio_vector_live_bytes = !rst_n ? 64'd0 : audio_zero_live + audio_layer_live;
-    assign audio_vector_physical_bytes = !rst_n ? 64'd0 : audio_zero_physical + audio_layer_physical;
+    assign audio_vector_physical_bytes = !rst_n ? 64'd0 :
+        audio_zero_physical + audio_layer_physical + 64'd6144;
     assign audio_nested_controller_bytes = !rst_n ? 64'd0 : audio_zero_nested + audio_layer_nested;
+
+    wire vision_branch_access = vision_branch_write || vision_branch_read;
+    wire audio_vector_access = |audio_vector_write || |audio_vector_read;
+    wire native_vector_owner_fault = rst_n &&
+        ((vision_branch_access && audio_vector_access) ||
+         (vision_branch_access && (native_vector_owner != 1 || !vision_selected)) ||
+         (audio_vector_access && (native_vector_owner != 2 || !audio_layer_selected)) ||
+         (|vision_vector_live_bytes && |audio_layer_live));
+    wire [2:0] native_vector_range_fault;
+    wire native_vector_access_fault = native_vector_owner_fault ||
+        |native_vector_range_fault;
+    genvar native_bank;
+    generate for (native_bank=0; native_bank<3; native_bank=native_bank+1) begin : native_vectors
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] payload [0:1023];
+        reg [15:0] read_q;
+        wire vision_write = native_bank == 0 && vision_branch_write;
+        wire vision_read = native_bank == 0 && vision_branch_read;
+        wire [31:0] audio_waddr = audio_vector_waddr[32*native_bank+:32];
+        wire [31:0] audio_raddr = audio_vector_raddr[32*native_bank+:32];
+        wire [31:0] waddr = vision_write ? vision_branch_waddr : audio_waddr;
+        wire [31:0] raddr = vision_read ? vision_branch_raddr : audio_raddr;
+        wire [15:0] wdata = vision_write ? vision_branch_wdata :
+            audio_vector_wdata[16*native_bank+:16];
+        assign native_vector_range_fault[native_bank] = rst_n &&
+            ((vision_write && vision_branch_waddr >= 768) ||
+             (vision_read && vision_branch_raddr >= 768) ||
+             (audio_vector_write[native_bank] && audio_waddr >= 1024) ||
+             (audio_vector_read[native_bank] && audio_raddr >= 1024));
+        assign native_vector_rdata[16*native_bank+:16] = read_q;
+        always @(posedge clk) begin
+            if (rst_n && !native_vector_access_fault) begin
+                if (vision_write || audio_vector_write[native_bank])
+                    payload[waddr[9:0]] <= wdata;
+                if (vision_read || audio_vector_read[native_bank])
+                    read_q <= payload[raddr[9:0]];
+            end
+        end
+    end endgenerate
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            native_vector_owner <= 0;
+        else if (vision_start && vision_ready)
+            native_vector_owner <= 1;
+        else if (audio_layer_start && audio_layer_ready)
+            native_vector_owner <= 2;
+        else if ((vision_selected && state == WORKER_WAIT && vision_valid) ||
+            (audio_layer_selected && state == WORKER_WAIT && audio_layer_valid))
+            native_vector_owner <= 0;
+    end
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            native_vector_fault <= 0;
+        else if (state == IDLE && task_valid && task_ready)
+            native_vector_fault <= 0;
+        else if (native_vector_access_fault)
+            native_vector_fault <= 1;
+    end
 
     wire feature_selected = rst_n && domain_hold == 3 && layer_hold == 2 &&
         (state == WORKER_START || state == WORKER_WAIT);
@@ -941,7 +1021,8 @@ module anvil_en1_replay_execute #(
         $bits(input_worker) + $bits(done_dependency_hold) + $bits(done_bank_hold) +
         $bits(dependency_domain_hold) + $bits(done_domain_hold) + $bits(done_layer_hold) +
         $bits(done_token_hold) + $bits(done_length_hold) + $bits(error_hold) +
-        $bits(embedding_ram_fault) + (EXTERNAL_EMBEDDING_RAM ? 0 : 32);
+        $bits(embedding_ram_fault) + (EXTERNAL_EMBEDDING_RAM ? 0 : 32) +
+        $bits(native_vector_owner) + $bits(native_vector_fault) + 48;
     assign dispatcher_state_bytes = rst_n ? 64'((DISPATCHER_BITS + 7) >> 3) : 64'd0;
     wire [63:0] text_reported_controllers = input_state_bytes + text_state_bytes +
         binding_controller_bytes + projection_controller_bytes +
@@ -961,7 +1042,7 @@ module anvil_en1_replay_execute #(
         audio_feature_controller_bytes + audio_feature_nested_controller_bytes;
     assign native_reconstruction_controller_bytes = !rst_n ? 64'd0 :
         input_state_bytes + vision_reported_controllers + audio_reported_controllers +
-        image_feature_controller_bytes + image_feature_nested_controller_bytes;
+        image_feature_controller_bytes + image_feature_nested_controller_bytes + 64'd7;
     assign reported_controller_bytes = !rst_n ? 64'd0 :
         scheduler_state_bytes + dispatcher_state_bytes + workspace_controller_bytes +
         text_reported_controllers + vision_reported_controllers +
@@ -1076,9 +1157,11 @@ module anvil_en1_replay_execute #(
                     end else
                         state <= WORKER_START;
                 end
-                WORKER_START: if (domain_hold == 3 ?
+                WORKER_START: if (((domain_hold != 1 &&
+                    !(domain_hold == 2 && !input_worker)) || native_vector_owner == 0) &&
+                    (domain_hold == 3 ?
                     (layer_hold == 1 ? image_feature_ready : feature_ready) : (domain_hold == 2 ? audio_ready :
-                    (domain_hold == 1 ? vision_ready : (input_worker ? input_ready : text_ready))))
+                    (domain_hold == 1 ? vision_ready : (input_worker ? input_ready : text_ready)))))
                     state <= WORKER_WAIT;
                 WORKER_WAIT: begin
                     if (domain_hold == 3 && layer_hold == 1 && image_feature_valid) begin
@@ -1146,7 +1229,7 @@ module anvil_en1_replay_execute #(
                     end
                 end
                 PUBLISH: begin
-                    if (error_hold == 0 && embedding_ram_fault) begin
+                    if (error_hold == 0 && (embedding_ram_fault || native_vector_fault)) begin
                         error_hold <= 7;
                         done_dependency_hold <= 0;
                     end

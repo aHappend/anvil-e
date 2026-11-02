@@ -41,10 +41,10 @@ module anvil_en1_audio_lightconv #(
     output wire glu_replay_event,
     output wire [31:0] glu_replay_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
-    output wire [1:0] vector_ram_write, vector_ram_read,
-    output wire [63:0] vector_ram_waddr, vector_ram_raddr,
-    output wire [31:0] vector_ram_wdata,
-    input wire [31:0] vector_ram_rdata,
+    output wire [2:0] vector_ram_write, vector_ram_read,
+    output wire [95:0] vector_ram_waddr, vector_ram_raddr,
+    output wire [47:0] vector_ram_wdata,
+    input wire [47:0] vector_ram_rdata,
     output wire [63:0] controller_bytes, nested_controller_bytes
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, SOURCE_SEND = 2,
@@ -130,7 +130,12 @@ module anvil_en1_audio_lightconv #(
     wire [63:0] glu_addr, glu_live, glu_physical, glu_controller;
     wire [63:0] glu_norm_controller, glu_projection_controller, glu_clamp_controller;
     wire [3:0] glu_error;
-    anvil_en1_audio_glu_component gated_input (
+    wire glu_ram_write, glu_ram_read;
+    wire [31:0] glu_ram_waddr, glu_ram_raddr;
+    wire [15:0] glu_ram_wdata;
+    anvil_en1_audio_glu_component #(
+        .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+    ) gated_input (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && dependency_state == D_START), .start_ready(glu_ready),
         .model(dependency_model), .precision(precision_hold), .layer(dependency_layer),
@@ -152,6 +157,9 @@ module anvil_en1_audio_lightconv #(
         .weight_read_event(glu_weight_event), .weight_read_bytes(glu_weight_bytes),
         .projection_event(glu_projection_event), .projection_bytes(glu_projection_bytes),
         .vector_live_bytes(glu_live), .vector_physical_bytes(glu_physical),
+        .vector_ram_write(glu_ram_write), .vector_ram_read(glu_ram_read),
+        .vector_ram_waddr(glu_ram_waddr), .vector_ram_raddr(glu_ram_raddr),
+        .vector_ram_wdata(glu_ram_wdata), .vector_ram_rdata(vector_ram_rdata[47:32]),
         .controller_bytes(glu_controller), .norm_controller_bytes(glu_norm_controller),
         .projection_controller_bytes(glu_projection_controller),
         .clamp_controller_bytes(glu_clamp_controller)
@@ -268,11 +276,14 @@ module anvil_en1_audio_lightconv #(
     wire [63:0] bank_raddr = {callback_read ? bank_index : index_hold, index_hold};
     wire [31:0] bank_wdata = {state == CONV_STORE ? conv_hold :
         (state == WORK_STORE ? work_hold : norm_output_data), source_hold};
-    assign vector_ram_write = EXTERNAL_VECTOR_RAM ? bank_write : 2'd0;
-    assign vector_ram_read = EXTERNAL_VECTOR_RAM ? bank_read : 2'd0;
-    assign vector_ram_waddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_waddr : 64'd0;
-    assign vector_ram_raddr = rst_n && EXTERNAL_VECTOR_RAM ? bank_raddr : 64'd0;
-    assign vector_ram_wdata = rst_n && EXTERNAL_VECTOR_RAM ? bank_wdata : 32'd0;
+    assign vector_ram_write = EXTERNAL_VECTOR_RAM ? {glu_ram_write, bank_write} : 3'd0;
+    assign vector_ram_read = EXTERNAL_VECTOR_RAM ? {glu_ram_read, bank_read} : 3'd0;
+    assign vector_ram_waddr = rst_n && EXTERNAL_VECTOR_RAM ?
+        {glu_ram_waddr, bank_waddr} : 96'd0;
+    assign vector_ram_raddr = rst_n && EXTERNAL_VECTOR_RAM ?
+        {glu_ram_raddr, bank_raddr} : 96'd0;
+    assign vector_ram_wdata = rst_n && EXTERNAL_VECTOR_RAM ?
+        {glu_ram_wdata, bank_wdata} : 48'd0;
     generate if (EXTERNAL_VECTOR_RAM == 1) begin : external_vectors
         assign raw_q = vector_ram_rdata[15:0];
         assign work_q = vector_ram_rdata[31:16];
