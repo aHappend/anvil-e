@@ -5,7 +5,40 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected native audio attention residual
+## Current saved increment: complete connected native conformer
+
+`rtl/anvil_en1_audio_layer.sv` connects the saved genuine FF1/relative
+attention residual to causal light convolution, genuine FF2, final BF16
+stability clamp and learned norm_out. Historical light-convolution inputs
+are produced by rerunning the same attention-residual engine from actual
+layer-entry callbacks, not by accepting host attention/GLU answers.
+The completed query attention residual remains immutable while that
+single tagged historical cache refills. Memory ownership passes to
+attention only while the lightconv/GLU source request is waiting after
+its preceding external response retired.
+
+Three 2048-byte outer banks use explicit complete-vector visibility and
+phase reuse: FF2 reuses the former query bank only after convolution
+completion, and its source convolution bank releases only after FF2.
+The connected physical vector reservation is 34816 bytes; scheduled
+peak live vector allocation is bounded by 26624 bytes. Both figures
+exclude additional primitive/controller state and are implementation
+accounting, not measured liveness, inferred M20Ks or proven resource fit.
+
+The associated durable audio-head contract in SPEC freezes acknowledged
+checkpoint save/restore and, unlike a simple checkpoint relay, requires
+the attention executor's actual yield completion to retire before another
+start. Full domain-2 conformer/frame dispatch remains unfinished; the
+non-resumable worker is not yet wired into full replay or native top.
+
+Remaining integration: durable audio continuations and memo dispatch,
+subsampling layer-zero/completed audio-feature binding, modality/session
+mapping, owner/frontier/fallback binding, complete allocation overlays
+and parent-compatible top/cache/arbiter/CSR integration. Not ready for
+Verifier. No commands, static elaboration, simulation, synthesis or
+experiments ran; no preparation receipt exists.
+
+## Prior increment: connected native audio attention residual
 
 `rtl/anvil_en1_audio_attention_residual.sv` now connects the actual
 feed_forward1, attention-input clamp/RMSNorm, all eight native attention

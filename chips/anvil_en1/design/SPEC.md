@@ -5,6 +5,109 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+## Complete native conformer and durable audio-head binding
+
+`anvil_en1_audio_layer` connects one complete native 1024-component conformer
+layer, numbered 0..11. Its sole external hidden-vector callback supplies
+the actual input to that layer at a requested subsampled token. The worker
+executes FF1, all eight relative-attention heads, output projection/post norm
+and residual through `audio_attention_residual`; then `audio_lightconv`;
+then actual FF2 with its existing 0.5 BF16 residual boundary; finally the
+fixed +/-1e10 BF16 clamp followed by learned RMSNorm kind 0x2115. No
+additional residual or 0.5 scaling is applied after norm_out.
+
+During light convolution, query attention-residual components come from
+the completed immutable query bank. Historical components at distance
+1..4 are reconstructed by the same real attention-residual engine,
+including its FF1, mask, eight heads, projection and post norm. One tagged
+complete historical vector is cached on-chip. This is recomputation of
+an intermediate within a layer, not an Eval push at the same layer rank;
+every outward hidden callback still requests the entering vector from the
+preceding encoder layer. The durable frame dispatcher must eventually
+suspend these real computations when that entering vector needs Eval.
+The connected non-resumable conformer does not yet provide that dispatcher.
+
+Three outer 2048-byte synchronous vector banks retain query attention
+residual, historical attention residual and light-convolution output.
+After convolution completion, its query bank is reused for clamped FF2
+outputs. The historical cache is invalidated and released before FF2.
+The convolution-output bank stays immutable through FF2's source reads,
+then releases before norm_out. Norm_out never overwrites its source.
+The connected physical vector reservation is 34816 bytes, including
+all saved child vector banks. Its scheduled vector-live bound is 26624
+bytes during a historical reconstruction; partial refills and failed
+computations remain charged until their real completions retire.
+Controller and primitive arithmetic state are additional, not included
+in that vector-only bound. Whole-system scratch overlays remain required.
+
+| Conformer boundary | Registered cycle/degenerate behavior |
+| --- | --- |
+| Start/reset | Capture descriptor before validation; reset zeroes public outputs and drops every bank's visibility |
+| Raw source | Only the selected attention worker forwards real layer-entry callbacks; no generated attention/conv/MLP answer is accepted from outside |
+| Historical miss | Accept and retain callback, invalidate old visibility, run actual attention reconstruction, accept its complete stream and done, then perform synchronous read/capture/response |
+| Memory handover | Lightconv/GLU has retired its preceding weight response before requesting a hidden callback; attention owns memory only during the registered refill start/wait |
+| Vector commits | Require exactly 1024 ascending components and correct last, plus actual successful child completion; partial/error banks remain unreadable |
+| FF2 clamp | Accept a raw output, stall FF2, execute actual clamp, write RAM on a later edge, then restore FF2 readiness |
+| Final output | Valid/index/data/last stay stable while stalled; count only accepted norm outputs; final acceptance precedes done |
+| Error | Preserve first specific reconstruction/child failure; retire child work before error done; release allocations only at done acceptance |
+
+The durable head wrapper `anvil_en1_replay_audio_attention` binds the real
+REPLAY=1 audio attention executor to acknowledged workspace operations 6/7,
+target 0, domain 2, length 1024. Logical layer l belongs to frame_layer l+1.
+Its 160-bit continuation is `{0x454e3141, generation[31:0],
+query_token[31:0], frame_layer[7:0], frame_slot[5:0], model[1:0],
+precision[1:0], logical_layer[7:0], head[2:0], 35'b0}`.
+Restore validates this descriptor before reading scalar words. Only the
+head's 22 live checkpoint words are saved at frame scalar indices 8..29;
+reserved head words 22..31 are recreated as zero. Scalars 30/31 remain
+available for the enclosing worker's output count/unpaired BF16 lane.
+
+| Durable audio-head boundary | Registered behavior |
+| --- | --- |
+| Need | Capture an actual accepted yield decision and its token; relative K is locally generated and cannot request a historical Eval dependency |
+| Checkpoint | Accept the complete tagged head checkpoint only after prior service/arithmetic retirement; freeze it before workspace traffic |
+| Yield drain | Wait for and accept the executor's real done_yield completion before saving or publishing a task yield; never leave it busy for the next resume |
+| Scalar save/restore | Each request waits for a registered actual response and error check; the 22nd successful acknowledgment precedes task yield/start |
+| Resume | Validate frame/model/generation/query/layer/head and reserved bits; restore the same arithmetic reduction order, not a software answer |
+| Failure | Retire executor completion before returning errors; failed scalar writes never become a successful continuation |
+
+These bindings are implementation contracts, not verified numerical, RAM,
+timing or hardware results. Domain-2 full-layer continuation/memo dispatch,
+layer-zero subsampling, completed audio-feature routing and whole-system
+allocation accounting remain required.
+
+### Native audio layer-zero replay
+
+`anvil_en1_replay_audio_input` reconstructs Eval(0,t) with the saved real
+two-stage subsampler and Ha input projection. It writes all 1024 actual
+BF16 outputs into domain-2 frame bank 0 using acknowledged aligned-pair
+operation 6, target 2. The first pair starts an unreadable partial vector;
+the final successful pair acknowledgment commits it. A successful task
+also requires the subsampler's actual successful completion and complete
+ascending count/last checks; no initialization or mask bit supplies data.
+The input worker returns bank 0, without an invented historical dependency.
+The original mask remains independently addressable at stride-4 source
+positions for later attention; subsampling does not replace masked vector
+components with software-produced answers.
+
+`anvil_en1_replay_execute` captures native_audio_base,
+native_audio_weights_base and native_audio_frames at root acceptance,
+alongside its existing immutable vision fields. Its registered domain-2
+layer-0 dispatch selects only this input worker for external commands,
+workspace requests and completion. Native source, projection, point-replay
+and vector/controller allocation outputs separately expose actual audio
+reconstruction. Higher domain-2 layers still reject explicitly until the
+durable conformer dispatcher is connected; that remains an incomplete
+product, not permission to omit native audio acceptance.
+
+| Audio Eval(0) boundary | Registered behavior |
+| --- | --- |
+| Descriptor | Capture model/precision/generation/frame/token/immutable bases; require frame_layer 0 and token<ceil(frames/4), frames 1..131072 |
+| Single vector | Exactly 1024 outputs; low lane captured before high lane forms a stable 32-bit pair |
+| Pair ingress/backpressure | Child stalls during pair request/response; pair descriptor and payload remain stable; actual acknowledgment precedes the next component |
+| Child and workspace errors | Preserve first error, drain the numerical child and accepted pair response, then fail task without a success-shaped vector |
+| Completion/reset | Real child done and all accepted pairs precede task done; reset cancels validity without initializing payload RAM |
+
 ## Native audio relative-attention boundaries
 
 The saved connected attention increment uses native Ha=1024, eight heads
@@ -207,11 +310,12 @@ and payload traffic classification must still scoreboard the external
 address map; native input/projection events are not a replacement for
 that independent public-handshake ledger.
 
-This saved dispatcher still rejects domain 2 because its audio worker
-is not implemented. Text modality callbacks still require their native
-session/placeholder dispatcher. Those are implementation gaps, not
-authorized removal of native audio or multimodal acceptance. No
-functional or synthesis pass is established for either saved worker.
+The dispatcher now reconstructs domain-2 layer zero from actual immutable
+audio inputs, but still rejects higher audio layers because its durable
+conformer worker is not connected. Text modality callbacks still require
+their native session/placeholder dispatcher. Those are implementation
+gaps, not authorized removal of native audio or multimodal acceptance.
+No functional or synthesis pass is established for the saved workers.
 
 `anvil_en1_audio_glu_component` reconstructs one channel of the pinned
 light-convolution input. Its descriptor captures model, precision, generation,
