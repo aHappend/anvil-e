@@ -5,6 +5,60 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
+## Current saved increment: resumable numerical attention and memo-backed owner tiles
+
+`rtl/anvil_en1_attention_head.sv` adds an optional, default-disabled replay
+boundary without changing the ordinary numerical operation/reduction order.
+After actual canonical cache metadata retirement, replay requests a registered
+allow/yield/error decision before presenting any data fetch. Yield occurs
+with every source/cache/arithmetic transaction retired. A 384-bit checkpoint
+preserves the actual max/sum/value reductions, BF16 operands and traversal
+indices. The released numerical instance can serve a child; resumption
+validates its format/descriptor and reobtains canonical metadata rather than
+fetching through a stale saved address. Ordinary
+`rtl/anvil_en1_asym_attn_ple.sv` explicitly ties this interface off.
+
+`rtl/anvil_en1_replay_attention.sv` connects that real head to acknowledged
+frame scalar storage. Seven words at indices 8..14 retain the checkpoint's
+upper 224 bits, while its lower 160 bits form the subtask continuation.
+The final scalar response must retire before successful yield. Restore reads
+all seven visible words before numerical resume. Scalar access failures
+retire before failed completion; they do not become successful snapshots.
+No additional vector/checkpoint RAM is inferred. Its 590 controller register
+bits occupy 74 byte-rounded bytes, including the held checkpoint and response
+word. The head's additional 385 resume/checkpoint register bits and all
+existing child arithmetic state also count in the final whole-system ledger.
+
+`rtl/anvil_en1_replay_kv_tile.sv` connects the same actual normalized/rotated
+owner tile used by root replay to tagged, acknowledged workspace vector reads.
+It reads either the completed dependency Eval(owner,token) memo or the
+committed raw layer input of the current Eval(owner+1,token) frame. It adds
+no second H-vector and never invokes the cache's already occupied root regen
+channel. Actual owner projection rows and accepted internal source words are
+observable, including work preceding a failure. Internal source bytes are
+not relabeled as external original-input traffic. Its 414 controller bits
+occupy 52 byte-rounded bytes; tile banks still reserve at most 6144 production
+bytes (32 compact), with all child numerical state additional.
+
+These are connected numerical subtasks, not a complete text Eval worker.
+The enclosing worker must regenerate Q from the committed frame input,
+preserve its own operator/output-row continuation, request smaller-rank Eval
+dependencies, consume their memo handles through the new owner adapter,
+and supply the resulting real pair to the inner attention data responder.
+It must not wait recursively on root cache regen or copy an incomplete
+attention/layer output to memo. Native encoders, complete arithmetic/metadata
+liveness, fallback/session control and parent-compatible literal top/arbiter/
+CSR integration also remain incomplete. No complete inference or acceptance
+is claimed; this remains **continue**, not ready for Verifier.
+
+Changed sources are the two new replay subtasks, the attention head's optional
+checkpoint interface, the ordinary layer's explicit tie-offs, and matching
+SPEC/ARCHITECTURE documentation. Tools used were glob, view, rg and apply_patch.
+No installation, command, elaboration, simulation, synthesis or experiment
+ran, and no preparation receipt exists. The one reserved static check remains
+unused. Parent RTL, tests, runtime metadata and retained failure-0001/
+attempt-0003 evidence were preserved; no ownership-guard repair is claimed.
+
 ## Current saved increment: explicit Eval control and input reconstruction
 
 `rtl/anvil_en1_eval_schedule.sv` owns the existing bounded workspace and

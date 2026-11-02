@@ -1,5 +1,6 @@
 module anvil_en1_owner_kv_tile #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer ALLOW_QUERY = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -9,6 +10,8 @@ module anvil_en1_owner_kv_tile #(
     input wire [31:0] token,
     input wire is_value,
     input wire [1:0] kv_head,
+    input wire is_query,
+    input wire [3:0] query_head,
     input wire [9:0] component,
     input wire [63:0] weights_base,
     output wire source_valid,
@@ -34,10 +37,13 @@ module anvil_en1_owner_kv_tile #(
     output wire [31:0] done_data,
     output wire [3:0] done_error,
     output wire projection_event,
-    output wire [31:0] projection_bytes
+    output wire [31:0] projection_bytes,
+    output wire query_projection_event,
+    output wire [31:0] query_projection_bytes
 );
-    generate if (COMPACT != 0 && COMPACT != 1) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+    generate if ((COMPACT != 0 && COMPACT != 1) ||
+        (ALLOW_QUERY != 0 && ALLOW_QUERY != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT and ALLOW_QUERY must be 0 or 1");
         assign start_ready = 0;
         assign source_valid = 0;
         assign source_model = 0;
@@ -55,6 +61,8 @@ module anvil_en1_owner_kv_tile #(
         assign done_error = 0;
         assign projection_event = 0;
         assign projection_bytes = 0;
+        assign query_projection_event = 0;
+        assign query_projection_bytes = 0;
     end else begin : tile
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer MAX_D = COMPACT ? 8 : 512;
@@ -76,12 +84,13 @@ module anvil_en1_owner_kv_tile #(
             MEMORY_SCALE = 2;
         reg [4:0] state;
         reg [2:0] src_state, scale_state;
-        reg [1:0] model_hold, precision_hold, head_hold, memory_owner;
+        reg [1:0] model_hold, precision_hold, memory_owner;
+        reg [3:0] head_hold;
         reg [7:0] owner_hold;
         reg [31:0] token_hold, hidden_hold, dimension_hold, heads_hold;
         reg [63:0] weights_hold;
         reg [9:0] component_hold, current_component, pair_base;
-        reg selector_hold, global_hold, input_norm, second_component;
+        reg selector_hold, query_hold, global_hold, input_norm, second_component;
         reg src_is_head, src_is_projection;
         reg [31:0] src_index_hold, scale_index_hold, projection_index;
         reg [15:0] src_data_hold, scale_data_hold;
@@ -101,11 +110,12 @@ module anvil_en1_owner_kv_tile #(
         reg [15:0] head_payload [0:MAX_D-1];
 
         wire native_owner, selected_global;
-        wire [7:0] selected_owner_count;
+        wire [7:0] selected_owner_count, selected_layer_count;
         wire [11:0] selected_hidden;
         anvil_en1_geometry geometry (
             .rst_n(rst_n), .model(model_hold), .layer(owner_hold),
-            .is_native(native_owner), .layers(), .owners(selected_owner_count),
+            .is_native(native_owner), .layers(selected_layer_count),
+            .owners(selected_owner_count),
             .owner(), .is_global(selected_global), .hidden(selected_hidden),
             .intermediate()
         );
@@ -184,7 +194,7 @@ module anvil_en1_owner_kv_tile #(
         anvil_en1_norm norm_unit (
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
-            .layer_norm(1'b0), .learned_scale(input_norm || !selector_hold),
+            .layer_norm(1'b0), .learned_scale(input_norm || query_hold || !selector_hold),
             .vector_length(input_norm ? hidden_hold : dimension_hold),
             .epsilon(32'h358637bd),
             .source_valid(norm_source_valid), .source_ready(norm_source_ready),
@@ -283,9 +293,12 @@ module anvil_en1_owner_kv_tile #(
         assign done_valid = rst_n && state == RESPONSE;
         assign done_data = rst_n ? output_hold : 32'd0;
         assign done_error = rst_n ? error_hold : 4'd0;
-        assign projection_event = rst_n && state == PROJECTION_WAIT &&
+        wire completed_projection = rst_n && state == PROJECTION_WAIT &&
             projection_valid && projection_error == 0;
+        assign projection_event = completed_projection && !query_hold;
         assign projection_bytes = rst_n ? 32'd2 : 32'd0;
+        assign query_projection_event = completed_projection && query_hold;
+        assign query_projection_bytes = rst_n ? 32'd2 : 32'd0;
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin
@@ -366,6 +379,7 @@ module anvil_en1_owner_kv_tile #(
                 current_component <= 0;
                 pair_base <= 0;
                 selector_hold <= 0;
+                query_hold <= 0;
                 global_hold <= 0;
                 input_norm <= 0;
                 second_component <= 0;
@@ -392,12 +406,13 @@ module anvil_en1_owner_kv_tile #(
                     IDLE: if (start_valid && start_ready) begin
                         model_hold <= model;
                         precision_hold <= precision;
-                        head_hold <= kv_head;
+                        head_hold <= ALLOW_QUERY && is_query ? query_head : {2'd0, kv_head};
                         owner_hold <= owner;
                         token_hold <= token;
                         weights_hold <= weights_base;
                         component_hold <= component;
                         selector_hold <= is_value;
+                        query_hold <= ALLOW_QUERY && is_query;
                         input_norm <= 1;
                         second_component <= 0;
                         projection_index <= 0;
@@ -410,19 +425,23 @@ module anvil_en1_owner_kv_tile #(
                         dimension_hold <= COMPACT ?
                             (selected_global ? 32'd8 : 32'd4) :
                             (selected_global ? 32'd512 : 32'd256);
-                        heads_hold <= COMPACT || model_hold == 1 ? 32'd1 : 32'd2;
+                        heads_hold <= query_hold ? (COMPACT ? 32'd2 : 32'd8) :
+                            (COMPACT || model_hold == 1 ? 32'd1 : 32'd2);
                         global_hold <= selected_global;
                         if (!native_owner || precision_hold > 1) begin
                             error_hold <= 6;
                             state <= PUBLISH;
-                        end else if (owner_hold >= selected_owner_count) begin
+                        end else if (owner_hold >= (query_hold ?
+                            selected_layer_count : selected_owner_count)) begin
                             error_hold <= 7;
                             state <= PUBLISH;
                         end else if (token_hold > 131071 || component_hold[0] ||
                             component_hold >= (COMPACT ?
                                 (selected_global ? 10'd8 : 10'd4) :
                                 (selected_global ? 10'd512 : 10'd256)) ||
-                            head_hold >= (COMPACT || model_hold == 1 ? 2'd1 : 2'd2)) begin
+                            (query_hold && selector_hold) ||
+                            head_hold >= (query_hold ? (COMPACT ? 4'd2 : 4'd8) :
+                                (COMPACT || model_hold == 1 ? 4'd1 : 4'd2))) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else begin
@@ -447,7 +466,8 @@ module anvil_en1_owner_kv_tile #(
                         end
                     end
                     LOOKUP_FINISH: begin
-                        if (lookup_kind == 16'h0100 || lookup_kind == 16'h0104) begin
+                        if (lookup_kind == 16'h0100 || lookup_kind == 16'h0102 ||
+                            lookup_kind == 16'h0104) begin
                             scale_base <= descriptor_base;
                             scale_bytes <= descriptor_bytes;
                             scale_columns <= descriptor_columns;
@@ -476,7 +496,8 @@ module anvil_en1_owner_kv_tile #(
                     NORM_FINISH: begin
                         if (input_norm) begin
                             input_norm <= 0;
-                            lookup_kind <= selector_hold ? 16'h0105 : 16'h0103;
+                            lookup_kind <= query_hold ? 16'h0101 :
+                                (selector_hold ? 16'h0105 : 16'h0103);
                             memory_owner <= MEMORY_LOOKUP;
                             state <= LOOKUP_START;
                         end else begin
@@ -502,7 +523,7 @@ module anvil_en1_owner_kv_tile #(
                                 memory_owner <= MEMORY_SCALE;
                                 state <= NORM_START;
                             end else begin
-                                lookup_kind <= 16'h0104;
+                                lookup_kind <= query_hold ? 16'h0102 : 16'h0104;
                                 memory_owner <= MEMORY_LOOKUP;
                                 state <= LOOKUP_START;
                             end

@@ -1566,6 +1566,11 @@ worker's stage/head continuation; words 0..7 remain scheduler-owned.
 The 28 stored bytes and all live bridge/head/child registers are part of
 the live allocation ledger, not additional uncounted RAM. The bridge has
 no vector store and does not create a separate checkpoint payload array.
+Its 590 explicitly declared register bits occupy 74 byte-rounded controller
+bytes, including its 48-byte held checkpoint and returned scalar word.
+The head's additional resume flag/held checkpoint occupy 385 bits; its
+existing numerical and instantiated primitive registers remain additional
+accounting. These are not counted again as a separate checkpoint RAM.
 
 The subtask start captures model, attention layer/head/position and the
 complete current Eval frame identity. Precision-independent BF16 attention
@@ -1593,6 +1598,55 @@ This defines a resumable numerical attention subtask, not a complete Eval
 text layer. The layer worker's normalized Q generation, dependency projection
 responder, frame-vector residual/PLE/MLP stages and dispatch are still required.
 Independent functional/numerical/eviction/reset verification remains pending.
+
+`anvil_en1_replay_kv_tile` is the owner-projection source adapter for nested
+replay attention. It instantiates the same genuine `anvil_en1_owner_kv_tile`
+used by root owner replay, including input/learned-K/unscaled-V normalization,
+projection materialization and local/global rotary. It obtains raw BF16
+hidden components through acknowledged workspace vector reads; it allocates
+no second raw H-vector. Its output is an actual normalized/rotated component
+pair, not a recursive cache regen request or a supplied hidden/KV answer.
+Canonical metadata still comes from the cache and chooses the owner before
+this adapter is started.
+
+The registered descriptor includes model/precision/owner/token/selector/
+head/component, immutable weight-image base, context length, and a complete
+workspace source handle. A memo source is Eval(owner,token), target 1 with its
+returned memo slot. A current-frame source is target 0, tagged
+Eval(owner+1,token), whose chosen bank the enclosing worker has already
+committed as that layer's input. The adapter validates these relationships
+and geometry before numerical start. It does not read an arbitrary shared
+layer as an owner or access a shared-layer projection tensor.
+The requested output component is an aligned pair index (bit 0 clear);
+the attention responder selects the requested BF16 lane after real pair
+completion. An odd output-pair descriptor fails before numerical start.
+Each numerical source request captures/validates model, owner, token and
+component, issues an aligned-pair workspace read with the frozen source
+identity, registers the actual response, and selects the requested BF16 lane.
+The memo handle must remain valid until projection completion; no task may
+yield/replace it mid-projection. Errors are returned through the real source/
+tile completion path after the outstanding response retires.
+
+| Nested owner tile boundary | Behavior |
+| --- | --- |
+| Start / validation | Capture all descriptor fields; reject native/precision/context/owner/source mismatches before source or weight access |
+| Source pair | Component bit 0 selects BF16 lane; aligned component clears bit 0, never advances into a neighboring vector |
+| Source request stall | Slot, complete tag, bank, length and component remain stable; no backing access bypasses the workspace |
+| Source error | Register error before numerical source response; no zero-shaped successful source fallback |
+| Completion | Wait for real normalized/rotated tile completion and retired source work; returned pair/error remains held |
+| Projection telemetry | Report each actual projected row, including work preceding a later error; do not classify nested owner work as avoided shared computation |
+| Reset | Zero channels/telemetry and discard validity, not backing payload |
+
+Tile H/D banks retain their existing maximum 6144-byte production reservation
+(32 compact); scalar/control/child registers and returned words remain
+additional live accounting. The adapter itself has only bounded registers.
+Its 414 explicitly declared register bits occupy 52 byte-rounded controller
+bytes, including its pair/source response registers. The tile and all child
+numerical registers are additional, not included in that controller figure.
+Accepted internal source reads are disclosed separately from external
+original-input bytes, which only the shared arbiter can count.
+Connecting this subtask to dependency completion and the replay attention
+data responder remains the enclosing numerical worker's responsibility.
 
 ### Ordinary frontier storage boundary
 

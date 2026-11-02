@@ -192,6 +192,7 @@ module anvil_en1_owner_replay #(
             .start_valid(rst_n && state == TILE_START), .start_ready(tile_ready),
             .model(request_model), .precision(precision_hold), .owner(owner_hold),
             .token(token_hold), .is_value(selector_hold), .kv_head(head_hold),
+            .is_query(1'b0), .query_head(4'd0),
             .component(component_hold), .weights_base(weights_hold),
             .source_valid(tile_source_valid),
             .source_ready(rst_n && state == TILE_WAIT && source_state == SOURCE_IDLE),
