@@ -82,6 +82,95 @@ arbiter, including failed responses; this event is not a substitute.
 | Reset | Zero every public output/valid; clear all source/vector visibility, with no asynchronous RAM reset writes |
 | Stalls / one outstanding | Hold all descriptors and payloads; response creation is never response acceptance |
 
+### Ordinary frontier task schedule
+
+`anvil_en1_frontier_schedule` captures model, precision, generation, tokens,
+and the verification-only forced-fallback selector. It uses the actual padded
+frontier capacity (3 MiB production, 8192 bytes for the existing compact
+frontier) to select the representation. It is a controller, not a numerical
+engine or allocator: every task must be connected to a real internal engine
+and only that engine's accepted completion advances the schedule.
+
+The task descriptor is op[2:0], model/precision[1:0], generation/tokens/token
+[31:0], layer[7:0] and source_frontier. Task op meanings are:
+
+| Op | Connected execution required before successful task done |
+| --- | --- |
+| 0 | Configure the ordinary frontier and local ring, after enclosing session drain/invalidation |
+| 1 | Construct the real native original input for token and commit its complete H-vector as frontier layer 0 |
+| 2 | Materialize every head and distinct K/V component of the last local owner for token into the local ring, from its still-unmodified entering frontier |
+| 3 | Run the complete requested text layer and commit its full output as frontier input layer+1; do not overwrite before the complete vector is computed |
+| 4 | Freeze the complete frontier entering the final global owner |
+| 5 | Run the requested last-token layer; source is frozen frontier for the final global owner and the retained last-token output bank for upper layers |
+| 6 | Stream the actual final last-token H-vector through the result consumer; task done follows the final accepted component |
+| 7 | Drain/release ordinary storage, bind the bounded fallback workspace, and execute full numerical Eval(L,last token), including real memo/continuations; not a status-bit or host result |
+
+The enclosing top separately configures the cache and replay session and
+retains all original inputs. Op 7's numerical engine remains required; this
+task schedule does not implement or certify fallback Eval. Shared-layer
+tasks have no frontier writes or K/V materialization.
+
+Ordinary fill visits original tokens 0..N-1. Prefix layers 0..owners-2 each
+visit tokens N-1..0. Before executing layer owners-2 (the last local owner),
+materialize its ring for tokens max(0,N-window)..N-1 in ascending order, while
+all those frontier vectors still enter that layer. Then execute that layer
+in descending order and freeze the resulting frontier. Execute only token
+N-1 at layers owners-1..L-1, keeping the frozen owner input unchanged.
+The ring loop uses the actual window (512 production, 4 compact), not padded
+padding words as causal tokens; physical padded ring occupancy still belongs
+in the allocator ledger.
+
+| Schedule cycle/degenerate boundary | Behavior |
+| --- | --- |
+| Start D0/D1/D2 | Capture descriptor; validate; register first task; no task valid before D2 |
+| Task request | Descriptor holds through backpressure; request acceptance opens exactly one outstanding task |
+| Task done | Accept only while waiting for a previously accepted request; register error; dependent next task appears no earlier than next edge |
+| N=1 | Fill token 0 once; each prefix visits token 0 once; ring materializes once; all last-token layers retain production maps |
+| Window wrap | First ring token is max(0,N-window); no modulo operator or token overflow |
+| Frontier capacity | Compare padded BF16 bytes to actual partition; greater-than selects fallback, equality fits |
+| Mode change | Representation stays captured for the entire job; release/drain belongs to the actual op 0/7 executor |
+| Error | Stop issuing tasks; publish explicit done error after the failed outstanding task retires |
+| Completion/reset | Stable done until accepted; no completion on creation edge; active reset zeroes every output and task validity |
+
+### Complete local-anchor materialization
+
+`anvil_en1_anchor_materialize` executes one ordinary schedule op 2 for one
+token. Its descriptor is model, actual local owner and token. It accepts only
+owners 13/22 (the last local owner of that model), and uses the canonical
+cache metadata response before every aligned-pair data fetch. It checks the
+actual returned owner, non-alias identity and on-chip/rematerialized space;
+it never sends `rsp_addr` to DDR or bypasses cache ownership with a local map.
+All cache miss data must come from the connected owner's actual projection.
+
+For each K head, then each V head, collect every local aligned pair through
+the cache into one synchronous D/2-word lane buffer. Only after the complete
+lane is fetched and all cache responses are retired start the ring's lane
+write. Stream the buffered pairs in order with correct first/last and await
+the ring's acknowledged complete-vector commit. Then reuse the buffer for
+the next lane. This sequencing avoids holding the single-port ring writer
+open while a cache miss tries to read that same ring. It also prevents a
+partially collected lane from becoming a hit. The enclosing session owns
+the ring/cache generation and must retain the owner's entering frontier
+until all lanes complete.
+
+The buffer reserves 512 bytes production or 8 compact, counted as live during
+collection and through ring commit/completion. It is a real transient copy,
+not hidden resident capacity. At most one metadata request, fetch or ring
+write transaction is outstanding. Errors retire the real failed response and
+stop new requests; only already committed complete lanes survive until
+enclosing error invalidation. Layer execution must not start after a failed
+materialization.
+
+| Materialization boundary | Behavior |
+| --- | --- |
+| Start A0/A1/A2 | Capture; validate last-local owner/token; no metadata request before A2 |
+| Metadata | Register true owner/error/space before starting fetch; no address-based external KV read |
+| Fetch | Register actual BF16 pair, synchronously write buffer, then advance index |
+| Ring write | Begins only after complete lane collection; first/last single-pair semantics derive from pair count |
+| Ring stream | Synchronous read and held pair/flags; next index only after accepted write beat |
+| Lane switch | Await successful ring done and release buffer visibility before collecting next lane |
+| Done/error/reset | Held explicit result, no partial success; active reset zeroes public outputs and vector visibility without RAM reset writes |
+
 ## Source boundary and provenance
 
 The 32 files in `anvil_e3_reference/rtl/` are immutable parent compatibility

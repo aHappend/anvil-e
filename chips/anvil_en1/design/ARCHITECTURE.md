@@ -5,6 +5,67 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
+## Current saved increment: owner transport and ordinary ordering
+
+`rtl/anvil_en1_owner_replay.sv` now connects the genuine owner-projection tile
+to cache regen, local-ring reads and tagged ordinary frontier reads. It
+validates the actual owner/session/component, selects the correct BF16 lane
+of a frontier pair, preserves held requests/responses, and returns only a
+real ring hit or numerical tile completion. It never emits an external KV
+command or invents a logical alias map.
+
+For fallback, the transport requests an internal Eval producer and receives
+its full raw H-vector into a synchronous bank. Both a checked complete
+ascending stream and a successful producer completion are required before
+any owner-tile source can read the bank. Malformed or failed streams cannot
+become KV. The bank is immutable through repeated input-norm passes.
+This is implemented transport/visibility control, **not** an implemented
+numerical Eval producer. That producer must save/restore real operator
+continuations and resolve historical dependencies without recursively
+waiting on the occupied root regen channel.
+
+`rtl/anvil_en1_frontier_schedule.sv` implements the ordinary task ordering:
+original-input fill, descending tokens for every prefix owner layer,
+complete last-local-anchor materialization before its input is overwritten,
+frontier freeze entering the final global owner, and last-token-only remaining
+layers. Capacity overflow/forced fallback dispatches a real fallback task,
+not an error/refusal or fabricated result. Every task requires an actual
+engine completion; the worker connections and the fallback executor are
+still missing. The schedule itself allocates no hidden tensor.
+
+`rtl/anvil_en1_anchor_materialize.sv` implements real cache metadata and BF16
+fetch collection for each local K/V head, followed by complete acknowledged
+ring-lane writes. One synchronous lane buffer lets all fetch responses retire
+before the single-port ring writer is opened. This prevents ring-reader/regen
+deadlock during materialization and never exposes a partially collected lane.
+It consumes the cache's canonical owner response rather than sending an
+address alias to DDR.
+
+The owner tile now exposes per-successful-projection-row two-byte events.
+Completed rows, including work preceding a later failure, are measurable;
+starting a tile does not falsely count an entire computed head. Actual
+accepted weight/input transactions still require shared-arbiter accounting.
+Transport raw H scratch reserves 5120 bytes (16 compact); its tile reserves
+6144 (32 compact); materialization adds 512 (8 compact). All actual live
+copies plus scalar/control state remain subject to the admitted overlay and
+whole-system allocation bounds; these private reservations do not prove fit.
+
+Remaining: connect schedule tasks to input/PLE construction, layer output/
+frontier commits, ring/cache arbitration and final-vector retention; implement
+numerical continuation-stack/memo Eval and the linear single-token path;
+complete fallback release/bind/recompute transitions, native encoders,
+full liveness/traffic observations, session/CSR integration and compatible
+literal top. No Verifier-ready design or complete inference is claimed.
+
+Only these three new RTL files, the owner tile's projection-event outputs,
+and SPEC/ARCHITECTURE were changed in this increment. Tools used were glob,
+view, rg and apply_patch. No command, probe, installation, static elaboration,
+simulation or synthesis ran; the reserved static check is still unused and
+there are no preparation receipts. Parent RTL, tests, runtime metadata and
+retained failure/interruption records were not changed. In particular,
+failure-0001 and `.vulcan/engineering/run-0001/attempt-0003` are retained and
+no new repair of that ownership-guard interruption is claimed.
+
 ## Saved sixth increment: overlaid replay storage and tied logits
 
 `rtl/anvil_en1_replay_workspace.sv` implements a bounded 64-slot continuation
