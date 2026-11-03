@@ -5,7 +5,74 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: exact metadata keys and scoped declaration audit
+## Current saved increment: row-streamed attention and exact ledger sharing
+
+The ordinary full-text engine no longer retains the concatenated eight-head
+attention tile. It evaluates one O-projection row at a time, replaying the
+unchanged Q/normalization/RoPE/attention path for each row. Each emitted BF16
+attention component is held under backpressure while the existing weight
+reader and shared FP32 service convert, multiply and accumulate that column.
+Only after the registered accumulator update is the component acknowledged.
+Head/component traversal preserves ascending-column reduction, separate
+binary32 rounding and the original final BF16 boundary.
+
+An H-element BF16 output bank retains completed rows independently of the
+reused query bank. Post-attention normalization starts only after the final
+row write, reads this complete vector and writes the branch bank. The normalized
+input remains live through the last head of the final row. O tensor metadata
+temporarily reuses the gate descriptor registers; the later real gate lookup
+replaces it. A weight/arithmetic error stops new weight reads and drains the
+attention child before error completion. Reset invalidates visibility without
+initializing RAM. POST_ONLY still consumes its supplied branch normally.
+
+The integrated E2B local/global layer envelopes are 6656/7168 bytes instead of
+7680/12288. E4B becomes 10752/11264; compact actual becomes 40/48.
+The production output bank reserves 5120 rather than 8192 physical bytes.
+This intentionally increases Q/attention recomputation, possible owner
+regeneration, weight traffic and latency; their actual counters/transactions
+must remain visible. There is no total-bandwidth or throughput claim.
+
+Both allocation ledgers now use elaboration-time identities of their ordered
+input leaves to share identical registered sum subtrees. Absent zero subtrees
+have no registers. The observed ledger retains all eight metrics; prospective
+admission omits only its two unused breakdown metrics with
+`REPORT_BREAKDOWN=0`. All admission decisions, actual/shadow accounting, overflow
+and subset checks remain. Five registered sum levels and the sixth output/
+partition level preserve the existing cycle contract.
+
+Legal allocations total less than 2^23 bytes: ordinary frontier, ring, native
+scratch, complete text workspace and resident words total at most 5,308,672
+bytes, and fallback at most 1 MiB. Each sum node therefore uses 23 value bits
+plus sticky overflow, checking all discarded 64-bit input bits and carry.
+Invalid/overflowed sums saturate and reject, not wrap into an admission.
+The explicit observation/admission register censuses become 408/345 bytes
+from 1062 each. Physical resource fit and timing still require fresh synthesis
+and Quartus evidence; register-source counts are not that evidence.
+
+Resident entries now store the independent 34-bit model/owner/token/selector/
+head/component-pair key plus visibility. Generation is qualified by the full
+generation captured with each fetch and the current registered epoch.
+Invalidation drains/cancels old work, clears every occupied bit and only then
+advances the epoch. Full-width validation still guards insertion. Thus epoch
+bits need not be duplicated per resident entry, and metadata becomes
+ceil(35*C/8) bytes. The separately counted cache controller is 464 bits/58 bytes.
+
+Using the preceding connected census and conservatively adding both text
+workers' new controller registers gives E2B global complete-text upper envelopes
+32239/32256/32766 bytes for C=1/3/64. This is a source-derived estimate,
+not a completed allocation run; C=64 has only two bytes of conservative margin.
+The whole-hierarchy declaration audit, genuine native/fallback legal-case
+partition feasibility, eviction/regeneration and transition liveness still
+need closure. Any omitted state or denied legal workload remains a failure.
+
+Changed `asym_attn_ple`, `frontier_execute`, `allocation_ledger`,
+`allocation_admission`, `kv_shared_cache` and the two design documents.
+Tools were view, rg, glob, apply_patch and read-only Bash/Python source/count
+inspection. No static elaboration, functional/synthesis probe or preparation
+receipt exists for this increment. The reserved static elaboration remains
+unused; design is not ready for independent Verifier handoff.
+
+## Prior saved increment: exact metadata keys and scoped declaration audit
 
 Frontier layer tags now hold five bits, sufficient for every admitted owner
 input layer. The full public eight-bit layer is still validated before a

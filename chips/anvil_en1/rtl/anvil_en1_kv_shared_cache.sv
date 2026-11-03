@@ -85,10 +85,10 @@ module anvil_en1_kv_shared_cache #(
         localparam [3:0] FETCH_IDLE = 0, FETCH_READ = 1, FETCH_LOOKUP = 2,
             FETCH_REGEN = 3, FETCH_WAIT = 4, FETCH_REGISTER = 5,
             FETCH_RESPONSE = 6;
-        localparam integer TAG_WIDTH = 70;
+        localparam integer TAG_WIDTH = 34;
         reg [2:0] meta_state;
         reg [3:0] fetch_state;
-        reg [31:0] generation;
+        reg [31:0] generation, data_generation;
         reg [RESIDENT_ENTRIES-1:0] occupied;
         reg [5:0] replace_index;
         reg [6:0] resident_count;
@@ -129,7 +129,8 @@ module anvil_en1_kv_shared_cache #(
             $bits(owner_hold) + $bits(alias_hold) + $bits(meta_error) +
             $bits(space_hold) + $bits(data_model) + $bits(data_owner) +
             $bits(data_token) + $bits(data_selector) + $bits(data_head) +
-            $bits(data_component) + $bits(data_tag) + $bits(data_response) +
+            $bits(data_component) + $bits(data_tag) + $bits(data_generation) +
+            $bits(data_response) +
             $bits(data_error) + $bits(pair_hold) + $bits(pair_cancelled) +
             $bits(pair_error) + $bits(hit_hold) + $bits(payload_q);
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
@@ -168,9 +169,12 @@ module anvil_en1_kv_shared_cache #(
             (data_global ? 10'd8 : 10'd4) :
             (data_global ? 10'd512 : 10'd256);
         wire [2:0] data_heads = COMPACT || data_model == 1 ? 3'd1 : 3'd2;
+        wire data_descriptor_legal = data_native && data_owner < data_owners &&
+            data_token <= 131071 && data_head < data_heads &&
+            data_component < data_dimension;
         wire [TAG_WIDTH-1:0] incoming_tag = {
-            fetch_model, generation, fetch_owner, fetch_token[16:0],
-            fetch_is_value, fetch_kv_head, fetch_component[8:1]
+            fetch_model, fetch_owner[4:0], fetch_token[16:0],
+            fetch_is_value, fetch_kv_head[0], fetch_component[8:1]
         };
         wire insert_word = fetch_state == FETCH_WAIT && regen_rsp_valid &&
             regen_rsp_ready && regen_rsp_error == 0 && !invalidating;
@@ -180,7 +184,8 @@ module anvil_en1_kv_shared_cache #(
         genvar leaf, branch;
         for (leaf = 0; leaf < 64; leaf = leaf + 1) begin : compare_tags
             if (leaf < RESIDENT_ENTRIES) begin : present
-                assign tree_hit[64+leaf] = occupied[leaf] && tags[leaf] == data_tag;
+                assign tree_hit[64+leaf] = occupied[leaf] &&
+                    data_generation == generation && tags[leaf] == data_tag;
             end else begin : absent
                 assign tree_hit[64+leaf] = 0;
             end
@@ -325,7 +330,7 @@ module anvil_en1_kv_shared_cache #(
 
         always @(posedge clk) begin
             if (rst_n && fetch_state == FETCH_READ) begin
-                if (tree_hit[1])
+                if (tree_hit[1] && data_descriptor_legal && !invalidating)
                     payload_q <= payload[tree_index[1]];
             end
             if (rst_n && insert_word) begin
@@ -344,6 +349,7 @@ module anvil_en1_kv_shared_cache #(
                 data_head <= 0;
                 data_component <= 0;
                 data_tag <= 0;
+                data_generation <= 0;
                 data_response <= 0;
                 data_error <= 0;
                 pair_hold <= 0;
@@ -360,6 +366,7 @@ module anvil_en1_kv_shared_cache #(
                         data_head <= fetch_kv_head;
                         data_component <= fetch_component;
                         data_tag <= incoming_tag;
+                        data_generation <= generation;
                         data_response <= 0;
                         data_error <= 0;
                         pair_cancelled <= 0;

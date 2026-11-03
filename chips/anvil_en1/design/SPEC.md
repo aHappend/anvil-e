@@ -5,6 +5,128 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+### Current increment: streamed attention projection and shared ledger stages
+
+The ordinary full-text worker now retains the H-element BF16 attention-output
+projection, not the Q*D-element concatenated attention tile. For each output
+row, it recomputes Q, learned Q normalization, RoPE and attention in ascending
+head/component order. Each attention component stays valid and stalled while
+the existing weight reader fetches that row/column and the shared FP32 unit
+performs BF16 conversion, separately rounded multiplication and accumulation.
+The accumulator starts at positive zero for each row and is narrowed only
+after all Q*D columns. This preserves the projection's original ascending-column
+reduction and BF16 boundary; it is not a partial-sum reassociation. The complete
+output vector is committed before post-attention RMS normalization reads it
+into the branch bank. The query bank may therefore be reused between rows
+without overwriting completed output rows.
+
+The O descriptor temporarily occupies the gate-descriptor registers; the
+GeGLU gate lookup overwrites them only after attention and its normalization
+have retired. No additional tensor descriptor archive is allocated. The
+POST_ONLY worker retains its existing supplied-branch path and never enters
+this recomputation schedule.
+
+| Boundary | Registered ownership and visibility |
+| --- | --- |
+| O descriptor captured | Reserve the H-element output bank; no unfilled element is read |
+| Attention component first becomes valid | Leave ready low; enter the registered weight-start state |
+| Weight result | Capture the actual result, then execute conversion, multiply and add with separate start/wait edges |
+| Accumulation result | Register the new scalar accumulator before asserting component ready in the acknowledgment state |
+| Head completion | Reuse the query bank; keep normalized input until the final head of the final output row |
+| Row completion | Narrow the scalar with the existing FP operation, write one BF16 output row, then clear the accumulator before restarting head zero |
+| Vector completion | Normalize the committed output bank into the distinct branch bank; release the output allocation only after that normalization retires |
+| Weight/arithmetic failure | Retire the accepted weight result, stop new weight commands, drain the attention child's remaining components, and publish the concrete error after child completion |
+| Reset | Reset both controllers and scalar state; invalidate allocations without initializing output RAM |
+
+This trades substantially more Q/attention/owner work, weight traffic and latency
+for storage. Those transactions remain real public-interface traffic. Neither
+total-DDR savings nor a throughput improvement is claimed. Native shared layers
+still use owner K/V; this schedule introduces no shared-layer K/V tensor.
+
+Integrated full-text reservations, excluding the separately charged retained
+hidden/PLE vectors, are now E2B local/global 6656/7168 bytes, E4B
+10752/11264 bytes and compact actual 40/48 bytes. Their attention-phase bound
+is two hidden vectors plus one query head; feed-forward remains two hidden
+vectors. The standalone private-residual/private-PLE charges are unchanged.
+The private output bank's reserved physical payload changes from 8192 to
+5120 bytes in production and from 32 to 16 bytes in compact geometry.
+Scalar/controller changes are additional, not hidden inside that reduction.
+
+The allocation ledger now physically instantiates only nonzero, distinct
+registered reduction subtrees. Elaboration-time leaf identities distinguish
+actual components, shadow components, actual/shadow metadata, native workspace,
+native controllers and integration state. A subtree can share an earlier
+metric's register only when every ordered leaf identity matches. Sharing never
+reorders an addition or bypasses a register stage. Constant-zero nodes are
+wires, not retained zero registers. All five reduction stages and the sixth
+partition/output stage remain; valid/model/check/fallback/overlap/error tags
+retain their original alignment.
+
+`REPORT_BREAKDOWN` is a legal 0/1 parameter, default 1. Only prospective admission
+sets it to zero: its unused payload/replay breakdown outputs are zero and their
+private reduction registers are absent. Equivalent, native scratch, text
+workspace, actual/shadow results and every admission comparison remain enabled.
+The top's observation ledger keeps the complete breakdown.
+
+Each node now stores a 23-bit byte count and sticky fault, using a 24-bit
+carry-detecting addition. All 64-bit input bits above bit 22 are checked before
+truncation; any such input, addition carry, subset fault or partition underflow
+propagates failure and saturates affected reported sums to all ones. It cannot
+produce a small accepted allocation. Legal ordinary allocations are bounded by
+3 MiB frontier + 1 MiB ring + 1 MiB native scratch + 64 KiB complete text
+workspace + 256 resident bytes = 5,308,672 bytes, below 2^23. Fallback is at
+most 1 MiB. Every nonnegative subtotal is also below that bound. The matched
+unshared denominator and physical-reserved-RAM disclosure are not narrowed.
+An over-budget proposal is still an implementation failure, never an accepted
+workload or permission to spill.
+
+The source-derived ledger census is 126 unique reduction nodes plus eight
+output nodes for observation, and 107 plus six for admission. Including the
+42 protocol/error-tag bits gives 3258/2754 declared bits, or 408/345 rounded
+bytes, instead of 1062 bytes each. These are counts of explicit registers,
+not inferred FPGA utilization or a synthesis result.
+
+Resident tags now factor their common generation into the registered session
+epoch and their common visibility rule. Each stored key is
+`{model[1:0],owner[4:0],token[16:0],is_value,head[0],pair[7:0]}`.
+The full public owner/head/token/component checks still precede any insertion;
+invalid descriptors cannot make a truncated key readable. Each accepted fetch
+captures its full 32-bit generation. A hit requires equality with the current
+generation. Invalidation drains/cancels the outstanding fetch and clears all
+occupied bits before advancing that generation; entries from different epochs
+can never coexist as readable entries. This retains generation-qualified tags
+without duplicating 32 epoch bits per resident word. Neither payload precision,
+round-robin replacement nor capacity 1/3/64 behavior is changed. Resident
+metadata is now ceil(35*C/8) bytes, including occupied bits.
+
+A read-only scalar declaration audit of the revised resident cache finds
+464 controller bits (58 rounded bytes), with no omitted or duplicated scalar
+term; its tag/occupied arrays remain separately charged metadata. Combining
+the previous connected census with the new ledger declarations and conservative
+17-byte controller increments for each full/post text worker gives the
+following **upper envelopes**, not execution results:
+
+| E2B global coexistence, ordinary mode | C=1 | C=3 | C=64 |
+| --- | --- | --- | --- |
+| Complete text workspace, bytes | <=32239 | <=32256 | <=32766 |
+| Margin to 32768 bytes | >=529 | >=512 | >=2 |
+
+These bounds retain the earlier simultaneously charged retained vectors,
+owner source and owner head tile. They deliberately do not subtract the
+cache controller's one-byte reduction. Such a narrow C=64 margin is not design
+closure: the complete hierarchy declaration audit and actual legal-case
+liveness/partition feasibility, including native scratch, continuation frames,
+memo eviction/regeneration and mode transitions, remain unfinished. Any
+unaccounted register/copy or denied legal request must be repaired. The previous
+over-budget envelopes below are retained as historical design diagnostics,
+not silently replaced by a passing claim.
+
+Only source reads, edits and read-only Bash/Python declaration/count inspection
+were performed for this increment. No functional or synthesis harness,
+simulation, static elaboration, preparation probe or receipt was produced.
+The reserved static elaboration remains pending complete design closure,
+then independent Verifier handoff.
+
 ### Exact metadata keys and storage declaration audit
 
 The frontier, local ring and bounded replay workspace now store only independent

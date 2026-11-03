@@ -1,4 +1,6 @@
-module anvil_en1_allocation_ledger (
+module anvil_en1_allocation_ledger #(
+    parameter integer REPORT_BREAKDOWN = 1
+) (
     input wire clk, rst_n,
     input wire observation_valid,
     input wire [1:0] observation_model,
@@ -51,11 +53,11 @@ module anvil_en1_allocation_ledger (
         if (term<25) begin
             assign equivalent_terms[64*term+:64] = component_live_bytes[64*term+:64];
             assign equivalent_shadow_terms[64*term+:64] = component_shadow_bytes[64*term+:64];
-            if (term<22 && term!=16 && term!=17)
+            if (REPORT_BREAKDOWN && term<22 && term!=16 && term!=17)
                 assign payload_terms[64*term+:64] = component_live_bytes[64*term+:64];
             else
                 assign payload_terms[64*term+:64] = 64'd0;
-            if ((term>=5 && term<=16) || term==22)
+            if (REPORT_BREAKDOWN && ((term>=5 && term<=16) || term==22))
                 assign replay_terms[64*term+:64] = component_live_bytes[64*term+:64];
             else
                 assign replay_terms[64*term+:64] = 64'd0;
@@ -72,25 +74,18 @@ module anvil_en1_allocation_ledger (
                 assign equivalent_terms[64*term+:64] = 64'd0;
                 assign equivalent_shadow_terms[64*term+:64] = 64'd0;
             end
-            if (term==27)
+            if (REPORT_BREAKDOWN && term==27)
                 assign replay_terms[64*term+:64] = metadata_bytes[128+:64];
             else
                 assign replay_terms[64*term+:64] = 64'd0;
         end
     end endgenerate
 
-    localparam integer VALUE_BITS = 32;
+    localparam integer VALUE_BITS = 23;
     localparam integer NODE_BITS = VALUE_BITS + 1;
-    reg [128*NODE_BITS-1:0] level0;
-    reg [64*NODE_BITS-1:0] level1;
-    reg [32*NODE_BITS-1:0] level2;
-    reg [16*NODE_BITS-1:0] level3;
-    reg [8*NODE_BITS-1:0] level4, totals;
-    wire [128*NODE_BITS-1:0] next0;
-    wire [64*NODE_BITS-1:0] next1;
-    wire [32*NODE_BITS-1:0] next2;
-    wire [16*NODE_BITS-1:0] next3;
-    wire [8*NODE_BITS-1:0] next4;
+    wire [128*NODE_BITS-1:0] stage_values [0:4];
+    wire [8*NODE_BITS-1:0] level4 = stage_values[4][0+:8*NODE_BITS];
+    wire [8*NODE_BITS-1:0] totals;
     wire [511:0] expanded_totals;
     wire [7:0] level4_overflow;
     reg partition_error;
@@ -102,6 +97,87 @@ module anvil_en1_allocation_ledger (
         {workspace_shadow_terms, workspace_terms,
             scratch_shadow_terms, equivalent_shadow_terms,
             scratch_terms, equivalent_terms, replay_terms, payload_terms};
+    initial begin
+        if (REPORT_BREAKDOWN != 0 && REPORT_BREAKDOWN != 1)
+            $fatal(1, "PARAMETER ERROR: REPORT_BREAKDOWN must be 0 or 1");
+    end
+    function automatic integer leaf_identity(input integer metric, term_index);
+        begin
+            leaf_identity = 0;
+            if (metric == 0) begin
+                if (REPORT_BREAKDOWN && term_index < 22 &&
+                    term_index != 16 && term_index != 17)
+                    leaf_identity = 1 + term_index;
+            end else if (metric == 1) begin
+                if (REPORT_BREAKDOWN && ((term_index >= 5 && term_index <= 16) ||
+                    term_index == 22))
+                    leaf_identity = 1 + term_index;
+                else if (REPORT_BREAKDOWN && term_index == 27)
+                    leaf_identity = 67;
+            end else if (metric == 3 || metric == 5) begin
+                if (term_index == 3 || term_index == 9 || term_index == 10 ||
+                    (term_index >= 12 && term_index <= 15) || term_index == 19)
+                    leaf_identity = (metric == 3 ? 1 : 33) + term_index;
+                else if (term_index == 25)
+                    leaf_identity = metric == 3 ? 74 : 75;
+                else if (term_index == 26)
+                    leaf_identity = 76;
+            end else if (!(metric >= 6 &&
+                (term_index == 0 || term_index == 1 || term_index == 18))) begin
+                if (term_index < 25)
+                    leaf_identity = (metric == 2 || metric == 6 ? 1 : 33) + term_index;
+                else if (term_index < 29)
+                    leaf_identity = (metric == 2 || metric == 6 ? 65 : 69) +
+                        term_index - 25;
+                else if (term_index == 29)
+                    leaf_identity = 73;
+            end
+        end
+    endfunction
+    function automatic integer node_present(
+        input integer metric, first_term, term_count
+    );
+        integer offset;
+        begin
+            node_present = 0;
+            for (offset=0; offset<term_count; offset=offset+1)
+                if (leaf_identity(metric, first_term+offset) != 0)
+                    node_present = 1;
+        end
+    endfunction
+    function automatic integer node_source(
+        input integer metric, first_term, term_count
+    );
+        integer previous, offset, identical;
+        begin
+            node_source = metric;
+            for (previous=0; previous<metric; previous=previous+1) begin
+                identical = 1;
+                for (offset=0; offset<term_count; offset=offset+1)
+                    if (leaf_identity(metric, first_term+offset) !=
+                        leaf_identity(previous, first_term+offset))
+                        identical = 0;
+                if (identical && node_source == metric)
+                    node_source = previous;
+            end
+        end
+    endfunction
+    function automatic integer registered_nodes;
+        integer stage, metric, node, count, span;
+        begin
+            registered_nodes = 0;
+            for (stage=0; stage<5; stage=stage+1) begin
+                count = 16 >> stage;
+                span = 2 << stage;
+                for (metric=0; metric<8; metric=metric+1)
+                    for (node=0; node<count; node=node+1)
+                        if (node_present(metric, node*span, span) &&
+                            node_source(metric, node*span, span) == metric)
+                            registered_nodes = registered_nodes + 1;
+            end
+            registered_nodes = registered_nodes + (REPORT_BREAKDOWN ? 8 : 6);
+        end
+    endfunction
     function automatic [NODE_BITS-1:0] add_node(
         input [NODE_BITS-1:0] left, right
     );
@@ -114,37 +190,76 @@ module anvil_en1_allocation_ledger (
         end
     endfunction
 
-    genvar metric, node;
-    generate for (metric=0; metric<8; metric=metric+1) begin : reductions
-        for (node=0; node<16; node=node+1) begin : first
-            wire [63:0] left = input_terms[64*(metric*32+2*node)+:64];
-            wire [63:0] right = input_terms[64*(metric*32+2*node+1)+:64];
-            assign next0[NODE_BITS*(metric*16+node)+:NODE_BITS] =
-                add_node({|left[63:VALUE_BITS], left[VALUE_BITS-1:0]},
-                    {|right[63:VALUE_BITS], right[VALUE_BITS-1:0]});
+    genvar stage, metric, node;
+    generate for (stage=0; stage<5; stage=stage+1) begin : stages
+        localparam integer NODES = 16 >> stage;
+        localparam integer SPAN = 2 << stage;
+        if (stage > 0)
+            assign stage_values[stage][8*NODES*NODE_BITS+:(128-8*NODES)*NODE_BITS] = 0;
+        for (metric=0; metric<8; metric=metric+1) begin : metrics
+            for (node=0; node<NODES; node=node+1) begin : nodes
+                localparam integer SOURCE = node_source(metric, node*SPAN, SPAN);
+                localparam integer INDEX = NODE_BITS*(metric*NODES+node);
+                if (!node_present(metric, node*SPAN, SPAN)) begin : zero_node
+                    assign stage_values[stage][INDEX+:NODE_BITS] = 0;
+                end else if (SOURCE != metric) begin : shared_node
+                    assign stage_values[stage][INDEX+:NODE_BITS] =
+                        stage_values[stage][NODE_BITS*(SOURCE*NODES+node)+:NODE_BITS];
+                end else begin : registered_node
+                    wire [NODE_BITS-1:0] left_node, right_node;
+                    wire [NODE_BITS-1:0] next_value = add_node(left_node, right_node);
+                    reg [NODE_BITS-1:0] value;
+                    if (stage == 0) begin : input_pair
+                        wire [63:0] left = input_terms[64*(metric*32+2*node)+:64];
+                        wire [63:0] right = input_terms[64*(metric*32+2*node+1)+:64];
+                        assign left_node = {|left[63:VALUE_BITS], left[VALUE_BITS-1:0]};
+                        assign right_node = {|right[63:VALUE_BITS], right[VALUE_BITS-1:0]};
+                    end else begin : preceding_pair
+                        assign left_node = stage_values[stage-1][
+                            NODE_BITS*(metric*2*NODES+2*node)+:NODE_BITS];
+                        assign right_node = stage_values[stage-1][
+                            NODE_BITS*(metric*2*NODES+2*node+1)+:NODE_BITS];
+                    end
+                    assign stage_values[stage][INDEX+:NODE_BITS] = value;
+                    always @(posedge clk or negedge rst_n) begin
+                        if (!rst_n)
+                            value <= 0;
+                        else
+                            value <= next_value;
+                    end
+                end
+            end
         end
-        for (node=0; node<8; node=node+1) begin : second
-            assign next1[NODE_BITS*(metric*8+node)+:NODE_BITS] =
-                add_node(level0[NODE_BITS*(metric*16+2*node)+:NODE_BITS],
-                    level0[NODE_BITS*(metric*16+2*node+1)+:NODE_BITS]);
-        end
-        for (node=0; node<4; node=node+1) begin : third
-            assign next2[NODE_BITS*(metric*4+node)+:NODE_BITS] =
-                add_node(level1[NODE_BITS*(metric*8+2*node)+:NODE_BITS],
-                    level1[NODE_BITS*(metric*8+2*node+1)+:NODE_BITS]);
-        end
-        for (node=0; node<2; node=node+1) begin : fourth
-            assign next3[NODE_BITS*(metric*2+node)+:NODE_BITS] =
-                add_node(level2[NODE_BITS*(metric*4+2*node)+:NODE_BITS],
-                    level2[NODE_BITS*(metric*4+2*node+1)+:NODE_BITS]);
-        end
-        assign next4[NODE_BITS*metric+:NODE_BITS] =
-            add_node(level3[NODE_BITS*(metric*2)+:NODE_BITS],
-                level3[NODE_BITS*(metric*2+1)+:NODE_BITS]);
+    end
+    for (metric=0; metric<8; metric=metric+1) begin : reductions
         assign level4_overflow[metric] = level4[NODE_BITS*metric+VALUE_BITS];
+        if (!REPORT_BREAKDOWN && metric < 2) begin : omitted_breakdown
+            assign totals[NODE_BITS*metric+:NODE_BITS] = 0;
+        end else begin : output_register
+            reg [NODE_BITS-1:0] value;
+            wire [NODE_BITS-1:0] next_value;
+            if (metric == 6 || metric == 7) begin : workspace_partition
+                localparam integer SCRATCH = metric == 6 ? 3 : 5;
+                wire underflow = level4[metric*NODE_BITS+:VALUE_BITS] <
+                    level4[SCRATCH*NODE_BITS+:VALUE_BITS];
+                assign next_value =
+                    {level4_overflow[metric] || level4_overflow[SCRATCH] || underflow,
+                        level4[metric*NODE_BITS+:VALUE_BITS] -
+                            level4[SCRATCH*NODE_BITS+:VALUE_BITS]};
+            end else begin : total
+                assign next_value = level4[metric*NODE_BITS+:NODE_BITS];
+            end
+            assign totals[NODE_BITS*metric+:NODE_BITS] = value;
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n)
+                    value <= 0;
+                else
+                    value <= next_value;
+            end
+        end
         assign expanded_totals[64*metric+:64] =
             totals[NODE_BITS*metric+VALUE_BITS] ? 64'hffffffffffffffff :
-                {32'd0, totals[NODE_BITS*metric+:VALUE_BITS]};
+                {{(64-VALUE_BITS){1'b0}}, totals[NODE_BITS*metric+:VALUE_BITS]};
     end endgenerate
     wire overlap = observation_fallback &&
         |component_live_bytes[64*5+:64] &&
@@ -153,9 +268,8 @@ module anvil_en1_allocation_ledger (
         native_workspace_shadow_bytes > component_shadow_bytes[64*5+:64] ||
         native_controller_bytes > component_live_bytes[64*22+:64] ||
         native_controller_bytes > component_shadow_bytes[64*22+:64];
-    localparam integer CONTROLLER_BITS = $bits(level0) + $bits(level1) +
-        $bits(level2) + $bits(level3) + $bits(level4) +
-        $bits(totals) + $bits(partition_error) +
+    localparam integer CONTROLLER_BITS = registered_nodes()*NODE_BITS +
+        $bits(partition_error) +
         $bits(valid_pipeline) + $bits(model_pipeline) + $bits(check_pipeline) +
         $bits(fallback_pipeline) + $bits(overlap_pipeline) + $bits(partition_pipeline);
     assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
@@ -180,12 +294,6 @@ module anvil_en1_allocation_ledger (
         level4[7*NODE_BITS+:VALUE_BITS] < level4[5*NODE_BITS+:VALUE_BITS];
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            level0 <= 0;
-            level1 <= 0;
-            level2 <= 0;
-            level3 <= 0;
-            level4 <= 0;
-            totals <= 0;
             partition_error <= 0;
             valid_pipeline <= 0;
             check_pipeline <= 0;
@@ -200,22 +308,8 @@ module anvil_en1_allocation_ledger (
             overlap_pipeline <= {overlap_pipeline[4:0], overlap};
             partition_pipeline <= {partition_pipeline[3:0], subset_error};
             model_pipeline <= {model_pipeline[9:0], observation_model};
-            totals[0+:6*NODE_BITS] <= level4[0+:6*NODE_BITS];
-            totals[6*NODE_BITS+:NODE_BITS] <=
-                {level4_overflow[6] || level4_overflow[3] || workspace_underflow,
-                    level4[6*NODE_BITS+:VALUE_BITS] -
-                        level4[3*NODE_BITS+:VALUE_BITS]};
-            totals[7*NODE_BITS+:NODE_BITS] <=
-                {level4_overflow[7] || level4_overflow[5] || shadow_workspace_underflow,
-                    level4[7*NODE_BITS+:VALUE_BITS] -
-                        level4[5*NODE_BITS+:VALUE_BITS]};
             partition_error <= partition_pipeline[4] || |level4_overflow ||
                 workspace_underflow || shadow_workspace_underflow;
-            level0 <= next0;
-            level1 <= next1;
-            level2 <= next2;
-            level3 <= next3;
-            level4 <= next4;
         end
     end
 endmodule

@@ -149,7 +149,6 @@ module anvil_en1_asym_attn_ple #(
         assign controller_bytes = 0;
     end else begin : engine
         localparam integer MAX_H = COMPACT ? 8 : 2560;
-        localparam integer MAX_D = COMPACT ? 8 : 512;
         localparam integer Q = COMPACT ? 2 : 8;
         localparam integer P = COMPACT ? 4 : 256;
         localparam integer H_BITS = $clog2(MAX_H);
@@ -200,7 +199,7 @@ module anvil_en1_asym_attn_ple #(
         reg [7:0] layer_hold;
         reg [31:0] token_hold, hidden_hold, dimension_hold;
         reg [63:0] weights_hold;
-        reg global_hold, load_ple, load_branch, projection_query, gated_ple;
+        reg global_hold, load_ple, load_branch, gated_ple;
         reg [3:0] head;
         reg [31:0] index, pair_index, norm_length, projection_row;
         reg [15:0] lookup_kind, load_data, output_hold;
@@ -231,7 +230,7 @@ module anvil_en1_asym_attn_ple #(
             norm_destination, src_state, src_client, src_bank, scale_state,
             model_hold, precision_hold, memory_owner, residual_phase, layer_hold,
             token_hold, hidden_hold, dimension_hold, weights_hold, global_hold,
-            load_ple, load_branch, projection_query, gated_ple, head, index,
+            load_ple, load_branch, gated_ple, head, index,
             pair_index, norm_length, projection_row, lookup_kind, load_data,
             output_hold, load_error, src_error_hold, scale_error_hold, src_index_hold,
             scale_index_hold, src_data_hold, scale_data_hold, descriptor_base,
@@ -802,8 +801,7 @@ module anvil_en1_asym_attn_ple #(
                 end
                 if (state == NORM_SETUP && norm_phase == N_POST_ATTENTION)
                     branch_allocated <= 1;
-                if ((state == PROJECTION_START && projection_ready && !projection_query) ||
-                    (state == GATED_START && gated_ready))
+                if (state == GATED_START && gated_ready)
                     branch_allocated <= 1;
                 if (state == NORM_WAIT && norm_valid && norm_phase == N_POST_ATTENTION)
                     attention_allocated <= 0;
@@ -879,10 +877,7 @@ module anvil_en1_asym_attn_ple #(
                             src_state <= S_READ;
                         end else if (state == PROJECTION_WAIT && projection_source_valid) begin
                             src_client <= C_PROJECTION;
-                            if (projection_query)
-                                src_bank <= B_WORK;
-                            else
-                                src_bank <= B_ATTENTION;
+                            src_bank <= B_WORK;
                             src_index_hold <= projection_source_index;
                             src_state <= S_READ;
                         end else if (state == GATED_WAIT && gated_source_valid) begin
@@ -1045,7 +1040,6 @@ module anvil_en1_asym_attn_ple #(
                 global_hold <= 0;
                 load_ple <= 0;
                 load_branch <= 0;
-                projection_query <= 0;
                 gated_ple <= 0;
                 head <= 0;
                 index <= 0;
@@ -1270,7 +1264,6 @@ module anvil_en1_asym_attn_ple #(
                         state <= LOOKUP_START;
                     end
                     QUERY_DESCRIPTOR: begin
-                        projection_query <= 1;
                         projection_row <= head_offset;
                         index <= 0;
                         memory_owner <= M_PROJECTION;
@@ -1288,11 +1281,8 @@ module anvil_en1_asym_attn_ple #(
                         end
                     end
                     PROJECTION_WRITE: begin
-                        if (index + 1'b1 == (projection_query ? dimension_hold : hidden_hold)) begin
-                            if (projection_query)
-                                norm_phase <= N_QUERY;
-                            else
-                                norm_phase <= N_POST_ATTENTION;
+                        if (index + 1'b1 == dimension_hold) begin
+                            norm_phase <= N_QUERY;
                             state <= NORM_SETUP;
                         end else begin
                             index <= index + 1'b1;

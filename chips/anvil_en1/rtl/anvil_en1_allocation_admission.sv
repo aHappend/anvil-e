@@ -51,7 +51,7 @@ module anvil_en1_allocation_admission (
     assign controller_bytes = rst_n ?
         64'((CONTROLLER_BITS+7) >> 3) + ledger_controller_bytes : 64'd0;
 
-    anvil_en1_allocation_ledger prospective (
+    anvil_en1_allocation_ledger #(.REPORT_BREAKDOWN(0)) prospective (
         .clk(clk), .rst_n(rst_n),
         .observation_valid(req_valid && req_ready), .observation_model(model),
         .component_live_bytes(prospective_live),
