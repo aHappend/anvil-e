@@ -516,7 +516,7 @@ module anvil_en1_replay_audio_attention (
                     end else if (outward_need && need_ready && action == 0) begin
                         rebuild_token <= engine_need_token;
                         cache_visible <= 0;
-                        cache_allocated <= 1;
+                        cache_allocated <= 0;
                         raw_received <= 0;
                         norm_received <= 0;
                         receive_bad <= 0;
@@ -531,6 +531,8 @@ module anvil_en1_replay_audio_attention (
                         if (!pre_beat_good)
                             receive_bad <= 1;
                         if (pre_output_kind) begin
+                            if (pre_beat_good && !receive_bad)
+                                cache_allocated <= 1;
                             if (norm_received < 1024)
                                 norm_received <= norm_received + 1'b1;
                         end else if (raw_received < 1024)

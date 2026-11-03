@@ -5,7 +5,176 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: explicit fallback working-state partition
+### Current increment: consuming raw/output RAM overlay
+
+`audio_pre_attention` now owns three synchronous 1024-word BF16 banks and
+uses `audio_feedforward`'s existing external-vector-RAM configuration.
+Bank 0 contains feed-forward's raw residual, bank 1 its normalized entering
+vector, and bank 2 its branch. The pre-attention clamp overwrites bank 0
+one accepted output element at a time; it no longer allocates a fourth
+working bank. This is a consuming storage transformation, not a copy or
+an arithmetic change.
+
+Feed-forward's output order is strictly ascending. Before exposing element
+`i`, `FINAL_READ`/`FINAL_CAPTURE` have consumed its raw word and branch word,
+and the complete residual result has been registered. Feed-forward never
+reads raw element `i` again. After accepting that output, the wrapper runs
+clamp and writes the clamped value to the same bank/address in `STORE`.
+Feed-forward may already read element `i+1` while the wrapper clamps `i`;
+these are different addresses on independent synchronous read/write ports.
+Its next output remains stalled until the wrapper returns to `FF_WAIT`.
+The wrapper starts normalization only after all 1024 stores and successful
+feed-forward completion/retirement. Norm reads the transformed bank 0.
+No same-address read-during-write RAM behavior is required.
+
+| Pre-edge event | Post-edge ownership / visibility |
+| --- | --- |
+| Active reset or new task acceptance | Wrapper output visibility/reservation and sticky RAM fault clear; feed-forward independently clears its state on reset |
+| Feed-forward input/MLP phase | Three banks charged by the child, 6144 bytes; wrapper has not written output |
+| First accepted raw output | Wrapper retains output ownership; bank 0 is shared with the child's not-yet-consumed suffix, not an additional vector |
+| Successful output clamp/store for element `i` | Consume raw word `i`, retain clamped word `i`; write only a well-formed in-range stream |
+| Feed-forward post phase/output stalls | Child raw+branch remain charged, 4096 bytes; wrapper's bank-0 reservation is already included |
+| Feed-forward completion acceptance | Child releases raw+branch; wrapper continues charging bank 0, 2048 bytes, without an uncharged edge |
+| Successful `FF_CHECK` | Make the complete transformed vector visible and permit normalization |
+| Error or output/completion stall | Keep live bank ownership; no partially transformed bank becomes readable as a complete vector |
+| Wrapper completion acceptance | Release bank 0 and visibility; physical banks remain reserved |
+
+The wrapper always includes the full child live report. It adds its
+2048-byte output reservation only after the child has released its own
+raw-bank reservation (`ff_live == 0`). Whenever the child report is
+nonzero, it includes the complete raw and branch banks; its working-bank
+release is independent. This union of the identical bank-0 storage does
+not omit another child's state or subtract unrelated payload. The wrapper
+reports all 6144 physical bytes; the external-RAM child reports zero
+physical vector bytes. All three 16-bit read registers and the sticky
+RAM fault enter the wrapper's controller census; the child's corresponding
+local-RAM read registers are absent and not charged twice.
+
+Connected range/port guards reject out-of-range child accesses, two writers
+or two readers on bank 0, a norm read concurrent with a child write, and a
+clamp write colliding with a child read of the same word. A fault suppresses
+the conflicting access, is retained through response stalls, drains
+feed-forward output without publishing it, prevents normalization and
+returns error 7. There is no silent alternate RAM source.
+
+`replay_audio_attention` now also releases the old normalized-source cache
+when invalidating it for a rebuild. No engine callback can read that
+invalidated cache while the pre-attention worker runs. Its reservation is
+reacquired on the first well-formed normalized output write, not before
+feed-forward computation. Partial rebuilt cache data stays charged on
+failure, but becomes visible only after complete successful reconstruction.
+
+The source-derived connected replay-head peak is now 6144 bytes during
+feed-forward, 4096 during raw output, and 4096 during normalized-cache
+output. Frame-backed post-attention peaks at 6144 during raw output
+(outer raw 2048 plus shared raw/branch 4096); its earlier FF phase is
+6144 and later projection/residual phase 4096. Convolution/GLU and FF2
+remain bounded by 6144. The residual/layer coexistence guards, dispatcher
+preflight and independently validated workspace field-13 descriptor all
+therefore use 6144 for positive audio layers; layer-zero remains 512.
+Actual sums, production shadows, suspended frames and all other partitions
+are still accounted separately.
+
+Independent verification must cover every raw-word last-use/store boundary,
+including concurrent different-address reads, first/last output stalls,
+partial/error drain, reset, held completion, cache rebuild after a previous
+hit, both precisions, complete numerical comparisons and actual/shadow
+allocation reports. These are required tests, not executed results.
+
+This closes the duplicate private raw/output bank and early cache-reservation
+milestones, not suspended-history feasibility. Using the earlier conservative
+33221-byte native controller census gives
+`86016-33221-6144 = 46651` bytes before native frames, scalar slots, memo
+and retained features. Four six-slice frames plus scalars still require
+49664 bytes. Full native/fallback reconciliation and a genuine solution
+to suspended history remain necessary before the reserved static check
+and independent-Verifier handoff. No command, elaboration, simulation,
+synthesis, preparation harness or receipt ran for this increment.
+
+### Prior increment: audio feed-forward last-use release
+
+The normalized entering vector in `audio_feedforward.working` is needed
+through the last MLP row, not through post-MLP normalization or residual
+output. The worker now clears both its working reservation and visibility
+at the successful final `MLP_ADVANCE` edge. That edge follows the last row's
+accepted result, error check and branch write. Its source-response FSM is
+idle before the result is accepted. Post-phase callbacks use the distinct
+branch bank, and final residual reads use only raw and branch banks.
+No numerical boundary, row order or stored result changes.
+
+The raw and branch reservations remain a conservative 4096 bytes for the
+whole accepted task; the extra 2048-byte working reservation is independent.
+Errors before its last-use edge keep it charged until done-response
+retirement. Errors after that edge do not resurrect a dead vector. The
+new flag participates in `CONTROLLER_BITS`; its addition changes the
+feed-forward census from 481 to 482 bits with external vector RAM and
+529 to 530 bits with local RAM, retaining the existing 61/67 rounded
+controller bytes before the separately reported FP primitive.
+
+Parent reservations now follow their actual first writes instead of task
+acceptance. `audio_pre_attention` reserves its working bank on the first
+accepted feed-forward output, before the later clamp/store stages.
+`audio_attention_residual` reserves raw residual storage when the first
+well-formed raw pre-attention beat is written in `PRE_WAIT`. Standalone
+cache rebuilds do not overwrite or newly reserve the raw residual.
+Neither change releases partially written buffers on an error or stall.
+Prospective admission still covers the full private envelope before any
+child starts; a deferred live flag is not an unadmitted allocation.
+
+| Pre-edge event / phase | Post-edge live-vector consequence |
+| --- | --- |
+| Feed-forward job acceptance | Reserve raw, branch and working, 6144 bytes; reset clears all reservations and validity |
+| Final successful MLP advance | Branch is complete; release working and invalidate its visibility; keep raw+branch, 4096 bytes |
+| First feed-forward output acceptance | Pre-attention reserves its 2048-byte working bank before its first write; this cannot precede working's release |
+| First valid raw pre-attention beat in `PRE_WAIT` | Outer residual reserves and writes raw, 2048 bytes, on that edge |
+| Output or child completion stalled | Keep all remaining reservations and stable numerical response payloads |
+| Feed-forward or parent failure | Retain every still-live reservation through the existing child drain and held completion; do not zero reports merely on error |
+| Done-response retirement | Clear the corresponding reservations and visibility; physical RAM remains separately disclosed |
+
+This gives the following source-derived connected private-vector bounds:
+
+| Connected subtree / phase | Bound in bytes |
+| --- | --- |
+| Replay heads, before feed-forward output | Normalized-source cache 2048 + feed-forward 6144 = 8192; pre-attention's working bank has no live data/reservation yet |
+| Replay heads, during feed-forward output | Cache 2048 + pre-attention working 2048 + feed-forward raw/branch 4096 = 8192 |
+| Frame-backed post-attention, before output | Feed-forward 6144; pre-attention working and outer raw are not yet reserved |
+| Frame-backed post-attention, during output | Outer raw 2048 + pre-attention working 2048 + feed-forward raw/branch 4096 = 8192 |
+| Post-attention projection, normalization and residual output | Outer raw+working, 4096; pre-attention has retired before outer working allocation |
+| Convolution/GLU and feed-forward2 | Existing conservative 6144-byte bounds remain |
+
+Replay residual/layer overrun guards, dispatcher audio-layer preflight and
+the workspace's independently validated field-13 descriptor all now use
+8192 bytes rather than 10240. Audio layer zero remains 512 bytes. Full
+child-sum observations, coexistence guards, actual/shadow admission,
+workspace frames, memo, scalar slots and controller accounting remain
+separate; no phase-selected child report hides a suspended consumer.
+Physical array sizes and the six-slice suspended-history bound are unchanged.
+
+With the previously enumerated native controller census of 33221 bytes,
+minimum-context E2B leaves `86016-33221-8192 = 44603` bytes before native
+frames, scalar slots, memo and retained features. This is a private-storage
+improvement, not proof of native fit: four six-slice frames plus scalar
+slots still require 49664 bytes. The changed allocation-ledger census
+also still needs whole-system reconciliation for the fallback 64 KiB
+working partition. Neither strict savings threshold is changed.
+
+Independent verification must cover both RAM configurations, FF1/FF2,
+both precisions, the last-MLP/source-response boundary, before/after-release
+errors, first and last output stalls, malformed streams, cache rebuild,
+reset and held completions. It must compare the complete arithmetic and
+child-sum reports, including the 6144-to-4096 release and the 8192-byte
+envelope; lower reports alone do not prove numerical correctness.
+
+Saved RTL changes: `anvil_en1_audio_feedforward.sv`,
+`anvil_en1_audio_pre_attention.sv`, `anvil_en1_audio_attention_residual.sv`,
+`anvil_en1_replay_audio_residual.sv`, `anvil_en1_replay_audio_layer.sv`,
+`anvil_en1_replay_execute.sv` and `anvil_en1_replay_workspace.sv`.
+Source inspection/editing only; no elaboration, simulation, synthesis,
+preparation harness or receipt ran. Suspended-history feasibility and
+complete allocation reconciliation remain open before static elaboration
+and independent-Verifier handoff.
+
+### Prior increment: explicit fallback working-state partition
 
 The admitted fallback ceiling has separate frame, memo, scalar-continuation
 and arithmetic/control/resident partitions. The previous connected allocation

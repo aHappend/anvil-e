@@ -53,10 +53,9 @@ module anvil_en1_audio_pre_attention (
     reg [7:0] layer_hold;
     reg [31:0] generation_hold, token_hold, received, index_hold, source_index_hold;
     reg [63:0] weights_hold;
-    reg [15:0] raw_hold, clamped_hold, bank_q, bank_data;
-    reg receive_bad, allocated, visible, bank_error;
+    reg [15:0] raw_hold, clamped_hold, bank_data;
+    reg receive_bad, allocated, visible, bank_error, vector_ram_fault;
     reg [3:0] child_error_hold, error_hold;
-    (* ramstyle = "M20K", nomem2reg *) reg [15:0] working [0:1023];
     wire ff_selected = rst_n && (state == FF_START || state == FF_WAIT ||
         state == CLAMP_START || state == CLAMP_WAIT || state == STORE || state == ADVANCE);
     wire ff_ready, ff_valid, ff_source_valid, ff_source_rsp_ready;
@@ -67,7 +66,11 @@ module anvil_en1_audio_pre_attention (
     wire [15:0] ff_output_data;
     wire [63:0] ff_addr, ff_live, ff_physical;
     wire [3:0] ff_error;
-    anvil_en1_audio_feedforward feedforward (
+    wire [2:0] ff_ram_write, ff_ram_read;
+    wire [95:0] ff_ram_waddr, ff_ram_raddr;
+    wire [47:0] ff_ram_wdata, ff_ram_rdata;
+    wire [15:0] bank_q = ff_ram_rdata[15:0];
+    anvil_en1_audio_feedforward #(.EXTERNAL_VECTOR_RAM(1)) feedforward (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FF_START), .start_ready(ff_ready),
         .model(model_hold), .precision(precision_hold), .mode(2'd1),
@@ -85,12 +88,16 @@ module anvil_en1_audio_pre_attention (
         .result_valid(ff_selected && result_valid), .result_ready(ff_result_ready),
         .result_data(result_data), .result_error(result_error),
         .output_valid(ff_output_valid),
-        .output_ready(rst_n && state == FF_WAIT && (error_hold != 0 || output_ready)),
+        .output_ready(rst_n && state == FF_WAIT &&
+            (error_hold != 0 || vector_ram_fault || output_ready)),
         .output_index(ff_output_index), .output_data(ff_output_data), .output_last(ff_output_last),
         .done_valid(ff_valid), .done_ready(rst_n && state == FF_WAIT && !ff_output_valid),
         .done_error(ff_error), .weight_read_event(), .weight_read_bytes(),
         .intermediate_event(intermediate_event), .intermediate_bytes(intermediate_bytes),
         .vector_live_bytes(ff_live), .vector_physical_bytes(ff_physical),
+        .vector_ram_write(ff_ram_write), .vector_ram_read(ff_ram_read),
+        .vector_ram_waddr(ff_ram_waddr), .vector_ram_raddr(ff_ram_raddr),
+        .vector_ram_wdata(ff_ram_wdata), .vector_ram_rdata(ff_ram_rdata),
         .controller_bytes(ff_controller_bytes), .norm_controller_bytes(ff_norm_controller_bytes),
         .clamp_controller_bytes(ff_clamp_controller_bytes),
         .mlp_controller_bytes(mlp_controller_bytes), .down_controller_bytes(down_controller_bytes),
@@ -140,11 +147,46 @@ module anvil_en1_audio_pre_attention (
         ff_output_last == (received == 1023);
     wire norm_beat_good = received < 1024 && norm_output_index == received &&
         norm_output_last == (received == 1023);
-    always @(posedge clk) begin
-        if (rst_n && state == STORE && !receive_bad && index_hold < 1024)
-            working[index_hold[9:0]] <= clamped_hold;
-        if (rst_n && state == NORM_WAIT && source_state == S_READ)
-            bank_q <= working[source_index_hold[9:0]];
+    // Each accepted output has already consumed its raw word for the last time.
+    wire store_output = rst_n && state == STORE && !receive_bad && index_hold < 1024;
+    wire read_output = rst_n && state == NORM_WAIT && source_state == S_READ;
+    wire [2:0] vector_range_fault;
+    wire vector_access_fault = |vector_range_fault;
+    genvar bank;
+    generate for (bank = 0; bank < 3; bank = bank + 1) begin : shared_vectors
+        (* ramstyle = "M20K", nomem2reg *) reg [15:0] payload [0:1023];
+        reg [15:0] read_q;
+        wire output_write = bank == 0 && store_output;
+        wire output_read = bank == 0 && read_output;
+        wire [31:0] ff_waddr = ff_ram_waddr[32*bank+:32];
+        wire [31:0] ff_raddr = ff_ram_raddr[32*bank+:32];
+        wire [31:0] waddr = output_write ? index_hold : ff_waddr;
+        wire [31:0] raddr = output_read ? source_index_hold : ff_raddr;
+        wire [15:0] wdata = output_write ? clamped_hold : ff_ram_wdata[16*bank+:16];
+        assign vector_range_fault[bank] = rst_n &&
+            ((ff_ram_write[bank] && ff_waddr >= 1024) ||
+             (ff_ram_read[bank] && ff_raddr >= 1024) ||
+             (output_write && ff_ram_write[bank]) ||
+             (output_read && ff_ram_read[bank]) ||
+             (output_write && ff_ram_read[bank] && ff_raddr == index_hold) ||
+             (output_read && ff_ram_write[bank]));
+        assign ff_ram_rdata[16*bank+:16] = read_q;
+        always @(posedge clk) begin
+            if (rst_n && !vector_access_fault) begin
+                if (output_write || ff_ram_write[bank])
+                    payload[waddr[9:0]] <= wdata;
+                if (output_read || ff_ram_read[bank])
+                    read_q <= payload[raddr[9:0]];
+            end
+        end
+    end endgenerate
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            vector_ram_fault <= 0;
+        else if (start_valid && start_ready)
+            vector_ram_fault <= 0;
+        else if (vector_access_fault)
+            vector_ram_fault <= 1;
     end
     assign start_ready = rst_n && state == IDLE;
     assign source_valid = ff_selected && ff_source_valid;
@@ -160,7 +202,8 @@ module anvil_en1_audio_pre_attention (
         (norm_selected ? norm_addr : 64'd0));
     assign cmd_wdata = 0;
     assign result_ready = ff_selected ? ff_result_ready : (norm_selected && norm_result_ready);
-    assign output_valid = rst_n && error_hold == 0 && (state == FF_WAIT ? ff_output_valid :
+    assign output_valid = rst_n && error_hold == 0 && !vector_ram_fault &&
+        (state == FF_WAIT ? ff_output_valid :
         (state == NORM_WAIT && norm_output_valid));
     assign output_kind = rst_n && state == NORM_WAIT;
     assign output_index = !rst_n ? 32'd0 :
@@ -170,16 +213,18 @@ module anvil_en1_audio_pre_attention (
     assign output_last = rst_n && (state == FF_WAIT ? ff_output_last :
         (state == NORM_WAIT && norm_output_last));
     assign done_valid = rst_n && state == RESPONSE;
-    assign done_error = rst_n ? error_hold : 4'd0;
-    assign vector_live_bytes = !rst_n ? 64'd0 : (allocated ? 64'd2048 : 64'd0) + ff_live;
-    assign vector_physical_bytes = rst_n ? 64'd2048 + ff_physical : 64'd0;
+    assign done_error = !rst_n ? 4'd0 :
+        (error_hold != 0 ? error_hold : (vector_ram_fault ? 4'd7 : 4'd0));
+    assign vector_live_bytes = !rst_n ? 64'd0 :
+        (allocated && ff_live == 0 ? 64'd2048 : 64'd0) + ff_live;
+    assign vector_physical_bytes = rst_n ? 64'd6144 + ff_physical : 64'd0;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(layer_hold) + $bits(generation_hold) + $bits(token_hold) +
         $bits(received) + $bits(index_hold) + $bits(source_index_hold) + $bits(weights_hold) +
-        $bits(raw_hold) + $bits(clamped_hold) + $bits(bank_q) + $bits(bank_data) +
+        $bits(raw_hold) + $bits(clamped_hold) + $bits(bank_data) + 48 +
         $bits(receive_bad) + $bits(allocated) + $bits(visible) + $bits(bank_error) +
-        $bits(child_error_hold) + $bits(error_hold);
+        $bits(vector_ram_fault) + $bits(child_error_hold) + $bits(error_hold);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -196,7 +241,7 @@ module anvil_en1_audio_pre_attention (
                     source_state <= S_VALIDATE;
                 end
                 S_VALIDATE: begin
-                    if (!visible || source_index_hold >= 1024) begin
+                    if (!visible || vector_ram_fault || source_index_hold >= 1024) begin
                         bank_error <= 1;
                         source_state <= S_RESPONSE;
                     end else
@@ -271,7 +316,7 @@ module anvil_en1_audio_pre_attention (
                 FF_START: if (ff_ready)
                     state <= FF_WAIT;
                 FF_WAIT: begin
-                    if (ff_output_valid && error_hold != 0) begin
+                    if (ff_output_valid && (error_hold != 0 || vector_ram_fault)) begin
                         if (received < 1024)
                             received <= received + 1'b1;
                     end else if (ff_output_valid && output_ready) begin
@@ -302,9 +347,9 @@ module anvil_en1_audio_pre_attention (
                 STORE: state <= ADVANCE;
                 ADVANCE: state <= FF_WAIT;
                 FF_CHECK: begin
-                    if (child_error_hold != 0 || error_hold != 0) begin
+                    if (child_error_hold != 0 || error_hold != 0 || vector_ram_fault) begin
                         if (error_hold == 0)
-                            error_hold <= child_error_hold;
+                            error_hold <= child_error_hold != 0 ? child_error_hold : 4'd7;
                         state <= PUBLISH;
                     end else if (receive_bad || received != 1024) begin
                         error_hold <= 7;

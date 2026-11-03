@@ -5,7 +5,111 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: fallback arithmetic/control/resident enforcement
+## Current increment: consuming pre-attention raw/output overlay
+
+Pre-attention no longer owns a fourth BF16 vector bank. It instantiates
+feed-forward with external vector RAM and owns its three synchronous banks.
+Each raw residual word is overwritten by the clamped output only after
+feed-forward has accepted the registered result derived from that word.
+Strictly ascending outputs make the raw prefix dead; a prefetched next
+element uses a different address. The subsequent norm starts only after
+the entire transformed vector and child completion have retired.
+SPEC records the exact edge/ownership table.
+
+Live accounting is the union of the shared bank: include the entire child
+report, and charge the wrapper's bank-0 reservation separately only after
+the child releases its raw/branch pair. This has no release/reallocation
+gap and retains partial data on errors. Physical storage falls from four
+to three 2048-byte banks for each pre-attention instance. Three registered
+read ports and the new sticky range/collision fault are included in its
+controller census; the external child no longer has local RAM/read registers.
+Conflicting ports suppress the offending access and retire explicit error 7;
+they never select an unreported fallback buffer.
+
+The replay-head normalized-source cache is invalidated and released before
+each rebuild, then reserved on its first successful normalized write.
+It is not a live input to the rebuilding worker. Keeping its reservation
+through FF1 was unnecessary; partially rebuilt data is still retained and
+charged through failure completion.
+
+Together these changes reduce the connected positive-audio private envelope
+from 8192 to 6144 bytes. Replay-head phases peak at FF 6144, raw output
+4096, or normalization/cache output 4096. Frame-backed post-attention peaks
+at outer raw 2048 plus FF raw/branch 4096; later projection uses 4096.
+Convolution/GLU and FF2 remain 6144. Residual/layer guards, dispatcher
+preflight and workspace descriptor validation all enforce the new envelope.
+Layer-zero and every suspended frame, memo, scalar slot, production shadow,
+complete child sum and fallback working-state limit are unchanged.
+
+This is not whole-system storage closure. Against the earlier conservative
+native controller census, minimum-context E2B leaves 46651 bytes for the
+remaining native state; four maximal audio frames plus scalars alone are
+49664. Six-slice suspension and complete native/fallback allocation
+reconciliation remain unresolved. The reserved static elaboration is still
+unused, and independent functional/synthesis verification remains pending.
+
+Saved six RTL files: `audio_pre_attention`, `replay_audio_attention`,
+`replay_audio_residual`, `replay_audio_layer`, `replay_execute` and
+`replay_workspace` (all `rtl/anvil_en1_*.sv`), plus SPEC and this document.
+Only view/glob/rg/apply_patch were used; no probes or receipts were created.
+Tests, parent sources, retained failures and runtime metadata are unchanged.
+
+## Prior increment: audio private-vector last-use release
+
+Feed-forward's normalized entering vector is dead once the final MLP row
+has retired successfully and its branch write has committed. Its working
+reservation/visibility now clear at that edge, before post-normalization
+and residual streaming. The raw and branch banks stay charged through
+completion, including stalls/errors. The new independent flag is included
+in the controller census; its added bit does not cross the rounded-byte
+boundary in either RAM configuration. Physical RAM sizes are unchanged.
+
+Pre-attention no longer reserves its output working bank during the
+feed-forward input/MLP phases. It reserves it on the first accepted raw
+output before the clamp/store. The outer attention residual likewise
+reserves raw on its first valid raw write, not job acceptance. These are
+real first-write/last-use boundaries: no live payload is elided, no output
+is precomputed, and partial buffers remain charged after failure until
+the existing response retirement.
+
+The connected replay-head maximum falls from 10240 to 8192 bytes:
+cache 2048 + FF 6144 before output, or cache 2048 + pre-attention working
+2048 + FF raw/branch 4096 during output. Frame-backed post-attention has
+FF 6144 before output, then outer raw 2048 + pre-attention working 2048 +
+FF raw/branch 4096. Its later projection/residual phase remains 4096.
+Convolution/GLU and FF2 remain bounded by 6144. Consequently the residual
+and layer overrun guards, dispatcher preflight and workspace's independently
+validated audio private descriptor now all enforce 8192 bytes. Layer-zero
+subsampling stays 512 bytes.
+
+SPEC records the exact cycle/ownership table and pending independent cases.
+Arithmetic, operation/reduction order, memory channels and external
+top-level interfaces are unchanged. The full actual child sums, frame
+and memo/scalar charges, production shadows, controller census and strict
+savings comparisons remain independent of the smaller admission envelope.
+The existing fallback 64 KiB working-state check is not weakened.
+
+This retires an overlong private-vector lifetime and reduces required
+private admission by 2048 bytes. It does **not** solve suspended histories:
+the six-slice frame bound is unchanged. With the earlier native census,
+minimum E2B scratch now has 44603 bytes left before all other native state,
+still less than four maximal history frames plus scalars (49664).
+Complete deep-native and fallback partition reconciliation remains open.
+
+Saved sources: `rtl/anvil_en1_audio_feedforward.sv`,
+`rtl/anvil_en1_audio_pre_attention.sv`,
+`rtl/anvil_en1_audio_attention_residual.sv`,
+`rtl/anvil_en1_replay_audio_residual.sv`,
+`rtl/anvil_en1_replay_audio_layer.sv`,
+`rtl/anvil_en1_replay_execute.sv`, `rtl/anvil_en1_replay_workspace.sv`,
+SPEC and this document. Tools used: glob, view, rg and apply_patch.
+No elaboration, functional/synthesis probe, preparation harness or receipt.
+Tests, parent sources, failures and runtime metadata are unchanged.
+Next: genuinely reduce retained native suspension state or establish its
+reachable fit, reconcile all allocations, then use the reserved static
+elaboration and hand off to independent Verifier.
+
+## Prior increment: fallback arithmetic/control/resident enforcement
 
 The previous allocation paths enforced the complete fallback 1 MiB ceiling
 but did not separately enforce the admitted 64 KiB working-state partition.
