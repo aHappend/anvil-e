@@ -216,21 +216,36 @@ module anvil_en1_attention_head #(
             .is_native(native_model), .layers(layer_count), .owners(),
             .owner(), .is_global(is_global), .hidden(), .intermediate()
         );
+        wire exp_phase = state == EXP_START || state == EXP_WAIT;
+        wire exp_arithmetic_valid, exp_arithmetic_result_ready;
+        wire [2:0] exp_arithmetic_operation;
+        wire [31:0] exp_arithmetic_a, exp_arithmetic_b;
         anvil_en1_fp32 fp_unit (
             .controller_bytes(fp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
-            .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-            .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-            .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+            .start_valid(rst_n && (exp_phase ? exp_arithmetic_valid : state == FP_START)),
+            .start_ready(fp_ready),
+            .operation(exp_phase ? exp_arithmetic_operation : fp_op),
+            .operand_a(exp_phase ? exp_arithmetic_a : fp_a),
+            .operand_b(exp_phase ? exp_arithmetic_b : fp_b),
+            .done_valid(fp_valid),
+            .done_ready(exp_phase ? exp_arithmetic_result_ready : rst_n && state == FP_WAIT),
             .done_data(fp_data), .done_error(fp_error)
         );
-        anvil_en1_exp exp_unit (
+        anvil_en1_exp #(.EXTERNAL_FP(1)) exp_unit (
             .controller_bytes(exp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
             .operand(exp_a),
             .done_valid(exp_valid), .done_ready(rst_n && state == EXP_WAIT),
-            .done_data(exp_data), .done_error(exp_error)
+            .done_data(exp_data), .done_error(exp_error),
+            .arithmetic_valid(exp_arithmetic_valid),
+            .arithmetic_ready(exp_phase && fp_ready),
+            .arithmetic_operation(exp_arithmetic_operation),
+            .arithmetic_a(exp_arithmetic_a), .arithmetic_b(exp_arithmetic_b),
+            .arithmetic_result_valid(exp_phase && fp_valid),
+            .arithmetic_result_ready(exp_arithmetic_result_ready),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         anvil_en1_fp32_divsqrt inverse_unit (
             .controller_bytes(div_controller_bytes),

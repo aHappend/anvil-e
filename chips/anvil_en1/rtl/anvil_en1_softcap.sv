@@ -30,6 +30,10 @@ module anvil_en1_softcap (
     wire div_ready, div_valid, tanh_ready, tanh_valid, fp_ready, fp_valid;
     wire [31:0] div_data, tanh_data, fp_data;
     wire [3:0] div_error, tanh_error, fp_error;
+    wire tanh_phase = state == TANH_START || state == TANH_WAIT;
+    wire tanh_arithmetic_valid, tanh_arithmetic_result_ready;
+    wire [2:0] tanh_arithmetic_operation;
+    wire [31:0] tanh_arithmetic_a, tanh_arithmetic_b;
 
     anvil_en1_fp32_divsqrt cap_divider (
         .controller_bytes(div_controller_bytes),
@@ -39,20 +43,31 @@ module anvil_en1_softcap (
         .done_valid(div_valid), .done_ready(rst_n && state == DIV_WAIT),
         .done_data(div_data), .done_error(div_error)
     );
-    anvil_en1_activation tanh_unit (
+    anvil_en1_activation #(.EXTERNAL_FP(1)) tanh_unit (
         .controller_bytes(activation_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == TANH_START), .start_ready(tanh_ready),
         .operation(2'd0), .operand(value_hold),
         .done_valid(tanh_valid), .done_ready(rst_n && state == TANH_WAIT),
-        .done_data(tanh_data), .done_error(tanh_error)
+        .done_data(tanh_data), .done_error(tanh_error),
+        .arithmetic_valid(tanh_arithmetic_valid),
+        .arithmetic_ready(tanh_phase && fp_ready),
+        .arithmetic_operation(tanh_arithmetic_operation),
+        .arithmetic_a(tanh_arithmetic_a), .arithmetic_b(tanh_arithmetic_b),
+        .arithmetic_result_valid(tanh_phase && fp_valid),
+        .arithmetic_result_ready(tanh_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     anvil_en1_fp32 fp_unit (
         .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-        .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-        .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+        .start_valid(rst_n && (tanh_phase ? tanh_arithmetic_valid : state == FP_START)),
+        .start_ready(fp_ready),
+        .operation(tanh_phase ? tanh_arithmetic_operation : fp_op),
+        .operand_a(tanh_phase ? tanh_arithmetic_a : fp_a),
+        .operand_b(tanh_phase ? tanh_arithmetic_b : fp_b),
+        .done_valid(fp_valid),
+        .done_ready(rst_n && (tanh_phase ? tanh_arithmetic_result_ready : state == FP_WAIT)),
         .done_data(fp_data), .done_error(fp_error)
     );
     assign start_ready = rst_n && state == IDLE;

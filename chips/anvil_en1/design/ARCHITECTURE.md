@@ -5,7 +5,128 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: owner-source and projection-tile admission
+## Current saved increment: serialized projection/activation arithmetic overlay
+
+`anvil_en1_weight_read`, `anvil_en1_projection`, `anvil_en1_activation`
+and `anvil_en1_geglu_pair` now expose the same validated, default-off
+`EXTERNAL_FP` channel as the exponential FSM. Standalone use retains a real
+local binary32 unit. External mode removes only that literal unit; all
+descriptor, address/extent, accumulator, polynomial, materialization,
+partial-value and held-response registers remain charged.
+
+Projection shares its unit with its weight reader; GeGLU shares its unit
+with activation and the already-external exponential child. Gated projection
+selects external mode in its projection, GeGLU and down-weight children,
+and serves their nested operations with its single existing binary32 unit.
+Softcap now shares its unit with its activation/exponential subtree. All
+ownership is selected by complete registered child start/wait phases, not
+by instantaneous arithmetic valid. Requests and results cannot be reassigned
+while a child, memory response, source callback or completion is stalled.
+The original FSMs, reduction order, BF16 boundaries and error propagation
+remain intact. There is no new queue or stored arbitration state.
+
+The local projection/activation-subtree physical-overlay milestone is now
+closed in source. SPEC records the exact default/external reservation table
+and reset/start/stall/error/degenerate-boundary ownership rules. Relative to
+the preceding source, each default projection removes one binary32 unit,
+each default GeGLU pair removes one, each softcap removes one, and each
+gated-projection subtree removes five (six units become one). Those nested
+figures must not be added together: the gated-projection reduction already
+includes its projection and GeGLU reductions. Its declared controller
+reservation falls from 1126 to 786 bytes, with no scalar-controller or
+division-unit reservation hidden or released. Higher-level reports already
+consume these literal child reports. No whole-system byte total, inferred
+M20K count, device fit, throughput improvement or timing result is claimed.
+
+Remaining closure milestones: finish whole-system census and remaining
+physical overlays; demonstrate legal-case fit of actual and production-shadow
+ordinary text/native scratch/fallback partitions, including after memo
+eviction; then use the reserved fast static elaboration and immediately
+hand off the complete design to independent Verifier. Conservative envelope
+denial is not legal-workload feasibility. Design is not ready.
+
+Tools used for this increment: glob, view, rg and apply_patch only. No
+commands, static elaboration, simulation, synthesis, experiments or new
+preparation receipts. Immutable parent, tests and runtime-owned records,
+including attempt-0003, are unchanged; no failure repair or acceptance is
+claimed.
+
+## Prior saved increment: exponential scalar-state physical overlay
+
+`anvil_en1_exp.sv` now has an explicitly validated `EXTERNAL_FP` option.
+Its default standalone implementation is preserved. In external mode its
+unchanged scalar FSM requests a real binary32 operation from the enclosing
+worker instead of declaring a duplicate arithmetic unit.
+
+The six literal exponential consumers (`activation`, `softplus`, text,
+vision and audio attention heads, and audio relative position) now select
+external mode and route their existing binary32 unit to the child during
+the complete exponential send/wait phase. Parent arithmetic and exponential
+arithmetic never execute concurrently. Each phase boundary already retires
+the prior arithmetic response; no queue, new storage, arithmetic stage or
+changed reduction/materialization order is introduced. Reset/error/stall
+behavior follows the existing registered FSMs. Only the absent child's
+68-byte controller contribution is removed; all parent and exponential
+scalar state remains charged. This is a declared physical overlay, not a
+measured FPGA resource or timing improvement.
+
+SPEC adds a declared-width inventory for 17 arithmetic/format/projection
+primitives, their literal child reservations and the complete ownership/
+cycle table. Existing arithmetic-controller reservations are unconditional
+while reset is released, so arithmetic starts do not grow these reservations
+and need no additional dynamic scalar grant. Vector grants remain separate.
+The inventory explicitly discloses the conservative 64-bit combinational
+quadrant allowance still included by sin/cos. No charge is silently gated
+away when a worker becomes idle.
+
+Remaining closure milestones: complete whole-system census and physical
+overlays, establish legal-case feasibility of actual and production-shadow
+envelopes (including native scratch and fallback partitions after eviction),
+then the reserved fast static elaboration and independent Verifier handoff.
+Denial of a required legal job remains an implementation failure. Not ready.
+
+Tools used: glob, view, rg and apply_patch only. No command, static check,
+experiment, simulation, synthesis or installation ran; no new preparation
+receipt exists. Parent, tests and runtime-owned files are untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+## Prior saved increment: ordinary frontier and private-storage admission
+
+`anvil_en1_frontier_execute.sv` now admits the frontier, local ring, retained
+hidden/PLE vectors, modality staging, anchor transfer, embedding and full-text
+payload before allocating or starting the corresponding child. These replace
+existing ledger fields 0/1/2/3/4/19/20, with separate actual and production-shadow
+envelopes. Reservations survive command, child and response stalls. A child
+exceeding its admitted envelope remains fully reported and causes error 7.
+Denials do not start the denied child or spill data.
+
+`anvil_en1_native.sv` registers and serializes ordinary and binding allocation
+requests through the existing whole-system admission pipeline. Binding's
+owner/workspace/private grants and pinned-memo eviction remain connected.
+The field whitelist in `anvil_en1_allocation_admission.sv` includes the new
+ordinary request classes. New arbiter/executor state is counted in existing
+controller fields; no payload RAM is added.
+
+Frontier/ring grants capture their actual and production-shadow sizes until
+successful invalidation, rather than recalculating the old representation
+from a new session's model/context. The native shadow ledger now consumes
+those owned held values. The previous ordinary representations are invalidated
+before the fallback result-vector grant. Embedding and full-text reservations
+retire in sequence, preserving the existing physical RAM-owner exclusion.
+SPEC records complete envelopes, release rules and registered boundaries.
+
+Remaining closure milestones: arithmetic accounting inventory, remaining physical
+overlays and legal-case feasibility of the complete conservative envelopes;
+then the reserved fast static elaboration and independent Verifier handoff.
+Admission denial is still an implementation failure for a required legal job.
+The design is not ready.
+
+Tools used: view, rg and apply_patch (plus the initial glob) only. No command,
+static check, experiment, simulation, synthesis or installation ran; no new
+preparation receipt exists. Parent, tests and runtime-owned files are untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+## Prior saved increment: owner-source and projection-tile admission
 
 `anvil_en1_owner_replay.sv` now admits the complete existing raw/normalized
 source bank before fallback Eval or ordinary owner projection, then admits

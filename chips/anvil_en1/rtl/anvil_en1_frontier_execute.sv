@@ -191,6 +191,7 @@ module anvil_en1_frontier_execute #(
     reg [5:0] allocation_return;
     reg frontier_reserved, ring_reserved, vector_reserved, feature_reserved;
     reg anchor_reserved, embedding_reserved, layer_reserved;
+    reg admission_fault;
     reg [63:0] frontier_reservation_hold, frontier_shadow_hold;
     reg [63:0] ring_reservation_hold, ring_shadow_hold;
     reg [2:0] operation, source_state;
@@ -239,6 +240,7 @@ module anvil_en1_frontier_execute #(
         $bits(frontier_reserved) + $bits(ring_reserved) +
         $bits(vector_reserved) + $bits(feature_reserved) + $bits(anchor_reserved) +
         $bits(embedding_reserved) + $bits(layer_reserved) +
+        $bits(admission_fault) +
         $bits(frontier_reservation_hold) + $bits(frontier_shadow_hold) +
         $bits(ring_reservation_hold) + $bits(ring_shadow_hold) +
         $bits(operation) + $bits(source_state) + $bits(model_hold) +
@@ -299,7 +301,8 @@ module anvil_en1_frontier_execute #(
     wire [63:0] shadow_ring_bytes = {32'd0, shadow_ring_tokens} <<
         (model_hold == 1 ? 10 : 11);
     wire [63:0] actual_frontier_bytes, actual_ring_bytes, actual_anchor_bytes;
-    wire [191:0] child_execution_bytes, child_execution_shadow;
+    wire [191:0] child_execution_bytes;
+    wire [127:0] child_execution_shadow;
     wire [63:0] hidden_bytes = {32'd0, hidden_hold} << 1;
     wire [63:0] shadow_hidden_bytes = model_hold == 1 ? 64'd3072 : 64'd5120;
     wire [63:0] embedding_bytes = hidden_bytes + 64'(2*P);
@@ -711,6 +714,16 @@ module anvil_en1_frontier_execute #(
     assign vector_shadow_bytes = !rst_n ? 64'd0 :
         (vector_reserved && vector_reservation_shadow > actual_vector_shadow ?
             vector_reservation_shadow : actual_vector_shadow);
+    wire reservation_overrun =
+        (frontier_reserved && actual_frontier_bytes > frontier_reservation_hold) ||
+        (ring_reserved && actual_ring_bytes > ring_reservation_hold) ||
+        (anchor_reserved && actual_anchor_bytes > 64'(COMPACT ? 8 : 512)) ||
+        (vector_reserved && (actual_vector_bytes > vector_reservation_bytes ||
+            actual_vector_shadow > vector_reservation_shadow)) ||
+        (embedding_reserved && (child_execution_bytes[0+:64] > embedding_bytes ||
+            child_execution_shadow[0+:64] > embedding_shadow)) ||
+        (layer_reserved && (child_execution_bytes[64+:64] > layer_bytes ||
+            child_execution_shadow[64+:64] > layer_shadow));
     assign execution_shadow_bytes[128+:64] = execution_live_bytes[128+:64];
     assign vector_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
     assign feature_live_bytes = rst_n && (feature_allocated || feature_reserved) ?
@@ -1028,6 +1041,7 @@ module anvil_en1_frontier_execute #(
             anchor_reserved <= 0;
             embedding_reserved <= 0;
             layer_reserved <= 0;
+            admission_fault <= 0;
             frontier_reservation_hold <= 0;
             frontier_shadow_hold <= 0;
             ring_reservation_hold <= 0;
@@ -1087,9 +1101,12 @@ module anvil_en1_frontier_execute #(
             logits_normalized_count <= 0;
             logits_normalized_bad <= 0;
         end else begin
+            if (reservation_overrun)
+                admission_fault <= 1;
             case (state)
                 IDLE: begin
                     if (control_valid && control_ready) begin
+                        admission_fault <= 0;
                         h_allocated <= 0;
                         h_committed <= 0;
                         p_allocated <= 0;
@@ -1108,6 +1125,7 @@ module anvil_en1_frontier_execute #(
                         error_hold <= 0;
                         state <= CONTROL_VALIDATE;
                     end else if (task_valid && task_ready) begin
+                        admission_fault <= 0;
                         is_control <= 0;
                         operation <= task_op;
                         token_hold <= task_token;
@@ -1587,7 +1605,9 @@ module anvil_en1_frontier_execute #(
                     end
                 end
                 PUBLISH: begin
-                    if (error_hold != 0) begin
+                    if (admission_fault || reservation_overrun)
+                        error_hold <= 7;
+                    if (error_hold != 0 || admission_fault || reservation_overrun) begin
                         h_allocated <= 0;
                         h_committed <= 0;
                         p_allocated <= 0;

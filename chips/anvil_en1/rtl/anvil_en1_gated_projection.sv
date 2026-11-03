@@ -82,8 +82,19 @@ module anvil_en1_gated_projection (
     wire down_cmd_valid, down_cmd_write, down_result_ready;
     wire [63:0] projection_cmd_addr, down_cmd_addr;
     wire [31:0] projection_cmd_wdata, down_cmd_wdata;
+    wire projection_phase = state == PROJECTION_START || state == PROJECTION_WAIT;
+    wire gated_phase = state == GATED_START || state == GATED_WAIT;
+    wire down_phase = state == DOWN_START || state == DOWN_WAIT;
+    wire projection_arithmetic_valid, projection_arithmetic_result_ready;
+    wire gated_arithmetic_valid, gated_arithmetic_result_ready;
+    wire down_arithmetic_valid, down_arithmetic_result_ready;
+    wire [2:0] projection_arithmetic_operation, gated_arithmetic_operation;
+    wire [2:0] down_arithmetic_operation;
+    wire [31:0] projection_arithmetic_a, projection_arithmetic_b;
+    wire [31:0] gated_arithmetic_a, gated_arithmetic_b;
+    wire [31:0] down_arithmetic_a, down_arithmetic_b;
 
-    anvil_en1_projection projection_unit (
+    anvil_en1_projection #(.EXTERNAL_FP(1)) projection_unit (
         .controller_bytes(projection_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
@@ -103,17 +114,31 @@ module anvil_en1_gated_projection (
         .result_ready(projection_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(projection_valid), .done_ready(rst_n && state == PROJECTION_WAIT),
-        .done_data(projection_data), .done_error(projection_error)
+        .done_data(projection_data), .done_error(projection_error),
+        .arithmetic_valid(projection_arithmetic_valid),
+        .arithmetic_ready(projection_phase && fp_ready),
+        .arithmetic_operation(projection_arithmetic_operation),
+        .arithmetic_a(projection_arithmetic_a), .arithmetic_b(projection_arithmetic_b),
+        .arithmetic_result_valid(projection_phase && fp_valid),
+        .arithmetic_result_ready(projection_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    anvil_en1_geglu_pair gated_unit (
+    anvil_en1_geglu_pair #(.EXTERNAL_FP(1)) gated_unit (
         .controller_bytes(gated_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == GATED_START), .start_ready(gated_ready),
         .operation(activation_hold), .gate_data(gate_hold), .up_data(up_hold),
         .done_valid(gated_valid), .done_ready(rst_n && state == GATED_WAIT),
-        .done_data(gated_data), .done_error(gated_error)
+        .done_data(gated_data), .done_error(gated_error),
+        .arithmetic_valid(gated_arithmetic_valid),
+        .arithmetic_ready(gated_phase && fp_ready),
+        .arithmetic_operation(gated_arithmetic_operation),
+        .arithmetic_a(gated_arithmetic_a), .arithmetic_b(gated_arithmetic_b),
+        .arithmetic_result_valid(gated_phase && fp_valid),
+        .arithmetic_result_ready(gated_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    anvil_en1_weight_read down_reader (
+    anvil_en1_weight_read #(.EXTERNAL_FP(1)) down_reader (
         .controller_bytes(weight_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_START), .start_ready(down_ready),
@@ -126,14 +151,33 @@ module anvil_en1_gated_projection (
         .result_valid(rst_n && memory_down && result_valid), .result_ready(down_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(down_valid), .done_ready(rst_n && state == DOWN_WAIT),
-        .done_data(down_data), .done_error(down_error)
+        .done_data(down_data), .done_error(down_error),
+        .arithmetic_valid(down_arithmetic_valid),
+        .arithmetic_ready(down_phase && fp_ready),
+        .arithmetic_operation(down_arithmetic_operation),
+        .arithmetic_a(down_arithmetic_a), .arithmetic_b(down_arithmetic_b),
+        .arithmetic_result_valid(down_phase && fp_valid),
+        .arithmetic_result_ready(down_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     anvil_en1_fp32 fp_unit (
         .controller_bytes(fp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-        .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-        .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+        .start_valid(rst_n && (projection_phase ? projection_arithmetic_valid :
+            (gated_phase ? gated_arithmetic_valid :
+            (down_phase ? down_arithmetic_valid : state == FP_START)))),
+        .start_ready(fp_ready),
+        .operation(projection_phase ? projection_arithmetic_operation :
+            (gated_phase ? gated_arithmetic_operation :
+            (down_phase ? down_arithmetic_operation : fp_op))),
+        .operand_a(projection_phase ? projection_arithmetic_a :
+            (gated_phase ? gated_arithmetic_a : (down_phase ? down_arithmetic_a : fp_a))),
+        .operand_b(projection_phase ? projection_arithmetic_b :
+            (gated_phase ? gated_arithmetic_b : (down_phase ? down_arithmetic_b : fp_b))),
+        .done_valid(fp_valid),
+        .done_ready(rst_n && (projection_phase ? projection_arithmetic_result_ready :
+            (gated_phase ? gated_arithmetic_result_ready :
+            (down_phase ? down_arithmetic_result_ready : state == FP_WAIT)))),
         .done_data(fp_data), .done_error(fp_error)
     );
     assign start_ready = rst_n && state == IDLE;

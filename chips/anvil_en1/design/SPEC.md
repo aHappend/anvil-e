@@ -5,15 +5,24 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-Latest saved allocation delta: owner rematerialization now admits its complete
-raw/normalized source bank (field 6) before fallback Eval or ordinary projection,
-and its complete head tile (field 7) before projection. A registered binding
-arbiter shares the existing whole-system admission path with replay workspace
-and private workers. Ring hits allocate neither owner bank. Denial returns
-error 7 without starting the denied work; feasibility remains to be established.
-Replay text/native private-worker admission and pinned-memo eviction remain
-connected. Ordinary execution, remaining arithmetic accounting, overlays and
-legal-case feasibility are still unfinished.
+Latest saved arithmetic delta: projection and gated-projection subtrees now
+share a single binary32 unit across serialized weight decoding, activation,
+exponential, multiplication and reduction phases. Softcap similarly shares
+its binary32 unit with its activation/exponential subtree. Every child FSM
+retains its scalar census; only physically absent arithmetic units contribute
+zero. The primitive reservation inventory and ownership/cycle rules below
+describe these overlays. Whole-system physical overlays and legal-workload
+feasibility remain unfinished.
+
+The preceding allocation delta: ordinary frontier, local ring, retained vectors,
+modality staging, anchor transfer, embedding and full-text payload now pass
+whole-system admission before their allocation/child starts. A registered native
+arbiter serializes these requests with the existing binding's owner/workspace/
+private-worker requests. Frontier/ring actual and production-shadow reservations
+retain their admitted sizes until successful invalidation, including descriptor
+changes for a new session. Denial reports error 7 without a spill; this is not
+proof that every legal workload fits. The primitive inventory does not establish
+complete whole-system accounting or legal-case feasibility.
 The reserved static elaboration has not run; this is not a ready handoff or
 a verification result.
 
@@ -218,17 +227,17 @@ The replay projection tile separately charges its hidden and head vectors.
 
 | Component fields | Production-shadow rule |
 | --- | --- |
-| 0, frontier | While allocated, production hidden bytes times the full padded context |
-| 1, local anchor ring | While allocated, `min(p,512)` times 1024/2048 bytes |
-| 2, retained hidden/PLE | Owning hidden and PLE lifetime flags, independently |
+| 0, frontier | Admitted production hidden bytes times the full padded context, held until successful invalidation |
+| 1, local anchor ring | Admitted `min(p,512)` times 1024/2048 bytes, held until successful invalidation |
+| 2, retained hidden/PLE | Maximum of the admitted task envelope and owning hidden/PLE lifetime flags, independently |
 | 3, 6, feature and owner source | Production hidden vector while the corresponding bank is allocated |
 | 4, 7, 9, anchor transfer, owner head and PLE | Compact allocated byte count times 64; production count unchanged |
 | 5, bounded workspace | Existing domain-aware frame, scalar and memo shadow, including pending reservations |
 | 8, replay projection tile | Production hidden plus selected local/global head vector while the tile is live |
 | 10, replay embedding | Sum of the input and text embedding workers' separately flagged production hidden/PLE reservations |
 | 11, replay post | POST_ONLY worker's independently flagged production reservations |
-| 19, ordinary embedding | Embedding worker's independently flagged production hidden/PLE reservations |
-| 20, ordinary text | Full-text worker's independently flagged production reservations |
+| 19, ordinary embedding | Maximum of the admitted complete hidden/PLE envelope and the worker's independently flagged production reservations |
+| 20, ordinary text | Maximum of the admitted complete full-text envelope and the worker's independently flagged production reservations |
 | 12..18, 21..24 | Unchanged-width native encoder, resident word, binding and controller reservations; connected final-head payload is zero |
 
 Native vision/audio feature staging remains 768/1536 components even in
@@ -580,8 +589,10 @@ timing or hardware result is claimed.
 
 ### Prospective whole-system admission for workspace growth
 
-The connected path is `replay_workspace -> eval_schedule -> replay_execute ->
-replay_binding -> native.workspace_admission`. The new literal
+The workspace path is `replay_workspace -> eval_schedule -> replay_execute ->
+replay_binding -> native grant arbiter -> native.workspace_admission`.
+Ordinary allocation requests enter the same native arbiter directly from
+`frontier_execute`. The literal
 `anvil_en1_allocation_admission` reuses the existing registered allocation
 ledger, with prospective workspace field 5 and its native subset substituted
 for their current values for workspace growth; private-bank requests instead
@@ -605,7 +616,7 @@ No new backing write, stream acceptance or copy read precedes admission.
 | Internal signal | Meaning |
 | --- | --- |
 | `grant_valid/grant_ready` | One accepted prospective-allocation request; the four byte totals remain stable while stalled |
-| `grant_component[4:0]` | Replacement allocation field: 5 for workspace growth, 6/7 for owner source/head-tile, 8/9/10/11 for replay attention-tile/PLE/embedding/post, 12/13/14/15 for native vision/audio/audio-feature/image-feature reservations; other fields reject |
+| `grant_component[4:0]` | Replacement allocation field: 0/1/2/3/4 for ordinary frontier/ring/retained-vector/feature/anchor-transfer, 5 for workspace growth, 6/7 for owner source/head-tile, 8/9/10/11 for replay attention-tile/PLE/embedding/post, 12/13/14/15 for native vision/audio/audio-feature/image-feature, 19/20 for ordinary embedding/full-text reservations; other fields reject |
 | `grant_payload_bytes/grant_shadow_bytes[63:0]` | Complete prospective actual/shadow allocation for the selected field, not a byte increment |
 | `grant_native_bytes/grant_native_shadow_bytes[63:0]` | Native-domain subsets of workspace field 5; private requests preserve that field's existing subset, since their selected fields are already included directly in native scratch |
 | `grant_rsp_valid/grant_rsp_ready` | One held decision for the accepted request; no second request before retirement |
@@ -654,13 +665,73 @@ candidate/pin registers are included in workspace controller accounting.
 No additional payload RAM is declared by this path. Its added register
 reservation is disclosed even if synthesis can prune unused ledger outputs.
 
-Remaining closure: admit ordinary execution growth and close
-remaining arithmetic accounting, finish
+Remaining closure: close remaining arithmetic accounting, finish
 physical overlays and establish that every required legal case has sufficient
 unspillable workspace. Repeated denial after all evictable memos are gone is
 not a permitted substitute for exact replay. The remaining grant paths must
 be closed before the reserved static elaboration and independent Verifier
 handoff. No functional or synthesis experiment has run for this increment.
+
+### Ordinary frontier and private-storage admission
+
+`anvil_en1_frontier_execute` now exposes the same registered allocation
+request/decision protocol for fields 0/1/2/3/4/19/20. The native arbiter
+registers a complete descriptor and requester identity before request
+acceptance, gives the binding priority when both clients request, and retains
+the route until response acceptance. Ordinary requests preserve the current
+workspace/native subset rather than substituting zero. Only one prospective
+allocation is admitted at a time; the next request cannot sample an earlier
+uncommitted grant. All added native arbiter state is charged in component 17.
+
+Let `h=2*H`, `q=2*head_dim` and `e=2*PLE` bytes in the selected actual geometry.
+Production shadows use the selected production model even for compact builds.
+The full-text envelope conservatively includes all three hidden banks, PLE
+and all query-head attention output; it does not allocate an MLP-wide tensor.
+
+| Field | Complete actual reservation | Production-shadow reservation |
+| --- | --- | --- |
+| 0, frontier | `p*h` | `p*3072` or `p*5120` |
+| 1, local ring | Compact `16*min(p,4)`; production `1024*min(p,512)` or `2048*min(p,512)` | `1024*min(p,512)` or `2048*min(p,512)` |
+| 2, retained vectors | `h+e` for ordinary work; `h` for fallback result | `3072+512` / `5120+512`, or hidden bytes alone for fallback |
+| 3, modality staging | `h` | 3072/5120 |
+| 4, local anchor transfer | Compact 8; production 512 | 512 |
+| 19, embedding | `h+e` | `3072+512` / `5120+512` |
+| 20, full text | `3*h+e+Q*q`, with compact Q=2 and production Q=8 | `3*3072+512+8*q` / `3*5120+512+8*q`, production q=512/1024 |
+
+Each field reports the greater of its complete admitted envelope and actual
+child live allocation while reserved, never their sum. Existing child physical
+reports and payload RAM declarations are unchanged. Field 2's complete
+reservation survives task stalls, writes and completion backpressure; any
+retained committed hidden vector remains charged after that envelope retires.
+Final normalization reuses that already admitted hidden vector and declares
+no private final-head payload.
+
+| Ordinary boundary | Pre-edge handshake / post-edge action |
+| --- | --- |
+| Reset | Clear grant outputs, reservations, held sizes and admission fault; do not initialize payload RAM |
+| New control descriptor | Retire obsolete retained hidden/PLE/feature visibility; preserve old frontier/ring sizes until the existing invalidate responses succeed |
+| Configure frontier | Admit field 0, capture both byte sizes, then issue the ordinary frontier control command on a later edge |
+| Configure ring | After successful frontier configuration, admit field 1 before issuing ring configuration |
+| Frontier/ring invalidation | Retain the old charge throughout command/response stalls; release only on accepted successful invalidation, before fallback result admission |
+| Native feature token | Admit field 3 before Eval start; preserve it throughout reconstruction and embedding consumption, then retire it on the accepted last feature read or failure cleanup |
+| Embedding | Admit field 2, then field 19, before embedding start; neither grant marks hidden/PLE data readable |
+| Full text | After embedding done and field 19 release, admit field 20 before layer start; the native registered RAM-owner protocol remains in force |
+| Local anchor copy | Admit field 4 before anchor worker start; release after its accepted done result |
+| Fallback result | After both ordinary representations are invalidated and the backing region is bound, admit field 2 before Eval start |
+| Worker completion | Retire the embedding/text/anchor private reservation only on its accepted child done; held result/error scalars remain in controller accounting |
+| Task response stall | Keep any surviving task envelope charged until the response is accepted |
+| Denial | Return error 7 without the denied child start, data allocation or spill; earlier surviving representations remain charged until their normal release |
+| Child exceeds admitted envelope | Preserve the larger live report, latch a task admission fault and report error 7 at publication; do not hide the excess by clamping |
+
+Frontier/ring shadows are now supplied by the owning executor from captured
+grants, not recomputed using a newly captured session descriptor. This prevents
+a model/context transition from revaluing an old representation before release.
+The executor's envelope flags, held sizes and fault bit are charged in component
+24. Ordinary grant denial is not an eviction/recomputation proof or accepted
+behavior for a required legal workload. Conservative-envelope feasibility,
+remaining arithmetic accounting and physical overlays still require closure.
+No static elaboration, simulation, synthesis or hardware result is established
+by this source increment.
 
 ### Owner-source and projection-tile admission
 
@@ -711,8 +782,8 @@ field 16. The owner FSM's wider state encoding is included in its existing
 subtree controller field 22. No additional payload RAM is declared.
 An owner denial with no live replay workspace is still an implementation
 feasibility failure, not accepted behavior for a required legal workload.
-This closes the owner-source/head-bank grant path, not ordinary/frontier
-admission, remaining arithmetic accounting, physical overlays, functional
+This closes the owner-source/head-bank grant path, not remaining arithmetic
+accounting, physical overlays, functional
 correctness, RAM inference or timing. No execution check has run for this
 increment; the reserved static elaboration remains pending.
 
@@ -1447,6 +1518,166 @@ checkpoint/executor/tile estimates have been replaced by declared-width
 censuses, including partial pairs and retained dependency descriptors.
 Combinational function temporaries and loop-unrolling indices are not
 stored state; synchronous RAM readback registers are.
+
+### Primitive reservation inventory and exponential arithmetic overlay
+
+The following inventory is derived from the declared RTL registers and literal
+child connections, not an executed allocation measurement. Own reservations
+round the complete local census upward to a byte before adding child reports.
+They remain charged while reset is released, including idle, failed and stalled
+operations. Consequently starting an arithmetic operation does not allocate
+additional scalar storage: its operands, partial products, reductions, readback
+copies and held response are already in the controller reservation used by
+prospective admission. Vector/RAM payload remains separately admitted; it is
+not part of this justification.
+
+Names in this table have prefix `anvil_en1_`. Child reports are additive for
+literal instances, not multiplied by the number of times their FSM is called.
+All entries apply to both precisions and both model geometries.
+
+| Primitive | Local reserved bits / bytes | Literal arithmetic children included in report |
+| --- | --- | --- |
+| `fp32` | 542 / 68 | None; includes all four partial products and three 48-bit product/reduction registers |
+| `fp32_divsqrt` | 500 / 63 | None; includes division, square-root and reciprocal-square-root continuations |
+| `uint_to_fp32` | 79 / 10 | None |
+| `uint_div` | 144 / 18 | None |
+| `bf16_clamp` | 75 / 10 | None |
+| `exp` | 220 / 28 | One `fp32` in standalone mode; none in external-arithmetic mode |
+| `activation` | 403 / 51 | One external-arithmetic `exp`, one `fp32_divsqrt`, plus one `fp32` only in standalone mode |
+| `softplus` | 407 / 51 | One `fp32`, one external-arithmetic `exp`, one `fp32_divsqrt` |
+| `norm` | 490 / 62 | One each of `uint_to_fp32`, `fp32`, `fp32_divsqrt` |
+| `rope_frequency` | 134 / 17 | One each of `fp32_divsqrt`, `fp32` |
+| `sincos` | 589 / 74 | One each of `fp32`, `uint_to_fp32`, `fp32_divsqrt`; local reservation conservatively also includes the two combinational quadrant words (64 bits), not additional physical storage |
+| `rotary_pair` | 472 / 59 | One each of `rope_frequency`, `uint_to_fp32`, `sincos`, `fp32` |
+| `softcap` | 208 / 26 | One each of `fp32_divsqrt`, external-arithmetic `activation`, `fp32` |
+| `geglu_pair` | 179 / 23 | One external-arithmetic `activation`, plus one `fp32` only in standalone mode |
+| `weight_read` | 1335 / 167 | One `fp32` only in standalone mode; local count includes the complete extent/address partial products |
+| `projection` | 514 / 65 | One external-arithmetic `weight_read`, plus one `fp32` only in standalone mode |
+| `gated_projection` | 1226 / 154 | One each of external-arithmetic `projection`, `geglu_pair`, `weight_read`, plus one physical `fp32` |
+
+`exp.EXTERNAL_FP` accepts exactly 0 or 1 and defaults to 0. Mode 0 retains
+the standalone binary32 unit and its full reservation; its additional
+arithmetic request outputs are zero and its additional response inputs are
+unused. Mode 1 removes that literal unit at elaboration and exposes its
+unchanged registered `start`/`done` transaction through
+`arithmetic_valid/ready`, `arithmetic_operation[2:0]`,
+`arithmetic_a/b[31:0]`, and
+`arithmetic_result_valid/ready/data[31:0]/error[3:0]`.
+Only the absent unit's byte contribution becomes zero. The exponential
+descriptor, polynomial, operands, coefficient counter, power and held
+result/error all remain reserved.
+
+Every current exponential consumer selects mode 1:
+`activation`, `softplus`, `attention_head`, `vision_attention_head`,
+`audio_attention_head`, and `audio_relative_position`. Each routes one
+binary32 service, supplied locally or by its enclosing worker. During its complete EXP_START/EXP_WAIT interval
+(EXP_SEND/EXP_WAIT in vision attention), it routes that unit exclusively
+to the exponential FSM; otherwise it routes it to its original arithmetic
+FSM. This is a physical scalar-state overlay, not a phase-dependent omission
+of live registers. Parent scalar reductions and all exponential scalar state
+remain separate. Reports remove exactly one 68-byte binary32 child per
+literal exponential instance relative to the preceding unshared exponential
+implementation, in both actual and production-shadow
+controller ledgers. Repeated calls do not multiply this declaration delta;
+no system-wide byte total, FPGA resource saving or timing result is inferred.
+
+| Boundary | Ownership and registered behavior |
+| --- | --- |
+| Reset | Both FSMs and the one physical arithmetic unit reset; arithmetic request/response outputs are zero |
+| Enter exponential phase | The parent's preceding binary32 response has already been accepted before the parent prepares the exponential argument and enters its send state |
+| Exponential start acceptance | The child registers its operand; it cannot issue an arithmetic request on the same acceptance edge |
+| Child arithmetic request | The child's existing MUL_START/ADD_START states hold operation/operands until the physical unit accepts; no parent arithmetic start can occur in an exponential phase |
+| Child arithmetic result | Only the child's existing MUL_WAIT/ADD_WAIT states assert result readiness; the parent remains in its exponential wait state and cannot consume the binary32 result as its own |
+| Exponential response | The child's final binary32 response retired before its existing PUBLISH/RESPONSE states; the parent accepts the held exponential result/error before changing phase |
+| Parent arithmetic resumes | The shared unit is already idle; original parent FP_START/FP_WAIT sequencing resumes without a new arithmetic stage or changed reduction order |
+| Stalled child/parent result | Phase selection and registered request payload remain stable until the corresponding acceptance; no arbitration queue or second transaction exists |
+| Error | An arithmetic error follows the unchanged exponential error publication, then the unchanged parent error retirement; ownership does not switch with an outstanding transaction |
+| Single operation / repeated calls | Identical sequencing; the physical unit's normal response acceptance returns it to IDLE before reuse |
+
+This retires the primitive scalar-growth grant question: those registers are
+statically reserved, rather than dynamically allocated at arithmetic start.
+It does not retire the whole-system register census, other physical overlay
+opportunities, fallback partition fit, native-scratch fit or legal-case
+feasibility after memo eviction. No arithmetic request is permission to
+spill or to ignore a failed admission. Independent numerical, stalled-channel,
+allocation and synthesis checks remain required.
+
+### Serialized projection/activation arithmetic ownership
+
+`weight_read`, `projection`, `activation` and `geglu_pair` now also accept
+`EXTERNAL_FP=0/1`, default 0, with the same explicit illegal-value diagnostic
+and arithmetic channel as `exp`. Mode 0 declares exactly one local binary32
+unit; mode 1 removes that declaration and forwards the selected registered
+request/result handshake to its parent. All additional outputs are zero in
+standalone mode or active reset. No public top, cache, source-vector, tensor,
+memory or numerical interface changes.
+
+The default projection routes its unit to the weight reader throughout
+WEIGHT_START/WEIGHT_WAIT, including memory and decode stalls. Outside that
+phase it retains its original source-conversion, multiply, ascending-column
+sum and final BF16 materialization schedule. The default GeGLU pair routes
+its unit to activation throughout ACTIVATION_START/ACTIVATION_WAIT, including
+the nested exponential arithmetic; its subsequent gate/product
+materializations are unchanged.
+
+Gated projection selects external arithmetic for all three children:
+projection, GeGLU pair and down-weight reader. Its one local unit serves
+PROJECTION_START/PROJECTION_WAIT, GATED_START/GATED_WAIT and
+DOWN_START/DOWN_WAIT respectively; outside these disjoint phases it serves
+the original multiply, accumulation and final materialization FSM.
+Projection's weight reader and GeGLU's activation/exponential forward
+their requests through this same channel; they do not declare hidden
+binary32 units. Softcap similarly selects external arithmetic for its
+activation child during TANH_START/TANH_WAIT and retains its local unit for
+the final multiply/narrow. Division/sqrt units remain physically separate
+and fully charged; this increment does not remove their reservations.
+
+The following byte counts are declared-width reservations derived from the
+inventory above, not synthesis or measured allocation. They include every
+local scalar and literal descendant controller, even while idle. They apply
+equally to actual and production-shadow controller terms.
+
+| Subtree | Before this increment | Current standalone | Current external-FP mode |
+| --- | --- | --- | --- |
+| `weight_read` | 235 | 235 | 167 |
+| `projection` | 368 | 300 | 232 |
+| `activation` | 210 | 210 | 142 |
+| `geglu_pair` | 301 | 233 | 165 |
+| `gated_projection` | 1126 | 786 | Not exposed |
+| `softcap` | 367 | 299 | Not exposed |
+
+Thus a literal gated projection has one, not six, physical binary32 units,
+removing five 68-byte reservations relative to the immediately preceding
+source. Its 154-byte enclosing controller, two 167-byte weight-reader
+controllers, 65-byte projection controller, 23-byte GeGLU controller,
+51-byte activation controller, 28-byte exponential controller and
+63-byte division controller all remain charged. These are per-subtree
+totals, not additive system totals: do not add a child's standalone total
+again to an ancestor that already includes it. Other literal instances
+elsewhere in the design remain separate and charged.
+
+| Boundary | Ownership and registered behavior |
+| --- | --- |
+| Reset / first released edge | All existing FSMs and the one physical unit reset; arithmetic outputs are zero during reset. Release alone creates no request; descriptors still require their original start acceptance |
+| Child phase entry | Any earlier local arithmetic response has retired. The parent's registered state selects the child from its start state through its accepted done response |
+| Child start | Registers its descriptor before generating arithmetic; it cannot start an arithmetic operation on its own descriptor-acceptance edge |
+| Nested request | Only the selected child path supplies valid, operation and operands. Every forwarding level is combinational routing of registered state, not another storage allocation, numerical stage or combinational arithmetic recursion |
+| Request stall | Child state and operands remain held. Parent stays in that child's phase; neither sibling nor parent can start a competing operation |
+| Result stall | Only the selected child's arithmetic wait state supplies readiness; siblings cannot consume the response |
+| Child memory/source/output stall | Keep ownership through the complete child task, even when it is not currently using the binary32 unit |
+| Done / phase exit | The child's last arithmetic result retires before its existing PUBLISH/RESPONSE states. The parent cannot switch phase until accepting the held child done/result |
+| Arithmetic or memory/source error | Existing child error is retained and propagated through its original done states. No new start, phase switch or hidden spill bypasses outstanding work |
+| C=1/3/64, one token, partial Q4 row | Ownership is independent of resident capacity and loop trip count. Original exact row boundaries, nibble order, conversion and reduction order remain unchanged |
+| Repeated calls | The physical unit is idle after its accepted result, before the next request; no tags, queue, speculative request or extra transaction state is introduced |
+
+This closes the local serialized projection/activation-subtree physical
+overlay milestone. Controller reporting follows the literal generated
+hierarchy; no phase-dependent masking of retained scalar state is used.
+The forwarding muxes feed the existing registered binary32 input boundary,
+not an unregistered numerical result. Their target-device timing still
+requires source-matched STA. Whole-system census, remaining overlays and
+legal-case ordinary/native/fallback fit remain open; these declaration
+reductions do not establish any system-level storage or traffic pass.
 
 The cache now exposes actual `resident_live_bytes = 4*resident_count`.
 Insertion increments the count only when replacing an unoccupied slot;

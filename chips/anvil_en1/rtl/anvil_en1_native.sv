@@ -97,11 +97,7 @@ module anvil_en1_native #(
         (model_hold == 1 ?
             ({32'd0, padded} << 11) + ({32'd0, padded} << 10) :
             ({32'd0, padded} << 12) + ({32'd0, padded} << 10));
-    wire [63:0] production_frontier_bytes = model_hold == 1 ?
-        ({32'd0, padded} << 11) + ({32'd0, padded} << 10) :
-        ({32'd0, padded} << 12) + ({32'd0, padded} << 10);
     wire [63:0] production_hidden_bytes = model_hold == 1 ? 64'd3072 : 64'd5120;
-    wire [31:0] production_window = padded > 512 ? 32'd512 : padded;
     genvar shadow_component;
     generate for (shadow_component=0; shadow_component<25;
         shadow_component=shadow_component+1) begin : production_allocations

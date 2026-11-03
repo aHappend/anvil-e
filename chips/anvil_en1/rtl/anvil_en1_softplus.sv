@@ -46,21 +46,36 @@ module anvil_en1_softplus (
     wire [31:0] fp_data, exp_data, div_data;
     wire [3:0] fp_error, exp_error, div_error;
     wire [63:0] primitive_fp_bytes, primitive_exp_bytes, primitive_div_bytes;
+    wire exp_phase = state == EXP_START || state == EXP_WAIT;
+    wire exp_arithmetic_valid, exp_arithmetic_result_ready;
+    wire [2:0] exp_arithmetic_operation;
+    wire [31:0] exp_arithmetic_a, exp_arithmetic_b;
     anvil_en1_fp32 arithmetic (
         .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-        .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-        .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+        .start_valid(rst_n && (exp_phase ? exp_arithmetic_valid : state == FP_START)),
+        .start_ready(fp_ready),
+        .operation(exp_phase ? exp_arithmetic_operation : fp_op),
+        .operand_a(exp_phase ? exp_arithmetic_a : fp_a),
+        .operand_b(exp_phase ? exp_arithmetic_b : fp_b),
+        .done_valid(fp_valid),
+        .done_ready(exp_phase ? exp_arithmetic_result_ready : rst_n && state == FP_WAIT),
         .done_data(fp_data), .done_error(fp_error)
     );
-    anvil_en1_exp exponent (
+    anvil_en1_exp #(.EXTERNAL_FP(1)) exponent (
         .controller_bytes(primitive_exp_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
         .operand({1'b1, x[30:0]}),
         .done_valid(exp_valid), .done_ready(rst_n && state == EXP_WAIT),
-        .done_data(exp_data), .done_error(exp_error)
+        .done_data(exp_data), .done_error(exp_error),
+        .arithmetic_valid(exp_arithmetic_valid),
+        .arithmetic_ready(exp_phase && fp_ready),
+        .arithmetic_operation(exp_arithmetic_operation),
+        .arithmetic_a(exp_arithmetic_a), .arithmetic_b(exp_arithmetic_b),
+        .arithmetic_result_valid(exp_phase && fp_valid),
+        .arithmetic_result_ready(exp_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     anvil_en1_fp32_divsqrt divider (
         .controller_bytes(primitive_div_bytes),

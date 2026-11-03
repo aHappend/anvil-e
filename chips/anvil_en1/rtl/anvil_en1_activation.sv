@@ -1,4 +1,6 @@
-module anvil_en1_activation (
+module anvil_en1_activation #(
+    parameter integer EXTERNAL_FP = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -8,7 +10,15 @@ module anvil_en1_activation (
     input wire done_ready,
     output wire [31:0] done_data,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes
+    output wire [63:0] controller_bytes,
+    output wire arithmetic_valid,
+    input wire arithmetic_ready,
+    output wire [2:0] arithmetic_operation,
+    output wire [31:0] arithmetic_a, arithmetic_b,
+    input wire arithmetic_result_valid,
+    output wire arithmetic_result_ready,
+    input wire [31:0] arithmetic_result_data,
+    input wire [3:0] arithmetic_result_error
 );
     localparam [4:0] IDLE = 0, CLASSIFY = 1, GELU_SQUARE = 2,
         GELU_CUBE = 3, GELU_CUBIC_SCALE = 4, GELU_SUM = 5,
@@ -43,21 +53,59 @@ module anvil_en1_activation (
     wire negative_sigmoid = x[31];
     wire tanh_negative = tanh_argument[31];
     wire [31:0] tanh_signed = {tanh_negative, value_hold[30:0]};
+    wire exp_phase = state == EXP_START || state == EXP_WAIT;
+    wire exp_arithmetic_valid, exp_arithmetic_result_ready;
+    wire [2:0] exp_arithmetic_operation;
+    wire [31:0] exp_arithmetic_a, exp_arithmetic_b;
 
-    anvil_en1_fp32 fp_unit (
-        .controller_bytes(fp_controller_bytes),
-        .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-        .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-        .done_valid(fp_valid), .done_ready(fp_accept),
-        .done_data(fp_data), .done_error(fp_error)
-    );
-    anvil_en1_exp exp_unit (
+    initial begin
+        if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
+    end
+
+    wire fp_start_valid = rst_n &&
+        (exp_phase ? exp_arithmetic_valid : state == FP_START);
+    wire fp_done_ready = rst_n &&
+        (exp_phase ? exp_arithmetic_result_ready : fp_accept);
+    wire [2:0] fp_operation = exp_phase ? exp_arithmetic_operation : fp_op;
+    wire [31:0] fp_operand_a = exp_phase ? exp_arithmetic_a : fp_a;
+    wire [31:0] fp_operand_b = exp_phase ? exp_arithmetic_b : fp_b;
+    assign arithmetic_valid = EXTERNAL_FP == 1 && fp_start_valid;
+    assign arithmetic_operation = rst_n && EXTERNAL_FP == 1 ? fp_operation : 3'd0;
+    assign arithmetic_a = rst_n && EXTERNAL_FP == 1 ? fp_operand_a : 32'd0;
+    assign arithmetic_b = rst_n && EXTERNAL_FP == 1 ? fp_operand_b : 32'd0;
+    assign arithmetic_result_ready = EXTERNAL_FP == 1 && fp_done_ready;
+    generate
+        if (EXTERNAL_FP == 1) begin : external_arithmetic
+            assign fp_controller_bytes = 64'd0;
+            assign fp_ready = rst_n && arithmetic_ready;
+            assign fp_valid = rst_n && arithmetic_result_valid;
+            assign fp_data = rst_n ? arithmetic_result_data : 32'd0;
+            assign fp_error = rst_n ? arithmetic_result_error : 4'd0;
+        end else begin : internal_arithmetic
+            anvil_en1_fp32 fp_unit (
+                .controller_bytes(fp_controller_bytes),
+                .clk(clk), .rst_n(rst_n),
+                .start_valid(fp_start_valid), .start_ready(fp_ready),
+                .operation(fp_operation), .operand_a(fp_operand_a), .operand_b(fp_operand_b),
+                .done_valid(fp_valid), .done_ready(fp_done_ready),
+                .done_data(fp_data), .done_error(fp_error)
+            );
+        end
+    endgenerate
+    anvil_en1_exp #(.EXTERNAL_FP(1)) exp_unit (
         .controller_bytes(exp_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == EXP_START), .start_ready(exp_ready),
         .operand(exp_a), .done_valid(exp_valid), .done_ready(exp_accept),
-        .done_data(exp_data), .done_error(exp_error)
+        .done_data(exp_data), .done_error(exp_error),
+        .arithmetic_valid(exp_arithmetic_valid),
+        .arithmetic_ready(exp_phase && fp_ready),
+        .arithmetic_operation(exp_arithmetic_operation),
+        .arithmetic_a(exp_arithmetic_a), .arithmetic_b(exp_arithmetic_b),
+        .arithmetic_result_valid(exp_phase && fp_valid),
+        .arithmetic_result_ready(exp_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     anvil_en1_fp32_divsqrt div_unit (
         .controller_bytes(div_controller_bytes),
