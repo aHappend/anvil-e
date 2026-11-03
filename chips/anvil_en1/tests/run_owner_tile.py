@@ -82,7 +82,7 @@ def main():
                                         "expected_pair": pair})
                     valid = cases[-1]
                     for name, changes, code, fault in (
-                            ("shared-owner", {3: global_ + 1}, 7, 0),
+                            ("shared-owner", {3: global_ + 1, 7: 0}, 7, 0),
                             ("odd-component", {7: 1}, 5, 0),
                             ("past-head", {7: 8}, 5, 0),
                             ("past-token", {4: 131072}, 5, 0),
