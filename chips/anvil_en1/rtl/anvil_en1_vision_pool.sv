@@ -161,7 +161,7 @@ module anvil_en1_vision_pool (
     assign input_read_bytes = input_read_event ? 32'd4 : 32'd0;
     assign source_read_event = source_valid && source_ready;
     assign source_read_bytes = source_read_event ? 32'd2 : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(uint_return) + $bits(fp_return) + $bits(rd_return) +
         $bits(model_hold) + $bits(generation_hold) + $bits(patches_hold) +
         $bits(rows_hold) + $bits(columns_hold) + $bits(pool_count_hold) +

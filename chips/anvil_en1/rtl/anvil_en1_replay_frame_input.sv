@@ -94,7 +94,7 @@ module anvil_en1_replay_frame_input #(
     assign done_dependency_layer = rst_n && yield_hold ? frame_layer_hold - 1'b1 : 8'd0;
     assign done_dependency_token = rst_n && yield_hold ? token_hold : 32'd0;
     assign done_dependency_length = rst_n && yield_hold ? length_hold : 12'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(dependency_domain_hold) +
         $bits(token_hold) + $bits(tokens_hold) + $bits(dependency_token_hold) +
         $bits(frame_layer_hold) + $bits(dependency_layer_hold) +

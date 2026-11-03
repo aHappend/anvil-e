@@ -181,7 +181,7 @@ module anvil_en1_audio_conv_row (
     assign source_read_bytes = source_read_event ? 32'd2 : 32'd0;
     assign mask_read_event = mask_valid && mask_ready;
     assign mask_read_bytes = mask_read_event ? 32'd4 : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(uint_return) + $bits(fp_return) +
         $bits(model_hold) + $bits(precision_hold) + $bits(stage_hold) +
         $bits(generation_hold) + $bits(frames_hold) + $bits(time_hold) +

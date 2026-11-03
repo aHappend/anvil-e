@@ -102,7 +102,7 @@ module anvil_en1_frontier #(
         reg [31:0] payload [0:WORD_COUNT-1];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [4:0] layer_tags [0:MAX_TOKENS-1];
-        localparam integer CONTROLLER_BITS = $bits(state) + $bits(op_hold) +
+        wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(op_hold) +
             $bits(control_model_hold) + $bits(model_hold) +
             $bits(control_generation_hold) + $bits(control_tokens_hold) +
             $bits(generation_hold) + $bits(tokens_hold) + $bits(padded_hold) +

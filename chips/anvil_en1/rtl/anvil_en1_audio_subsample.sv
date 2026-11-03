@@ -250,7 +250,7 @@ module anvil_en1_audio_subsample (
         upper_conv_controller + upper_div_controller + upper_norm_controller +
         lower_controller + lower_input_controller + lower_point_controller +
         lower_conv_controller + lower_div_controller + lower_norm_controller : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(dependency_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(dependency_model) +
         $bits(generation_hold) + $bits(frames_hold) + $bits(token_hold) +

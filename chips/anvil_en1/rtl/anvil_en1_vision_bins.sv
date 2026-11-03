@@ -123,7 +123,7 @@ module anvil_en1_vision_bins (
     assign input_read_bytes = input_read_event ? 32'd4 : 32'd0;
     assign mask_live_bytes = rst_n && allocated ? 64'd1824 : 64'd0;
     assign mask_physical_bytes = rst_n ? 64'd1824 : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(uint_return) + $bits(model_hold) +
         $bits(generation_hold) + $bits(patches_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(count_hold) + $bits(ordinal_hold) +

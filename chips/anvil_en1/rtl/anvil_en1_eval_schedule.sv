@@ -337,7 +337,7 @@ module anvil_en1_eval_schedule #(
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
     assign busy = rst_n && state != IDLE;
-    localparam integer SCHEDULER_BITS =
+    wire [31:0] SCHEDULER_BITS =
         $bits(state) + $bits(ws_return) + $bits(model_hold) + $bits(precision_hold) +
         $bits(modality_hold) + $bits(root_domain) + $bits(generation_hold) +
         $bits(tokens_hold) + $bits(root_token) + $bits(root_layer) +

@@ -30,7 +30,7 @@ module anvil_en1_geglu_pair #(
     reg [31:0] value_hold, fp_a, fp_b, output_hold;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(op_hold) + $bits(activation_op) + $bits(gate_hold) + $bits(up_hold) +
         $bits(value_hold) + $bits(fp_a) + $bits(fp_b) + $bits(output_hold) +
         $bits(fp_op) + $bits(error_hold);

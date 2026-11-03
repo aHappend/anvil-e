@@ -227,7 +227,7 @@ module anvil_en1_audio_history_fold #(
     assign nested_controller_bytes = !rst_n ? 64'd0 :
         image_control + weight_control + glu_control + glu_norm_control +
         glu_projection_control + glu_clamp_control + fp_control;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) + $bits(kernel_hold) +
         $bits(requested_kernel_hold) + $bits(requested_padding_hold) + $bits(fused_hold) +
         $bits(fp_op) + $bits(model_hold) + $bits(precision_hold) +

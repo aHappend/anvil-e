@@ -60,7 +60,7 @@ module anvil_en1_frontier_schedule #(
         reg [7:0] layer_hold, layer_count, owner_count;
         reg forced_hold, fallback_hold;
         reg [3:0] error_hold;
-        localparam integer CONTROLLER_BITS = $bits(state) + $bits(operation) +
+        wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(operation) +
             $bits(model_hold) + $bits(precision_hold) + $bits(generation_hold) +
             $bits(tokens_hold) + $bits(token_hold) + $bits(padded_hold) +
             $bits(layer_hold) + $bits(layer_count) + $bits(owner_count) +

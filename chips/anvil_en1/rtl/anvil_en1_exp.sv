@@ -32,7 +32,7 @@ module anvil_en1_exp #(
     reg [3:0] error_hold;
     reg signed [9:0] power;
     reg [3:0] coefficient_index;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(x) + $bits(remainder_hold) + $bits(polynomial) + $bits(output_hold) +
         $bits(fp_a) + $bits(fp_b) + $bits(fp_op) + $bits(error_hold) +
         $bits(power) + $bits(coefficient_index);

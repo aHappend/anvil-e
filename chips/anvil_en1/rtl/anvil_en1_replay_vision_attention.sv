@@ -164,7 +164,7 @@ module anvil_en1_replay_vision_attention (
     assign done_continuation = done_yield ? outer_continuation : 160'd0;
     assign done_dependency_layer = done_yield ? layer_hold : 8'd0;
     assign done_dependency_patch = done_yield ? dependency_patch_hold : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(word_index) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(patches_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(query_hold) + $bits(extent_hold) + $bits(layer_hold) +

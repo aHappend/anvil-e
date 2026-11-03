@@ -346,7 +346,7 @@ module anvil_en1_replay_audio_history #(
     assign nested_controller_bytes = !rst_n ? 64'd0 :
         residual_control + heads_control + binding_control + head_control +
         heads_nested_control + post_control + post_nested_control + fold_control + fold_nested;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) +
         $bits(child_mode) + $bits(dependency_domain_hold) + $bits(yielded_domain) +
         $bits(generation_hold) + $bits(frames_hold) + $bits(query_hold) +

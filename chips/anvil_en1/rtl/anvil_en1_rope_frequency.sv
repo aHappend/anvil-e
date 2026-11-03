@@ -31,7 +31,7 @@ module anvil_en1_rope_frequency #(
     reg [8:0] index_hold, bit_hold;
     reg [31:0] root_hold, product_hold, output_hold;
     reg [3:0] error_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(mode_hold) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(mode_hold) +
         $bits(dimension_hold) + $bits(index_hold) + $bits(bit_hold) +
         $bits(root_hold) + $bits(product_hold) + $bits(output_hold) + $bits(error_hold);
     wire [63:0] div_controller_bytes, fp_controller_bytes;

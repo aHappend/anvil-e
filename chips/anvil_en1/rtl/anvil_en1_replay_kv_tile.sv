@@ -83,7 +83,7 @@ module anvil_en1_replay_kv_tile #(
     reg read_error;
     reg [3:0] read_pair_error, error_hold;
     reg [31:0] pair_hold;
-    localparam integer CONTROLLER_BITS = $bits({
+    wire [31:0] CONTROLLER_BITS = $bits({
         state, source_state, model_hold, precision_hold, head_hold, query_head_hold,
         owner_hold, source_layer_hold, token_hold, tokens_hold, source_token_hold,
         weights_hold, selector_hold, query_hold, memo_hold, bank_hold, component_hold,

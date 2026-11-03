@@ -345,7 +345,7 @@ module anvil_en1_replay_audio_heads #(
         executor_control + numerical_head_control + block_control + input_control +
         tile_control + clipped_control + clamp_control + position_control +
         softplus_control + pre_control + pre_nested_control;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(mode_hold) + $bits(dependency_domain_hold) + $bits(generation_hold) +
         $bits(frames_hold) + $bits(tokens_hold) + $bits(query_hold) +

@@ -117,7 +117,7 @@ module anvil_en1_owner_kv_tile #(
         reg scale_error_hold;
         wire [15:0] input_q;
         reg [15:0] head_q;
-        localparam integer CONTROLLER_BITS = $bits({
+        wire [31:0] CONTROLLER_BITS = $bits({
             state, src_state, scale_state, model_hold, precision_hold, memory_owner,
             head_hold, owner_hold, token_hold, hidden_hold, dimension_hold, heads_hold,
             weights_hold, component_hold, current_component, pair_base, selector_hold,

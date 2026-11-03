@@ -60,7 +60,7 @@ module anvil_en1_norm #(
     reg [2:0] fp_op;
     reg [1:0] rd_op;
     reg [3:0] error_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(layer_hold) + $bits(learned_hold) + $bits(length_hold) +
         $bits(epsilon_hold) + $bits(index) + $bits(length_float) + $bits(phase) +
         $bits(accumulator) + $bits(mean_hold) + $bits(inverse_hold) +

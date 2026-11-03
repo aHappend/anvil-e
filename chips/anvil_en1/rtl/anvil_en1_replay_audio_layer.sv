@@ -441,7 +441,7 @@ module anvil_en1_replay_audio_layer #(
         ff_control + ff_norm_control + ff_clamp_control + ff_mlp_control +
         ff_down_control + ff_down_clamp_control + ff_inner_control +
         ff_inner_clamp_control + clamp_control + norm_control;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(mode_hold) + $bits(phase_hold) + $bits(dependency_domain_hold) +
         $bits(yielded_domain) + $bits(source_slice_hold) + $bits(generation_hold) +

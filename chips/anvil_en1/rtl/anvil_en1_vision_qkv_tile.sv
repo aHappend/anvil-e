@@ -237,7 +237,7 @@ module anvil_en1_vision_qkv_tile (
     assign vector_live_bytes = rst_n ?
         (input_allocated ? 64'd1536 : 64'd0) + (head_allocated ? 64'd128 : 64'd0) : 64'd0;
     assign vector_physical_bytes = rst_n ? 64'd1664 : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(src_state) + $bits(scale_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(selector_hold) +
         $bits(layer_hold) + $bits(patch_hold) + $bits(x_hold) + $bits(y_hold) +

@@ -236,7 +236,7 @@ module anvil_en1_replay_image_feature #(
     assign nested_controller_bytes = rst_n ? map_control + map_nested + divide_control +
         soft_control + bins_control + feature_control + pool_control +
         bins_div_control + pool_div_control + projection_control : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
         $bits(generation_hold) + $bits(tokens_hold) + $bits(token_hold) +
         $bits(patches_hold) + $bits(rows_hold) + $bits(columns_hold) + $bits(pool_count_hold) +

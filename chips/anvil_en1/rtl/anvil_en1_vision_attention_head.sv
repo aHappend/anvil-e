@@ -175,7 +175,7 @@ module anvil_en1_vision_attention_head #(
     assign output_last = rst_n && state == EMIT && output_component == 63;
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(model_hold) + $bits(precision_hold) +
         $bits(phase) + $bits(selector_hold) + $bits(generation_hold) +
         $bits(patches_hold) + $bits(query_hold) + $bits(key) + $bits(active_keys) +

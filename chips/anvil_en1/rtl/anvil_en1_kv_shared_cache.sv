@@ -118,10 +118,10 @@ module anvil_en1_kv_shared_cache #(
         reg [3:0] pair_error;
         reg hit_hold;
         reg [31:0] payload_q;
-        reg [TAG_WIDTH-1:0] tags [0:RESIDENT_ENTRIES-1];
+        (* nomem2reg *) reg [TAG_WIDTH-1:0] tags [0:RESIDENT_ENTRIES-1];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [31:0] payload [0:RESIDENT_ENTRIES-1];
-        localparam integer CONTROLLER_BITS = $bits(meta_state) + $bits(fetch_state) +
+        wire [31:0] CONTROLLER_BITS = $bits(meta_state) + $bits(fetch_state) +
             $bits(generation) + $bits(replace_index) + $bits(resident_count) +
             $bits(op_hold) + $bits(model_hold) + $bits(layer_hold) +
             $bits(token_hold) + $bits(selector_hold) + $bits(head_hold) +
@@ -219,7 +219,8 @@ module anvil_en1_kv_shared_cache #(
         assign resident_live_bytes = rst_n ? {55'd0, resident_count, 2'd0} : 64'd0;
         assign resident_physical_bytes = rst_n ? 64'(4*RESIDENT_ENTRIES) : 64'd0;
         assign metadata_bytes = rst_n ?
-            64'((RESIDENT_ENTRIES*(TAG_WIDTH+1)+7) >> 3) : 64'd0;
+            64'((RESIDENT_ENTRIES*TAG_WIDTH+7) >> 3) +
+                64'((RESIDENT_ENTRIES+7) >> 3) : 64'd0;
         assign resident_hit_event = rst_n && fetch_state == FETCH_LOOKUP &&
             !invalidating && data_error == 0 && hit_hold;
         assign resident_miss_event = rst_n && fetch_state == FETCH_LOOKUP &&

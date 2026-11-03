@@ -303,7 +303,7 @@ module anvil_en1_audio_feedforward #(
     assign vector_physical_bytes = rst_n ?
         (EXTERNAL_VECTOR_RAM ? 64'd0 :
             (RAW_SOURCE_CALLBACK ? 64'd4096 : 64'd6144)) : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) + $bits(layer_hold) +
         $bits(generation_hold) + $bits(token_hold) + $bits(index_hold) +

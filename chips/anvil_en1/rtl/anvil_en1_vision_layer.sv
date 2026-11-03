@@ -162,7 +162,7 @@ module anvil_en1_vision_layer (
     assign done_error = rst_n ? error_hold : 4'd0;
     assign vector_live_bytes = rst_n ? post_live + tile_live : 64'd0;
     assign vector_physical_bytes = rst_n ? post_physical + tile_physical : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(branch_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(patches_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(query_hold) + $bits(extent_hold) + $bits(row_hold) +

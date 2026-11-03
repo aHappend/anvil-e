@@ -235,7 +235,7 @@ module anvil_en1_vision_patch (
     assign patch_padding = rst_n && padding_hold;
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(image_index) +
         $bits(image_base_hold) + $bits(weights_base_hold) +

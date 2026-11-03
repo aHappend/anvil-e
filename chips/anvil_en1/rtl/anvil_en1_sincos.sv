@@ -79,7 +79,7 @@ module anvil_en1_sincos #(
     wire [31:0] signed_coefficient = {coefficient_negative, div_data[30:0]};
     wire [31:0] signed_sine = {reduced_negative ^ sine_hold[31], sine_hold[30:0]};
     reg [31:0] quadrant_sine, quadrant_cosine;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(angle_hold) + $bits(reduced_float) + $bits(squared) +
         $bits(polynomial) + $bits(coefficient_hold) + $bits(value_hold) +
         $bits(sine_hold) + $bits(cosine_hold) + $bits(fp_a) + $bits(fp_b) +

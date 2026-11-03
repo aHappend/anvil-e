@@ -219,11 +219,11 @@ module anvil_en1_replay_workspace #(
         reg [KEY_BITS-1:0] frame_tags [0:63];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [KEY_BITS-1:0] memo_tags [0:15];
-        localparam integer METADATA_BITS = 80*KEY_BITS +
+        wire [31:0] METADATA_BITS = 80*KEY_BITS +
             $bits(frame_occupied) + $bits(vector_reserved) + $bits(vector_occupied) +
             $bits(pair_progress_valid) + $bits(pair_next_index) +
             $bits(memo_occupied) + $bits(memo_domains) + $bits(scalar_occupied);
-        localparam integer CONTROLLER_BITS =
+        wire [31:0] CONTROLLER_BITS =
             $bits(state) + $bits(backing_return) + $bits(vector_reserve_return) +
             $bits(active) +
             $bits(invalidate_hold) + $bits(bank_hold) + $bits(pending_push) +

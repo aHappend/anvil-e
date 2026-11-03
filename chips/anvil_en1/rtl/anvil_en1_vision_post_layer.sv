@@ -221,7 +221,7 @@ module anvil_en1_vision_post_layer #(
         (mlp_allocated ? 64'd1536 : 64'd0) : 64'd0;
     assign vector_physical_bytes = rst_n ?
         (EXTERNAL_BRANCH_RAM ? 64'd3072 : 64'd4608) : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(src_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(phase) + $bits(src_bank) + $bits(layer_hold) + $bits(generation_hold) +
         $bits(patch_hold) + $bits(index) + $bits(norm_count) + $bits(src_index_hold) +

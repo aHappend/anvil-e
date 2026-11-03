@@ -31,7 +31,7 @@ module anvil_en1_fp32_divsqrt (
     reg [25:0] reciprocal_remainder;
     reg [24:0] reciprocal_denominator;
     reg [6:0] reciprocal_digits_left;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(op) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(op) +
         $bits(sign_hold) + $bits(a) + $bits(b) + $bits(output_hold) +
         $bits(error_hold) + $bits(mantissa_a) + $bits(mantissa_b) +
         $bits(exponent_a) + $bits(exponent_b) + $bits(exponent_hold) +

@@ -109,7 +109,7 @@ module anvil_en1_replay_audio_input (
     assign done_error = rst_n ? error_hold : 4'd0;
     assign done_bank = 0;
     assign nested_controller_bytes = rst_n ? child_control + child_nested_control : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(generation_hold) +
         $bits(frames_hold) + $bits(tokens_hold) + $bits(token_hold) + $bits(received) +
         $bits(layer_hold) + $bits(slot_hold) + $bits(audio_hold) + $bits(weights_hold) +

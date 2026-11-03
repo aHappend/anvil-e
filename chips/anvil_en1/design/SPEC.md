@@ -45,15 +45,155 @@ named `bin_payload`. These repairs change no storage dimensions, controller
 bits, arithmetic, read/write enables or handshake timing. The previous
 attention-head closure repair remains intact.
 
-The three latest repairs have not been rerun through an HDL tool. A read-only delimiter
-scan finds matched begin/end, case/endcase, generate/endgenerate and
-module/function/task delimiters in all 95 RTL files; this is not HDL
-parsing, binding or elaboration. The two retained receipts and their raw
+One newly authorized static elaboration of those repairs succeeded:
+`evidence/preparation/static-binding-20261103T033046Z/receipt.json`.
+Icarus 12.0 exited zero in 15.707 seconds, emitted no stderr diagnostics,
+and produced the retained `elaboration.txt` hierarchy dump. This was
+`-t null`, not functional simulation or synthesis. The 180-second
+watchdog did not expire. Both preceding failed receipts and their raw
 logs remain unchanged. The original receipt still hashes to
 `908b15cc6ade4a0b23c771e7fdeb2cc78940f6c561ab99d039a2c5bb8858a249`.
-No simulation, synthesis, test/parent source edit or runtime-state change
-was performed. Further HDL diagnosis belongs to an authorized fresh
-static run or independent Verifier, never an overwritten receipt.
+
+The resolved dump exposed a separate real accounting defect: Icarus
+evaluated register-dependent `$bits` inside report localparams before
+the referenced registers acquired their declared widths. Among the
+native/integration report parameters, 459 became zero; five became
+negative (`-32` three times, `-64`, `-48`) because their external-RAM
+subtractions remained. A clean elaboration therefore did not establish
+correct allocation reporting.
+
+All 95 register-dependent report-size declarations in 93 owned RTL
+files now use continuously assigned 32-bit constant nets instead of
+localparams. Their `$bits` operands, parameter branches, rounding and
+downstream controller/metadata equations are unchanged. These values
+are used only in byte reports, never array widths, generate choices,
+state encodings or parameter validation. Moving evaluation to the
+continuous expressions preserves declaration-derived sizing without
+hardcoded substitute byte totals. It creates no clocked state. The
+cache metadata report also byte-rounds the tag array and occupied bitmap
+separately: `ceil(34*C/8)+ceil(C/8)`; this corrects a one-byte
+undercount at capacities such as C=1 and leaves C=3/64 unchanged.
+No datapath, numerical operation, ownership schedule, legal parameter
+range or acceptance threshold is changed.
+
+One fresh authorized static elaboration of the saved report repairs
+succeeded with Icarus 12.0: exit zero, 15.405 seconds, no stderr
+diagnostics, no timeout, and a complete hierarchy dump. Exact expanded
+argv, RTL/parent/document SHA256 inventory, tool identity, timestamps,
+180-second watchdog and raw streams are retained at
+`evidence/preparation/static-report-sizing-20261103T033622Z/receipt.json`.
+Its repair link preserves the preceding binding receipt and both earlier
+failed diagnostics. The invocation used `-t null`; it ran no simulation
+or synthesis. RTL hashes match the saved report repairs; document hashes
+precede this diagnostic-status update.
+
+Read-only Python inspection reconciled the 95 source report declarations
+against the resolved default production hierarchy (COMPACT=0, C=3).
+They appear in 471 connected instances. All 468 directly constant-driven
+instances match the sums of their resolved operand widths and declared
+parameter adjustments, with zero mismatches and no zero/wrapped sizes.
+Three reports retain static expression nodes rather than a single
+constant driver: dispatcher 1090+52=1142 bits, full allocation ledger
+142*24+42=3450 bits, and prospective ledger 121*24+42=2946 bits.
+The ledger node counts agree with the generated register declarations;
+their byte reports are 432 and 369 respectively. This is static
+declaration/expression reconciliation, not evaluation of live grants.
+
+The design is ready for independent Verifier handoff. No further RTL
+repair was required by this diagnostic. Functional behavior, numerical
+agreement, actual allocation/traffic savings, compact/production coverage,
+synthesis, inferred RAM resources, timing and hardware operation remain
+unverified. Tests, immutable parent sources and runtime metadata were not
+edited. All six mandatory suites and native hardware gates remain required.
+
+### Resolved physical array census and backing ownership
+
+The successful static dump resolves the default production top with
+COMPACT=0 and C=3. It contains 906 module instances: 736 outside
+`parent`, including the native external-memory bridge, and 170 in the
+immutable compatibility subtree. The following disjoint table covers
+every native payload array. Fields refer to the 25-element
+`native.allocation_physical_bytes` bus; every row excludes scalar
+readback registers, tags and occupied bitmaps. These are physical
+declaration reservations, not live allocation peaks.
+
+| Field | Declared array instances (paths below `native`) | Production bytes | Compact bytes |
+| --- | --- | ---: | ---: |
+| 0 | `frontier.frontier.frontier.payload` | 4071936 | 836096 |
+| 1 | `frontier.ring.ring.payload` | 1048576 | 64 |
+| 2 | `ordinary_hidden_payload` | 5120 | 16 |
+| 3 | `frontier.feature_payload` | 5120 | 16 |
+| 4 | `frontier.anchor.materialize.payload` | 512 | 8 |
+| 6 | `binding.owner_replay.replay.raw_payload` | 5120 | 16 |
+| 7 | `binding.owner_replay.replay.owner_tile.tile.head_payload` | 1024 | 16 |
+| 8 | `binding.replay.text_layer.attention_branch.executor.tile.owner_tile.tile`: `head_payload`, `internal_input_ram.input_payload` | 6144 | 32 |
+| 9 | `binding.replay.text_layer.ple_payload` | 512 | 8 |
+| 12 | `binding.replay.vision_layer.attention.executor.tile`: `input_payload`, `head_payload`; `binding.replay.vision_layer.post`: `raw_payload`, `mlp_payload` | 4736 | 4736 |
+| 13 | `binding.replay.audio_input.immutable_input.stage_{zero,one}.point.convolved`; `binding.replay.audio_layer.histories.fold.gated_input.local_vector.normalized`; `binding.replay.audio_layer.histories.residual.heads.attention.normalized`; its `pre_attention.shared_vectors[0..2].payload`; `binding.replay.audio_layer.histories.residual.post_attention`: `heads`, `normalized_source`, `working`; `binding.replay.native_vectors[0..2].payload` | 23040 | 23040 |
+| 14 | `binding.replay.audio_feature.feature.projected`, its `modality.normalized` | 6144 | 6144 |
+| 15 | `binding.replay.image_feature.feature.feature.pooled`, its `projection.normalized`; `binding.replay.image_feature.feature.mapping.bin_payload` | 6432 | 6432 |
+| 18 | `cache.cache.payload` at C=3 | 12 | 12 |
+| 20 | `frontier.text_layer.engine.full_attention_payload.payload`; `text_banks[0..3].payload` | 20992 | 72 |
+| **Total** | **38 payload array instances** | **5205420** | **876708** |
+
+Production columns follow the resolved declarations; compact columns
+are derived from their explicit COMPACT branches, not a second
+elaboration. Native encoder dimensions and the shared native-vector
+banks do not compact. Both model selections share the same physical
+reservations; only occupied lengths and production shadows differ.
+For other C, replace the resident row with `4*C`.
+
+The five remaining native arrays are metadata: frontier `layer_tags`
+(640/320 bytes), ring `token_tags` (512/8), replay workspace
+`frame_tags` (200/200) and `memo_tags` (50/50), and cache `tags`
+(`ceil(34*C/8)`, 13 bytes at C=3). Their production/compact subtotals
+are 1415/591 bytes at C=3. Separately declared occupied vectors remain
+in the existing metadata reports: frontier 128/64 bytes, ring 256/1,
+resident `ceil(C/8)`, and the replay visibility vectors. They are not
+silently treated as RAM payload or omitted controller state.
+
+Thus all 43 native arrays reserve 5206835 production bytes at C=3.
+The two `performance` arrays, `counters` and `snapshots`, add 464
+bytes each and are already included in the CSR controller report
+within integration, not in native payload. These 45 non-parent arrays
+total 5207763 separately rounded bytes. The parent subtree has 58
+arrays totaling 451008 bytes; they remain disclosed physical
+compatibility storage, not native live cache savings. Scalar registers,
+combinational declarations and tool-generated nets are not included in
+these array-only totals. No M20K block count is inferred from them.
+
+The backing has one physical owner: field 0. Field 5 reports live
+frame/memo/scalar allocations mapped into that owner's RAM and reports
+zero additional physical payload. Its `workspace_reserved_bytes`
+describes that mapped subrange, not a second array. Production replay
+word ranges are frames `[0,196607]`, memo `[196608,229375]`, scalars
+`[229376,231551]`; compact uses the same frames, memo
+`[196608,204799]`, scalars `[204800,206975]`. Each scalar slot is 34
+words. The ordinary mapping adds 786432/2048 words and ends exactly
+at the physical frontier array's final word; the fallback mapping
+adds zero only after ordinary frontier/ring invalidation.
+
+The native shared banks are physically charged in field 13 even when
+vision borrows bank 0. The four text banks are charged once in field 20
+even when replay or embedding borrows them. Fields 10, 11, 19 and 21
+have no private connected payload arrays under the current external-RAM
+parameters. This physical attribution does not replace the per-phase
+live reports: each borrower must hold its actual grant, and sharing
+must never conceal a simultaneous allocation. The retained shadow and
+liveness bounds below still require independent execution.
+
+The scalar declaration audit found the report operands cover sequential
+state except explicit generated readback banks and metadata. Generated
+readback widths are already charged by the existing conditional
+16/32/48/64-bit terms or their aliased read-data operands; allocation
+ledger reduction registers use `registered_nodes()*NODE_BITS`.
+`tensor_shape` and the public descriptor/checkpoint packing outputs
+are combinational, not additional retained storage. This audit is
+source/declaration reconciliation, not proof of no latches, actual
+grant success, numerical behavior or timing. In particular the
+continuous report-sizing implementation now has the static binding and
+declaration-width reconciliation recorded above; its live behavior still
+requires independent verification.
 
 ### Scoped physical declaration reconciliation after the parse repair
 

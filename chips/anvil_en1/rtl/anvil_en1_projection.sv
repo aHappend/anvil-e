@@ -51,7 +51,7 @@ module anvil_en1_projection #(
     reg source_error_hold;
     reg [3:0] error_hold;
     reg [2:0] fp_op;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(precision_hold) + $bits(base_hold) + $bits(bytes_hold) +
         $bits(rows_hold) + $bits(columns_hold) + $bits(stride_hold) +
         $bits(row_hold) + $bits(column) + $bits(weight_hold) +

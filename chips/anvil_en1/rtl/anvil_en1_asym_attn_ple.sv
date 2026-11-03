@@ -228,7 +228,7 @@ module anvil_en1_asym_attn_ple #(
         wire [15:0] residual_q, work_q, branch_q, ple_q;
         wire [15:0] query_q = branch_q;
         wire [15:0] attention_q;
-        localparam integer CONTROLLER_BITS = $bits({
+        wire [31:0] CONTROLLER_BITS = $bits({
             state, lookup_return, fp_return, narrow_return, norm_phase, norm_bank,
             norm_destination, src_state, src_client, src_bank, scale_state,
             model_hold, precision_hold, memory_owner, residual_phase, layer_hold,

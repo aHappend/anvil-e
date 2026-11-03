@@ -59,7 +59,7 @@ module anvil_en1_memory_arbiter #(
         reg draining, write_hold, error_hold, fault_hold, input_hold, replay_hold;
         reg [63:0] address_hold;
         reg [31:0] write_data_hold, read_data_hold;
-        localparam integer CONTROLLER_BITS = $bits(state) + $bits(cursor) +
+        wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(cursor) +
             $bits(owner_hold) + $bits(draining) + $bits(write_hold) +
             $bits(error_hold) + $bits(fault_hold) + $bits(input_hold) +
             $bits(replay_hold) + $bits(address_hold) + $bits(write_data_hold) +

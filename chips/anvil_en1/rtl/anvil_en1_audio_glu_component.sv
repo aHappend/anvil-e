@@ -185,7 +185,7 @@ module anvil_en1_audio_glu_component #(
         (precision_hold == 0 ? 32'd2048 : 32'd576);
     assign vector_live_bytes = rst_n && vector_allocated ? 64'd2048 : 64'd0;
     assign vector_physical_bytes = rst_n && !EXTERNAL_VECTOR_RAM ? 64'd2048 : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(layer_hold) + $bits(generation_hold) + $bits(token_hold) +
         $bits(channel_hold) + $bits(received) + $bits(bank_index) + $bits(weights_hold) +

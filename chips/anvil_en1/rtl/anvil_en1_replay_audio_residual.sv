@@ -315,7 +315,7 @@ module anvil_en1_replay_audio_residual #(
     assign post_nested_controller_bytes = !rst_n ? 64'd0 :
         pre_control + unused_head_control + projection_control + projection_clamp_control +
         norm_control + clamp_control;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(mode_hold) + $bits(dependency_domain_hold) + $bits(generation_hold) +
         $bits(frames_hold) + $bits(query_hold) + $bits(dependency_token_hold) +

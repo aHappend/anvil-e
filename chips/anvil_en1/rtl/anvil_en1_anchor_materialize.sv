@@ -114,7 +114,7 @@ module anvil_en1_anchor_materialize #(
         reg [1:0] metadata_space;
         reg [15:0] fetched_component, low_component;
         reg [31:0] pair_hold, buffer_q;
-        localparam integer CONTROLLER_BITS = $bits({
+        wire [31:0] CONTROLLER_BITS = $bits({
             state, model_hold, head_hold, head_count, owner_hold, canonical_owner,
             generation_hold, token_hold, selector_hold, high_component, buffer_live,
             lane_complete, pair_index, error_hold, metadata_error, fetch_error_hold,

@@ -42,7 +42,7 @@ module anvil_en1_allocation_admission (
     wire [68:0] payload_wide = {5'd0, equivalent};
     wire [68:0] shadow_wide = {5'd0, equivalent_shadow};
     wire [68:0] baseline_wide = {5'd0, baseline_hold};
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(baseline_hold) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(baseline_hold) +
         $bits(scaled_payload) + $bits(scaled_shadow) + $bits(scaled_baseline) +
         $bits(limit_failure) + $bits(allowed_hold) + $bits(candidate_legal_hold);
 

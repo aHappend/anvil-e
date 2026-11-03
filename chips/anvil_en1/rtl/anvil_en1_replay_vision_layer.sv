@@ -533,7 +533,7 @@ module anvil_en1_replay_vision_layer #(
         (projected_allocated ? 64'd1536 : 64'd0) + tile_live + post_live;
     assign vector_physical_bytes = !rst_n ? 64'd0 :
         (EXTERNAL_BRANCH_RAM ? 64'd0 : 64'd1536) + tile_physical + post_physical;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(pair_return) + $bits(source_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) +
         $bits(dependency_domain_hold) + $bits(generation_hold) + $bits(patches_hold) +

@@ -784,7 +784,7 @@ module anvil_en1_native #(
         .protocol_error(memory_fault), .controller_bytes(memory_controller_bytes)
     );
 
-    localparam integer STATE_BITS = $bits(state) + $bits(model_hold) +
+    wire [31:0] STATE_BITS = $bits(state) + $bits(model_hold) +
         $bits(precision_hold) + $bits(modality_hold) + $bits(generation_hold) +
         $bits(tokens_hold) + $bits(forced_hold) + $bits(tokens_base_hold) +
         $bits(weights_base_hold) + $bits(mask_base_hold) + $bits(image_base_hold) +

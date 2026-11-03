@@ -23,7 +23,7 @@ module anvil_en1_uint_div (
     assign quotient = rst_n ? quotient_hold : 32'd0;
     assign remainder = rst_n ? remainder_hold[31:0] : 32'd0;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(divisor_hold) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(divisor_hold) +
         $bits(quotient_hold) + $bits(remainder_hold) + $bits(shifted_hold) +
         $bits(subtract_hold) + $bits(digits) + $bits(error_hold);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;

@@ -15,7 +15,7 @@ module anvil_en1_uint_to_fp32 (
     reg [31:0] integer_hold, output_hold;
     reg [7:0] exponent_hold;
     reg [3:0] error_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(integer_hold) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(integer_hold) +
         $bits(output_hold) + $bits(exponent_hold) + $bits(error_hold);
     assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
     wire round_up = integer_hold[7] &&

@@ -26,7 +26,7 @@ module anvil_en1_fp32 (
     reg [47:0] partial_lo, partial_hi, product;
     reg [10:0] half_mantissa;
     reg signed [11:0] half_exponent;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(op) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(op) +
         $bits(a) + $bits(b) + $bits(output_hold) + $bits(error_hold) +
         $bits(sign_a) + $bits(sign_b) + $bits(sign_result) +
         $bits(exponent_a) + $bits(exponent_b) + $bits(exponent_result) +

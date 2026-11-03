@@ -66,7 +66,7 @@ module anvil_en1_gated_projection #(
     reg source_error_hold, projection_is_up, memory_down;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(precision_hold) + $bits(activation_hold) + $bits(up_mode_hold) +
         $bits(gate_base_hold) + $bits(gate_bytes_hold) + $bits(up_base_hold) +
         $bits(up_bytes_hold) + $bits(down_base_hold) + $bits(down_bytes_hold) +

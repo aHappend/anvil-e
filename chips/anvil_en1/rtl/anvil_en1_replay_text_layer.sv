@@ -557,7 +557,7 @@ module anvil_en1_replay_text_layer #(
         source_state == SOURCE_SEND && work_req_ready;
     assign source_read_event = attention_source_event || feature_source_event;
     assign source_read_bytes = attention_source_bytes + (feature_source_event ? 32'd4 : 32'd0);
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) + $bits(mode_hold) +
         $bits(dependency_domain_hold) + $bits(selected_modality) + $bits(yielded_domain) +

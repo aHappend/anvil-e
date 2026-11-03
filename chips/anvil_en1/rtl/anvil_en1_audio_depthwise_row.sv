@@ -127,7 +127,7 @@ module anvil_en1_audio_depthwise_row (
     assign projection_bytes = projection_event ? stride_hold : 32'd0;
     assign source_read_event = source_valid && source_ready;
     assign source_read_bytes = source_read_event ? 32'd2 : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(layer_hold) + $bits(generation_hold) + $bits(token_hold) +
         $bits(channel_hold) + $bits(stride_hold) + $bits(weights_hold) +

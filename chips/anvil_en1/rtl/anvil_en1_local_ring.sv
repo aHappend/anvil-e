@@ -92,7 +92,7 @@ module anvil_en1_local_ring #(
         reg [31:0] payload [0:WORD_COUNT-1];
         (* ramstyle = "MLAB", nomem2reg *)
         reg [TAG_BITS-1:0] token_tags [0:WINDOW-1];
-        localparam integer CONTROLLER_BITS = $bits(state) +
+        wire [31:0] CONTROLLER_BITS = $bits(state) +
             $bits(control_invalidate_hold) + $bits(active) + $bits(is_write) +
             $bits(selector_hold) + $bits(hit_hold) + $bits(control_model_hold) +
             $bits(model_hold) + $bits(request_model) + $bits(head_hold) +

@@ -169,7 +169,7 @@ module anvil_en1_audio_feature #(
     assign vector_live_bytes = !rst_n ? 64'd0 :
         (vector_allocated ? 64'd3072 : 64'd0) + modality_live;
     assign vector_physical_bytes = rst_n ? 64'd3072 + modality_physical : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(token_hold) + $bits(received) +
         $bits(hidden_hold) + $bits(bank_index) + $bits(weights_hold) +

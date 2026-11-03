@@ -35,7 +35,7 @@ module anvil_en1_activation #(
     reg [31:0] fp_a, fp_b, exp_a, div_a, div_b, output_hold;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(op) + $bits(x) + $bits(value_hold) + $bits(exponential) +
         $bits(numerator) + $bits(factor) + $bits(tanh_argument) + $bits(fp_a) +
         $bits(fp_b) + $bits(exp_a) + $bits(div_a) + $bits(div_b) +

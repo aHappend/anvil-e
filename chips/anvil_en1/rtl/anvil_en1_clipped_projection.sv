@@ -189,7 +189,7 @@ module anvil_en1_clipped_projection #(
     assign done_valid = rst_n && state == RESPONSE;
     assign done_data = rst_n ? output_hold : 32'd0;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(image_index) +
         $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
         $bits(image_base_hold) + $bits(matrix_base) + $bits(matrix_bytes) +

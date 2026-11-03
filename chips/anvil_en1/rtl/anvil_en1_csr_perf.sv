@@ -39,7 +39,7 @@ module anvil_en1_csr_perf (
     reg [31:0] atomic_high;
     reg [63:0] counters [0:2*METRICS-1];
     reg [63:0] snapshots [0:2*METRICS-1];
-    localparam integer CONTROLLER_BITS = 4*METRICS*64 + $bits({
+    wire [31:0] CONTROLLER_BITS = 4*METRICS*64 + $bits({
         state, write_hold, addr_hold, wdata_hold, response_hold, error_hold,
         bank_select, request_bank, snapshot_active, status_model_hold,
         status_busy_hold, status_error_hold, atomic_valid, atomic_bank,

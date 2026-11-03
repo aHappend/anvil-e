@@ -163,7 +163,7 @@ module anvil_en1_vision_feature #(
     assign vector_live_bytes = rst_n ?
         (vector_allocated ? 64'd1536 : 64'd0) + projection_live : 64'd0;
     assign vector_physical_bytes = rst_n ? 64'd1536 + projection_physical : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(patches_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(count_hold) + $bits(index_hold) + $bits(received) +

@@ -229,7 +229,7 @@ module anvil_en1_replay_attention #(
     assign done_is_value = rst_n && yield_hold && selector_hold;
     assign done_kv_head = rst_n && yield_hold ? kv_head_hold : 2'd0;
     assign done_component = rst_n && yield_hold ? component_hold : 10'd0;
-    localparam integer CONTROLLER_BITS = $bits({
+    wire [31:0] CONTROLLER_BITS = $bits({
         state, model_hold, layer_hold, frame_layer_hold, query_head_hold,
         position_hold, tokens_hold, frame_slot_hold, hidden_hold, resume_hold,
         checkpoint_hold, word_index, scalar_data_hold, scalar_error_hold,

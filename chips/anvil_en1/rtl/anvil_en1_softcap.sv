@@ -29,7 +29,7 @@ module anvil_en1_softcap #(
     reg [2:0] fp_op;
     reg [3:0] error_hold;
     reg output_binary32_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(operand_hold) + $bits(cap_hold) + $bits(value_hold) + $bits(fp_a) +
         $bits(fp_b) + $bits(output_hold) + $bits(fp_op) + $bits(error_hold) +
         $bits(output_binary32_hold);

@@ -490,7 +490,7 @@ module anvil_en1_audio_attention_residual #(
     assign vector_physical_bytes = rst_n ?
         (FRAME_HEADS ? (PRECOMPUTED_RAW ? 64'd2048 : 64'd4096) :
             64'd8192) + pre_physical : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) + $bits(model_hold) +
         $bits(precision_hold) + $bits(source_bank) + $bits(layer_hold) + $bits(head_hold) +
         $bits(generation_hold) + $bits(frames_hold) + $bits(tokens_hold) + $bits(token_hold) +

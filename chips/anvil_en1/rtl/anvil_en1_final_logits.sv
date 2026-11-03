@@ -97,7 +97,7 @@ module anvil_en1_final_logits #(
         reg [31:0] raw_logit_hold;
         reg [3:0] error_hold;
         wire [15:0] normalized_q;
-        localparam integer CONTROLLER_BITS = $bits({
+        wire [31:0] CONTROLLER_BITS = $bits({
             state, lookup_return, scale_state, source_state, model_hold, precision_hold,
             memory_owner, weights_hold, lookup_kind, hidden_hold, normalized_count,
             row_hold, descriptor_base, descriptor_bytes, descriptor_rows,

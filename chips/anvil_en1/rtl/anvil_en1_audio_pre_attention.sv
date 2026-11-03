@@ -228,7 +228,7 @@ module anvil_en1_audio_pre_attention #(
         (allocated && (RAW_SOURCE_CALLBACK || ff_live == 0) ?
             64'd2048 : 64'd0) + ff_live;
     assign vector_physical_bytes = rst_n ? 64'd6144 + ff_physical : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(layer_hold) + $bits(generation_hold) + $bits(token_hold) +
         $bits(received) + $bits(index_hold) + $bits(source_index_hold) + $bits(weights_hold) +

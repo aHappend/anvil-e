@@ -360,7 +360,7 @@ module anvil_en1_audio_layer (
         conv_control + conv_nested_control + ff_control + ff_norm_control +
         ff_clamp_control + ff_mlp_control + ff_down_control + ff_down_clamp_control +
         ff_inner_control + ff_inner_clamp_control + clamp_control + norm_control;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(source_model_hold) + $bits(source_bank) + $bits(layer_hold) +
         $bits(source_layer_hold) + $bits(generation_hold) + $bits(frames_hold) +

@@ -42,7 +42,7 @@ module anvil_en1_rotary_pair #(
     reg [15:0] sine_bf16, cosine_bf16, first_output;
     reg [2:0] fp_op;
     reg [3:0] error_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(mode_hold) + $bits(dimension_hold) + $bits(index_hold) +
         $bits(position_hold) + $bits(pair_hold) + $bits(frequency_hold) +
         $bits(position_float) + $bits(angle_hold) + $bits(sine_float) +

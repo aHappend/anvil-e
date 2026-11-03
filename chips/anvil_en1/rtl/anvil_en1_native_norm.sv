@@ -185,7 +185,7 @@ module anvil_en1_native_norm #(
         (norm_selected && scale_state == SCALE_WAIT);
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(scale_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(scale_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
         $bits(kind_hold) + $bits(layer_hold) + $bits(length_hold) +
         $bits(index_hold) + $bits(weights_hold) + $bits(base_hold) +

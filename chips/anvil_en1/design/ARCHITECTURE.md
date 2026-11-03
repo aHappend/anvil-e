@@ -5,7 +5,85 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current diagnostic: static parse failure and saved scope repair
+## Current handoff: report-sizing repairs statically elaborate
+
+The saved RTL is ready for independent Verifier handoff. One newly
+authorized Icarus 12.0 static elaboration of the report-sizing repairs
+exited zero in 15.405 seconds, emitted no stderr diagnostics, did not
+time out and produced a complete hierarchy dump:
+`evidence/preparation/static-report-sizing-20261103T033622Z/receipt.json`.
+That receipt retains exact expanded argv, source hashes, tool identity,
+timestamps, the 180-second watchdog, raw streams and a repair link to
+the preceding receipt. It used `-t null`, not simulation or synthesis.
+Its RTL hashes describe the current implementation; document hashes
+precede this status update.
+
+Read-only source/dump reconciliation covers all 95 repaired size
+declarations in their 471 connected instances. The 468 directly
+constant-driven sizes match the declared operand widths and parameter
+adjustments, with zero mismatches and no nonpositive/wrapped sizes.
+The other three retain static expression nodes: dispatcher 1142 bits,
+full ledger 3450 bits and prospective ledger 2946 bits. The two ledger
+reports correspond to 142 and 121 generated 24-bit reduction registers
+plus 42 control bits, producing the documented 432/369-byte charges.
+No additional RTL change was needed.
+
+The two original failed static diagnostics and subsequent successful
+binding receipt remain unchanged. The retained generate-scope and
+reserved-keyword repairs, 95 report-net conversions and cache metadata
+rounding repair remain in place. Only design documentation changes in
+this continuation; tests, parent sources and runtime metadata remain
+untouched.
+
+Tools used here were view/glob/rg, read-only Python source/dump
+inspection, the one Icarus static invocation with its receipt, and
+apply_patch for these documentation updates. Independent Verifier owns
+all functional/numerical/reference, mutation, benchmark and synthesis
+execution. Actual liveness, allocation success, traffic reductions,
+resource fit and timing are not established by this handoff. All six
+mandatory suites and shared-runtime timing/STA/HIL gates remain pending.
+Historical unfinished-state statements below are superseded only for
+static binding and declaration-size reconciliation, not acceptance.
+
+## Retained diagnostic: resolved binding and report-sizing repair
+
+A newly authorized static elaboration of the saved generate/name repairs
+succeeded with Icarus 12.0 in 15.707 seconds, exit zero and no stderr.
+The exact command, tool identity, source hashes and hierarchy dump are
+retained at
+`evidence/preparation/static-binding-20261103T033046Z/receipt.json`,
+linked to the preceding failure. It used `-t null`; no simulation or
+synthesis ran. Both original failed receipts remain unchanged.
+
+The dump exposed an allocation-report bug, not a functional pass:
+register-dependent `$bits` report localparams resolved prematurely to
+zero (459 instances) or negative sizes (five instances). All 95 such
+declarations in 93 RTL files now use continuous constant nets. Their
+operand lists and report equations are retained; only evaluation context
+changes. No datapath/state/storage geometry changes. Cache tags and its
+occupied bitmap now also round separately, fixing a one-byte metadata
+undercount for capacities such as C=1 without lowering any charge.
+These repairs postdate that earlier static receipt; their later static
+elaboration is recorded in the current handoff above.
+
+SPEC now contains a disjoint per-instance array/backing census: 43 native
+arrays, 5206835 declared bytes at production C=3; two CSR arrays already
+charged in integration add 928 bytes; 58 immutable-parent arrays reserve
+451008 more bytes. The native payload table accounts for all 38 payload
+arrays and five metadata arrays, including shared text/native banks.
+Replay frame/memo/scalar backing is part of the one frontier array,
+not another physical allocation. Compact sizes are source-derived,
+not separately elaborated. These totals exclude scalar registers and
+are not live peaks or inferred-M20K measurements.
+
+Used view/glob/rg, Python source/dump inspection and a narrowly scoped
+bulk report-declaration refactor, apply_patch, and the one retained
+Icarus static invocation. Tests, parent sources and runtime metadata
+remain untouched. The current handoff above resolves the then-remaining
+static elaboration and declaration-sized-report obligations. Independent
+Verifier owns all functional, numerical, mutation and synthesis checks.
+
+## Retained preceding diagnostic: static parse failure and saved scope repair
 
 The one reserved fast static elaboration ran with Icarus 12.0. Its
 unchanged receipt is

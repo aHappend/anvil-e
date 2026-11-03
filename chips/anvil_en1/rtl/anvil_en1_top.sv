@@ -242,7 +242,7 @@ module anvil_en1_top #(
     wire [63:0] allocation_shadow_bytes, native_scratch_shadow_bytes;
     wire [63:0] text_workspace_bytes, text_workspace_shadow_bytes;
     wire [63:0] fallback_working_bytes, fallback_working_shadow_bytes;
-    localparam integer TOP_CONTROLLER_BITS = $bits({
+    wire [31:0] TOP_CONTROLLER_BITS = $bits({
         state, error_hold, model_hold, precision_hold, mode_hold, decode_hold,
         tokens_hold, rows_hold, columns_hold, frames_hold, position_hold, output_hold,
         weights_hold, vision_weights_hold, audio_weights_hold, image_hold, audio_hold,

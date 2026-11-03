@@ -92,7 +92,7 @@ module anvil_en1_audio_relative_position (
     assign done_valid = rst_n && state == RESPONSE;
     assign done_data = rst_n ? output_hold : 16'd0;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(distance_hold) +
         $bits(error_hold) + $bits(component_hold) + $bits(increment) +
         $bits(index_float) + $bits(inverse) + $bits(distance_float) +

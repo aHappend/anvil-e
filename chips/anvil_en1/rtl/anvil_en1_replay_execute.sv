@@ -179,7 +179,7 @@ module anvil_en1_replay_execute #(
     wire [2:0] audio_vector_write, audio_vector_read;
     wire [95:0] audio_vector_waddr, audio_vector_raddr;
     wire [47:0] audio_vector_wdata, native_vector_rdata;
-    localparam integer NATIVE_VECTOR_BITS = $bits(native_vector_owner) +
+    wire [31:0] NATIVE_VECTOR_BITS = $bits(native_vector_owner) +
         $bits(native_vector_fault) + $bits(native_vector_rdata) +
         $bits(native_reserved);
 
@@ -1075,7 +1075,7 @@ module anvil_en1_replay_execute #(
         (domain_hold == 3 ? (layer_hold == 1 ? image_feature_controller_bytes : audio_feature_controller_bytes) :
         (domain_hold == 2 ? (input_worker ? audio_input_controller_bytes : audio_layer_controller_bytes) :
         (domain_hold == 1 ? vision_state_bytes : (input_worker ? input_state_bytes : text_state_bytes))));
-    localparam integer DISPATCHER_BITS =
+    wire [31:0] DISPATCHER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
         $bits(mode_hold) + $bits(domain_hold) + $bits(token_hold) + $bits(tokens_hold) +
         $bits(generation_hold) + $bits(native_image_hold) + $bits(native_vision_weights_hold) +

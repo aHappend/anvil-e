@@ -137,7 +137,7 @@ module anvil_en1_vision_attention_row (
     assign done_valid = rst_n && state == RESPONSE;
     assign done_data = rst_n ? output_hold : 32'd0;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(src_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(patches_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(query_hold) + $bits(row_hold) +

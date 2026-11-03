@@ -83,7 +83,7 @@ module anvil_en1_native_token_map #(
     assign done_error = rst_n ? error_hold : 4'd0;
     assign input_read_event = cmd_valid && cmd_ready;
     assign input_read_bytes = input_read_event ? 32'd4 : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(modality_hold) + $bits(kind_hold) +
         $bits(generation_hold) + $bits(tokens_hold) + $bits(token_hold) + $bits(frames_hold) +
         $bits(tokens_base_hold) + $bits(audio_base_hold) + $bits(token_address_hold) +

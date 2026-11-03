@@ -346,7 +346,7 @@ module anvil_en1_replay_attention_projection #(
     assign done_dependency_layer = rst_n && yield_hold ? dependency_owner_hold : 8'd0;
     assign done_dependency_token = rst_n && yield_hold ? dependency_position_hold : 32'd0;
     assign busy = rst_n && state != IDLE;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) +
         $bits(model_hold) + $bits(precision_hold) + $bits(dependency_domain_hold) +
         $bits(layer_hold) + $bits(frame_layer_hold) + $bits(dependency_layer_hold) +

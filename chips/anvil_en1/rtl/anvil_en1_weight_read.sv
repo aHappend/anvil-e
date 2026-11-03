@@ -50,7 +50,7 @@ module anvil_en1_weight_read #(
     reg [3:0] error_hold;
     reg memory_error_hold, reading_nibble;
     reg [1:0] lane_hold;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
         $bits(precision_hold) + $bits(base_hold) + $bits(bytes_hold) +
         $bits(row_base) + $bits(address_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(stride_hold) + $bits(row_hold) +

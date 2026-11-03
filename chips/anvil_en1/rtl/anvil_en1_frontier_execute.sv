@@ -239,7 +239,7 @@ module anvil_en1_frontier_execute #(
     reg feature_error_hold;
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] feature_payload [0:MAX_H-1];
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(frontier_return) + $bits(ring_return) +
         $bits(allocation_component) + $bits(allocation_return) +
         $bits(frontier_reserved) + $bits(ring_reserved) +

@@ -167,7 +167,7 @@ module anvil_en1_audio_subsample_execute (
     assign weight_read_bytes = weight_read_event ? 32'd4 : 32'd0;
     assign generated_read_event = generated_valid && generated_ready;
     assign generated_read_bytes = generated_read_event ? 32'd2 : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(callback_state) + $bits(model_hold) +
         $bits(precision_hold) + $bits(callback_model) + $bits(stage_hold) +
         $bits(callback_mask) + $bits(callback_stage) +

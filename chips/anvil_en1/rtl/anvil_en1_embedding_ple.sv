@@ -130,7 +130,7 @@ module anvil_en1_embedding_ple #(
         reg [3:0] error_hold;
         reg input_allocated, ple_allocated;
         wire [15:0] input_q, ple_q;
-        localparam integer CONTROLLER_BITS = $bits({
+        wire [31:0] CONTROLLER_BITS = $bits({
             state, return_state, src_state, scale_state, model_hold, precision_hold,
             modality_hold, memory_owner, layer_hold, token_hold, token_id,
             hidden_hold, vocabulary_hold, tokens_hold, weights_hold, token_address_hold,

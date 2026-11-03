@@ -169,7 +169,7 @@ module anvil_en1_attention_head #(
         reg [2:0] fp_op;
         reg resume_hold;
         reg [383:0] checkpoint_hold;
-        localparam integer CONTROLLER_BITS = $bits({
+        wire [31:0] CONTROLLER_BITS = $bits({
             state, return_state, model_hold, phase, head_hold, layer_hold, owner_hold,
             query_head_hold, position_hold, first_token, token, active_keys,
             dimension_hold, dot_component, output_component, cache_component,

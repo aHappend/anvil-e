@@ -173,7 +173,7 @@ module anvil_en1_owner_replay #(
         reg [31:0] normalized_count;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] raw_payload [0:MAX_H-1];
-        localparam integer CONTROLLER_BITS = $bits(state) + $bits(source_state) +
+        wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(source_state) +
             $bits(active) + $bits(fallback_hold) + $bits(invalidate_hold) +
             $bits(control_fallback_hold) + $bits(raw_allocated) +
             $bits(raw_committed) + $bits(vector_bad) + $bits(vector_complete) +

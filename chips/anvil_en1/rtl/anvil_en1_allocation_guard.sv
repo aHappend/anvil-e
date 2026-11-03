@@ -21,7 +21,7 @@ module anvil_en1_allocation_guard (
     wire [68:0] baseline_wide = {5'd0, matched_payload_bytes};
     wire [68:0] shadow_payload_wide = {5'd0, equivalent_shadow_bytes};
     wire [63:0] text_limit = report_model == 1 ? 64'd32768 : 64'd65536;
-    localparam integer CONTROLLER_BITS = $bits(comparison_valid) +
+    wire [31:0] CONTROLLER_BITS = $bits(comparison_valid) +
         $bits(limit_failure) + $bits(failure_hold) +
         $bits(scaled_payload) + $bits(scaled_baseline) + $bits(scaled_shadow_payload);
     assign failed = rst_n && failure_hold;

@@ -309,7 +309,7 @@ module anvil_en1_replay_audio_attention (
     assign done_continuation = done_yield ? outer : 160'd0;
     assign done_dependency_layer = done_yield ? layer_hold : 8'd0;
     assign done_dependency_token = done_yield ? dependency_token_hold : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(word_index) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(frames_hold) + $bits(tokens_hold) +
         $bits(query_hold) + $bits(dependency_token_hold) + $bits(layer_hold) +

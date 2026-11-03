@@ -424,7 +424,7 @@ module anvil_en1_audio_lightconv #(
         conv_controller + glu_controller + glu_norm_controller +
         glu_projection_controller + glu_clamp_controller + norm_controller +
         projection_controller + projection_clamp_controller + clamp_controller : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) + $bits(dependency_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(dependency_model) +
         $bits(layer_hold) + $bits(dependency_layer) + $bits(generation_hold) +

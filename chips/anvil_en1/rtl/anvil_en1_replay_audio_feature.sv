@@ -190,7 +190,7 @@ module anvil_en1_replay_audio_feature #(
     assign source_read_bytes = source_read_event ? 32'd4 : 32'd0;
     assign nested_controller_bytes = rst_n ?
         feature_control + native_control + modality_control + map_control + map_nested_control : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) + $bits(modality_hold) +
         $bits(dependency_domain_hold) + $bits(generation_hold) + $bits(frames_hold) +
         $bits(tokens_hold) + $bits(mapped_token_hold) + $bits(audio_hold) + $bits(tokens_base_hold) +

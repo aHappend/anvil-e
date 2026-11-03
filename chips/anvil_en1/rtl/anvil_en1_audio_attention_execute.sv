@@ -218,7 +218,7 @@ module anvil_en1_audio_attention_execute #(
     assign done_error = rst_n ? error_hold : 4'd0;
     assign weight_read_event = tile_selected && tile_cmd_valid && cmd_ready;
     assign weight_read_bytes = weight_read_event ? 32'd4 : 32'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(service_state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(selector_hold) + $bits(generation_hold) + $bits(frames_hold) +
         $bits(tokens_hold) + $bits(query_hold) + $bits(service_token) + $bits(layer_hold) +

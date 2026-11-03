@@ -40,7 +40,7 @@ module anvil_en1_bf16_clamp (
     assign done_valid = rst_n && state == RESPONSE;
     assign done_data = rst_n ? output_hold : 16'd0;
     assign done_error = rst_n ? error_hold : 4'd0;
-    localparam integer CONTROLLER_BITS = $bits(state) + $bits(value_hold) +
+    wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(value_hold) +
         $bits(minimum_hold) + $bits(maximum_hold) + $bits(output_hold) +
         $bits(error_hold) + $bits(invalid_bounds) + $bits(value_nan) +
         $bits(below_minimum) + $bits(above_maximum);

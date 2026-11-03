@@ -158,7 +158,7 @@ module anvil_en1_vision_soft_token #(
     assign input_read_bytes = map_input_bytes + feature_input_bytes;
     assign vector_live_bytes = rst_n ? map_live + feature_live : 64'd0;
     assign vector_physical_bytes = rst_n ? map_physical + feature_physical : 64'd0;
-    localparam integer CONTROLLER_BITS =
+    wire [31:0] CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(patches_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(count_hold) + $bits(ordinal_hold) +

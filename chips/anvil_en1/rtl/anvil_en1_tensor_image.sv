@@ -71,7 +71,7 @@ module anvil_en1_tensor_image #(
         reg [63:0] output_base, output_bytes;
         reg [31:0] output_rows, output_columns, output_stride;
         reg [7:0] output_type;
-        localparam integer CONTROLLER_BITS = $bits(state) + $bits(return_state) +
+        wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
             $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
             $bits(audio_hold) + $bits(items_hold) + $bits(kind_hold) +
             $bits(layer_hold) + $bits(base_hold) + $bits(directory_base) +

@@ -260,7 +260,7 @@ module anvil_en1_replay_binding #(
     assign busy = rst_n && (control_state != CONTROL_IDLE ||
         root_state != ROOT_IDLE || owner_busy || replay_busy ||
         grant_state != GRANT_IDLE);
-    localparam integer BINDING_BITS = $bits(control_state) + $bits(root_state) +
+    wire [31:0] BINDING_BITS = $bits(control_state) + $bits(root_state) +
         $bits(active) + $bits(invalidate_hold) + $bits(fallback_hold) + $bits(root_owner) +
         $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
         $bits(generation_hold) + $bits(tokens_hold) + $bits(tokens_base_hold) +
