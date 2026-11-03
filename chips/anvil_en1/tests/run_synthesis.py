@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
+from simulation_config import COMPACT_PARENT
 
 
 def main():
@@ -15,6 +16,8 @@ def main():
     parser.add_argument("--top", choices=("anvil_en1_top", "anvil_en1_kv_shared_cache",
                                         "anvil_en1_fp32"), default="anvil_en1_top")
     parser.add_argument("--repair-of")
+    parser.add_argument("--compact-parent", action="store_true",
+                        help="bound only model-0 parameters; retain native production geometry")
     args = parser.parse_args()
     inputs = source_inputs()
     experiment = Experiment(args.out, "verifier-synthesis-preparation", inputs, args.repair_of)
@@ -24,9 +27,18 @@ def main():
         sources = [str(path.relative_to(ROOT)) for path in inputs
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
         script = experiment.out / "synthesis.ys"
+        parameters = {}
+        if args.compact_parent:
+            if args.top != "anvil_en1_top":
+                raise ValueError("--compact-parent requires anvil_en1_top")
+            parameters = COMPACT_PARENT
+        experiment.receipt["parameters"] = parameters
+        experiment.receipt["native_compact"] = False
+        hierarchy = f"hierarchy -check -top {args.top}" + "".join(
+            f" -chparam {name} {value}" for name, value in parameters.items())
         script.write_text(
             "read_verilog -sv -defer " + " ".join(sources) + "\n" +
-            f"hierarchy -check -top {args.top}\n" +
+            hierarchy + "\n" +
             "proc\nopt_expr\nopt_clean\ncheck -assert -noinit\n" +
             "memory -nomap\nopt_clean\ncheck -assert -noinit\n" +
             "select -assert-none t:$dlatch t:$adlatch t:$div t:$mod\n" +

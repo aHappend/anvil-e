@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from numerical_reference import decode
 from text_fixture import make_text_image
 from text_reference import logits
+from simulation_config import COMPACT_PARENT
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,13 +134,9 @@ def main():
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
         obj = relative / "compile-obj"
         # Native geometry remains all 35/42 layers; these parameters affect only model 0.
-        parent = {"TEXT_LAYERS": 1, "TEXT_HIDDEN": 8, "TEXT_FFN": 16, "PLE_DIM": 4,
-                  "EMBED_DIM": 12, "VOCAB_SIZE": 32, "MAX_SEQ_LEN": 32,
-                  "TEXT_Q_HEADS": 2, "LOCAL_KV_HEADS": 1, "FULL_KV_HEADS": 1,
-                  "LOCAL_HEAD_DIM": 4, "FULL_HEAD_DIM": 8, "SLIDING_WINDOW": 4,
-                  "POSITION_EMBEDDING_SIZE": 32}
         parameters = {"COMPACT": 1, "RESIDENT_ENTRIES": args.capacity,
-                      "FORCE_FALLBACK": int(args.fallback), **parent}
+                      "FORCE_FALLBACK": int(args.fallback), **COMPACT_PARENT}
+        receipt["parameters"] = parameters
         command = ["verilator", "--cc", "--exe", "--build", "-Wno-fatal",
                    "--top-module", "anvil_en1_top", "--Mdir", str(obj),
                    "-j", "2", "-CFLAGS", "-O1"]
