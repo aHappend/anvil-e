@@ -10,7 +10,9 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
-from text_cases import digest, load, prepare, selected_values
+from coverage_matrix import batch_cells, fixture_keys
+from text_cases import digest, load_cases, prepare_cases, selected_values
+import itertools
 
 
 def compare_traffic(output, cases, metadata):
@@ -92,7 +94,14 @@ def main():
     parser.add_argument("--models", default="1,2")
     parser.add_argument("--precisions", default="0,1")
     parser.add_argument("--contexts", default="1,16,17")
+    parser.add_argument("--selection", choices=("cartesian", "representative"),
+                        default="cartesian")
+    parser.add_argument("--batch-capacity", type=int, choices=(1, 3, 64))
+    parser.add_argument("--batch-fallback", type=int, choices=(0, 1))
     args = parser.parse_args()
+    if ((args.batch_capacity is None) != (args.batch_fallback is None) or
+            args.batch_capacity is not None and args.selection != "representative"):
+        parser.error("batch selection requires representative mode, capacity and fallback")
     models = selected_values(parser, args.models, (1, 2), "--models")
     precisions = selected_values(parser, args.precisions, (0, 1), "--precisions")
     seeds = selected_values(parser, args.seeds, (17, 43, 89), "--seeds")
@@ -106,9 +115,15 @@ def main():
         cases = []
         metadata = {}
         fixture_hashes = {}
-        manifest_path = (ROOT / args.fixture_set if args.fixture_set else
-                         prepare(exp, models, precisions, seeds, contexts))
-        for case in load(manifest_path, models, precisions, seeds, contexts):
+        keys = (tuple(key for key in fixture_keys() if key[0] in models and
+                      key[1] in precisions and key[2] in seeds and key[3] in contexts)
+                if args.selection == "representative" else
+                tuple(itertools.product(models, precisions, seeds, contexts)))
+        if args.batch_capacity is not None:
+            keys = tuple(cell.fixture_key for cell in batch_cells(
+                args.batch_capacity, args.batch_fallback, models, precisions, seeds, contexts))
+        manifest_path = (ROOT / args.fixture_set if args.fixture_set else prepare_cases(exp, keys))
+        for case in load_cases(manifest_path, keys):
             name, model, tokens = case["name"], case["model"], case["tokens"]
             metadata[name] = case
             rows = list(schedule(model, tokens, case["reference"]))

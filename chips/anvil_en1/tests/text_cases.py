@@ -31,6 +31,19 @@ def digest(path):
 
 
 def prepare(exp, models, precisions, seeds, contexts):
+    return prepare_cases(exp, itertools.product(models, precisions, seeds, contexts))
+
+
+def prepare_cases(exp, keys):
+    keys = tuple(keys)
+    if not keys or len(set(keys)) != len(keys):
+        raise ValueError("independent fixtures require distinct nonempty cells")
+    groups = {}
+    for model, precision, seed, tokens in keys:
+        if (model not in (1, 2) or precision not in (0, 1) or
+                seed not in (17, 43, 89) or tokens not in (1, 16, 17)):
+            raise ValueError("independent fixture cell is outside the frozen geometry")
+        groups.setdefault((model, precision, seed), []).append(tokens)
     images = exp.out / "checkpoint-images"
     images.mkdir()
     manifest = {
@@ -38,7 +51,7 @@ def prepare(exp, models, precisions, seeds, contexts):
         "reference_source_sha256": {name: digest(ROOT / name) for name in REFERENCE_SOURCES},
         "cases": [],
     }
-    for model, precision, seed in itertools.product(models, precisions, seeds):
+    for (model, precision, seed), contexts in groups.items():
         image, tensors = make_text_image(model, precision, seed)
         stem = f"m{model}-p{precision}-s{seed}"
         image_path = images / (stem + ".bin")
@@ -66,6 +79,13 @@ def prepare(exp, models, precisions, seeds, contexts):
 
 
 def load(path, models, precisions, seeds, contexts):
+    return load_cases(path, itertools.product(models, precisions, seeds, contexts))
+
+
+def load_cases(path, keys):
+    keys = tuple(keys)
+    if not keys or len(set(keys)) != len(keys):
+        raise ValueError("independent fixtures require distinct nonempty cells")
     path = Path(path)
     if path.is_absolute():
         path = path.relative_to(ROOT)
@@ -82,7 +102,7 @@ def load(path, models, precisions, seeds, contexts):
             raise RuntimeError("duplicate independent fixture cell")
         indexed[key] = case
     result = []
-    for key in itertools.product(models, precisions, seeds, contexts):
+    for key in keys:
         case = dict(indexed[key])
         for field in ("image", "expected"):
             artifact = Path(case[field])

@@ -110,6 +110,9 @@ class EntrypointTests(unittest.TestCase):
         run = self.new_experiment()
         entry = self.root / "tests/verify.py"
         entry.write_bytes(Path(verify.__file__).read_bytes())
+        import coverage_matrix
+        (self.root / "tests/coverage_matrix.py").write_bytes(
+            Path(coverage_matrix.__file__).read_bytes())
         sibling = self.root / "tests/experiment.py"
         sibling.write_text(
             "import sys\nfrom pathlib import Path\n"

@@ -29,10 +29,13 @@ def compare(output, expected, global_required):
                   (field.split("=") for field in summaries[0].split()))
     if (counts["components"] != 8 or counts["depth"] < 2 or counts["depth"] > 64 or
             counts["requests"] != counts["responses"] or counts["kv_bytes"] != 0 or
+            counts["backing_requests"] != counts["backing_responses"] or
             counts["shadow"] > 1048576 or counts["live"] > 1048576 or
             any(counts[key] <= 0 for key in ("history", "input0", "input1", "weight_bytes",
                                            "metadata", "grants", "reprojections", "stalls",
-                                           "local")) or global_required and not counts["global"]):
+                                           "local", "backing_requests",
+                                           "backing_written_words")) or
+            global_required and not counts["global"]):
         raise RuntimeError("replay-history public coverage/conservation")
     if words != expected:
         raise RuntimeError(f"replay hidden BF16 mismatch expected={expected} observed={words}")
@@ -81,7 +84,8 @@ def main():
                       for path in (*images.iterdir(), *exp.out.glob("*-expected.json"))},
             expected_computed_before_observation=True,
             observations=[],
-            scope="Two-token public replay start/output/done; all original tokens and weights "
+            scope="Two-token public replay start/output/done with independent on-chip backing "
+                  "RAM responder serving only DUT-written words; all original tokens and weights "
                   "are immutable inputs, never host-produced hidden/KV answers. Metadata "
                   "responder supplies independently derived owner identities, not KV values. "
                   "Exact BF16 vector comparison; no top, cache-resident, modality or complete "

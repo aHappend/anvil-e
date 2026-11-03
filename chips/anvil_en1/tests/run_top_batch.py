@@ -12,6 +12,7 @@ import math
 import re
 import shutil
 import sys
+import time
 
 sys.dont_write_bytecode = True
 from pathlib import Path
@@ -20,8 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
 from numerical_reference import decode
 from simulation_config import COMPACT_PARENT
-from text_cases import digest, load, prepare, selected_values
+from coverage_matrix import batch_cells
+from text_cases import digest, load_cases, prepare_cases, selected_values
 from verify import parse_result, require_child_sources
+import itertools
 
 
 def compare(output, expected, tokens):
@@ -69,6 +72,8 @@ def main():
     parser.add_argument("--precisions", default="0,1")
     parser.add_argument("--seeds", default="17,43,89")
     parser.add_argument("--contexts", default="1,16,17")
+    parser.add_argument("--selection", choices=("cartesian", "representative"),
+                        default="cartesian")
     parser.add_argument("--capacity", type=int, choices=(1, 3, 64), default=3)
     parser.add_argument("--fallback", action="store_true")
     parser.add_argument("--compiler-optimization", choices=("0", "1", "2", "3"), default="3",
@@ -97,6 +102,7 @@ def main():
     if args.profile_cycles < 0 or args.pgo and args.profile_cycles <= 0:
         parser.error("--pgo requires a positive --profile-cycles")
     exp = Experiment(args.out, "verifier-top-batched-numerical", source_inputs(), args.repair_of)
+    began = time.monotonic()
     error = None
     try:
         for tool, option in (("python3", "--version"), ("verilator", "--version"),
@@ -104,9 +110,14 @@ def main():
             exp.run(tool + "-version", [tool, option], 30)
         cases = []
         fixture_hashes = {}
-        manifest_path = (ROOT / args.fixture_set if args.fixture_set else
-                         prepare(exp, models, precisions, seeds, contexts))
-        for case in load(manifest_path, models, precisions, seeds, contexts):
+        keys = (tuple(cell.fixture_key for cell in batch_cells(
+                    args.capacity, args.fallback, models, precisions, seeds, contexts))
+                if args.selection == "representative" else
+                tuple(itertools.product(models, precisions, seeds, contexts)))
+        if not keys:
+            raise ValueError("selected batch has no numerical comparison cells")
+        manifest_path = (ROOT / args.fixture_set if args.fixture_set else prepare_cases(exp, keys))
+        for case in load_cases(manifest_path, keys):
             fixture_hashes[case["image"]] = case["image_sha256"]
             fixture_hashes[case["expected"]] = case["expected_sha256"]
             cases.append((case["name"], case["model"], case["precision"], case["seed"],
@@ -132,6 +143,10 @@ def main():
                 "--fixture-set", str(manifest_path.relative_to(ROOT)),
                 "--models", args.models, "--precisions", args.precisions,
                 "--seeds", args.seeds, "--contexts", args.contexts,
+                "--selection", args.selection,
+                *(("--batch-capacity", str(args.capacity),
+                   "--batch-fallback", str(int(args.fallback)))
+                  if args.selection == "representative" else ()),
                 "--out", str(exp.relative / "baseline")], 2700)
             path, receipt = parse_result(output, ROOT)
             if exp.relative not in path.parents:
@@ -246,6 +261,7 @@ def main():
         obj = exp.out / "compile-obj"
         if obj.exists():
             shutil.rmtree(obj)
+    exp.receipt["complete_elapsed_seconds"] = time.monotonic() - began
     return exp.finish(error)
 
 

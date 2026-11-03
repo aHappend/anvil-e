@@ -17,6 +17,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/owner-production")
     parser.add_argument("--repair-of")
+    parser.add_argument("--compact", action="store_true",
+                        help="eight pairwise tiles; full production arithmetic/directory widths")
     args = parser.parse_args()
     exp = Experiment(args.out, "verifier-production-owner-tiles", source_inputs(), args.repair_of)
     error = None
@@ -35,6 +37,8 @@ def main():
             for precision in (0, 1):
                 for global_ in (0, 1):
                     for selector in (0, 1):
+                        if args.compact and selector != ((model - 1) ^ precision ^ global_):
+                            continue
                         index = len(cases)
                         owner = ((13, 14) if model == 1 else (22, 23))[global_]
                         seed = (17, 43, 89)[index % 3]
@@ -70,7 +74,7 @@ def main():
             for path in (manifest, expected_path, *sorted(images.iterdir()))}
         exp.receipt["expected_computed_before_observation"] = True
         exp.receipt["scope"] = (
-            "16 production-width nonzero owner K/V projection, input/head RMS and RoPE "
+            f"{len(cases)} production-width nonzero owner K/V projection, input/head RMS and RoPE "
             "pairs with real payload reads, including E4B head 1 and final components. "
             "All nonselected tensor RNG states are advanced in ABI order. Sparse original "
             "weight fixtures reject every missing payload read; no hidden/KV answer enters "

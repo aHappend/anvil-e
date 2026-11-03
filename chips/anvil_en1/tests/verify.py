@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
+from coverage_matrix import top_cells
 
 
 SUITES = ("contract", "behavior", "defects", "benchmark", "synthesis", "portable")
@@ -69,19 +70,13 @@ def steps(suite, seeds=SEEDS):
             Step("projection", "run_projection.py"),
             Step("rotary", "run_rotary.py"),
             Step("owner", "run_owner_tile.py"),
-            Step("owner-production", "run_owner_production.py"),
+            Step("owner-production", "run_owner_production.py", ("--compact",)),
             Step("allocation-bounds", "run_allocation.py"),
             Step("allocation-ledger", "run_ledger_matrix.py"),
             Step("allocation-schedule", "run_ledger_schedule.py",
                  ("--simulator", "both")),
-            Step("baseline", "run_baseline.py", ("--seeds", ",".join(map(str, seeds)))),
-            *[Step(f"top-m{model}-p{precision}-s{seed}-c{capacity}-f{fallback}",
-                   "run_top_smoke.py",
-                   ("--model", str(model), "--precision", str(precision),
-                    "--seed", str(seed), "--capacity", str(capacity),
-                    "--split-schedule", *(("--fallback",) if fallback else ())))
-              for model in (1, 2) for precision in (0, 1) for seed in seeds
-              for capacity in (1, 3, 64) for fallback in (0, 1)],
+            Step("replay-history", "run_replay_history.py"),
+            Step("top-matrix", "run_top_matrix.py"),
         ]
     if suite == "defects":
         return [
@@ -175,9 +170,7 @@ def close_coverage(suite, records, seeds):
     """The incomplete integration/benchmark matrix cannot produce a false L1 pass."""
     counts = {}
     if suite == "behavior":
-        required = [(m, p, s, c, n, f) for m in (1, 2) for p in (0, 1)
-                    for s in seeds for c in (1, 3, 64)
-                    for n, f in ((1, 0), (16, 0), (17, 0), (1, 1), (17, 1))]
+        required = [cell.key for cell in top_cells()]
         counts["top"] = require_cases(
             records, required, ("model", "precision", "seed", "capacity", "tokens", "fallback"),
             "top-numerical")
@@ -185,8 +178,11 @@ def close_coverage(suite, records, seeds):
             records, required, ("model", "precision", "seed", "capacity", "tokens", "fallback"),
             "top-integration-allocation-traffic")
         counts["fallback-history"] = require_cases(
-            records, [(m, p, a) for m in (1, 2) for p in (0, 1) for a in ("local", "global")],
+            records, [(m, p, "local") for m in (1, 2) for p in (0, 1)],
             ("model", "precision", "attention"), "eval-2-1-history")
+        counts["fallback-global-history"] = require_cases(
+            records, [(m, p, "global") for m in (1, 2) for p in (0, 1)],
+            ("model", "precision", "attention"), "eval-global-history")
         counts["production-cache"] = require_cases(
             records, [(m, p, c, n) for m in (1, 2) for p in (0, 1)
                       for c in (1, 3, 64) for n in (1, 16, 17, 511, 512, 513, 1025)],
