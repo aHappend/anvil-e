@@ -67,6 +67,10 @@ def main():
                 stderr = (experiment.out / (name + "-simulation.stderr.txt")).read_text()
                 if "FAIL CSR_CLEAR_PRIORITY" not in stderr:
                     raise RuntimeError("mutant was not rejected by clear-priority assertion")
+                experiment.record_rejection(
+                    "csr-clear-priority", "CSR_CLEAR_PRIORITY",
+                    ("original-compile", "original-simulation"),
+                    ("clear-priority-compile", "clear-priority-simulation"))
             shutil.rmtree(ROOT / obj)
         experiment.receipt["mutant_rejected"] = args.defect
         experiment.receipt["simulator"] = args.simulator

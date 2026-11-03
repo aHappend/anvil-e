@@ -27,11 +27,13 @@ def main():
         experiment.run("iverilog-version", ["iverilog", "-V"], 30)
         experiment.run("vvp-version", ["vvp", "-V"], 30)
         cases = []
+        images = experiment.out / "checkpoint-images"
+        images.mkdir()
 
         def case(name, image, model=1, precision=0, expected_error=0, exact_reads=0,
                  image_base=0x100000, inject_error=0, reset_phase=0):
             image = bytes(image)
-            path = experiment.out / (name + ".bin")
+            path = images / (name + ".bin")
             path.write_bytes(image)
             kind, layer, tensor_type, _rank, _reserved, offset, length = (
                 struct.unpack_from("<HHBBHQQ", image, 64))
@@ -95,8 +97,8 @@ def main():
         manifest = experiment.out / "cases.txt"
         manifest.write_text("".join(" ".join(map(str, row)) + "\n" for row in cases))
         experiment.receipt["fixtures"] = {
-            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in [manifest, *sorted(experiment.out.glob("*.bin"))]
+            str(path.relative_to(experiment.out)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in [manifest, *sorted(images.glob("*.bin"))]
         }
         experiment.receipt["expected_computed_before_observation"] = True
         experiment.save()
@@ -109,7 +111,7 @@ def main():
         ], 1800)
         smoke = experiment.run("icarus-smoke", [
             "vvp", str(executable),
-            "+image=" + str(experiment.relative / "ordered-m1-p0.bin"),
+            "+image=" + str(experiment.relative / "checkpoint-images/ordered-m1-p0.bin"),
         ], 600)
         if "SUMMARY tensor_image_icarus reads=8656 responses=8656 " not in smoke:
             raise RuntimeError("incomplete Icarus public-directory smoke")

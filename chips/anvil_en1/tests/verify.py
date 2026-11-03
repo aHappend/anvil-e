@@ -52,6 +52,8 @@ def steps(suite, seeds=SEEDS):
             Step("owner-portability", "run_owner_icarus.py"),
             Step("csr", "run_csr.py"),
             Step("workspace", "run_workspace.py"),
+            Step("cache-portability", "run_arithmetic.py",
+                 ("--target", "cache", "--capacity", "3", "--simulator", "iverilog")),
             *[Step(f"cache-c{capacity}", "run_arithmetic.py",
                    ("--target", "cache", "--capacity", str(capacity),
                     "--simulator", "verilator")) for capacity in (1, 3, 64)],
@@ -190,8 +192,17 @@ def close_coverage(suite, records, seeds):
                       for c in (1, 3, 64) for n in (1, 16, 17, 511, 512, 513, 1025)],
             ("model", "precision", "capacity", "tokens"), "production-cache-rematerialization")
     elif suite == "defects":
-        counts["defects"] = require_cases(
-            records, [(name,) for name in DEFECTS], ("defect",), "intended-mutation-rejection")
+        observed = {
+            case["defect"] for record in records for case in record.get("observations", [])
+            if (case.get("kind") == "intended-mutation-rejection"
+                and all(case.get(field) is True for field in
+                        ("completed", "unmodified_completed", "compiled",
+                         "rejected_by_intended_assertion")))}
+        missing = set(DEFECTS) - observed
+        if missing:
+            raise RuntimeError("intended-mutation-rejection: required completed comparison "
+                               "cells absent: " + ", ".join(sorted(missing)))
+        counts["defects"] = len(observed)
     elif suite == "benchmark":
         counts["domains"] = require_cases(
             records, [(d, m, p) for d in DOMAINS for m in (1, 2) for p in (0, 1)],

@@ -154,6 +154,11 @@ def main():
                     raise RuntimeError("incomplete weight-read comparisons")
             elif "WEIGHT_VALUE" not in output:
                 raise RuntimeError("Q4 mutant missed its intended value assertion")
+            else:
+                experiment.record_rejection(
+                    "q4-nibble-order", "WEIGHT_VALUE",
+                    ("original-compile", "original-simulation"),
+                    ("q4-nibble-order-compile", "q4-nibble-order-simulation"))
             if (ROOT / obj).exists():
                 shutil.rmtree(ROOT / obj)
         experiment.receipt["comparison_count"] = count

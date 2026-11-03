@@ -62,14 +62,17 @@ class Experiment:
         }
         self.receipt["commands"].append(command)
         self.save()
+        nested_scope = os.environ.get("ANVIL_EXPERIMENT_SCOPE") == "1"
+        child = None
         try:
             with (ROOT / command["stdout"]).open("w") as stdout, (
                     ROOT / command["stderr"]).open("w") as stderr:
                 # Poll only the launched child to emit bounded phase heartbeats.
                 with subprocess.Popen(
                         argv, cwd=directory, stdout=stdout, stderr=stderr,
-                        start_new_session=True,
-                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}) as child:
+                        start_new_session=not nested_scope,
+                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1",
+                             "ANVIL_EXPERIMENT_SCOPE": "1"}) as child:
                     started = time.monotonic()
                     while True:
                         elapsed = time.monotonic() - started
@@ -78,9 +81,10 @@ class Experiment:
                             break
                         except subprocess.TimeoutExpired:
                             if time.monotonic() - started >= effective:
-                                # This group belongs only to this launched command.
-                                # Retire compilers/make children along with the wrapper.
-                                os.killpg(child.pid, signal.SIGKILL)
+                                if nested_scope:
+                                    child.kill()
+                                else:
+                                    os.killpg(child.pid, signal.SIGKILL)
                                 child.wait()
                                 command["exit_code"] = child.returncode
                                 command["timed_out"] = True
@@ -93,6 +97,13 @@ class Experiment:
             command["launch_error"] = str(exc)
             raise
         finally:
+            if child is not None and not nested_scope:
+                # Nested runners inherit this command's group, so compilers
+                # cannot outlive a failed or timed-out wrapper.
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             command["ended_at"] = timestamp()
             self.save()
         if code not in expected_exit_codes:
@@ -109,6 +120,31 @@ class Experiment:
                           "receipt": str(self.relative / "receipt.json"),
                           "failure": self.receipt.get("failure")}), flush=True)
         return self.receipt["exit_code"]
+
+    def record_rejection(self, defect, assertion, clean, mutant):
+        commands = {Path(command["stdout"]).name.removesuffix(".stdout.txt"): command
+                    for command in self.receipt["commands"]}
+        for label in (*clean, *mutant):
+            command = commands[label]
+            if command.get("timed_out") is not False or not command.get("ended_at"):
+                raise RuntimeError("mutation command did not settle: " + label)
+        if any(commands[label]["exit_code"] != 0 for label in (*clean, mutant[0])):
+            raise RuntimeError("mutation lacks successful compilation and unmodified control")
+        failed = commands[mutant[1]]
+        if failed["exit_code"] == 0:
+            raise RuntimeError("mutant was not rejected: " + defect)
+        diagnostic = "".join((ROOT / failed[channel]).read_text()
+                             for channel in ("stdout", "stderr"))
+        if assertion not in diagnostic:
+            raise RuntimeError("mutant missed its intended assertion: " + defect)
+        self.receipt.setdefault("observations", []).append({
+            "kind": "intended-mutation-rejection", "defect": defect,
+            "assertion": assertion, "completed": True,
+            "unmodified_completed": True, "compiled": True,
+            "rejected_by_intended_assertion": True,
+            "commands": [*clean, *mutant],
+        })
+        self.save()
 
 
 def source_inputs():

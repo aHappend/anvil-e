@@ -53,6 +53,10 @@ def main():
             "unmodified_completed": True, "mutant_rejected": True,
             "assertion": "OWNER_OR_ADDRESS",
         }
+        experiment.record_rejection(
+            "wrong-anchor", "OWNER_OR_ADDRESS",
+            ("original-compile", "original-simulation"),
+            ("wrong-anchor-compile", "wrong-anchor-simulation"))
     except (OSError, RuntimeError, TimeoutError, ValueError, KeyError) as exc:
         error = exc
     finally:

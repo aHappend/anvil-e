@@ -164,6 +164,9 @@ def main():
                 stderr = (exp.out / (name + "-simulation.stderr.txt")).read_text()
                 if "FAIL " + assertion not in stderr:
                     raise RuntimeError("owner mutant missed its intended assertion: " + name)
+                exp.record_rejection(
+                    name, assertion, ("original-compile", "original-simulation"),
+                    (name + "-compile", name + "-simulation"))
             else:
                 if f"SUMMARY owner_tile comparisons={len(cases)} rejected=108 " not in output:
                     raise RuntimeError("incomplete owner tile numerical/error comparisons")

@@ -107,6 +107,9 @@ def main():
                     stderr = (exp.out / (name + "-simulation.stderr.txt")).read_text()
                     if "FAIL " + assertion not in stderr:
                         raise RuntimeError(f"mutant missed its intended assertion: {name}")
+                    exp.record_rejection(
+                        name, assertion, ("compile", "simulation"),
+                        (name + "-compile", name + "-simulation"))
                     exp.receipt["mutations"][-1]["rejected_by_intended_assertion"] = True
                     shutil.rmtree(ROOT / obj)
     except (OSError, RuntimeError, TimeoutError, ValueError, KeyError) as exc:

@@ -195,6 +195,13 @@ def main():
                                    f"reference={reference} error={error}")
         receipt["comparison_count"] = 32
         receipt["maximum_logit_absolute_error"] = max(errors)
+        if not args.diagnose_origin:
+            receipt["observations"] = [{
+                "kind": "top-numerical", "model": args.model, "precision": args.precision,
+                "seed": args.seed, "capacity": args.capacity, "tokens": 1,
+                "fallback": int(args.fallback), "comparisons": len(observed),
+                "completed": True, "mismatches": 0,
+            }]
         receipt["status"] = "passed"
         code = 0
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:

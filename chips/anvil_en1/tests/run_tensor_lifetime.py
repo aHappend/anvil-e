@@ -27,6 +27,8 @@ def main():
         exp.run("cxx-version", ["g++", "--version"], 30)
         exp.run("make-version", ["make", "--version"], 30)
         rows = []
+        images = exp.out / "checkpoint-images"
+        images.mkdir()
         for model in (1, 2):
             for precision in (0, 1):
                 if args.production:
@@ -36,15 +38,15 @@ def main():
                 count = struct.unpack_from("<I", image, 24)[0]
                 full = 16 + 16 * count
                 stem = f"m{model}-p{precision}"
-                original = exp.out / (stem + ".bin")
+                original = images / (stem + ".bin")
                 original.write_bytes(image)
                 malformed = bytearray(image)
                 struct.pack_into("<I", malformed, 64 + (count - 1) * 64 + 44, 1)
-                bad = exp.out / (stem + "-bad-tail.bin")
+                bad = images / (stem + "-bad-tail.bin")
                 bad.write_bytes(malformed)
                 unordered = bytearray(image)
                 unordered[64:128], unordered[128:192] = image[128:192], image[64:128]
-                alternate = exp.out / (stem + "-unordered.bin")
+                alternate = images / (stem + "-unordered.bin")
                 alternate.write_bytes(unordered)
 
                 def case(label, index=0, reads=0, expected_error=0, reset=0,
@@ -116,7 +118,7 @@ def main():
                     for items in (1, 17, 65535, 65536, 65537, 0x1000001):
                         image = directory_image(model, 0, input_shapes(audio, items), 3)
                         name = f"input-m{model}-a{audio}-n{items}"
-                        path = exp.out / (name + ".bin")
+                        path = images / (name + ".bin")
                         path.write_bytes(image)
                         for index in (0, 1):
                             kind, layer, dtype, rank, _, offset, size = struct.unpack_from(
@@ -134,8 +136,8 @@ def main():
         manifest = exp.out / "cases.txt"
         manifest.write_text("".join(" ".join(map(str, row)) + "\n" for row in rows))
         exp.receipt["fixtures"] = {
-            p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in [manifest, *sorted(exp.out.glob("*.bin"))]}
+            str(p.relative_to(exp.out)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in [manifest, *sorted(images.glob("*.bin"))]}
         exp.receipt["expected_computed_before_observation"] = True
         exp.receipt["scope"] = (
             "Public reader key/geometry/length/lifetime behavior, not payload arithmetic "

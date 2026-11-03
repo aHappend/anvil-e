@@ -123,14 +123,21 @@ class EntrypointTests(unittest.TestCase):
         message = json.dumps({"status": "passed", "receipt": str(run.relative / "receipt.json")})
         _, receipt = verify.parse_result(message, self.root)
         verify.require_child_sources(receipt, self.sources)
-        path = run.out / "receipt.json"
+        fixtures = self.root / "validation-fixtures"
+        fixtures.mkdir()
         receipt["commands"][0]["exit_code"] = 19
-        path.write_text(json.dumps(receipt))
+        invalid_exit = fixtures / "synthetic-bad-exit.json"
+        invalid_exit.write_text(json.dumps(receipt))
+        message = json.dumps({"status": "passed",
+                              "receipt": str(invalid_exit.relative_to(self.root))})
         with self.assertRaisesRegex(RuntimeError, "unsuccessful tool"):
             verify.parse_result(message, self.root)
         receipt["commands"][0]["exit_code"] = 0
         receipt["commands"][0]["stdout"] = "missing-log.txt"
-        path.write_text(json.dumps(receipt))
+        invalid_log = fixtures / "synthetic-missing-log.json"
+        invalid_log.write_text(json.dumps(receipt))
+        message = json.dumps({"status": "passed",
+                              "receipt": str(invalid_log.relative_to(self.root))})
         with self.assertRaisesRegex(RuntimeError, "raw log"):
             verify.parse_result(message, self.root)
         with self.assertRaisesRegex(RuntimeError, "non-project-relative"):
@@ -151,6 +158,22 @@ class EntrypointTests(unittest.TestCase):
         self.assertEqual(receipt["exit_code"], 1)
         self.assertIn("launch_error", receipt["commands"][0])
         self.assertEqual(len(list((self.root / "evidence/outer").glob("run-*"))), 1)
+
+    def test_mutation_records_require_the_intended_runtime_failure(self):
+        run = self.new_experiment()
+        for label in ("control-compile", "control-simulate", "mutant-compile"):
+            run.run(label, [sys.executable, "-c", "print('synthetic control')"])
+        run.run("mutant-simulate", [
+            sys.executable, "-c", "import sys; print('EXPECTED_ASSERTION'); sys.exit(1)"],
+            expected_exit_codes=(1,))
+        clean = ("control-compile", "control-simulate")
+        mutant = ("mutant-compile", "mutant-simulate")
+        with self.assertRaisesRegex(RuntimeError, "intended assertion"):
+            run.record_rejection("synthetic", "WRONG_ASSERTION", clean, mutant)
+        self.assertNotIn("observations", run.receipt)
+        run.record_rejection("synthetic", "EXPECTED_ASSERTION", clean, mutant)
+        self.assertTrue(run.receipt["observations"][0]["rejected_by_intended_assertion"])
+        self.assertEqual(len(run.receipt["observations"]), 1)
 
 
 def main():
@@ -178,9 +201,9 @@ def main():
         output = exp.run(
             "unit-tests", [sys.executable, "-B", "tests/test_verify_entrypoint.py",
                            "--worker", "--work", str(exp.relative / "unit-work")])
-        if "SUMMARY entrypoint_lifecycle tests=7 rtl_claims=0" not in output:
+        if "SUMMARY entrypoint_lifecycle tests=8 rtl_claims=0" not in output:
             raise RuntimeError("entrypoint unit comparisons did not complete")
-        exp.receipt["unit_tests"] = 7
+        exp.receipt["unit_tests"] = 8
         exp.receipt["scope"] = "Synthetic entrypoint lifecycle only; no RTL simulation or synthesis"
         if args.rtl_smoke:
             exp.receipt["children"] = []
@@ -189,6 +212,11 @@ def main():
                                  ("--defect", "--simulator", "verilator")))
             if not receipt["mutant_rejected"]:
                 raise RuntimeError("real CSR mutation was not rejected by the dispatched child")
+            observations = receipt.get("observations", [])
+            if (len(observations) != 1
+                    or observations[0]["defect"] != "csr-clear-priority"
+                    or observations[0]["rejected_by_intended_assertion"] is not True):
+                raise RuntimeError("real CSR rejection did not propagate into the coverage ledger")
             exp.receipt["scope"] = (
                 "Entrypoint lifecycle and real public CSR/mutation dispatch; "
                 "not a complete L1 suite or neural inference")
