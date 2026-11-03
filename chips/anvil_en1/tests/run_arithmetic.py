@@ -13,6 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from numerical_reference import arithmetic_vectors
+from activation_reference import activation_vectors
+from norm_reference import norm_cases
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,6 +28,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/arithmetic")
     parser.add_argument("--simulator", choices=("iverilog", "verilator"), default="iverilog")
+    parser.add_argument("--target", choices=("arithmetic", "cache", "activation", "norm"),
+                        default="arithmetic")
+    parser.add_argument("--capacity", type=int, choices=(1, 3, 64), default=3)
     parser.add_argument("--exhaustive", action="store_true")
     parser.add_argument("--repair-of")
     args = parser.parse_args()
@@ -40,7 +45,7 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     relative = out.relative_to(ROOT)
     receipt = {
-        "kind": "verifier-arithmetic-preparation",
+        "kind": "verifier-leaf-preparation",
         "argv": [sys.executable, *sys.argv],
         "cwd": ".",
         "started_at": stamp(),
@@ -49,8 +54,12 @@ def main():
         "source_sha256": {},
         "commands": [],
         "status": "running",
+        "configuration": vars(args),
     }
     inputs = [ROOT / "rtl/anvil_en1_fp32.sv", ROOT / "rtl/anvil_en1_fp32_divsqrt.sv",
+              ROOT / "rtl/anvil_en1_kv_shared_cache.sv", ROOT / "rtl/anvil_en1_geometry.sv",
+              ROOT / "rtl/anvil_en1_activation.sv", ROOT / "rtl/anvil_en1_exp.sv",
+              ROOT / "rtl/anvil_en1_norm.sv", ROOT / "rtl/anvil_en1_uint_to_fp32.sv",
               *sorted((ROOT / "tests").glob("*"))]
     for path in inputs:
         if path.is_file():
@@ -95,37 +104,91 @@ def main():
             run(label, command, 30)
         if simulator == "iverilog":
             run("vvp-version", ["vvp", "-V"], 30)
-        vectors = out / "vectors.txt"
-        count = 0
-        with vectors.open("w") as stream:
-            for row in arithmetic_vectors(exhaustive=args.exhaustive):
-                index, engine, operation, a, b, expected, error, stall = row
-                stream.write(f"{index} {engine} {operation} {a:08x} {b:08x} "
-                             f"{expected:08x} {error} {stall}\n")
-                count += 1
-        receipt["fixtures"] = {
-            "path": str(vectors.relative_to(ROOT)), "count": count,
-            "sha256": hashlib.sha256(vectors.read_bytes()).hexdigest(),
-            "seeds": [17, 43, 89], "expected_computed_before_observation": True,
-            "reference": "exact rational arithmetic and squared midpoint rounding",
-        }
-        sources = ["tests/arithmetic_tb.sv", "rtl/anvil_en1_fp32.sv",
-                   "rtl/anvil_en1_fp32_divsqrt.sv"]
+        if args.target == "arithmetic":
+            vectors = out / "vectors.txt"
+            count = 0
+            with vectors.open("w") as stream:
+                for row in arithmetic_vectors(exhaustive=args.exhaustive):
+                    index, engine, operation, a, b, expected, error, stall = row
+                    stream.write(f"{index} {engine} {operation} {a:08x} {b:08x} "
+                                 f"{expected:08x} {error} {stall}\n")
+                    count += 1
+            receipt["fixtures"] = {
+                "path": str(vectors.relative_to(ROOT)), "count": count,
+                "sha256": hashlib.sha256(vectors.read_bytes()).hexdigest(),
+                "seeds": [17, 43, 89], "expected_computed_before_observation": True,
+                "reference": "exact rational arithmetic and squared midpoint rounding",
+            }
+            sources = ["tests/arithmetic_tb.sv", "rtl/anvil_en1_fp32.sv",
+                       "rtl/anvil_en1_fp32_divsqrt.sv"]
+        elif args.target == "activation":
+            vectors = out / "vectors.txt"
+            count = 0
+            with vectors.open("w") as stream:
+                for row in activation_vectors(dense=args.exhaustive):
+                    index, operation, word, lower, upper, error, stall, exact = row
+                    stream.write(f"{index} {operation} {word:08x} {lower:08x} "
+                                 f"{upper:08x} {error} {stall} {exact}\n")
+                    count += 1
+            receipt["fixtures"] = {
+                "path": str(vectors.relative_to(ROOT)), "count": count,
+                "sha256": hashlib.sha256(vectors.read_bytes()).hexdigest(),
+                "expected_computed_before_observation": True,
+                "reference": "binary64 transcendentals; inward-rounded contract intervals",
+            }
+            sources = ["tests/activation_tb.sv", "rtl/anvil_en1_activation.sv",
+                       "rtl/anvil_en1_exp.sv", "rtl/anvil_en1_fp32.sv",
+                       "rtl/anvil_en1_fp32_divsqrt.sv"]
+        elif args.target == "norm":
+            vectors = out / "vectors.txt"
+            count = 0
+            with vectors.open("w") as stream:
+                for case in norm_cases(production=args.exhaustive):
+                    index, layer_norm, learned, source, scales, expected = case
+                    stream.write(f"{index} {layer_norm} {learned} {len(source)}\n")
+                    for value, scale, result in zip(source, scales, expected):
+                        stream.write(f"{value:04x} {scale:04x} {result:04x}\n")
+                    count += 1
+            receipt["fixtures"] = {
+                "path": str(vectors.relative_to(ROOT)), "count": count,
+                "sha256": hashlib.sha256(vectors.read_bytes()).hexdigest(),
+                "seeds": [17, 43, 89], "expected_computed_before_observation": True,
+                "reference": "exact independently ordered reductions and once-rounded reciprocal root",
+            }
+            sources = ["tests/norm_tb.sv", "rtl/anvil_en1_norm.sv",
+                       "rtl/anvil_en1_uint_to_fp32.sv", "rtl/anvil_en1_fp32.sv",
+                       "rtl/anvil_en1_fp32_divsqrt.sv"]
+        else:
+            count = None
+            receipt["fixtures"] = {
+                "source": "tests/cache_tb.sv",
+                "capacity": args.capacity,
+                "reference": "ABI owner schedule and independent transaction FIFO of resident keys",
+            }
+            sources = ["tests/cache_tb.sv", "rtl/anvil_en1_kv_shared_cache.sv",
+                       "rtl/anvil_en1_geometry.sv"]
+        top = args.target + "_tb"
         if simulator == "iverilog":
-            binary = str(relative / "arithmetic.vvp")
-            run("compile", ["iverilog", "-g2012", "-Wall", "-s", "arithmetic_tb",
-                            "-o", binary, *sources], 600)
+            binary = str(relative / (args.target + ".vvp"))
+            parameters = ([f"-P{top}.CAPACITY={args.capacity}"] if args.target == "cache" else [])
+            run("compile", ["iverilog", "-g2012", "-Wall", "-s", top,
+                            *parameters, "-o", binary, *sources], 600)
             command = ["vvp", binary]
         else:
             obj = relative / "compile-obj"
+            parameters = ([f"-GCAPACITY={args.capacity}"] if args.target == "cache" else [])
             run("compile", ["verilator", "--binary", "--timing", "-Wno-fatal",
-                            "--top-module", "arithmetic_tb", "--Mdir", str(obj),
-                            "-j", "2", *sources], 1800)
-            command = [str(obj / "Varithmetic_tb")]
-        command += ["+vectors=" + str(vectors.relative_to(ROOT)),
-                    "+max_cycles=" + ("30000000" if args.exhaustive else "500000")]
+                            "--top-module", top, "--Mdir", str(obj),
+                            "-j", "2", *parameters, *sources], 1800)
+            command = [str(obj / ("V" + top))]
+        if args.target in ("arithmetic", "activation", "norm"):
+            command += ["+vectors=" + str(vectors.relative_to(ROOT)),
+                        "+max_cycles=" + ("100000000" if args.exhaustive else "500000")]
         output = run("simulation", command, 600 if simulator == "iverilog" else 2400)
-        marker = f"SUMMARY arithmetic comparisons={count} "
+        marker = (f"SUMMARY {args.target} comparisons={count} " if args.target != "cache" else
+                  f"SUMMARY cache capacity={args.capacity} ")
+        if args.target == "norm":
+            marker = f"SUMMARY norm cases={count} "
         if marker not in output:
             raise RuntimeError("simulation lacks exact nonzero completion comparison count")
         receipt["status"] = "passed"
