@@ -251,7 +251,7 @@ module anvil_en1_audio_pre_attention (
                     weights_hold <= audio_weights_base;
                     received <= 0;
                     receive_bad <= 0;
-                    allocated <= 1;
+                    allocated <= 0;
                     visible <= 0;
                     child_error_hold <= 0;
                     error_hold <= 0;
@@ -275,6 +275,7 @@ module anvil_en1_audio_pre_attention (
                         if (received < 1024)
                             received <= received + 1'b1;
                     end else if (ff_output_valid && output_ready) begin
+                        allocated <= 1;
                         raw_hold <= ff_output_data;
                         index_hold <= ff_output_index;
                         if (!ff_beat_good)

@@ -7,6 +7,7 @@ module anvil_en1_allocation_guard (
     input wire [63:0] equivalent_bytes, native_scratch_bytes,
     input wire [63:0] equivalent_shadow_bytes, native_scratch_shadow_bytes,
     input wire [63:0] text_workspace_bytes, text_workspace_shadow_bytes,
+    input wire [63:0] fallback_working_bytes, fallback_working_shadow_bytes,
     input wire [63:0] matched_payload_bytes,
     output wire failed,
     output wire [63:0] controller_bytes
@@ -53,9 +54,12 @@ module anvil_en1_allocation_guard (
                     equivalent_shadow_bytes < equivalent_bytes ||
                     native_scratch_shadow_bytes < native_scratch_bytes ||
                     text_workspace_shadow_bytes < text_workspace_bytes ||
+                    fallback_working_shadow_bytes < fallback_working_bytes ||
                     (report_fallback ?
                         (equivalent_bytes > 64'd1048576 ||
-                            equivalent_shadow_bytes > 64'd1048576) :
+                            equivalent_shadow_bytes > 64'd1048576 ||
+                            fallback_working_bytes > 64'd65536 ||
+                            fallback_working_shadow_bytes > 64'd65536) :
                         (native_scratch_bytes > scratch_limit ||
                             native_scratch_shadow_bytes > scratch_limit ||
                             text_workspace_bytes > text_limit ||

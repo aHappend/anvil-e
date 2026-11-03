@@ -5,7 +5,150 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: frame-backed audio private-bank reconciliation
+### Current increment: explicit fallback working-state partition
+
+The admitted fallback ceiling has separate frame, memo, scalar-continuation
+and arithmetic/control/resident partitions. The previous connected allocation
+guard checked the complete 1 MiB ceiling but did not separately enforce the
+last partition's 65536-byte ceiling. Unused scalar-partition space must not
+silently enlarge that working-state allowance.
+
+The two phase-dependent workspace reductions in `allocation_ledger` now
+classify the same coherent actual/shadow sample as follows:
+
+| Sample mode | Reduction before the sixth register | Sixth-register operation and public result |
+| --- | --- | --- |
+| Ordinary | Complete equivalent terms except frontier field 0, ring field 1 and resident field 18 | Subtract the independently summed native scratch with checked underflow; expose `text_workspace_bytes` and `text_workspace_shadow_bytes` |
+| Fallback | Complete equivalent terms except workspace payload field 5 | No native-scratch subtraction; expose `fallback_working_bytes` and `fallback_working_shadow_bytes` |
+
+Field 5 is only the workspace's separately charged live frame-vector,
+memo-vector and complete scalar-slot payload. Its descriptor registers,
+visibility/progress masks and other metadata are **not** field 5 and remain
+in the fallback working sum. The latter also retains resident words, native
+private vectors, every reported controller, arithmetic state and integration
+state. Any unexpectedly retained frontier/ring bytes remain included,
+in addition to the existing overlap/total checks. The complete equivalent
+sum still contains field 5 in both modes; nothing is removed from the total
+or reclassified as free capacity.
+
+The ordinary-only outputs are zero for a fallback sample and the
+fallback-only outputs zero for an ordinary sample. Both output pairs retain
+the six-register sample latency and the same model/mode/error tags. Native
+subset consistency and all reduction overflow checks remain active in both
+modes; native-subtotal subtraction/underflow apply only in ordinary mode.
+The elaboration-time reduction-sharing identities distinguish each
+mode-conditioned leaf from unconditional payload leaves, so an optimized
+node cannot reuse a differently classified sum. Added registered nodes are
+included automatically by each ledger's existing `registered_nodes()` census.
+The older <=32200-byte ordinary-text estimate below predates this census
+change and is not a current full-hierarchy capacity certificate.
+
+The prospective admission engine and the top's independent observation
+guard consume both new outputs. In fallback they require actual and
+production-shadow working bytes <=65536, shadow >=actual, the unchanged
+complete ceiling <=1048576, and the unchanged strict `20*P < 9*B`.
+Admission still precedes the requested allocation and uses the existing
+bounded unpinned-memo eviction/retry mechanism. Denial or an observed
+overrun remains an implementation failure; these checks do not authorize
+returning a capacity error for legal work. Ordinary model-specific text
+limits and native scratch limits are unchanged.
+
+Independent verification must cover 65535/65536/65537 working bytes in
+both actual and shadow reports, a complete total below 1 MiB with an
+overlarge working partition, field-5 exclusion with its metadata retained,
+native private/controller and resident inclusion, alternating sampled modes,
+stalls/clear/reset, arithmetic overflow and shadow inconsistency. It must
+also continue independently checking the frame, memo and scalar partitions;
+this working-state classification does not replace those checks.
+
+Saved RTL changes: `anvil_en1_allocation_ledger.sv`,
+`anvil_en1_allocation_admission.sv`, `anvil_en1_allocation_guard.sv` and
+`anvil_en1_top.sv`. Source inspection and editing only; no elaboration,
+functional experiment, synthesis, preparation harness or receipt ran.
+This closes a missing enforcement surface, not legal-workload feasibility.
+Suspended audio storage, complete per-instance accounting and ordinary/
+fallback fit still require closure before the reserved static check and
+independent-Verifier handoff.
+
+### Retained closure assessment: finite suspended-audio storage bound
+
+The following is a source-derived upper-bound analysis, not a simulated
+allocation trace or a claim that every maximum is simultaneously reachable.
+It closes the enumeration of the current audio suspension states, but does
+not close their feasibility. In particular, predecessor-first scheduling
+does not establish a one-frame bound for historical dependencies.
+
+Let `D` be `replay_audio_history.distance_hold`, with
+`0 <= D <= min(query_token,4)`. Histories numbered `0..D-1` have already
+completed, and their consuming moves have committed. They occupy `D`
+different retained slices: bank 0/slice 2, then bank 1/slices 0,1,2.
+The current residual uses bank 0/slice 0 for its entering vector and bank
+0/slice 1 for its attention output. These regions are disjoint.
+
+| Successful yield boundary | Potentially reserved audio vector slices in that frame | What permits release |
+| --- | --- | --- |
+| Predecessor binding, before its copy starts | `D` retained histories | Histories still feed this frame's convolution; no existing release boundary applies |
+| Attention dependency, before any output pair | `D+1`: retained histories plus entering vector | The entering vector is still read by query/source reconstruction and the post-attention residual |
+| Attention dependency, after an output pair | `D+2`: retained histories, entering vector and partial head output | The numerical continuation resumes that output, rather than restarting or reconstructing it |
+| Completed residual, before attention-slice release retires | At most `D+2` | Only the successful registered release response makes the head-output slice reusable |
+| Nonfinal history relocation | `D+1` | The consuming move transfers, rather than duplicates, the current residual reservation |
+| Final completed history | At most five residual slices after head-output release | The convolution must consume the retained histories before their existing release loop |
+
+Partial output is not necessarily publicly readable, but its reservation
+and continuation remain live. A yield is not a vector-pop, generation
+invalidation or permission to clear that reservation. A failed operation
+retains its charged reservations until the existing unwind/invalidation.
+The raw/head yields above come from `replay_audio_heads`; the history
+wrapper translates their frame token to its own query token without
+changing the corresponding backing slice or reservation.
+
+The scheduler's nested audio return record stores a target layer 1..12.
+On a historical miss it pushes a layer-zero chain, retaining the consumer.
+That chain pops each completed predecessor before pushing its successor,
+but a successor can itself yield. Every such additional suspended consumer
+has a strictly lower encoder layer than its parent. Thus one audio descent
+has at most twelve positive-layer audio frames and one active layer-zero
+frame, excluding already suspended text/feature consumers. It does not have
+only one live audio frame. The twelve positive-layer frames alone have a
+conservative vector ceiling of
+`12 * 6 * 2048 = 147456` bytes, plus their scalar slots. Actual and
+production-shadow audio widths are both 1024 BF16 elements, including in
+the compact build; compact text geometry cannot shrink this amount.
+
+For comparison, the matched E2B minimum-context baseline is
+`1024*(28*16+14*16) = 688128` bytes. Its native allowance is
+`min(1048576,688128>>3) = 86016` bytes. Subtracting the current
+33221-byte native controller census and 10240-byte active-audio private
+allowance leaves 42555 bytes for **all** native frames, scalar slots,
+memoized vectors and retained features. Four six-slice frames alone would
+need `4*(12288+128) = 49664` bytes. This comparison does not assert that
+four such frames were observed, or prove that the entire conservative
+ceiling is reachable. It does establish that the current per-frame bound
+and rank/chain argument do not prove the admitted minimum-context fit.
+Memo eviction can remove memo entries, not these suspended frame slices.
+The separate 32768-byte text workspace allowance is not extra native
+scratch and cannot be borrowed without retaining its actual classification.
+
+Consequently, do not hand this source version off as a completed design,
+reduce the frame ledger to a selected active worker, assume memo hits, or
+turn a prospective grant denial into error 7 for otherwise legal work.
+A real repair must either establish a tighter reachable-state bound for
+the connected schedule or reduce retained state with connected streaming/
+rematerialization. Simply reversing history traversal, discarding completed
+histories on yield, or restarting a parent after every miss is not such a
+repair: the former supplies no nested-state proof, and the latter changes
+the continuation or needs a separate finite-progress proof under eviction.
+Any replacement must preserve ascending reduction order, BF16
+materialization, the live partial head, original-input reconstruction,
+backing-response retirement and all actual/shadow allocation charges.
+
+This assessment used source reads/searches only; no functional probe,
+allocation measurement, elaboration, synthesis or receipt was produced.
+The reserved static elaboration remains unused. Native minimum-context
+feasibility, whole-system deep-frame/fallback partition reconciliation and
+independent verification remain open.
+
+### Prior increment: frame-backed audio private-bank reconciliation
 
 The connected replay residual instantiates `audio_attention_residual` with
 `FRAME_HEADS=1`. In that mode the head projection reads the real workspace
@@ -2084,7 +2227,7 @@ therefore remain in the text partition.
 | Ordinary E2B | Actual and production-shadow complete text workspace each at most 32768 bytes |
 | Ordinary E4B | Actual and production-shadow complete text workspace each at most 65536 bytes |
 | Shadow consistency | Text workspace shadow must be at least actual, independently of total and native-scratch checks |
-| Fallback | Retain complete 1 MiB and strict 45% checks; ordinary text partition limits do not apply |
+| Fallback | Retain complete 1 MiB and strict 45% checks; use the separate <=65536-byte working-state outputs described in the current increment, not the ordinary text limit |
 | Reset/report | All outputs and pipeline validity zero during reset; all eight totals and model/mode/error tags describe the same sampled edge |
 
 Both prospective workspace admission and the completion guard consume these
@@ -6303,7 +6446,9 @@ the admitted arithmetic/control/resident partition ceiling of 65536 bytes.
 That partition must cover
 **all** workspace descriptor registers, masks, returned data, resident cache,
 primitive state and connected arithmetic buffers. These are not established
-as fitting merely by reserving this partition.
+as fitting merely by reserving this partition. The current increment
+separately enforces this 65536-byte working-state limit at prospective
+admission and observed completion; its actual legal-case fit remains open.
 
 Workspace control captures a native model and generation or invalidates.
 It is serialized behind accepted transactions and stalled responses. Start

@@ -466,7 +466,7 @@ module anvil_en1_replay_audio_layer #(
          (ff_ram_access && vector_owner != 2) ||
          (|history_live && (|conv_live || |ff_live)) ||
          (|conv_live && |ff_live) ||
-         history_live > 64'd10240 || conv_live > 64'd6144 ||
+         history_live > 64'd8192 || conv_live > 64'd6144 ||
          ff_live > 64'd6144);
     wire [2:0] vector_range_fault;
     wire vector_access_fault = vector_owner_fault || |vector_range_fault;

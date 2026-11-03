@@ -67,7 +67,8 @@ module anvil_en1_audio_feedforward #(
     reg [7:0] layer_hold;
     reg [31:0] generation_hold, token_hold, index_hold, received, bank_index;
     reg [63:0] weights_hold;
-    reg post_phase, vector_allocated, raw_visible, working_visible, branch_visible;
+    reg post_phase, vector_allocated, working_allocated;
+    reg raw_visible, working_visible, branch_visible;
     reg receive_bad, source_error_hold, bank_error, bank_branch_hold;
     reg [15:0] source_hold, clip_input_hold, clip_output_hold, mlp_hold;
     reg [15:0] bank_data, residual_hold, output_hold;
@@ -284,7 +285,8 @@ module anvil_en1_audio_feedforward #(
     assign done_error = rst_n ? error_hold : 4'd0;
     assign weight_read_event = cmd_valid && cmd_ready;
     assign weight_read_bytes = weight_read_event ? 32'd4 : 32'd0;
-    assign vector_live_bytes = rst_n && vector_allocated ? 64'd6144 : 64'd0;
+    assign vector_live_bytes = rst_n && vector_allocated ?
+        64'd4096 + (working_allocated ? 64'd2048 : 64'd0) : 64'd0;
     assign vector_physical_bytes = rst_n ?
         (EXTERNAL_VECTOR_RAM ? 64'd0 : 64'd6144) : 64'd0;
     localparam integer CONTROLLER_BITS =
@@ -292,7 +294,8 @@ module anvil_en1_audio_feedforward #(
         $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) + $bits(layer_hold) +
         $bits(generation_hold) + $bits(token_hold) + $bits(index_hold) +
         $bits(received) + $bits(bank_index) + $bits(weights_hold) + $bits(post_phase) +
-        $bits(vector_allocated) + $bits(raw_visible) + $bits(working_visible) +
+        $bits(vector_allocated) + $bits(working_allocated) +
+        $bits(raw_visible) + $bits(working_visible) +
         $bits(branch_visible) + $bits(receive_bad) + $bits(source_error_hold) +
         $bits(bank_error) + $bits(bank_branch_hold) + $bits(source_hold) +
         $bits(clip_input_hold) + $bits(clip_output_hold) + $bits(mlp_hold) +
@@ -355,6 +358,7 @@ module anvil_en1_audio_feedforward #(
             weights_hold <= 0;
             post_phase <= 0;
             vector_allocated <= 0;
+            working_allocated <= 0;
             raw_visible <= 0;
             working_visible <= 0;
             branch_visible <= 0;
@@ -392,6 +396,7 @@ module anvil_en1_audio_feedforward #(
                     received <= 0;
                     post_phase <= 0;
                     vector_allocated <= 1;
+                    working_allocated <= 1;
                     raw_visible <= 0;
                     working_visible <= 0;
                     branch_visible <= 0;
@@ -514,6 +519,8 @@ module anvil_en1_audio_feedforward #(
                 MLP_ADVANCE: begin
                     if (index_hold == 1023) begin
                         branch_visible <= 1;
+                        working_visible <= 0;
+                        working_allocated <= 0;
                         post_phase <= 1;
                         index_hold <= 0;
                         state <= CLIP_READ;
@@ -593,6 +600,7 @@ module anvil_en1_audio_feedforward #(
                 PUBLISH: state <= RESPONSE;
                 RESPONSE: if (done_ready) begin
                     vector_allocated <= 0;
+                    working_allocated <= 0;
                     raw_visible <= 0;
                     working_visible <= 0;
                     branch_visible <= 0;

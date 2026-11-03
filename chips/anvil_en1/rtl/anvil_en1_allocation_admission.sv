@@ -34,6 +34,7 @@ module anvil_en1_allocation_admission (
     wire [1:0] report_model;
     wire [63:0] equivalent, equivalent_shadow, scratch, scratch_shadow;
     wire [63:0] text_workspace, text_workspace_shadow;
+    wire [63:0] fallback_working, fallback_working_shadow;
     wire [63:0] text_limit = report_model == 1 ? 64'd32768 : 64'd65536;
     wire [63:0] ledger_controller_bytes;
     wire [63:0] scratch_limit = baseline_hold[63:3] > 61'd1048576 ?
@@ -69,6 +70,8 @@ module anvil_en1_allocation_admission (
         .native_scratch_bytes(scratch), .native_scratch_shadow_bytes(scratch_shadow),
         .text_workspace_bytes(text_workspace),
         .text_workspace_shadow_bytes(text_workspace_shadow),
+        .fallback_working_bytes(fallback_working),
+        .fallback_working_shadow_bytes(fallback_working_shadow),
         .report_partition_error(report_partition_error),
         .controller_bytes(ledger_controller_bytes)
     );
@@ -109,9 +112,12 @@ module anvil_en1_allocation_admission (
                         report_overlap || report_partition_error ||
                         equivalent_shadow < equivalent ||
                         scratch_shadow < scratch || text_workspace_shadow < text_workspace ||
+                        fallback_working_shadow < fallback_working ||
                         (report_fallback ?
                             (equivalent > 64'd1048576 ||
-                             equivalent_shadow > 64'd1048576) :
+                             equivalent_shadow > 64'd1048576 ||
+                             fallback_working > 64'd65536 ||
+                             fallback_working_shadow > 64'd65536) :
                             (scratch > scratch_limit || scratch_shadow > scratch_limit ||
                              text_workspace > text_limit ||
                              text_workspace_shadow > text_limit));

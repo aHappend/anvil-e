@@ -5,7 +5,94 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: frame-backed audio private-bank reconciliation
+## Current increment: fallback arithmetic/control/resident enforcement
+
+The previous allocation paths enforced the complete fallback 1 MiB ceiling
+but did not separately enforce the admitted 64 KiB working-state partition.
+Both prospective admission and observed completion now enforce the latter
+for actual and production-shadow allocations, without changing either
+the total ceiling or the strict 45% matched-baseline comparison.
+
+The ledger reuses its two workspace reduction trees, conditioned on the
+sampled representation. Ordinary samples retain their existing envelope
+and checked native-scratch subtraction. Fallback samples instead sum all
+equivalent terms except field 5, the separately charged frame/memo/scalar
+payload. They do not subtract native scratch. Resident words, private
+vectors, arithmetic, descriptor/progress/visibility metadata, all reported
+controllers and integration state therefore remain in the working sum.
+Field 5 remains in the complete equivalent total. No representation is
+freed, hidden or moved to an uncounted buffer by this change.
+
+New leaf outputs `fallback_working_bytes` and
+`fallback_working_shadow_bytes` are wired to the top's observation guard
+and the admission engine. They are zero for ordinary samples; ordinary
+text-workspace outputs are zero for fallback samples. Both follow the
+existing sixth-register sample/model/mode tags. Mode-conditioned reduction
+leaves have distinct sharing identities, and all added registered nodes
+remain in each ledger's automatic controller census. No top-level interface,
+numerical operation, external traffic class or pipeline latency changes.
+The earlier <=32200-byte ordinary-text estimate is historical, not a
+certificate for the changed controller census.
+
+This retires the missing fallback working-partition enforcement milestone,
+not the feasibility milestone. The six-slice suspended audio issue below
+is unchanged; complete native/deep-frame/fallback fit and per-instance
+accounting remain unfinished. An allocation denial still identifies a
+design failure, not an accepted implementation for legal work.
+
+Saved files: `rtl/anvil_en1_allocation_ledger.sv`,
+`rtl/anvil_en1_allocation_admission.sv`,
+`rtl/anvil_en1_allocation_guard.sv`, `rtl/anvil_en1_top.sv`, SPEC and this
+document. Actual tools: glob, view, rg and apply_patch. No commands,
+elaboration, simulation, synthesis, preparation harness or receipt ran.
+Tests, parent sources, existing failures and runtime metadata are unchanged.
+Next: genuinely reduce suspended native state or prove its reachable fit,
+reconcile all partitions, then use the reserved static elaboration and
+hand off immediately to independent Verifier.
+
+## Retained closure assessment: suspended-audio liveness
+
+The suspension-state enumeration is now explicit in SPEC. At history
+distance D, the frame retains D completed histories. A dependency yield
+can additionally retain its entering vector and a partial head-output
+slice, for D+2 slices and a maximum of six. Consuming relocation removed
+copy overlap, not those distinct live values. Neither a yield nor memo
+eviction releases them.
+
+Predecessor-first audio scheduling bounds a single chain's redundant
+ancestors, not nested historical consumers. Every nested consumer decreases
+encoder layer, giving at most twelve positive-layer audio frames and one
+active layer-zero frame per audio descent, before outer text/feature
+consumers. The conservative positive-layer vector bound is therefore
+147456 bytes, not one 12288-byte frame. Compact builds preserve native
+audio width, so their production-shadow ledger cannot elide this issue.
+This is a finite source-derived upper bound, not an observed reachable
+maximum or a simulated failure.
+
+At minimum E2B context, B=688128 and the native allowance is 86016 bytes.
+The current native controllers (33221) and active audio private envelope
+(10240) leave 42555 bytes for all other native state. Four maximally
+reserved audio frames plus their 128-byte scalar slots would already need
+49664 bytes. The current rank/chain proof therefore does not certify fit;
+no claim is made that this particular simultaneous state was executed.
+The ordinary text allowance is not spare native-scratch capacity.
+
+This retires the ambiguity about what the present suspension bound
+includes. It does not retire the fit milestone. Next implementation work
+must tighten the reachable-state proof or genuinely stream/rematerialize
+retained history/head state while preserving numerical continuations and
+finite progress under memo eviction. Clearing reservations, relying on
+hits, restarting indefinitely or returning capacity error 7 for legal work
+is not an acceptable substitute. Full native/deep-frame/fallback allocation
+reconciliation must follow before the reserved static elaboration and
+independent-Verifier handoff.
+
+Saved changes in this assessment: SPEC and this document only. Actual
+tools: glob, view, rg and apply_patch. No elaboration, functional simulation,
+synthesis, preparation harness or receipt ran. RTL, tests, immutable parent
+sources, failures and runtime metadata remain unchanged by this assessment.
+
+## Prior saved increment: frame-backed audio private-bank reconciliation
 
 The replay post-attention worker already disables local head/cache RAM
 accesses under `FRAME_HEADS=1`, but job acceptance still reserved the unused

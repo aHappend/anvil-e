@@ -19,6 +19,7 @@ module anvil_en1_allocation_ledger #(
     output wire [63:0] native_scratch_bytes,
     output wire [63:0] equivalent_shadow_bytes, native_scratch_shadow_bytes,
     output wire [63:0] text_workspace_bytes, text_workspace_shadow_bytes,
+    output wire [63:0] fallback_working_bytes, fallback_working_shadow_bytes,
     output wire report_partition_error,
     output wire [63:0] controller_bytes
 );
@@ -27,9 +28,16 @@ module anvil_en1_allocation_ledger #(
     wire [2047:0] workspace_terms, workspace_shadow_terms;
     genvar term;
     generate for (term=0; term<32; term=term+1) begin : terms
-        if (term==0 || term==1 || term==18) begin
-            assign workspace_terms[64*term+:64] = 64'd0;
-            assign workspace_shadow_terms[64*term+:64] = 64'd0;
+        if (term==5) begin
+            assign workspace_terms[64*term+:64] = observation_fallback ?
+                64'd0 : equivalent_terms[64*term+:64];
+            assign workspace_shadow_terms[64*term+:64] = observation_fallback ?
+                64'd0 : equivalent_shadow_terms[64*term+:64];
+        end else if (term==0 || term==1 || term==18) begin
+            assign workspace_terms[64*term+:64] = observation_fallback ?
+                equivalent_terms[64*term+:64] : 64'd0;
+            assign workspace_shadow_terms[64*term+:64] = observation_fallback ?
+                equivalent_shadow_terms[64*term+:64] : 64'd0;
         end else begin
             assign workspace_terms[64*term+:64] = equivalent_terms[64*term+:64];
             assign workspace_shadow_terms[64*term+:64] =
@@ -122,8 +130,13 @@ module anvil_en1_allocation_ledger #(
                     leaf_identity = metric == 3 ? 74 : 75;
                 else if (term_index == 26)
                     leaf_identity = 76;
-            end else if (!(metric >= 6 &&
-                (term_index == 0 || term_index == 1 || term_index == 18))) begin
+            end else if (metric >= 6 &&
+                (term_index == 0 || term_index == 1 ||
+                    term_index == 5 || term_index == 18)) begin
+                leaf_identity = 77 + (metric-6)*4 +
+                    (term_index == 0 ? 0 : (term_index == 1 ? 1 :
+                        (term_index == 5 ? 2 : 3)));
+            end else begin
                 if (term_index < 25)
                     leaf_identity = (metric == 2 || metric == 6 ? 1 : 33) + term_index;
                 else if (term_index < 29)
@@ -242,7 +255,8 @@ module anvil_en1_allocation_ledger #(
                 localparam integer SCRATCH = metric == 6 ? 3 : 5;
                 wire underflow = level4[metric*NODE_BITS+:VALUE_BITS] <
                     level4[SCRATCH*NODE_BITS+:VALUE_BITS];
-                assign next_value =
+                assign next_value = fallback_pipeline[4] ?
+                    level4[metric*NODE_BITS+:NODE_BITS] :
                     {level4_overflow[metric] || level4_overflow[SCRATCH] || underflow,
                         level4[metric*NODE_BITS+:VALUE_BITS] -
                             level4[SCRATCH*NODE_BITS+:VALUE_BITS]};
@@ -285,12 +299,18 @@ module anvil_en1_allocation_ledger #(
     assign native_scratch_bytes = rst_n ? expanded_totals[192+:64] : 64'd0;
     assign equivalent_shadow_bytes = rst_n ? expanded_totals[256+:64] : 64'd0;
     assign native_scratch_shadow_bytes = rst_n ? expanded_totals[320+:64] : 64'd0;
-    assign text_workspace_bytes = rst_n ? expanded_totals[384+:64] : 64'd0;
-    assign text_workspace_shadow_bytes = rst_n ? expanded_totals[448+:64] : 64'd0;
+    assign text_workspace_bytes = rst_n && !fallback_pipeline[5] ?
+        expanded_totals[384+:64] : 64'd0;
+    assign text_workspace_shadow_bytes = rst_n && !fallback_pipeline[5] ?
+        expanded_totals[448+:64] : 64'd0;
+    assign fallback_working_bytes = rst_n && fallback_pipeline[5] ?
+        expanded_totals[384+:64] : 64'd0;
+    assign fallback_working_shadow_bytes = rst_n && fallback_pipeline[5] ?
+        expanded_totals[448+:64] : 64'd0;
 
-    wire workspace_underflow =
+    wire workspace_underflow = !fallback_pipeline[4] &&
         level4[6*NODE_BITS+:VALUE_BITS] < level4[3*NODE_BITS+:VALUE_BITS];
-    wire shadow_workspace_underflow =
+    wire shadow_workspace_underflow = !fallback_pipeline[4] &&
         level4[7*NODE_BITS+:VALUE_BITS] < level4[5*NODE_BITS+:VALUE_BITS];
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

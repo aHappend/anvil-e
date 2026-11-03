@@ -241,6 +241,7 @@ module anvil_en1_top #(
     wire [63:0] native_scratch_bytes;
     wire [63:0] allocation_shadow_bytes, native_scratch_shadow_bytes;
     wire [63:0] text_workspace_bytes, text_workspace_shadow_bytes;
+    wire [63:0] fallback_working_bytes, fallback_working_shadow_bytes;
     localparam integer TOP_CONTROLLER_BITS = $bits({
         state, error_hold, model_hold, precision_hold, mode_hold, decode_hold,
         tokens_hold, rows_hold, columns_hold, frames_hold, position_hold, output_hold,
@@ -283,6 +284,8 @@ module anvil_en1_top #(
         .native_scratch_shadow_bytes(native_scratch_shadow_bytes),
         .text_workspace_bytes(text_workspace_bytes),
         .text_workspace_shadow_bytes(text_workspace_shadow_bytes),
+        .fallback_working_bytes(fallback_working_bytes),
+        .fallback_working_shadow_bytes(fallback_working_shadow_bytes),
         .report_partition_error(allocation_report_partition_error),
         .equivalent_bytes(allocation_equivalent_bytes), .controller_bytes(ledger_controller_bytes)
     );
@@ -297,6 +300,8 @@ module anvil_en1_top #(
         .native_scratch_shadow_bytes(native_scratch_shadow_bytes),
         .text_workspace_bytes(text_workspace_bytes),
         .text_workspace_shadow_bytes(text_workspace_shadow_bytes),
+        .fallback_working_bytes(fallback_working_bytes),
+        .fallback_working_shadow_bytes(fallback_working_shadow_bytes),
         .matched_payload_bytes({32'd0, production_baseline_payload}),
         .failed(allocation_failed), .controller_bytes(guard_controller_bytes)
     );

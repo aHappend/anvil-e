@@ -501,6 +501,8 @@ module anvil_en1_audio_attention_residual #(
             if (pre_selected && pre_output_valid) begin
                 if (!pre_beat_good)
                     pre_bad <= 1;
+                if (!pre_output_kind && state == PRE_WAIT && pre_beat_good)
+                    raw_allocated <= 1;
                 if (pre_output_kind) begin
                     if (normalized_received < 1024)
                         normalized_received <= normalized_received + 1'b1;
@@ -543,7 +545,7 @@ module anvil_en1_audio_attention_residual #(
                     emitted <= 0;
                     row_hold <= 0;
                     head_hold <= 0;
-                    raw_allocated <= 1;
+                    raw_allocated <= 0;
                     cache_allocated <= !FRAME_HEADS;
                     head_allocated <= 0;
                     working_allocated <= 0;
