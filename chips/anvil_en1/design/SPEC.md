@@ -5,7 +5,48 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current repair: separate audio fold request and completion payloads
+### Current repair: overlay certified-hit staging with directory scratch
+
+The first-origin diagnostic is retained at
+`evidence/preparation/top-first-origin-20261103T062331Z-3cbf5c57/receipt.json`.
+At cycle 2860033, the layer-4 owner rematerialization grant for component 7
+has prospective production-shadow text workspace 32799 bytes, exceeding the
+unchanged E2B limit of 32768 bytes. The grant is denied and error 7 propagates
+to completion; scratch and footprint comparisons pass. This is not an audio
+failure or permission to enlarge the text partition.
+
+`anvil_en1_tensor_image` removes the independent 232-bit `descriptor_q`
+register. A certified hit instead registers its descriptor into `entry[231:0]`
+at CACHE_SEARCH, then copies that slice into the existing output registers at
+CACHE_CAPTURE. Directory parsing and hit staging are mutually exclusive:
+a hit never visits ENTRY_VALIDATE/ENTRY_FINISH; a miss overwrites every entry
+word before validation. The live directory-entry buffer has no surviving
+directory consumer on the hit branch. No descriptor-cache capacity, validity,
+replacement, error check, numerical state or external transaction changes.
+The existing reset of `entry` also clears the overlaid staging.
+
+| Boundary (sampled pre-edge) | Post-edge behavior |
+| --- | --- |
+| Active reset | Existing entry/output resets and validity clearing remain |
+| Certified hit E2 | Register selected descriptor in the entry scratch slice |
+| Hit E3 | Copy scratch slice into descriptor output registers |
+| Hit E4 / E5 | Publish / earliest acceptance, unchanged |
+| Miss, including eviction | Use the original key scan and complete entry-validation path |
+| Invalidation during hit staging | Existing lifetime revocation rejects publication; a stalled published response remains stable |
+
+This removes actual storage rather than discounting live registers. The
+controller census drops by 232 bits / 29 bytes per reader, from 3743/468 to
+3511/439 bits/rounded bytes. Parent sums automatically propagate that reduction
+to live, production-shadow and physical reporting. With the previously
+elaborated unchanged 49-reader hierarchy, the source-derived total reduction
+is 1421 bytes, not all of which belongs to the text partition: native
+reconstruction state retains its existing scratch classification. Independent
+Verifier must measure the exact partition reduction, repeat lifetime/error/
+stall checks, and execute top completion with the original numerical oracle.
+The denied receipt remains immutable; neither the later peak nor completed
+logits are established by this source repair.
+
+### Retained repair: separate audio fold request and completion payloads
 
 The production-native synthesis failure is retained at
 `evidence/preparation/synthesis-lifetime-production-20261103T060319Z-cb39904a/receipt.json`.
@@ -16,14 +57,15 @@ Only the request net feeds the work-request mux. Only the completion net is
 captured into `fold_data_hold` on the existing completion handshake.
 No FSM, arithmetic, allocation or protocol edge changes.
 
-The separate text-only failure remains unresolved:
+The earlier separate text-only failure is retained:
 `evidence/preparation/top-lifetime-completion-20261103T060319Z-d4ab0218/receipt.json`.
 E2B/BF16/seed17/C3 exited 1 without timeout, with error 7 at cycle 2860065,
 54765 accepted reads and zero logits. The last aggregate sample names layer-3
 tensors, but does not locate the first error or prove a layer-4 transition
 failure. The audio repair is not an explanation for that text failure.
 
-Independent Verifier must capture the first error event, not another unchanged
+The subsequent first-origin diagnostic above supplies the previously missing
+allocation attribution. The original observation request was to capture the first error event:
 completion run: record native/schedule/task error handshakes and the active
 task operation/layer/token; denied allocation responses with candidate
 component/bytes/shadow bytes and the prospective ledger's limit/ratio results;
@@ -32,8 +74,8 @@ and the first source/cache/frontier response error with its descriptor.
 Also record `native_fault` and `allocation_failed`, since top converts either
 to error 7 independently of a native numerical error. Stop after the originating
 event and its completion propagation, using bounded aggregate diagnostics.
-Preserve all allocation and numerical assertions. No text-path RTL repair is
-justified by the retained aggregate log alone.
+Preserve all allocation and numerical assertions. The retained aggregate log
+alone did not justify a text-path RTL repair.
 
 ### Retained repair: immutable-job tensor reuse and narrow workspace updates
 
@@ -103,18 +145,23 @@ Replacement changes no image or tensor contents.
 | Revocation with an already stalled done response | Invalidate retained metadata without changing that response's stable payload; drain it before mutation or another lifetime |
 | New job, changed image/configuration, or permitted between-job mutation | Force full certification again, even if the numeric base address is unchanged |
 
-Each reader now charges **3743 bits / 468 rounded bytes**. Reconciling the
+Before the current staging overlay, each reader charged
+**3743 bits / 468 rounded bytes**. Reconciling the
 current register declarations gives 1384 bits / 173 bytes before lookaside and
 lifetime additions; the earlier 1606-bit / 201-byte base census was incorrect
 for this source. Added storage is 2112 descriptor bits, 232 read-register
 bits, eight validity bits, a three-bit replacement cursor and four lifetime
 bits: 2359 bits, or 295 additional rounded bytes per connected reader. The
+current overlay removes the separate 232-bit read register, leaving 2127 added
+bits / 266 added rounded bytes and 439 total rounded bytes per reader. The
 charge includes invalid entries and unused payload registers, not just hits.
 All parents retain their existing summed controller reports; the extra storage
 therefore enters both the live/shadow ledger and physical-reservation report
 through the connected controller terms. The single static production
 elaboration contains 49 readers: three frontier and 46 replay-binding, adding
-14,455 rounded bytes (22,932 bytes total reader state). A literal source traversal overcounts mutually exclusive
+14,455 rounded bytes (22,932 bytes total reader state) before the overlay;
+the same hierarchy now has source-derived totals of 13,034 added bytes and
+21,511 total reader bytes. A literal source traversal overcounts mutually exclusive
 generate alternatives (62 readers); it is not the physical census. The
 subsequent wire-only control repair does not change module multiplicity or
 retained storage, but final source-matched reporting remains for Verifier.

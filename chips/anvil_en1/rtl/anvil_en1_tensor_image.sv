@@ -78,7 +78,6 @@ module anvil_en1_tensor_image #(
         reg certified, reuse_hold, cache_allowed, lifetime_lost;
         reg [7:0] descriptor_valid;
         reg [2:0] descriptor_cursor;
-        reg [231:0] descriptor_q;
         wire [7:0] descriptor_hits;
         wire [1855:0] descriptor_payloads;
         reg descriptor_hit;
@@ -128,10 +127,6 @@ module anvil_en1_tensor_image #(
                     descriptor_index = 3'(cache_index);
                 end
         end
-        always @(posedge clk) begin
-            if (rst_n && state == CACHE_SEARCH && descriptor_hit)
-                descriptor_q <= descriptor_payloads[232*descriptor_index+:232];
-        end
         wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
             $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
             $bits(audio_hold) + $bits(items_hold) + $bits(kind_hold) +
@@ -147,8 +142,7 @@ module anvil_en1_tensor_image #(
             $bits(output_stride) + $bits(output_type) +
             $bits(certified) + $bits(reuse_hold) + $bits(cache_allowed) +
             $bits(lifetime_lost) +
-            $bits(descriptor_valid) + $bits(descriptor_cursor) +
-            $bits(descriptor_q) + 8*264;
+            $bits(descriptor_valid) + $bits(descriptor_cursor) + 8*264;
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         wire requested_valid, shape_valid;
         wire [31:0] expected_count, shape_rows, shape_columns;
@@ -506,9 +500,11 @@ module anvil_en1_tensor_image #(
                         state <= PUBLISH;
                     end
                     CACHE_SEARCH: begin
-                        if (descriptor_hit)
+                        if (descriptor_hit) begin
+                            // Directory parsing and certified-hit staging never overlap.
+                            entry[231:0] <= descriptor_payloads[232*descriptor_index+:232];
                             state <= CACHE_CAPTURE;
-                        else begin
+                        end else begin
                             entry_index <= 0;
                             address_hold <= directory_base;
                             return_state <= LOOKUP_KEY;
@@ -517,7 +513,7 @@ module anvil_en1_tensor_image #(
                     end
                     CACHE_CAPTURE: begin
                         {output_base, output_bytes, output_rows, output_columns,
-                            output_stride, output_type} <= descriptor_q;
+                            output_stride, output_type} <= entry[231:0];
                         state <= PUBLISH;
                     end
                     LOOKUP_KEY: begin

@@ -5,7 +5,38 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current handoff: audio fold wiring repair and unresolved text error
+## Current handoff: remove redundant tensor-reader hit staging
+
+The first-origin diagnostic
+`evidence/preparation/top-first-origin-20261103T062331Z-3cbf5c57/receipt.json`
+locates the text failure: layer-4 owner rematerialization's component-7 grant
+would occupy 32799 production-shadow text-workspace bytes, 31 above the
+unchanged 32768-byte E2B limit. Scratch, footprint-ratio and overlap checks
+pass; denial propagates error 7 rather than emitting logits.
+
+`rtl/anvil_en1_tensor_image.sv` now stages certified descriptor hits in the
+existing directory-entry buffer instead of an independent 232-bit register.
+Directory parsing is inactive on this branch, and every entry word is
+overwritten before validation on a miss. CACHE_SEARCH still registers the
+selected payload; CACHE_CAPTURE still copies it into output registers.
+Eight-entry capacity, replacement, memory transactions, full certification,
+reset, invalidation, error handling and response latency are preserved.
+
+Actual retained storage and its existing controller charge both fall by
+29 bytes per reader, to 3511 bits / 439 rounded bytes. This is a physical
+register removal with phase-exclusive scratch reuse, not suppressed accounting.
+For the unchanged previously elaborated 49-reader hierarchy the total
+source-derived reduction is 1421 bytes. Existing native-scratch classification
+is unchanged; fresh observation must establish the text-specific saving and
+all later peaks. SPEC supplies the unchanged hit-cycle table.
+
+Independent Verifier must recheck lifetime reuse/invalidation and public
+response stability, then run source-matched top completion/numerical and
+allocation checks and affected synthesis. No functional or synthesis
+experiment was run by Designer for this repair. The original failed receipts,
+verification sources, parent sources and shared-runtime metadata are untouched.
+
+## Retained handoff: audio fold wiring repair and text localization request
 
 `rtl/anvil_en1_replay_audio_history.sv` separates the fold work-request payload
 from its completion result. `fold_work_data` feeds the work mux;
@@ -57,7 +88,8 @@ requires a drained lifetime and invalidation/new job. Revocation during work
 cannot publish a new stale successful descriptor; already offered stalled
 responses remain stable until retired. SPEC freezes the cycle table.
 
-The reader's reconciled complete retained state is 3743 bits / 468 rounded
+Before the current overlay, the reader's reconciled complete retained state was
+3743 bits / 468 rounded
 bytes, including all lookaside payloads and the registered read. Current
 pre-addition registers total 1384 bits / 173 bytes, not the previously stated
 1606 bits / 201 bytes. The 2359 added bits increase the rounded charge by
@@ -65,7 +97,9 @@ pre-addition registers total 1384 bits / 173 bytes, not the previously stated
 controller reports charge every connected instance in both live/shadow and
 physical reporting, regardless of occupancy. Static production elaboration
 contains 49 readers (three frontier, 46 replay-binding), an additional 14,455
-rounded bytes and 22,932 total reader bytes; a literal traversal incorrectly counts mutually exclusive
+rounded bytes and 22,932 total reader bytes before the overlay. Current
+source-derived totals for the same hierarchy are 13,034 added bytes and 21,511
+total reader bytes; a literal traversal incorrectly counts mutually exclusive
 generate alternatives as well. Final source-matched reporting remains an
 independent verification task. There is no
 uncounted directory archive or numerical-result cache.
