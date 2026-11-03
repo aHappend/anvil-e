@@ -58,6 +58,10 @@ def main():
 
                 case("first", reads=full, reset=int(model == 1 and precision == 0))
                 case("hit")
+                case("invalidate-hit-capture", expected_error=7, revoke=3)
+                case("recertify-after-hit-invalidate", reads=full)
+                case("drop-immutable-hit-capture", expected_error=7, revoke=4)
+                case("recertify-after-hit-drop", reads=full)
                 for index in range(1, 9):
                     case(f"fill-{index}", index=index, reads=index + 17)
                     case(f"hit-{index}", index=index)
