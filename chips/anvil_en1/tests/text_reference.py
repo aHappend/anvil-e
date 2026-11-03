@@ -2,14 +2,17 @@
 
 import math
 from fractions import Fraction
+from functools import lru_cache
 
 from numerical_reference import decode, encode, sqrt_encode
 
 
+@lru_cache(maxsize=131072)
 def f32(value):
     return decode(encode(Fraction(value)))[2]
 
 
+@lru_cache(maxsize=65536)
 def bf16(value):
     return decode(encode(Fraction(value), exponent_bits=8, fraction_bits=7), 8, 7)[2]
 
@@ -176,3 +179,32 @@ def logits(tensors, model, seed, tokens=1):
         "reference_schedule": "layer-major with all logical layer states retained",
         "approximation_comparison": "final error <= 0.25 + 0.02 * abs(reference)",
     }
+
+
+def prefix_logits(tensors, model, seed, contexts):
+    """Causally masked layer-major states are identical for every input prefix."""
+    contexts = tuple(contexts)
+    if not contexts or any(n <= 0 for n in contexts):
+        raise ValueError("reference contexts must be positive")
+    maximum = max(contexts)
+    complete = logits(tensors, model, seed, maximum)
+    result = {}
+    for tokens in contexts:
+        expected = dict(complete)
+        expected["initial_bf16"] = complete["initial_bf16"][:tokens]
+        expected["ple_bf16"] = {
+            layer: vectors[:tokens] for layer, vectors in complete["ple_bf16"].items()}
+        expected["owner_kv_bf16"] = {
+            owner: [vectors[:tokens] for vectors in pair]
+            for owner, pair in complete["owner_kv_bf16"].items()}
+        expected["layer_states_bf16"] = [
+            vectors[:tokens] for vectors in complete["layer_states_bf16"]]
+        if tokens != maximum:
+            vector = [decode(word, 8, 7)[2]
+                      for word in complete["layer_states_bf16"][-1][tokens - 1]]
+            final = norm(vector, tensors[4, 0xFFFF][0])
+            expected["logits"] = [
+                30 * math.tanh(float(value) / 30)
+                for value in project(tensors[0, 0xFFFF], final)]
+        result[tokens] = expected
+    return result

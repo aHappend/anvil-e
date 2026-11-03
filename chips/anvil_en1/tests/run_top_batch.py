@@ -21,8 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
 from numerical_reference import decode
 from simulation_config import COMPACT_PARENT
-from text_fixture import make_text_image
-from text_reference import logits
+from text_cases import digest, load, prepare
 
 
 def compare(output, expected, tokens):
@@ -71,6 +70,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/top-batch")
     parser.add_argument("--repair-of")
+    parser.add_argument("--fixture-set",
+                        help="source-bound freshly generated independent text-cases manifest")
     parser.add_argument("--models", default="1,2")
     parser.add_argument("--precisions", default="0,1")
     parser.add_argument("--seeds", default="17,43,89")
@@ -95,27 +96,18 @@ def main():
         for tool, option in (("python3", "--version"), ("verilator", "--version"),
                              ("g++", "--version"), ("make", "--version")):
             exp.run(tool + "-version", [tool, option], 30)
-        images = exp.out / "checkpoint-images"
-        images.mkdir()
         cases = []
         fixture_hashes = {}
-        for model, precision, seed in itertools.product(models, precisions, seeds):
-            image, tensors = make_text_image(model, precision, seed)
-            stem = f"m{model}-p{precision}-s{seed}"
-            image_path = images / (stem + ".bin")
-            image_path.write_bytes(image)
-            fixture_hashes[str(image_path.relative_to(exp.out))] = (
-                hashlib.sha256(image).hexdigest())
-            for tokens in contexts:
-                name = stem + f"-n{tokens}"
-                expected = logits(tensors, model, seed, tokens)
-                expected_path = exp.out / (name + "-expected.json")
-                expected_path.write_text(json.dumps(expected) + "\n")
-                fixture_hashes[expected_path.name] = hashlib.sha256(
-                    expected_path.read_bytes()).hexdigest()
-                cases.append((name, model, precision, seed, tokens, image_path, expected))
-                print("PROGRESS independent reference=" + name, flush=True)
+        manifest_path = (ROOT / args.fixture_set if args.fixture_set else
+                         prepare(exp, models, precisions, seeds, contexts))
+        for case in load(manifest_path, models, precisions, seeds, contexts):
+            fixture_hashes[case["image"]] = case["image_sha256"]
+            fixture_hashes[case["expected"]] = case["expected_sha256"]
+            cases.append((case["name"], case["model"], case["precision"], case["seed"],
+                          case["tokens"], ROOT / case["image"], case["reference"]))
         exp.receipt.update(
+            independent_fixture_manifest={"path": str(manifest_path.relative_to(ROOT)),
+                                          "sha256": digest(manifest_path)},
             fixtures=fixture_hashes, expected_computed_before_observation=True,
             requested_cases=[{"name": name, "model": model, "precision": precision,
                               "seed": seed, "tokens": tokens}

@@ -1,6 +1,7 @@
 """Independent exact-real IEEE format references; no RTL scheduling is modeled."""
 
 from fractions import Fraction
+from functools import lru_cache
 from math import isqrt
 
 
@@ -8,6 +9,7 @@ QNAN = 0x7FC00000
 INF = 0x7F800000
 
 
+@lru_cache(maxsize=65536)
 def decode(bits, exponent_bits=8, fraction_bits=23):
     sign = bits >> (exponent_bits + fraction_bits)
     exponent = (bits >> fraction_bits) & ((1 << exponent_bits) - 1)
@@ -55,6 +57,7 @@ def encode(value, negative_zero=False, exponent_bits=8, fraction_bits=23):
                                                           (1 << fraction_bits))
 
 
+@lru_cache(maxsize=8192)
 def sqrt_encode(value):
     """Round sqrt(value) by exact squared midpoint comparisons."""
     exponent = binary_exponent(value) // 2

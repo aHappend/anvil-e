@@ -10,8 +10,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
-from text_fixture import make_text_image
-from text_reference import logits
+from text_cases import digest, load, prepare
 
 
 def schedule(model, tokens, expected):
@@ -43,6 +42,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/kv-baseline")
     parser.add_argument("--repair-of")
+    parser.add_argument("--fixture-set",
+                        help="source-bound freshly generated independent text-cases manifest")
     parser.add_argument("--seeds", default="17,43,89")
     args = parser.parse_args()
     seeds = [int(value) for value in args.seeds.split(",")]
@@ -56,31 +57,30 @@ def main():
             exp.run(tool + "-version", [tool, option], 30)
         cases = []
         fixture_hashes = {}
-        for model in (1, 2):
-            for precision in (0, 1):
-                for seed in seeds:
-                    _, tensors = make_text_image(model, precision, seed)
-                    for tokens in (1, 16, 17):
-                        name = f"m{model}-p{precision}-s{seed}-n{tokens}"
-                        expected = logits(tensors, model, seed, tokens)
-                        rows = list(schedule(model, tokens, expected))
-                        path = exp.out / (name + "-commands.txt")
-                        path.write_text("".join(" ".join(map(str, row)) + "\n" for row in rows))
-                        fixture_hashes[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
-                        padded = (tokens + 15) // 16 * 16
-                        local_layers = 28 if model == 1 else 35
-                        write_bytes = 4 * (local_layers * 4 * 4 + 7 * 8 * padded)
-                        read_bytes = 4 * (local_layers * 4 * min(tokens, 4) + 7 * 8 * tokens)
-                        if (sum(4 for row in rows if row[0]) != write_bytes or
-                                sum(4 for row in rows if not row[0]) != read_bytes):
-                            raise RuntimeError("baseline schedule disagrees with geometry sums")
-                        cases.append([name, model, tokens, write_bytes, read_bytes,
-                                      str(path.relative_to(ROOT))])
-                        print(f"PROGRESS baseline reference={name} commands={len(rows)}", flush=True)
+        manifest_path = (ROOT / args.fixture_set if args.fixture_set else
+                         prepare(exp, (1, 2), (0, 1), seeds, (1, 16, 17)))
+        for case in load(manifest_path, (1, 2), (0, 1), seeds, (1, 16, 17)):
+            name, model, tokens = case["name"], case["model"], case["tokens"]
+            rows = list(schedule(model, tokens, case["reference"]))
+            path = exp.out / (name + "-commands.txt")
+            path.write_text("".join(" ".join(map(str, row)) + "\n" for row in rows))
+            fixture_hashes[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+            padded = (tokens + 15) // 16 * 16
+            local_layers = 28 if model == 1 else 35
+            write_bytes = 4 * (local_layers * 4 * 4 + 7 * 8 * padded)
+            read_bytes = 4 * (local_layers * 4 * min(tokens, 4) + 7 * 8 * tokens)
+            if (sum(4 for row in rows if row[0]) != write_bytes or
+                    sum(4 for row in rows if not row[0]) != read_bytes):
+                raise RuntimeError("baseline schedule disagrees with geometry sums")
+            cases.append([name, model, tokens, write_bytes, read_bytes,
+                          str(path.relative_to(ROOT))])
+            print(f"PROGRESS baseline reference={name} commands={len(rows)}", flush=True)
         manifest = exp.out / "cases.txt"
         manifest.write_text("".join(" ".join(map(str, row)) + "\n" for row in cases))
         fixture_hashes[manifest.name] = hashlib.sha256(manifest.read_bytes()).hexdigest()
         exp.receipt["fixtures"] = fixture_hashes
+        exp.receipt["independent_fixture_manifest"] = {
+            "path": str(manifest_path.relative_to(ROOT)), "sha256": digest(manifest_path)}
         exp.receipt["expected_computed_before_observation"] = True
         exp.receipt["seeds"] = seeds
         exp.receipt["scope"] = (
