@@ -76,15 +76,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/weight-read")
     parser.add_argument("--compact", action="store_true")
+    parser.add_argument("--simulator", choices=("iverilog", "verilator"), default="verilator")
     parser.add_argument("--defect", action="store_true")
     parser.add_argument("--repair-of")
     args = parser.parse_args()
+    if args.defect:
+        args.simulator = "verilator"
+    elif args.simulator == "iverilog":
+        args.compact = True
     experiment = Experiment(args.out, "verifier-weight-read", source_inputs(), args.repair_of)
     error = None
     try:
-        experiment.run("verilator-version", ["verilator", "--version"], 30)
-        experiment.run("cxx-version", ["g++", "--version"], 30)
-        experiment.run("make-version", ["make", "--version"], 30)
+        if args.simulator == "iverilog":
+            experiment.run("iverilog-version", ["iverilog", "-V"], 30)
+            experiment.run("vvp-version", ["vvp", "-V"], 30)
+        else:
+            experiment.run("verilator-version", ["verilator", "--version"], 30)
+            experiment.run("cxx-version", ["g++", "--version"], 30)
+            experiment.run("make-version", ["make", "--version"], 30)
+        experiment.receipt["configuration"] = vars(args)
         fixture = experiment.out / "vectors.txt"
         count = 0
         with fixture.open("w") as stream:
@@ -119,21 +129,33 @@ def main():
             }
         for name, source in variants:
             obj = experiment.relative / (name + "-compile-obj")
-            experiment.run(name + "-compile", [
-                "verilator", "--binary", "--timing", "-Wno-fatal",
-                "--top-module", "weight_read_tb", "--Mdir", str(obj),
-                "-j", "2", "tests/weight_read_tb.sv", source, "rtl/anvil_en1_fp32.sv",
-            ], 1800)
+            sources = ["tests/weight_read_tb.sv", source, "rtl/anvil_en1_fp32.sv"]
+            if args.simulator == "iverilog":
+                binary = experiment.relative / "weight-read.vvp"
+                experiment.run(name + "-compile", [
+                    "iverilog", "-g2012", "-Wall", "-s", "weight_read_tb",
+                    "-o", str(binary), *sources,
+                ], 1800)
+                command = ["vvp", str(binary)]
+            else:
+                experiment.run(name + "-compile", [
+                    "verilator", "--binary", "--timing", "-Wno-fatal",
+                    "--top-module", "weight_read_tb", "--Mdir", str(obj),
+                    "-j", "2", *sources,
+                ], 1800)
+                command = [str(obj / "Vweight_read_tb")]
             output = experiment.run(name + "-simulation", [
-                str(obj / "Vweight_read_tb"), "+vectors=" + str(fixture.relative_to(ROOT)),
-                "+max_cycles=10000000",
-            ], 2400, (0,) if name == "original" else (1, -6))
+                *command, "+vectors=" + str(fixture.relative_to(ROOT)),
+                "+max_cycles=" + ("500000" if args.compact else "10000000"),
+            ], 600 if args.simulator == "iverilog" else 2400,
+                (0,) if name == "original" else (1, -6))
             if name == "original":
                 if f"SUMMARY weight_read comparisons={count} " not in output:
                     raise RuntimeError("incomplete weight-read comparisons")
             elif "WEIGHT_VALUE" not in output:
                 raise RuntimeError("Q4 mutant missed its intended value assertion")
-            shutil.rmtree(ROOT / obj)
+            if (ROOT / obj).exists():
+                shutil.rmtree(ROOT / obj)
         experiment.receipt["comparison_count"] = count
         experiment.receipt["mutant_rejected"] = args.defect
     except (OSError, RuntimeError, TimeoutError, ValueError, KeyError) as exc:
