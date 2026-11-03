@@ -52,13 +52,32 @@ def main():
             compiler = ["env", "VERILATOR_BIN=" + os.path.relpath(binary, root), binary]
         sources = [str(path.relative_to(ROOT)) for path in source_inputs()
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
+        top = "anvil_en1_top"
+        parameter_args = [f"-G{name}={value}" for name, value in parameters.items()]
+        if args.hierarchical:
+            # Verilator 5.020 forwards top-level -G overrides into child builds.
+            # A pure structural wrapper freezes the same legal elaboration
+            # without changing ports, clocks, datapaths or observation timing.
+            declaration = (ROOT / "rtl/anvil_en1_top.sv").read_text()
+            ports = declaration.split(") (", 1)[1].split(");", 1)[0]
+            wrapper = exp.out / "profile_top.sv"
+            wrapper.write_text(
+                "module profile_top (" + ports + ");\n"
+                "anvil_en1_top #(" +
+                ", ".join(f".{name}({value})" for name, value in parameters.items()) +
+                ") product (.*);\nendmodule\n")
+            exp.receipt["structural_wrapper_sha256"] = hashlib.sha256(
+                wrapper.read_bytes()).hexdigest()
+            top = "profile_top"
+            parameter_args = ["--prefix", "Vanvil_en1_top", str(wrapper.relative_to(ROOT))]
+            exp.save()
         exp.run("compile", [
             *compiler, "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
-            "--top-module", "anvil_en1_top", "--Mdir", str(obj),
+            "--top-module", top, "--Mdir", str(obj),
             "-j", "2", "-CFLAGS", "-O3 -pg", "-LDFLAGS", "-pg",
             *(["--hierarchical", "tests/simulation_hierarchy.vlt"]
               if args.hierarchical else []),
-            *[f"-G{name}={value}" for name, value in parameters.items()],
+            *parameter_args,
             "tests/simulation_schedule.vlt", *sources,
             str(ROOT / "tests/top_smoke.cpp")], 1800)
         executable = obj / "Vanvil_en1_top"
