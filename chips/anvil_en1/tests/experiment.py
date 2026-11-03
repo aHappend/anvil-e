@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import signal
 import subprocess
 import sys
 import time
@@ -29,7 +31,7 @@ class Experiment:
         self.out.mkdir(parents=True, exist_ok=False)
         self.deadline = time.monotonic() + 2700
         self.receipt = {
-            "kind": kind, "argv": [sys.executable, *sys.argv], "cwd": ".",
+            "kind": kind, "argv": list(sys.orig_argv), "cwd": ".",
             "started_at": timestamp(), "timeout_s": 2700, "repair_of": repair_of,
             "source_sha256": {str(path.relative_to(ROOT)):
                               hashlib.sha256(path.read_bytes()).hexdigest()
@@ -41,13 +43,18 @@ class Experiment:
     def save(self):
         (self.out / "receipt.json").write_text(json.dumps(self.receipt, indent=2) + "\n")
 
-    def run(self, label, argv, timeout=2400, expected_exit_codes=(0,)):
+    def run(self, label, argv, timeout=2400, expected_exit_codes=(0,), cwd=None):
+        if any(Path(command["stdout"]).name == label + ".stdout.txt"
+               for command in self.receipt["commands"]):
+            raise ValueError("command label already retained: " + label)
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError("complete experiment exceeded 2700-second execution budget")
         effective = min(timeout, remaining)
+        directory = ROOT if cwd is None else Path(cwd).resolve()
+        relative_cwd = directory.relative_to(ROOT)
         command = {
-            "argv": argv, "cwd": ".", "started_at": timestamp(),
+            "argv": argv, "cwd": str(relative_cwd), "started_at": timestamp(),
             "timeout_s": effective,
             "stdout": str(self.relative / (label + ".stdout.txt")),
             "stderr": str(self.relative / (label + ".stderr.txt")),
@@ -59,7 +66,10 @@ class Experiment:
             with (ROOT / command["stdout"]).open("w") as stdout, (
                     ROOT / command["stderr"]).open("w") as stderr:
                 # Poll only the launched child to emit bounded phase heartbeats.
-                with subprocess.Popen(argv, cwd=ROOT, stdout=stdout, stderr=stderr) as child:
+                with subprocess.Popen(
+                        argv, cwd=directory, stdout=stdout, stderr=stderr,
+                        start_new_session=True,
+                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}) as child:
                     started = time.monotonic()
                     while True:
                         elapsed = time.monotonic() - started
@@ -68,7 +78,9 @@ class Experiment:
                             break
                         except subprocess.TimeoutExpired:
                             if time.monotonic() - started >= effective:
-                                child.kill()
+                                # This group belongs only to this launched command.
+                                # Retire compilers/make children along with the wrapper.
+                                os.killpg(child.pid, signal.SIGKILL)
                                 child.wait()
                                 command["exit_code"] = child.returncode
                                 command["timed_out"] = True

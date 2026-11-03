@@ -14,6 +14,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/csr")
     parser.add_argument("--defect", action="store_true")
+    parser.add_argument("--simulator", choices=("both", "verilator"), default="both")
     parser.add_argument("--repair-of")
     args = parser.parse_args()
     experiment = Experiment(args.out, "verifier-csr", source_inputs(), args.repair_of)
@@ -22,16 +23,17 @@ def main():
         experiment.run("verilator-version", ["verilator", "--version"], 30)
         experiment.run("cxx-version", ["g++", "--version"], 30)
         experiment.run("make-version", ["make", "--version"], 30)
-        experiment.run("iverilog-version", ["iverilog", "-V"], 30)
-        experiment.run("vvp-version", ["vvp", "-V"], 30)
-        binary = experiment.relative / "csr.vvp"
-        experiment.run("icarus-compile", [
-            "iverilog", "-g2012", "-Wall", "-s", "csr_tb", "-o", str(binary),
-            "tests/csr_tb.sv", "rtl/anvil_en1_csr_perf.sv",
-        ], 1800)
-        smoke = experiment.run("icarus-smoke", ["vvp", str(binary)], 600)
-        if "SUMMARY csr_icarus comparisons=9 reset_stalled_response=1" not in smoke:
-            raise RuntimeError("incomplete four-state CSR smoke")
+        if args.simulator == "both":
+            experiment.run("iverilog-version", ["iverilog", "-V"], 30)
+            experiment.run("vvp-version", ["vvp", "-V"], 30)
+            binary = experiment.relative / "csr.vvp"
+            experiment.run("icarus-compile", [
+                "iverilog", "-g2012", "-Wall", "-s", "csr_tb", "-o", str(binary),
+                "tests/csr_tb.sv", "rtl/anvil_en1_csr_perf.sv",
+            ], 1800)
+            smoke = experiment.run("icarus-smoke", ["vvp", str(binary)], 600)
+            if "SUMMARY csr_icarus comparisons=9 reset_stalled_response=1" not in smoke:
+                raise RuntimeError("incomplete four-state CSR smoke")
         variants = [("original", "rtl/anvil_en1_csr_perf.sv")]
         if args.defect:
             original = (ROOT / variants[0][1]).read_text()
@@ -67,6 +69,7 @@ def main():
                     raise RuntimeError("mutant was not rejected by clear-priority assertion")
             shutil.rmtree(ROOT / obj)
         experiment.receipt["mutant_rejected"] = args.defect
+        experiment.receipt["simulator"] = args.simulator
     except (OSError, RuntimeError, TimeoutError, ValueError, KeyError) as exc:
         error = exc
     finally:

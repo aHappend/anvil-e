@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--repair-of")
     parser.add_argument("--synthesis", action="store_true")
     parser.add_argument("--defects", action="store_true")
+    parser.add_argument("--simulator", choices=("both", "verilator"), default="both")
     args = parser.parse_args()
     if args.synthesis and args.defects:
         parser.error("--defects is a simulation option")
@@ -52,17 +53,18 @@ def main():
             exp.run("verilator-version", ["verilator", "--version"], 30)
             exp.run("cxx-version", ["g++", "--version"], 30)
             exp.run("make-version", ["make", "--version"], 30)
-            exp.run("iverilog-version", ["iverilog", "-V"], 30)
-            exp.run("vvp-version", ["vvp", "-V"], 30)
-            binary = exp.relative / "workspace.vvp"
-            exp.run("icarus-compile", ["iverilog", "-g2012", "-Wall",
-                                     "-s", "workspace_tb", "-o", str(binary),
-                                     "tests/workspace_tb.sv",
-                                     "rtl/anvil_en1_replay_workspace.sv",
-                                     "rtl/anvil_en1_geometry.sv"], 1800)
-            smoke = exp.run("icarus-smoke", ["vvp", str(binary)], 600)
-            if "SUMMARY workspace_icarus comparisons=16 " not in smoke:
-                raise RuntimeError("incomplete Icarus workspace comparisons")
+            if args.simulator == "both":
+                exp.run("iverilog-version", ["iverilog", "-V"], 30)
+                exp.run("vvp-version", ["vvp", "-V"], 30)
+                binary = exp.relative / "workspace.vvp"
+                exp.run("icarus-compile", ["iverilog", "-g2012", "-Wall",
+                                         "-s", "workspace_tb", "-o", str(binary),
+                                         "tests/workspace_tb.sv",
+                                         "rtl/anvil_en1_replay_workspace.sv",
+                                         "rtl/anvil_en1_geometry.sv"], 1800)
+                smoke = exp.run("icarus-smoke", ["vvp", str(binary)], 600)
+                if "SUMMARY workspace_icarus comparisons=16 " not in smoke:
+                    raise RuntimeError("incomplete Icarus workspace comparisons")
             obj = exp.relative / "compile-obj"
             exp.run("compile", [
                 "verilator", "--cc", "--exe", "--build", "-Wno-fatal",
@@ -73,6 +75,7 @@ def main():
             if "SUMMARY workspace cases=" not in output:
                 raise RuntimeError("incomplete workspace comparisons")
             exp.receipt["simulation_summary"] = output.strip()
+            exp.receipt["simulator"] = args.simulator
             shutil.rmtree(ROOT / obj)
             if args.defects:
                 original = (ROOT / "rtl/anvil_en1_replay_workspace.sv").read_text()

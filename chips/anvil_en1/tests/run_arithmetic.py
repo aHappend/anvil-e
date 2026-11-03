@@ -46,7 +46,7 @@ def main():
     relative = out.relative_to(ROOT)
     receipt = {
         "kind": "verifier-leaf-preparation",
-        "argv": [sys.executable, *sys.argv],
+        "argv": list(sys.orig_argv),
         "cwd": ".",
         "started_at": stamp(),
         "timeout_s": 2700,

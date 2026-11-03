@@ -55,7 +55,7 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     receipt = {
         "kind": "verifier-top-preparation",
-        "argv": [sys.executable, *sys.argv],
+        "argv": list(sys.orig_argv),
         "cwd": ".",
         "started_at": stamp(),
         "timeout_s": 2700,
