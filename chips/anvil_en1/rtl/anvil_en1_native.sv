@@ -281,7 +281,7 @@ module anvil_en1_native #(
     wire [63:0] admission_controller_bytes;
     wire [255:0] shadow_metadata_bytes = !rst_n ? 256'd0 :
         {allocation_metadata_bytes[255:128], 64'd2304, 64'd1152};
-    anvil_en1_allocation_admission memo_admission (
+    anvil_en1_allocation_admission workspace_admission (
         .clk(clk), .rst_n(rst_n),
         .req_valid(grant_valid), .req_ready(grant_ready),
         .model(model_hold), .fallback(selected_fallback),

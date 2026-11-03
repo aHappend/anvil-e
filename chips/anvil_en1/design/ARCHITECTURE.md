@@ -5,7 +5,78 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: text/embedding phase overlay
+## Current saved increment: ordinary text-workspace partition
+
+`rtl/anvil_en1_allocation_ledger.sv` now separately reports actual and
+production-shadow complete text workspace. Two balanced sums exclude only
+frontier, local ring and resident words from complete equivalent allocations;
+a sixth registered stage subtracts the coherent native-scratch subset.
+Metadata, integration registers, text frames/memos/scalars, transient vectors
+and arithmetic/control state remain charged. Explicit native-subset and
+subtraction-underflow flags reject an inconsistent partition.
+
+`anvil_en1_allocation_admission.sv` and `anvil_en1_allocation_guard.sv`
+both enforce ordinary E2B/E4B text partitions of 32768/65536 bytes and
+nondecreasing shadows, alongside unchanged strict 45%, native-scratch and
+fallback limits. `anvil_en1_top.sv` connects the new coherent reports.
+The existing eight drain edges plus check edge cover six ledger stages and
+two guard stages. All added pipeline registers are charged in the same live
+and physical controller reports. SPEC updates the admission cycle table.
+
+Prospective workspace denial still evicts eligible completed memos and retries
+before granting storage; private-worker/arithmetic reservations remain the
+next grant-time closure milestone. Remaining physical overlays and legal-case
+feasibility must also close before the reserved static elaboration and
+independent Verifier handoff. No command, check, experiment or new receipt
+exists for this increment. Tools used: view, glob, rg and apply_patch.
+Parent, tests and runtime-owned files remain untouched; attempt-0003 is
+preserved without any claimed repair. Not ready.
+
+## Prior saved increment: whole-system admission for workspace growth
+
+New `rtl/anvil_en1_allocation_admission.sv` substitutes prospective workspace
+and native-subset totals into the allocation ledger (now five balanced sum
+stages plus a coherent partition stage).
+It checks complete actual/production-shadow equivalent payload against the
+strict 45% production matched-storage baseline, the fallback 1 MiB ceiling,
+ordinary context-dependent native scratch, mode overlap and shadow validity.
+Top supplies its registered storage baseline and complete integration charge.
+This is not measured matched-baseline traffic.
+
+The real workspace now waits for this decision before reserving a new scalar
+frame slot, first full vector slice or memo replacement. Denial runs the
+existing deterministic completed-memo eviction path, updates actual/shadow/
+native subtotals and rebuilds/retries the complete prospective snapshot.
+Frame/scalar grants pin the worker dependency memo; memo-to-frame copies
+independently pin their source, and the linear one-token path pins its
+predecessor across the next push. No live frame, partial vector or original
+input is evicted or spilled. Later misses use actual Eval recomputation.
+All new candidate/pin/admission/ledger registers are charged, including the
+admission module's own reservation in its prospective sum.
+
+The ready/valid path is wired through `anvil_en1_eval_schedule.sv`,
+`anvil_en1_replay_execute.sv`, `anvil_en1_replay_binding.sv` and
+`anvil_en1_native.sv` to the new module. `anvil_en1_replay_workspace.sv`,
+`anvil_en1_top.sv` and both design documents also changed. SPEC records
+the new candidate, pin, decision and cycle tables. No top public port or
+arithmetic/materialization rule changes.
+
+Remaining closure milestones: private native/text worker and arithmetic
+grant-time limits, ordinary total text-workspace partition enforcement,
+remaining physical overlays and legal-case feasibility after eviction;
+then the reserved fast static elaboration and immediate independent Verifier
+handoff. An exhausted denial returns error 7 without the denied allocation:
+that is a failure requiring repair, not an accepted replacement for exact
+bounded replay. The current delta prevents unadmitted workspace growth;
+it does not yet close every allocation-growth path or establish savings,
+M20K inference, resource fit, timing or acceptance. Not ready.
+
+Tools used: view, glob, rg and apply_patch only. No command, experiment,
+static check, simulation, synthesis or installation ran, and no new preparation
+receipt exists. Parent, verification and runtime files remain untouched.
+Attempt-0003 remains preserved without a claimed repair.
+
+## Prior saved increment: text/embedding phase overlay
 
 `rtl/anvil_en1_native.sv` now shares the existing full/post text banks
 0/3 with the ordinary/replay embedding hidden/PLE payload. The separate

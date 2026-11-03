@@ -183,8 +183,9 @@ committing a successful session.
 
 These are connected conservative reservations, including held copies
 and idle controllers, not independently accepted allocation completeness
-or storage savings. Grant-time whole-system limiting and ordinary-workspace
-partition enforcement remain unfinished. The completion guard below reports
+or storage savings. Workspace growth now uses the prospective whole-system
+admission path below, including ordinary-workspace partition checks;
+private-worker grants remain unfinished. The completion guard below reports
 actual and production-shadow scratch, fallback-ceiling, overlap and
 equivalent-payload violations; it does not authorize over-allocation.
 Physical reserved payload and metadata remain separately exposed by
@@ -357,8 +358,9 @@ original complete charges. Native controller accounting replaces the prior
 These are local storage ownership and address-partition guards, not the
 context-dependent whole-system scratch/fallback/ratio allocator. No legal
 capacity-pressure case is declared solved by the invariant error path.
-Ordinary total-workspace partition enforcement, whole-system grants with
-eviction/recomputation, and independent allocation/traffic verification
+Ordinary total-workspace partition checks now apply to observed allocations
+and prospective workspace growth. Private-worker whole-system grants with
+eviction/recomputation and independent allocation/traffic verification
 remain required.
 
 ### Replay vision projection/branch physical overlay
@@ -510,8 +512,9 @@ registered owner/fault (51 bits, rounded to 7 bytes for the native subset)
 are counted in dispatcher state, not again in external children. All unrelated
 private tile/residual/MLP/history banks remain separately reported.
 
-This closes one cross-domain physical duplication, not whole-system
-grant-time native-scratch/fallback/ordinary partition enforcement. No
+This closes one cross-domain physical duplication, not every whole-system
+grant-time allocation path. The prospective workspace checks below do not
+yet grant private worker/arithmetic growth. No
 functional, synthesis, M20K inference, resource-fit or timing result is
 established by these declarations.
 
@@ -538,9 +541,9 @@ partial/error tensors are not hidden by clearing visibility.
 
 | Frame boundary | Registered action before any dependent backing access |
 | --- | --- |
-| Push grant | Reserve the scalar slot, clear the new frame's vector reservations and visibility; then write the continuation |
+| Push grant | Pass prospective whole-system admission, then reserve the scalar slot, clear the new frame's vector reservations and visibility and write the continuation |
 | First vector request | Register actual/shadow candidate totals; do not enter stream, copy or pair backing states |
-| Vector grant | Check frame ownership and both physical frame-payload ceilings, set one reservation bit and update actual/shadow/native subtotals |
+| Vector grant | Check frame ownership and both physical frame-payload ceilings, pass prospective whole-system admission, then set one reservation bit and update actual/shadow/native subtotals |
 | Granted request | On a later edge resume the original vector operation; existing per-pair/last-word completion rules establish visibility |
 | Rewrite | Keep the same whole-vector reservation while invalidating/rebuilding visibility |
 | Read/copy source | Reject visible or partially written frame state without its reservation as error 7 |
@@ -556,11 +559,94 @@ arithmetic boundary or public port changes. Reservation bits are metadata;
 registered mask/count/readback and candidate/return-state storage is controller
 state. The physical backing RAM capacity is unchanged and separately disclosed.
 
-This closes local whole-vector-before-write frame allocation and exact release,
-not the remaining whole-system grant-time native-scratch/fallback/ordinary
-partition limits. In particular, these local grants do not authorize exceeding
-the context-dependent scratch or 45%-baseline limits. No executed liveness,
-numerical, synthesis, timing or hardware result is claimed.
+This closes local whole-vector-before-write frame allocation and exact release.
+Its new prospective admission also checks the context-dependent native-scratch,
+fallback-total, ordinary text-workspace partition and strict 45%-baseline
+limits before workspace growth. It does not yet admit every private
+worker/arithmetic reservation. No executed liveness, numerical, synthesis,
+timing or hardware result is claimed.
+
+### Prospective whole-system admission for workspace growth
+
+The connected path is `replay_workspace -> eval_schedule -> replay_execute ->
+replay_binding -> native.workspace_admission`. The new literal
+`anvil_en1_allocation_admission` reuses the existing registered allocation
+ledger, with prospective workspace field 5 and its native subset substituted
+for their current values. It includes every other live/shadow component,
+metadata and the top integration reservation unchanged, rather than comparing
+only the memo or frame subtotal. Top supplies the already registered production
+matched-payload baseline; this is a storage denominator, not measured baseline
+traffic. No public `anvil_en1_top` port changes.
+
+Before a new frame scalar slot, first frame-vector slice or memo replacement
+is reserved, the workspace prepares four complete prospective byte totals:
+actual workspace, production-shadow workspace, actual native subset and
+production-shadow native subset. A push adds its 128-byte scalar slot,
+not unallocated vectors. A vector grant adds the complete domain-width slice.
+A memo replacement removes the old destination, then includes the complete
+new vector. Native/text cross-domain replacement adjusts the native subset
+from the old and new domains independently. Four registered preparation stages
+separate base terms, memo terms, scalar additions and native-domain additions.
+No new backing write, stream acceptance or copy read precedes admission.
+
+| Internal signal | Meaning |
+| --- | --- |
+| `grant_valid/grant_ready` | One accepted prospective-allocation request; the four byte totals remain stable while stalled |
+| `grant_payload_bytes/grant_shadow_bytes[63:0]` | Complete prospective workspace allocation, including scalar slots, frames and memos |
+| `grant_native_bytes/grant_native_shadow_bytes[63:0]` | Native-domain subsets of those same prospective totals, not additional allocations |
+| `grant_rsp_valid/grant_rsp_ready` | One held decision for the accepted request; no second request before retirement |
+| `grant_allowed` | Held positive decision; zero is a denial, never a successful allocation or permission to spill |
+| Workspace `memo_pin_valid/memo_pin_slot[3:0]` | Scheduler's active dependency memo; snapshot before frame/scalar admission and retain through retries |
+
+| Admission boundary | Pre-edge handshake / post-edge action |
+| --- | --- |
+| Reset | All grant/decision outputs zero; cancel prospective pipeline validity and pending decisions without initializing payload RAM |
+| G0 | Accept one request, capture its matched baseline, and sample the complete prospective allocation into the first ledger stage |
+| G1..G4 | Advance the same snapshot/model/fallback/overlap tags through the remaining four balanced ledger stages |
+| G5 | Register all reported totals and subtract the coherent native-scratch subset from each workspace envelope; align every observation tag and subset-error flag |
+| G6 | Register `20*actual`, `20*shadow`, `9*B` in 69 bits and the independent scratch/text-partition/ceiling/overlap checks |
+| G7 | Register the decision and expose a held response; strict comparisons reject equality at 45% |
+| G8 or later | Accept the response; a denied request cannot reserve storage |
+| After positive response | On the following edge commit only the original requested scalar/vector/memo reservation, then resume its existing backing protocol |
+| Denial | Scan deterministic round-robin memo victims, release one eligible completed vector, rebuild the prospective totals, and request a fresh whole-system decision |
+| No feasible unpinned victim | Return explicit workspace error 7 without the denied allocation or a spill; this is an implementation failure to resolve, not an accepted capacity fallback |
+| Stalled decision | Keep valid/allowed stable; hold the requesting worker/scheduler behind its existing workspace response |
+
+Admission requires positive B, native model 1/2, no ordinary/fallback overlap,
+nondecreasing production shadows, and both actual and shadow equivalent
+payloads strictly below `0.45*B`. Fallback additionally requires both complete
+equivalent totals at most 1 MiB. Ordinary mode additionally requires both
+native-scratch totals at most `min(1 MiB, B >> 3)` and both ordinary text
+workspace totals at most 32768/65536 bytes for E2B/E4B. These are prospective
+conditions on workspace growth, not completion-time observations alone.
+The completion guard applies the same partition checks to observed allocations.
+
+The existing serialized Eval/worker protocol prevents another worker from
+starting while its workspace request or completed-result copy is pending.
+Suspended parent banks remain charged in the snapshot; source/output stalls
+cannot remove them. Frame/vector grants pin the scheduler's dependency memo.
+A memo-to-frame copy additionally pins its own checked source slot even
+without a scheduler pin. Single-token linear replay pins the completed
+predecessor across the next frame push. Completed-result memo replacement
+occurs after worker done, when its old dependency is no longer being consumed.
+The scan skips the pinned slot, an occupied replacement destination and
+unoccupied slots as applicable. It never evicts a live frame, partial frame
+vector or immutable input. Evicted completed memos are regenerated by the
+existing exact decreasing-rank Eval path on the next miss.
+
+The admission FSM and its ledger registers are included in native component
+23, so the prospective sum charges the admission hardware itself. Workspace
+candidate/pin registers are included in workspace controller accounting.
+No additional payload RAM is declared by this path. Its added register
+reservation is disclosed even if synthesis can prune unused ledger outputs.
+
+Remaining closure: admit private native/text worker and arithmetic reservations
+before growth, finish
+physical overlays and establish that every required legal case has sufficient
+unspillable workspace. Repeated denial after all evictable memos are gone is
+not a permitted substitute for exact replay. The remaining grant paths must
+be closed before the reserved static elaboration and independent Verifier
+handoff. No functional or synthesis experiment has run for this increment.
 
 ### Context-bounded memo grants and exact eviction
 
@@ -595,9 +681,9 @@ vector, including native audio/vision results. Large contexts cap at
 | Over-budget candidate | Scan the 16 memo slots from the deterministic round-robin cursor, skipping the destination and unoccupied slots; do not enter STREAM/COPY_READ |
 | Budget eviction | Invalidate one completed victim, decrement actual/shadow and native-domain subtotals and the candidate on the same edge, and emit the existing eviction event |
 | Recheck | Compare registered reduced candidates on a later edge; continue scanning or grant the replacement |
-| Grant | Remove any old destination reservation and charge the complete pending vector before accepting its first stream word or issuing a copy read |
+| Grant | Pass prospective whole-system admission, remove any old destination reservation and charge the complete pending vector before accepting its first stream word or issuing a copy read |
 | Commit / abort | Existing commit visibility and abort/backing-error release rules are unchanged; budget-evicted values remain invalid |
-| No feasible victim / inconsistent census | Report error 7 without unsigned wraparound or a new backing write; legal model/context/vector tuples always admit one vector after the other memos are evicted |
+| No feasible victim / inconsistent census | Report error 7 without unsigned wraparound or a new backing write; the local memo envelope alone always admits one legal vector, but this does not prove whole-system feasibility |
 | Stalled public response | Keep its payload stable; a second workspace request cannot race eviction or read an evicted slot |
 
 Budget eviction has no dirty writeback and never sends an external memory
@@ -612,11 +698,11 @@ Budget scan/control/candidate registers enter the workspace controller census;
 unused physical memo capacity is still disclosed, not advertised as removed RAM.
 
 This closes a context-sensitive **memo** grant path with real eviction and
-recomputation. The separate frame-vector grants above enforce local capacity,
-not the context-dependent native-worker,
-arithmetic/controller or whole-system concurrent reservations. In particular,
-the outer completion-time allocation guard is still an observer; its failures
-cannot be relabeled as successful legal execution.
+recomputation. Memo, scalar-push and first-vector growth now additionally pass
+the prospective whole-system checks above. Private native/text worker and
+arithmetic/controller grants and whole-system
+feasibility remain unfinished. The outer completion-time allocation guard
+is still an observer; its failures cannot be relabeled successful legal execution.
 
 ### Native-workspace domain census
 
@@ -668,6 +754,8 @@ production-geometry padded baseline, also in compact builds. Comparison
 uses widened shift/add operands and a separately registered comparison
 stage, never division or a truncating percentage calculation. It also
 rejects simultaneous fallback and live ordinary frontier/ring reservations.
+Ordinary mode also checks the separately pipelined complete text-workspace
+partition described below.
 This is an allocation-failure observer: it neither grants excess storage
 nor changes the admitted operation to an error-return fallback.
 
@@ -684,6 +772,46 @@ nor changes the admitted operation to an error-return fallback.
 These connected observations do not certify independently checked allocation
 completeness or FPGA resource fit. Grant-time allocation limiting and remaining
 physical phase overlays still must be completed before the design handoff.
+
+### Ordinary complete text-workspace partition
+
+The allocation ledger carries eight parallel balanced five-stage sums.
+The first six retain payload, replay, complete equivalent and native-scratch
+actual/shadow observations. The two added sums are actual/shadow workspace
+envelopes: the complete equivalent ledger excluding only frontier (field 0),
+local anchor ring (field 1) and resident KV words (field 18). All other
+fields, visibility metadata and integration/control registers remain included.
+A sixth registered stage subtracts each coherent native-scratch subtotal
+from its envelope. That subtotal is charged to M, never counted twice or
+discarded from the complete equivalent ledger. Text-domain workspace frames,
+scalar continuations, memos, transient vectors and arithmetic/control state
+therefore remain in the text partition.
+
+| Partition boundary | Rule |
+| --- | --- |
+| Native subset consistency | Actual/shadow workspace native bytes cannot exceed field 5; native reconstruction controllers cannot exceed field 22 in either ledger |
+| Envelope subtraction | Underflow retains an explicit partition-error flag; wrapped subtraction is never an admissible byte count |
+| Ordinary E2B | Actual and production-shadow complete text workspace each at most 32768 bytes |
+| Ordinary E4B | Actual and production-shadow complete text workspace each at most 65536 bytes |
+| Shadow consistency | Text workspace shadow must be at least actual, independently of total and native-scratch checks |
+| Fallback | Retain complete 1 MiB and strict 45% checks; ordinary text partition limits do not apply |
+| Reset/report | All outputs and pipeline validity zero during reset; all eight totals and model/mode/error tags describe the same sampled edge |
+
+Both prospective workspace admission and the completion guard consume these
+same totals and error flags. Prospective denial uses the existing pinned-memo
+eviction/retry path before allocating any denied frame/vector/memo payload.
+The top's eight drain edges plus allocation-check edge cover the six ledger
+stages and the guard's two comparison stages. All expanded ledger registers,
+including the subset-error pipeline and final totals, are included in each
+ledger's controller reservation. The prospective instance charges itself
+through native field 23; the observation instance charges itself through
+integration bytes. No payload RAM, public top port, numerical boundary or
+acceptance threshold changes.
+
+This closes partition enforcement for observed allocations and for prospective
+workspace growth. It does not yet grant private worker/arithmetic growth,
+prove legal-case capacity feasibility or certify physical implementation.
+No execution result is claimed.
 
 ### Matched-unshared payload gauge
 
@@ -4676,9 +4804,10 @@ silently clamp geometry or evict an in-progress frame.
 | Depth 64 / scalar 32 | Reject before slot/address truncation can advertise a legal transaction |
 | Reset/invalidation | Existing drain/visibility rules apply; candidate registers do not grant payload visibility |
 
-These are workspace partition guards, not enforcement of whole-system ordinary
-text, native-scratch, full fallback or forced-short-context ratio limits.
-Those additional integration limits remain required before Verifier handoff.
+These local partition guards are supplemented by the prospective whole-system
+workspace admission described above, including ordinary text, native-scratch,
+full fallback and forced-short-context ratio checks. Private-worker growth
+still requires integrated grant-time limits before Verifier handoff.
 
 Vector store target 0 is a frame bank and target 1 a memo slot. It accepts
 exactly length/2 aligned 32-bit beats, checking first/last. The existing target

@@ -50,6 +50,8 @@ module anvil_en1_replay_workspace #(
     input wire grant_rsp_valid,
     output wire grant_rsp_ready,
     input wire grant_allowed,
+    input wire memo_pin_valid,
+    input wire [3:0] memo_pin_slot,
     output wire memo_hit_event, memo_eviction_event,
     output wire backing_valid,
     input wire backing_ready,
@@ -130,9 +132,11 @@ module anvil_en1_replay_workspace #(
             MEMO_BUDGET_EVICT = 42, MEMO_BUDGET_CHECK = 43,
             FRAME_VECTOR_RESERVE = 44, FRAME_VECTOR_GRANT = 45,
             POP_ACCOUNT = 46, POP_SIZE = 47,
-            MEMO_GRANT_TERMS = 48, MEMO_GRANT_SUM = 49,
-            MEMO_GRANT_TOTAL = 50, MEMO_GRANT_SEND = 51,
-            MEMO_GRANT_WAIT = 52, MEMO_GRANT_COMMIT = 53;
+            GRANT_TERMS = 48, GRANT_SUM = 49,
+            GRANT_TOTAL = 50, GRANT_SEND = 51,
+            GRANT_WAIT = 52, MEMO_GRANT_COMMIT = 53,
+            FRAME_PUSH_COMMIT = 54, FRAME_VECTOR_COMMIT = 55,
+            GRANT_NATIVE_ADJUST = 56;
         reg [5:0] state, backing_return, vector_reserve_return;
         reg active, invalidate_hold, bank_hold, pending_push, pending_memo;
         reg hit_hold, hit_pulse, eviction_pulse, new_memo;
@@ -181,6 +185,9 @@ module anvil_en1_replay_workspace #(
         reg [63:0] grant_payload_hold, grant_shadow_hold;
         reg [63:0] grant_native_hold, grant_native_shadow_hold;
         reg [31:0] grant_native_memo, grant_native_shadow_memo;
+        reg [1:0] grant_kind;
+        reg grant_pin_valid;
+        reg [3:0] grant_pin_slot;
         reg [64*SCALAR_WORDS-1:0] scalar_occupied;
         (* ramstyle = "MLAB", nomem2reg *)
         reg [TAG_BITS-1:0] frame_tags [0:63];
@@ -224,7 +231,8 @@ module anvil_en1_replay_workspace #(
             $bits(allocation_candidate) + $bits(shadow_candidate) +
             $bits(grant_payload_hold) + $bits(grant_shadow_hold) +
             $bits(grant_native_hold) + $bits(grant_native_shadow_hold) +
-            $bits(grant_native_memo) + $bits(grant_native_shadow_memo);
+            $bits(grant_native_memo) + $bits(grant_native_shadow_memo) +
+            $bits(grant_kind) + $bits(grant_pin_valid) + $bits(grant_pin_slot);
 
         wire [TAG_BITS-1:0] incoming_tag = {req_model, req_generation,
             req_domain, req_layer, req_token[16:0], req_length};
@@ -383,8 +391,9 @@ module anvil_en1_replay_workspace #(
         wire budget_victim_native = budget_victim_domain != 0;
         wire budget_victim_valid = memo_payload_bytes >= budget_victim_bytes &&
             shadow_memo_payload_bytes >= budget_victim_shadow &&
-            allocation_candidate >= {1'b0, budget_victim_bytes} &&
-            shadow_candidate >= {1'b0, budget_victim_shadow} &&
+            (grant_kind != 0 ||
+                (allocation_candidate >= {1'b0, budget_victim_bytes} &&
+                 shadow_candidate >= {1'b0, budget_victim_shadow})) &&
             memo_count != 0 &&
             (!budget_victim_native ||
                 (native_memo_payload_bytes >= budget_victim_bytes &&
@@ -419,12 +428,12 @@ module anvil_en1_replay_workspace #(
         assign visibility_metadata_bytes = rst_n ?
             64'((METADATA_BITS + 7) >> 3) : 64'd0;
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS + 7) >> 3) : 64'd0;
-        assign grant_valid = rst_n && state == MEMO_GRANT_SEND;
+        assign grant_valid = rst_n && state == GRANT_SEND;
         assign grant_payload_bytes = rst_n ? grant_payload_hold : 64'd0;
         assign grant_shadow_bytes = rst_n ? grant_shadow_hold : 64'd0;
         assign grant_native_bytes = rst_n ? grant_native_hold : 64'd0;
         assign grant_native_shadow_bytes = rst_n ? grant_native_shadow_hold : 64'd0;
-        assign grant_rsp_ready = rst_n && state == MEMO_GRANT_WAIT;
+        assign grant_rsp_ready = rst_n && state == GRANT_WAIT;
         assign memo_hit_event = rst_n && hit_pulse;
         assign memo_eviction_event = rst_n && eviction_pulse;
         wire backing_in_range = {14'd0, backing_address_hold} < TOTAL_WORDS;
@@ -442,7 +451,7 @@ module anvil_en1_replay_workspace #(
                 pair_active_q <= pair_progress_valid[vector_index_hold];
                 pair_component_q <= pair_next_component[12*vector_index_hold+:12];
             end
-            if (rst_n && state == FRAME_VECTOR_GRANT && vector_grant_ok)
+            if (rst_n && state == FRAME_VECTOR_COMMIT && vector_grant_ok)
                 vector_reserved_q <= 1;
             if (rst_n && state == TAG_READ && depth != 0) begin
                 frame_tag_q <= frame_tags[tag_frame_slot];
@@ -538,6 +547,9 @@ module anvil_en1_replay_workspace #(
                 grant_native_shadow_hold <= 0;
                 grant_native_memo <= 0;
                 grant_native_shadow_memo <= 0;
+                grant_kind <= 0;
+                grant_pin_valid <= 0;
+                grant_pin_slot <= 0;
                 popped_count_hold <= 0;
                 popped_payload_hold <= 0;
                 popped_shadow_hold <= 0;
@@ -773,17 +785,23 @@ module anvil_en1_replay_workspace #(
                             error_hold <= 7;
                             state <= PUBLISH;
                         end else begin
-                            slot_hold <= depth[5:0];
-                            response_slot <= depth[5:0];
-                            pending_push <= 1;
-                            continuation_index <= 0;
-                            vector_reserved[6*depth[5:0]+:6] <= 0;
-                            vector_occupied[6*depth[5:0]+:6] <= 0;
-                            pair_progress_valid[6*depth[5:0]+:6] <= 0;
-                            pair_next_component[72*depth[5:0]+:72] <= 0;
-                            scalar_occupied[32'(depth[5:0])*SCALAR_WORDS+:SCALAR_WORDS] <= 0;
-                            state <= CONT_WRITE;
+                            grant_kind <= 1;
+                            grant_pin_valid <= memo_pin_valid;
+                            grant_pin_slot <= memo_pin_slot;
+                            state <= GRANT_TERMS;
                         end
+                    end
+                    FRAME_PUSH_COMMIT: begin
+                        slot_hold <= depth[5:0];
+                        response_slot <= depth[5:0];
+                        pending_push <= 1;
+                        continuation_index <= 0;
+                        vector_reserved[6*depth[5:0]+:6] <= 0;
+                        vector_occupied[6*depth[5:0]+:6] <= 0;
+                        pair_progress_valid[6*depth[5:0]+:6] <= 0;
+                        pair_next_component[72*depth[5:0]+:72] <= 0;
+                        scalar_occupied[32'(depth[5:0])*SCALAR_WORDS+:SCALAR_WORDS] <= 0;
+                        state <= CONT_WRITE;
                     end
                     UPDATE_SETUP: begin
                         continuation_index <= 0;
@@ -960,19 +978,30 @@ module anvil_en1_replay_workspace #(
                             error_hold <= 7;
                             state <= PUBLISH;
                         end else begin
-                            frame_payload_bytes <= allocation_candidate[31:0];
-                            shadow_frame_payload_bytes <= shadow_candidate[31:0];
-                            if (native_request) begin
-                                native_frame_payload_bytes <= native_frame_payload_bytes +
-                                    request_vector_bytes;
-                                native_shadow_frame_bytes <= native_shadow_frame_bytes +
-                                    request_shadow_vector_bytes;
-                            end
-                            vector_reserved[vector_bit_index] <= 1;
-                            state <= vector_reserve_return;
+                            grant_kind <= 2;
+                            grant_pin_valid <= memo_pin_valid ||
+                                (op_hold == 3 && target_hold == 3);
+                            grant_pin_slot <= op_hold == 3 && target_hold == 3 ?
+                                copy_source_slot[3:0] : memo_pin_slot;
+                            state <= GRANT_TERMS;
                         end
                     end
+                    FRAME_VECTOR_COMMIT: begin
+                        frame_payload_bytes <= allocation_candidate[31:0];
+                        shadow_frame_payload_bytes <= shadow_candidate[31:0];
+                        if (native_request) begin
+                            native_frame_payload_bytes <= native_frame_payload_bytes +
+                                request_vector_bytes;
+                            native_shadow_frame_bytes <= native_shadow_frame_bytes +
+                                request_shadow_vector_bytes;
+                        end
+                        vector_reserved[vector_bit_index] <= 1;
+                        state <= vector_reserve_return;
+                    end
                     MEMO_RESERVE: begin
+                        grant_kind <= 0;
+                        grant_pin_valid <= 0;
+                        grant_pin_slot <= 0;
                         allocation_candidate <= allocation_candidate +
                             {1'b0, request_vector_bytes};
                         shadow_candidate <= shadow_candidate +
@@ -988,73 +1017,102 @@ module anvil_en1_replay_workspace #(
                             budget_visits <= 0;
                             state <= MEMO_BUDGET_SCAN;
                         end else
-                            state <= MEMO_GRANT_TERMS;
+                            state <= GRANT_TERMS;
                     end
-                    MEMO_GRANT_TERMS: begin
-                        grant_payload_hold <= live_frames + live_scalars;
-                        grant_shadow_hold <= shadow_frames + shadow_scalars;
+                    GRANT_TERMS: begin
+                        grant_payload_hold <=
+                            (grant_kind == 2 ? {31'd0, allocation_candidate} : live_frames) +
+                            live_scalars;
+                        grant_shadow_hold <=
+                            (grant_kind == 2 ? {31'd0, shadow_candidate} : shadow_frames) +
+                            shadow_scalars;
                         grant_native_hold <= native_frames + native_scalars;
                         grant_native_shadow_hold <= native_shadow_frames + native_scalars;
                         grant_native_memo <= native_memo_payload_bytes -
-                            (native_victim ? replaced_memo_bytes : 32'd0);
+                            (grant_kind == 0 && native_victim ? replaced_memo_bytes : 32'd0);
                         grant_native_shadow_memo <= native_shadow_memo_bytes -
-                            (native_victim ? replaced_shadow_memo_bytes : 32'd0);
-                        state <= MEMO_GRANT_SUM;
+                            (grant_kind == 0 && native_victim ?
+                                replaced_shadow_memo_bytes : 32'd0);
+                        state <= GRANT_SUM;
                     end
-                    MEMO_GRANT_SUM: begin
+                    GRANT_SUM: begin
                         grant_payload_hold <= grant_payload_hold +
-                            {31'd0, allocation_candidate};
+                            (grant_kind == 0 ? {31'd0, allocation_candidate} :
+                                {32'd0, memo_payload_bytes});
                         grant_shadow_hold <= grant_shadow_hold +
-                            {31'd0, shadow_candidate};
+                            (grant_kind == 0 ? {31'd0, shadow_candidate} :
+                                {32'd0, shadow_memo_payload_bytes});
                         grant_native_memo <= grant_native_memo +
-                            (native_request ? request_vector_bytes : 32'd0);
+                            (grant_kind == 0 && native_request ? request_vector_bytes : 32'd0);
                         grant_native_shadow_memo <= grant_native_shadow_memo +
-                            (native_request ? request_shadow_vector_bytes : 32'd0);
-                        state <= MEMO_GRANT_TOTAL;
+                            (grant_kind == 0 && native_request ?
+                                request_shadow_vector_bytes : 32'd0);
+                        state <= GRANT_TOTAL;
                     end
-                    MEMO_GRANT_TOTAL: begin
+                    GRANT_TOTAL: begin
+                        grant_payload_hold <= grant_payload_hold +
+                            (grant_kind == 1 ? 64'd128 : 64'd0);
+                        grant_shadow_hold <= grant_shadow_hold +
+                            (grant_kind == 1 ? 64'd128 : 64'd0);
                         grant_native_hold <= grant_native_hold + {32'd0, grant_native_memo};
                         grant_native_shadow_hold <= grant_native_shadow_hold +
                             {32'd0, grant_native_shadow_memo};
-                        state <= MEMO_GRANT_SEND;
+                        state <= GRANT_NATIVE_ADJUST;
                     end
-                    MEMO_GRANT_SEND: if (grant_ready)
-                        state <= MEMO_GRANT_WAIT;
-                    MEMO_GRANT_WAIT: if (grant_rsp_valid) begin
-                        if (grant_allowed)
-                            state <= MEMO_GRANT_COMMIT;
-                        else begin
+                    GRANT_NATIVE_ADJUST: begin
+                        grant_native_hold <= grant_native_hold +
+                            (!native_request ? 64'd0 :
+                            (grant_kind == 1 ? 64'd128 :
+                            (grant_kind == 2 ? {32'd0, request_vector_bytes} : 64'd0)));
+                        grant_native_shadow_hold <= grant_native_shadow_hold +
+                            (!native_request ? 64'd0 :
+                            (grant_kind == 1 ? 64'd128 :
+                            (grant_kind == 2 ? {32'd0, request_shadow_vector_bytes} : 64'd0)));
+                        state <= GRANT_SEND;
+                    end
+                    GRANT_SEND: if (grant_ready)
+                        state <= GRANT_WAIT;
+                    GRANT_WAIT: if (grant_rsp_valid) begin
+                        if (grant_allowed) begin
+                            if (grant_kind == 1)
+                                state <= FRAME_PUSH_COMMIT;
+                            else if (grant_kind == 2)
+                                state <= FRAME_VECTOR_COMMIT;
+                            else
+                                state <= MEMO_GRANT_COMMIT;
+                        end else begin
                             budget_index <= cursor;
                             budget_visits <= 0;
                             state <= MEMO_BUDGET_SCAN;
                         end
                     end
                     MEMO_GRANT_COMMIT: begin
-                            pending_memo <= 1;
-                            if (memo_occupied[slot_hold[3:0]]) begin
-                                memo_count <= memo_count - 1'b1;
-                                memo_payload_bytes <= memo_payload_bytes - replaced_memo_bytes;
-                                shadow_memo_payload_bytes <= shadow_memo_payload_bytes -
+                        pending_memo <= 1;
+                        if (memo_occupied[slot_hold[3:0]]) begin
+                            memo_count <= memo_count - 1'b1;
+                            memo_payload_bytes <= memo_payload_bytes - replaced_memo_bytes;
+                            shadow_memo_payload_bytes <= shadow_memo_payload_bytes -
+                                replaced_shadow_memo_bytes;
+                            if (native_victim) begin
+                                native_memo_payload_bytes <= native_memo_payload_bytes -
+                                    replaced_memo_bytes;
+                                native_shadow_memo_bytes <= native_shadow_memo_bytes -
                                     replaced_shadow_memo_bytes;
-                                if (native_victim) begin
-                                    native_memo_payload_bytes <= native_memo_payload_bytes -
-                                        replaced_memo_bytes;
-                                    native_shadow_memo_bytes <= native_shadow_memo_bytes -
-                                        replaced_shadow_memo_bytes;
-                                end
-                                eviction_pulse <= new_memo;
                             end
-                            memo_occupied[slot_hold[3:0]] <= 0;
-                            if (target_hold == 2)
-                                state <= COPY_READ;
-                            else
-                                state <= STREAM;
+                            eviction_pulse <= new_memo;
+                        end
+                        memo_occupied[slot_hold[3:0]] <= 0;
+                        if (target_hold == 2)
+                            state <= COPY_READ;
+                        else
+                            state <= STREAM;
                     end
                     MEMO_BUDGET_SCAN: begin
                         if (budget_visits == 16) begin
                             error_hold <= 7;
                             state <= PUBLISH;
-                        end else if (budget_index != slot_hold[3:0] &&
+                        end else if ((grant_kind != 0 || budget_index != slot_hold[3:0]) &&
+                            (!grant_pin_valid || budget_index != grant_pin_slot) &&
                             memo_occupied[budget_index])
                             state <= MEMO_BUDGET_EVICT;
                         else begin
@@ -1072,10 +1130,12 @@ module anvil_en1_replay_workspace #(
                             memo_payload_bytes <= memo_payload_bytes - budget_victim_bytes;
                             shadow_memo_payload_bytes <= shadow_memo_payload_bytes -
                                 budget_victim_shadow;
-                            allocation_candidate <= allocation_candidate -
-                                {1'b0, budget_victim_bytes};
-                            shadow_candidate <= shadow_candidate -
-                                {1'b0, budget_victim_shadow};
+                            if (grant_kind == 0) begin
+                                allocation_candidate <= allocation_candidate -
+                                    {1'b0, budget_victim_bytes};
+                                shadow_candidate <= shadow_candidate -
+                                    {1'b0, budget_victim_shadow};
+                            end
                             if (budget_victim_native) begin
                                 native_memo_payload_bytes <= native_memo_payload_bytes -
                                     budget_victim_bytes;
@@ -1089,7 +1149,9 @@ module anvil_en1_replay_workspace #(
                         end
                     end
                     MEMO_BUDGET_CHECK: begin
-                        if (memo_budget_ok)
+                        if (grant_kind != 0)
+                            state <= GRANT_TERMS;
+                        else if (memo_budget_ok)
                             state <= MEMO_VALIDATE;
                         else
                             state <= MEMO_BUDGET_SCAN;

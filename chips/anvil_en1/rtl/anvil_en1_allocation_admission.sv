@@ -20,14 +20,18 @@ module anvil_en1_allocation_admission (
     reg [63:0] baseline_hold;
     reg [68:0] scaled_payload, scaled_shadow, scaled_baseline;
     reg limit_failure, allowed_hold;
+    // Replace workspace field 5; do not add a second workspace copy.
     wire [1599:0] prospective_live = {
         component_live_bytes[1599:384], candidate_bytes, component_live_bytes[319:0]};
     wire [1599:0] prospective_shadow = {
         component_shadow_bytes[1599:384], candidate_shadow_bytes,
         component_shadow_bytes[319:0]};
     wire report_valid, report_fallback, report_overlap;
+    wire report_partition_error;
     wire [1:0] report_model;
     wire [63:0] equivalent, equivalent_shadow, scratch, scratch_shadow;
+    wire [63:0] text_workspace, text_workspace_shadow;
+    wire [63:0] text_limit = report_model == 1 ? 64'd32768 : 64'd65536;
     wire [63:0] ledger_controller_bytes;
     wire [63:0] scratch_limit = baseline_hold[63:3] > 61'd1048576 ?
         64'd1048576 : {3'd0, baseline_hold[63:3]};
@@ -60,6 +64,9 @@ module anvil_en1_allocation_admission (
         .report_model(report_model), .payload_bytes(), .replay_bytes(),
         .equivalent_bytes(equivalent), .equivalent_shadow_bytes(equivalent_shadow),
         .native_scratch_bytes(scratch), .native_scratch_shadow_bytes(scratch_shadow),
+        .text_workspace_bytes(text_workspace),
+        .text_workspace_shadow_bytes(text_workspace_shadow),
+        .report_partition_error(report_partition_error),
         .controller_bytes(ledger_controller_bytes)
     );
 
@@ -85,12 +92,15 @@ module anvil_en1_allocation_admission (
                     scaled_baseline <= (baseline_wide << 3) + baseline_wide;
                     limit_failure <= baseline_hold == 0 ||
                         (report_model != 1 && report_model != 2) ||
-                        report_overlap || equivalent_shadow < equivalent ||
-                        scratch_shadow < scratch ||
+                        report_overlap || report_partition_error ||
+                        equivalent_shadow < equivalent ||
+                        scratch_shadow < scratch || text_workspace_shadow < text_workspace ||
                         (report_fallback ?
                             (equivalent > 64'd1048576 ||
                              equivalent_shadow > 64'd1048576) :
-                            (scratch > scratch_limit || scratch_shadow > scratch_limit));
+                            (scratch > scratch_limit || scratch_shadow > scratch_limit ||
+                             text_workspace > text_limit ||
+                             text_workspace_shadow > text_limit));
                     state <= COMPARE;
                 end
                 COMPARE: begin

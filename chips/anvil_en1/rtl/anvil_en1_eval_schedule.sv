@@ -218,6 +218,12 @@ module anvil_en1_eval_schedule #(
         .grant_native_shadow_bytes(grant_native_shadow_bytes),
         .grant_rsp_valid(grant_rsp_valid), .grant_rsp_ready(grant_rsp_ready),
         .grant_allowed(grant_allowed),
+        .memo_pin_valid((dependency_valid_hold &&
+            (state == TASK_START || state == TASK_WAIT)) ||
+            (push_kind == 2 &&
+            (state == PUSH_SETUP || state == WS_SEND ||
+             state == WS_WAIT || state == PUSH_RESULT))),
+        .memo_pin_slot(dependency_slot[3:0]),
         .control_valid(rst_n &&
             (state == BIND_SEND || state == INVALIDATE_SEND)),
         .control_ready(ws_control_ready),
