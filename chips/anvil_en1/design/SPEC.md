@@ -5,9 +5,9 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment contract: channel-serial audio history
+### Current increment: channel-serial audio history
 
-The connected history worker will evaluate depthwise channels in ascending
+The connected history worker now evaluates depthwise channels in ascending
 order, visiting each channel's five taps in ascending kernel order. It
 reconstructs the real full residual for each nonpadding tap, then computes
 only that channel's GLU and depthwise product. Multiply/add rounding,
@@ -43,7 +43,48 @@ remain charged. This is a connected storage reduction, not whole-system
 capacity acceptance; all reachable native/fallback and physical partitions
 still need reconciliation before the reserved static check.
 
-### Current increment: memo-backed audio queries and deferred residual binding
+Frame scalar word 32 is `{6'b0, pending_low_bf16[15:0], channel[9:0]}`;
+word 33 is the FP32 partial sum. Restore rejects nonzero reserved bits,
+a pending low half at an even channel, and a nonzero accumulator at the
+first real tap. Generation/frame validation precedes these accesses.
+Snapshot write errors suppress a pending yield and retire as errors.
+No numerical head checkpoint is shortened or overlapped.
+
+The history wrapper's declared local controller report grows from 866
+bits/109 bytes to 1022 bits/128 bytes. The fold adds no registers:
+it captures the selected channel and prior accumulator into its existing
+registers. Thus the preceding source-derived native controller sum
+becomes **34014 bytes** (+19); workspace scalar visibility metadata grows
+by 128 bits/16 bytes separately. These are source-expression counts, not
+elaboration, observed allocation or synthesis results.
+
+The conservative twelve-frame comparison is now
+`12*(4096+136) = 50784` bytes, a 24480-byte reduction from
+`12*(6144+128) = 75264`. It still does not fit the minimum E2B allowance
+when simply added to all current native controllers and active private
+state: `34014+6144+50784 = 90942 > 86016`, before memo/outer state.
+This upper-bound comparison is not proof of reachable simultaneous
+occupancy or permission to reject legal work. Further connected reductions
+or a complete reachable-liveness proof remain required.
+
+Independent verification must cover both fold configurations and
+precisions, channels 0/1/511/512/513/1023, all leading-padding lengths,
+FP32 accumulation and BF16 packing, yields at every tap and head phase,
+snapshot restore/tag corruption, final-query-residual retention,
+partial-output eviction/regeneration, reset and all stalled/error paths.
+Observe actual absence of accumulator-slice requests, scalar indices
+31/32/33/34, adjacent frame separation, full 136-byte grants and
+production shadows, not just status bits. The extra residual
+reconstruction per channel can be extremely expensive; no latency or
+total-traffic improvement is claimed.
+
+Saved `audio_history_fold`, `replay_audio_history`, `replay_workspace`,
+`frontier` and both design documents. Used view/rg/glob/apply_patch only.
+No HDL execution, functional/synthesis probe or preparation receipt;
+the reserved static elaboration remains unused. Tests, immutable parent
+sources, runtime metadata and original failure records remain unchanged.
+
+### Prior increment: memo-backed audio queries and deferred residual binding
 
 The connected packed-history residual selects
 `replay_audio_heads.DEFER_QUERY_BINDING=1`. Default zero preserves the
@@ -129,6 +170,67 @@ synthesis, preparation harness or receipt was produced. The reserved
 static elaboration remains pending complete design closure. Tests,
 immutable parent sources, original failures and runtime metadata remain
 unchanged.
+
+### Current increment: frame-backed raw-source feed-forward
+
+The frame-backed post-attention path consumes only the raw FF1 residual
+stream from `audio_pre_attention`; its second, normalized stream was
+discarded. Specialize `audio_attention_residual.FRAME_HEADS=1` to connect
+the actual mode-1 `audio_feedforward` directly. This removes only the
+unused attention-input normalization/clamping and its controller subtree.
+Attention's real query/key preprocessing in `replay_audio_attention`
+remains unchanged. The default standalone path retains both streams.
+
+Add `audio_feedforward.RAW_SOURCE_CALLBACK`, default zero. At one, the
+immutable source supplies raw components twice: once before input clipping,
+and again for the final residual addition. Do not retain a private raw
+vector. In connected frame-backed post-attention, those reads use the
+already retained raw input frame, not host-computed values or a new spill.
+Both feed-forward modes and precisions retain their clipping, normalization,
+MLP, BF16 half-residual rounding and ascending traversal.
+
+| Boundary | Required action |
+| --- | --- |
+| Start/validation | Capture the descriptor; reject illegal parameters with the existing explicit diagnostic |
+| Initial source acceptance | Register response and error, then clip the actual raw BF16 component into working RAM; no raw-bank write |
+| Initial component advance | Request the next raw component; expose working visibility only after all 1024 clipped words are stored |
+| Post-normalization completion | Reread raw component zero through the registered source channel before the existing branch-read/multiply sequence |
+| Final residual component | Register raw response before branch read; preserve the original multiply, BF16 narrowing/widening, addition and final narrowing order |
+| Final output acceptance | Advance only after ready/valid acceptance; reread the next raw component |
+| Source failure | Retire the accepted response and publish error 7 without a new source/weight request |
+| Active reset/stall | Zero public outputs during reset; retain source descriptor and output payload while stalled |
+| Frame-backed FF output | Count raw outputs only; no normalized output is expected or manufactured |
+| Ownership | Keep caller raw-output allocation charged while filling it; sum it with the child's branch/working allocations, not their maximum |
+
+With the callback, FF working+branch peak at 4096 bytes; during FF output
+only its 2048-byte branch remains, alongside the caller's 2048-byte raw
+output. Thus this frame-backed post-attention phase falls from 6144 to
+4096 private bytes. Later raw+projection-working still use 4096 bytes.
+The child physically removes its private 2048-byte raw bank. Existing
+external-vector-RAM users retain their physical backing unless separately
+changed. This is not a reduction of suspended history/head/output vectors.
+The preceding 34014-byte native-controller sum must be recounted for the
+new generated hierarchy; it is historical, not a current certificate.
+Complete native/fallback and physical-partition fit remain open.
+
+The same default-off callback parameter is forwarded by
+`audio_pre_attention`, and enabled by `replay_audio_attention`. Its
+original source remains the pinned memo dependency throughout the whole
+pre-attention task. Keep the existing shared three-bank physical store:
+bank 0 now holds only the emitted, clipped FF residual, while FF uses
+banks 1/2 for working/branch. Charge bank 0 concurrently with FF as soon
+as its first output is accepted; unlike the retained-raw configuration,
+FF no longer includes that bank in its own report. The resulting phases
+are working+branch 4096, branch+pre-output 4096, then pre-output+normalized
+cache 4096 bytes. Do not retain or claim the old 6144-byte head-preprocessing
+private peak. Physical shared RAM remains 6144 bytes. Full-hierarchy
+envelopes stay conservative until every other active phase is reconciled.
+
+Independent verification must cover both callback settings, both modes
+and precisions, exact output equivalence, the second raw read of every
+component, first/last component, source errors in both passes, reset and
+stalls, absence of raw-bank accesses in callback mode, and actual summed
+allocations. No functional or synthesis execution is claimed here.
 
 ### Prior increment: supplied-depthwise specialization and native controller census
 
@@ -5056,13 +5158,13 @@ Compact text replay no longer substitutes H=8 for native vector frames.
 `anvil_en1_eval_schedule` and `anvil_en1_replay_workspace` select 8 for domain
 0/3, 768 for vision and 1024 for audio. Compact physical frame strides
 are 3072 words, with two 1536-word banks; memo strides are 512 words; scalar
-strides remain 32 words. Frame/memo regions are disjoint for mixed-domain
+strides are 34 words. Frame/memo regions are disjoint for mixed-domain
 stacks, including the upper native component and the next frame/memo slot.
 The existing generation/rank/tag/committed-vector guards remain in force.
 
 Compact live reservations count each granted complete vector prefix:
 16 text/feature, 1536 vision or 2048 audio bytes per reserved slice, plus
-128 scalar bytes per pending/live frame. Memo reservations count 16/1536/2048 bytes by domain,
+136 scalar bytes per pending/live frame. Memo reservations count 16/1536/2048 bytes by domain,
 including pending writes/copies. Eviction first releases the old reservation,
 then charges the new one; its domain is retained as metadata. Push/pop/reset
 update the real domain-specific live totals. Unaddressable stride holes
@@ -5073,12 +5175,12 @@ Production uses the same domain-specific grants: text/native feature frames
 can reserve two H vectors, vision two 768-vectors, and audio six
 1024-vectors; memo entries reserve one vector. Shadow counters independently
 track the production-width counterpart of every granted prefix during compact execution. Scalar
-reservations are 128 bytes per production, shadow and compact frame.
+reservations are 136 bytes per production, shadow and compact frame.
 Pending allocations count before backing writes; committed
 totals change on vector grant/pop/memo commit/eviction, with reset/invalidation
 clearing all four totals. Physical layout and supported depths are unchanged.
 
-The compact backing address space reserves 206848 words / 827392 bytes.
+The compact backing address space reserves 206976 words / 827904 bytes.
 The current disjoint ordinary backing physical layout is specified at the
 start of this document. The ordinary frontier cap stays 8192 bytes / 512
 text tokens. A fallback mode transition must still release the ordinary
@@ -5443,10 +5545,10 @@ input rule. Failed assembly or patch acknowledgments invalidate that bank.
 Push/pop/session invalidation clear both assembly progress and visibility.
 Progress is control metadata, not a hidden copy of vector payload.
 
-Production and compact scalar slots contain 32 words so
+Production and compact scalar slots contain 34 words so
 the unchanged head checkpoint at 8..14 and an enclosing projection checkpoint
 at 15..19 can coexist; words 0..7 remain scheduler-owned. Shadow accounting
-charges the same full 128-byte scalar slot for every compact frame. The added
+charges the same full 136-byte scalar slot for every compact frame. The added
 128 12-bit next-component registers and 128 progress-valid bits occupy 208
 byte-rounded metadata bytes; existing whole-bank payload reservations do not
 grow. Dedicated progress metadata is reset, not numerical RAM payload.
@@ -7073,7 +7175,7 @@ The backing interface carries `backing_valid/ready`, `backing_write`,
 `backing_wdata[31:0]`, and a held `backing_rsp_valid/ready/data/error`.
 Every accepted write receives one response after the synchronous write.
 Every accepted read receives the actual synchronous RAM word. The legal
-backing range is 0..245759 in production and 0..206847 in compact mode.
+backing range is 0..231551 in production and 0..206975 in compact mode.
 Fallback operations require op 3 binding; ordinary operations require a
 successfully allocated ordinary frontier and use the disjoint physical tail.
 Backing transport does not
@@ -7083,13 +7185,13 @@ make uninitialized words readable through the workspace's public interface.
 | --- | --- | --- |
 | 64 two-bank frame slots | 196608 / 786432 | 196608 / 786432 |
 | 16 memo vector slots | 32768 / 131072 | 8192 / 32768 |
-| 64 scalar continuation slots | 2048 / 8192 | 2048 / 8192 |
-| Backing total | 231424 / 925696 | 206848 / 827392 |
+| 64 scalar continuation slots | 2176 / 8704 | 2176 / 8704 |
+| Backing total | 231552 / 926208 | 206976 / 827904 |
 
 Frame f starts at `f*3072` words in both geometries. Each of its two
 vector banks has 1536 words. Audio slice j starts at bank_base+j*512.
 Memo slot s starts at `196608+s*2048` (compact `196608+s*512`).
-Scalar slot f starts at `229376+f*32` (compact `204800+f*32`).
+Scalar slot f starts at `229376+f*34` (compact `204800+f*34`).
 Complete domain-specific vector prefixes, including any occupied padding,
 count as live payload, not merely returned components. The reserved frame/
 memo strides in this table describe physical capacity, not occupied holes.
@@ -7099,24 +7201,25 @@ vector payloads remain 6144/10240, 3072 and 12288 per frame respectively;
 unused frame banks/slices are unallocated, not prematurely readable.
 Memos charge 3072/5120, 1536 or 2048 bytes.
 Every production/shadow live or pending frame additionally reserves its
-complete 128-byte scalar slot, including unused scalar words.
+complete 136-byte scalar slot, including unused scalar words.
 The physical and shadow scalar layouts are identical in both builds.
 Words 0..7 hold scheduler continuations, 8..14 the text attention checkpoint,
 15..19 its output-projection checkpoint, 8..23 the vision checkpoint,
 24/25 its outer projection state, 8..29 the audio checkpoint, and 30/31
-its head reduction state. These different workers share one current frame's
+its head reduction state. Audio history adds channel/low-half state at 32
+and FP32 accumulator state at 33. These different workers share one current frame's
 scalar address space under the existing mutually exclusive domain dispatcher.
-The maximum actual scalar index is 31; requests at 32 or above reject before
+The maximum actual scalar index is 33; requests at 34 or above reject before
 backing access. No checkpoint is shortened or moved to an uncounted register bank.
 Physical reserved backing is reported separately; in fallback it is the
 first part of the shared frontier RAM, and in ordinary mode it is its
 disjoint tail, not an extra inferred payload array. Compact physical RAM
-reserves 208896 words / 835584 bytes to cover both its ordinary partition
+reserves 209024 words / 836096 bytes to cover both its ordinary partition
 and disjoint replay backing; its ordinary frontier allocation cap remains
-8192 bytes and 512 tokens. Production physical RAM reserves 1017856 words /
-4071424 bytes; the ordinary 3 MiB allocation cap is unchanged. Unused physical words
+8192 bytes and 512 tokens. Production physical RAM reserves 1017984 words /
+4071936 bytes; the ordinary 3 MiB allocation cap is unchanged. Unused physical words
 are not advertised as live payload or saved FPGA memory.
-The unreserved 122880 production bytes within the 1 MiB total do not relax
+The unreserved 122368 production bytes within the 1 MiB total do not relax
 the admitted arithmetic/control/resident partition ceiling of 65536 bytes.
 That partition must cover
 **all** workspace descriptor registers, masks, returned data, resident cache,

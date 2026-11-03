@@ -191,7 +191,7 @@ module anvil_en1_replay_audio_history #(
     wire fold_cmd_valid, fold_result_ready, fold_source_event, fold_projection_event;
     wire [2:0] fold_op;
     wire [1:0] fold_domain, fold_target;
-    wire [31:0] fold_token, fold_data, fold_source_bytes, fold_projection_bytes;
+    wire [31:0] fold_token, fold_source_bytes, fold_projection_bytes;
     wire [7:0] fold_layer, fold_scalar;
     wire [11:0] fold_length, fold_component;
     wire [5:0] fold_slot;

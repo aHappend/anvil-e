@@ -105,6 +105,7 @@ module anvil_en1_audio_attention_residual #(
     wire [63:0] down_control, down_clamp_control, inner_control, inner_clamp_control;
     wire [31:0] pre_token = state == PRE_START || state == PRE_WAIT ?
         token_hold : source_token_hold;
+    generate if (FRAME_HEADS == 0) begin : standalone_pre_attention
     anvil_en1_audio_pre_attention pre_attention (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == PRE_START ||
@@ -139,6 +140,43 @@ module anvil_en1_audio_attention_residual #(
         .down_clamp_controller_bytes(down_clamp_control),
         .inner_controller_bytes(inner_control), .inner_clamp_controller_bytes(inner_clamp_control)
     );
+    end else begin : frame_raw_feedforward
+        anvil_en1_audio_feedforward #(.RAW_SOURCE_CALLBACK(1)) feedforward (
+            .clk(clk), .rst_n(rst_n),
+            .start_valid(rst_n && state == PRE_START), .start_ready(pre_ready),
+            .model(model_hold), .precision(precision_hold), .mode(2'd1),
+            .layer(layer_hold), .generation(generation_hold), .token(token_hold),
+            .audio_weights_base(weights_hold),
+            .source_valid(pre_source_valid), .source_ready(pre_selected && source_ready),
+            .source_model(pre_source_model), .source_mode(),
+            .source_layer(pre_source_layer), .source_generation(pre_source_generation),
+            .source_token(pre_source_token), .source_index(pre_source_index),
+            .source_rsp_valid(pre_selected && source_rsp_valid),
+            .source_rsp_ready(pre_source_rsp_ready), .source_rsp_data(source_rsp_data),
+            .source_rsp_error(source_rsp_error),
+            .cmd_valid(pre_cmd_valid), .cmd_ready(pre_selected && cmd_ready),
+            .cmd_write(), .cmd_addr(pre_addr), .cmd_wdata(),
+            .result_valid(pre_selected && result_valid), .result_ready(pre_result_ready),
+            .result_data(result_data), .result_error(result_error),
+            .output_valid(pre_output_valid), .output_ready(pre_selected),
+            .output_index(pre_output_index), .output_data(pre_output_data),
+            .output_last(pre_output_last), .done_valid(pre_valid),
+            .done_ready(rst_n && state == PRE_WAIT), .done_error(pre_error),
+            .weight_read_event(), .weight_read_bytes(),
+            .intermediate_event(intermediate_event), .intermediate_bytes(intermediate_bytes),
+            .vector_live_bytes(pre_live), .vector_physical_bytes(pre_physical),
+            .vector_ram_write(), .vector_ram_read(), .vector_ram_waddr(),
+            .vector_ram_raddr(), .vector_ram_wdata(), .vector_ram_rdata(48'd0),
+            .controller_bytes(ff_control), .norm_controller_bytes(ff_norm_control),
+            .clamp_controller_bytes(ff_clamp_control), .mlp_controller_bytes(mlp_control),
+            .down_controller_bytes(down_control), .down_clamp_controller_bytes(down_clamp_control),
+            .inner_controller_bytes(inner_control), .inner_clamp_controller_bytes(inner_clamp_control)
+        );
+        assign pre_output_kind = 0;
+        assign pre_control = 0;
+        assign pre_norm_control = 0;
+        assign pre_clamp_control = 0;
+    end endgenerate
     assign pre_controller_bytes = !rst_n ? 64'd0 :
         pre_control + pre_norm_control + pre_clamp_control + ff_control +
         ff_norm_control + ff_clamp_control + mlp_control + down_control +
@@ -156,6 +194,7 @@ module anvil_en1_audio_attention_residual #(
     wire [63:0] clipped_control, tile_clamp_control, position_control, softplus_control;
     wire head_projection_event;
     wire [31:0] head_projection_bytes;
+    generate if (FRAME_HEADS == 0) begin : standalone_attention
     anvil_en1_audio_attention_execute attention (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && !FRAME_HEADS && state == HEAD_START), .start_ready(head_ready),
@@ -193,6 +232,38 @@ module anvil_en1_audio_attention_residual #(
         .clipped_controller_bytes(clipped_control), .clamp_controller_bytes(tile_clamp_control),
         .position_controller_bytes(position_control), .softplus_controller_bytes(softplus_control)
     );
+    end else begin : supplied_heads
+        assign head_ready = 0;
+        assign head_valid = 0;
+        assign head_output_valid = 0;
+        assign head_output_last = 0;
+        assign head_source_valid = 0;
+        assign head_source_rsp_ready = 0;
+        assign head_cmd_valid = 0;
+        assign head_result_ready = 0;
+        assign head_source_model = 0;
+        assign head_source_layer = 0;
+        assign head_source_generation = 0;
+        assign head_source_token = 0;
+        assign head_source_index = 0;
+        assign head_output_index = 0;
+        assign head_output_data = 0;
+        assign head_addr = 0;
+        assign head_error = 0;
+        assign executor_control = 0;
+        assign arithmetic_head_control = 0;
+        assign block_control = 0;
+        assign input_control = 0;
+        assign tile_control = 0;
+        assign clipped_control = 0;
+        assign tile_clamp_control = 0;
+        assign position_control = 0;
+        assign softplus_control = 0;
+        assign head_projection_event = 0;
+        assign head_projection_bytes = 0;
+        assign input_read_event = 0;
+        assign input_read_bytes = 0;
+    end endgenerate
     assign head_controller_bytes = !rst_n || FRAME_HEADS ? 64'd0 :
         executor_control + arithmetic_head_control + block_control + input_control + tile_control +
         clipped_control + tile_clamp_control + position_control + softplus_control;
@@ -278,7 +349,8 @@ module anvil_en1_audio_attention_residual #(
     wire pre_normalized_good = raw_received == 1024 && normalized_received < 1024 &&
         pre_output_index == normalized_received && pre_output_last == (normalized_received == 1023);
     wire pre_beat_good = !pre_bad && (pre_output_kind ? pre_normalized_good : pre_raw_good);
-    wire pre_complete = !pre_bad && raw_received == 1024 && normalized_received == 1024;
+    wire pre_complete = !pre_bad && raw_received == 1024 &&
+        normalized_received == (FRAME_HEADS ? 0 : 1024);
     wire head_beat_good = received < 128 && head_output_index == received &&
         head_output_last == (received == 127);
     wire norm_beat_good = received < 1024 && norm_output_index == received &&

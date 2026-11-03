@@ -1,4 +1,6 @@
-module anvil_en1_audio_pre_attention (
+module anvil_en1_audio_pre_attention #(
+    parameter integer RAW_SOURCE_CALLBACK = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -56,6 +58,10 @@ module anvil_en1_audio_pre_attention (
     reg [15:0] raw_hold, clamped_hold, bank_data;
     reg receive_bad, allocated, visible, bank_error, vector_ram_fault;
     reg [3:0] child_error_hold, error_hold;
+    initial begin
+        if (RAW_SOURCE_CALLBACK != 0 && RAW_SOURCE_CALLBACK != 1)
+            $fatal(1, "PARAMETER ERROR: RAW_SOURCE_CALLBACK must be 0 or 1");
+    end
     wire ff_selected = rst_n && (state == FF_START || state == FF_WAIT ||
         state == CLAMP_START || state == CLAMP_WAIT || state == STORE || state == ADVANCE);
     wire ff_ready, ff_valid, ff_source_valid, ff_source_rsp_ready;
@@ -70,7 +76,9 @@ module anvil_en1_audio_pre_attention (
     wire [95:0] ff_ram_waddr, ff_ram_raddr;
     wire [47:0] ff_ram_wdata, ff_ram_rdata;
     wire [15:0] bank_q = ff_ram_rdata[15:0];
-    anvil_en1_audio_feedforward #(.EXTERNAL_VECTOR_RAM(1)) feedforward (
+    anvil_en1_audio_feedforward #(
+        .EXTERNAL_VECTOR_RAM(1), .RAW_SOURCE_CALLBACK(RAW_SOURCE_CALLBACK)
+    ) feedforward (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FF_START), .start_ready(ff_ready),
         .model(model_hold), .precision(precision_hold), .mode(2'd1),
@@ -216,7 +224,8 @@ module anvil_en1_audio_pre_attention (
     assign done_error = !rst_n ? 4'd0 :
         (error_hold != 0 ? error_hold : (vector_ram_fault ? 4'd7 : 4'd0));
     assign vector_live_bytes = !rst_n ? 64'd0 :
-        (allocated && ff_live == 0 ? 64'd2048 : 64'd0) + ff_live;
+        (allocated && (RAW_SOURCE_CALLBACK || ff_live == 0) ?
+            64'd2048 : 64'd0) + ff_live;
     assign vector_physical_bytes = rst_n ? 64'd6144 + ff_physical : 64'd0;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(source_state) + $bits(model_hold) + $bits(precision_hold) +

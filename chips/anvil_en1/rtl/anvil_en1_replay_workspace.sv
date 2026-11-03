@@ -113,7 +113,8 @@ module anvil_en1_replay_workspace #(
         localparam integer BANK_WORDS = 1536;
         localparam integer FRAME_WORDS = 2 * BANK_WORDS;
         localparam integer MEMO_WORDS = COMPACT ? 512 : 2048;
-        localparam integer SCALAR_WORDS = 32;
+        localparam integer SCALAR_WORDS = 34;
+        localparam integer SCALAR_BYTES = SCALAR_WORDS * 4;
         localparam integer MEMO_BASE = 64 * FRAME_WORDS;
         localparam integer SCALAR_BASE = MEMO_BASE + 16 * MEMO_WORDS;
         localparam integer TOTAL_WORDS = SCALAR_BASE + 64 * SCALAR_WORDS;
@@ -356,8 +357,9 @@ module anvil_en1_replay_workspace #(
         wire [31:0] memo_base = 32'(MEMO_BASE) +
             ({28'd0, slot_hold[3:0]} << (COMPACT ? 9 : 11));
         wire [31:0] scalar_base = 32'(SCALAR_BASE) +
-            ({26'd0, slot_hold} << 5);
+            ({26'd0, slot_hold} << 5) + ({26'd0, slot_hold} << 1);
         wire [31:0] scalar_bit_index = ({26'd0, slot_hold} << 5) +
+            ({26'd0, slot_hold} << 1) +
             {24'd0, scalar_index_hold};
         wire [8:0] selected_vector_index = ({3'd0, slot_hold} << 2) +
             ({3'd0, slot_hold} << 1) + (bank_hold ? 9'd3 : 9'd0) +
@@ -428,11 +430,12 @@ module anvil_en1_replay_workspace #(
             (replaced_memo_domain == 0 || replaced_memo_domain == 3) ?
                 32'd16 : replaced_shadow_memo_bytes;
         wire [63:0] live_frames = {32'd0, frame_payload_bytes};
-        wire [63:0] live_scalars = {56'd0, allocated_frames} << 7;
+        wire [63:0] live_scalars = ({56'd0, allocated_frames} << 7) +
+            ({56'd0, allocated_frames} << 3);
         wire [63:0] live_memos = {32'd0, memo_payload_bytes} +
             (pending_memo ? {32'd0, request_vector_bytes} : 64'd0);
         wire [63:0] shadow_frames = {32'd0, shadow_frame_payload_bytes};
-        wire [63:0] shadow_scalars = {56'd0, allocated_frames} << 7;
+        wire [63:0] shadow_scalars = live_scalars;
         wire [63:0] shadow_memos = {32'd0, shadow_memo_payload_bytes} +
             (pending_memo ? {32'd0, request_shadow_vector_bytes} : 64'd0);
         wire native_request = domain_hold != 0;
@@ -441,7 +444,8 @@ module anvil_en1_replay_workspace #(
             replaced_memo_domain != 0;
         wire [7:0] native_allocated_frames = {1'b0, native_depth} +
             {7'd0, pending_push && native_request};
-        wire [63:0] native_scalars = {56'd0, native_allocated_frames} << 7;
+        wire [63:0] native_scalars = ({56'd0, native_allocated_frames} << 7) +
+            ({56'd0, native_allocated_frames} << 3);
         wire [63:0] native_frames = {32'd0, native_frame_payload_bytes};
         wire [63:0] native_shadow_frames = {32'd0, native_shadow_frame_bytes};
         wire [63:0] native_memos = {32'd0, native_memo_payload_bytes} +
@@ -1210,9 +1214,9 @@ module anvil_en1_replay_workspace #(
                     end
                     GRANT_TOTAL: begin
                         grant_payload_hold <= grant_payload_hold +
-                            (grant_kind == 1 ? 64'd128 : 64'd0);
+                            (grant_kind == 1 ? 64'(SCALAR_BYTES) : 64'd0);
                         grant_shadow_hold <= grant_shadow_hold +
-                            (grant_kind == 1 ? 64'd128 : 64'd0);
+                            (grant_kind == 1 ? 64'(SCALAR_BYTES) : 64'd0);
                         grant_native_hold <= grant_native_hold + {32'd0, grant_native_memo};
                         grant_native_shadow_hold <= grant_native_shadow_hold +
                             {32'd0, grant_native_shadow_memo};
@@ -1221,11 +1225,11 @@ module anvil_en1_replay_workspace #(
                     GRANT_NATIVE_ADJUST: begin
                         grant_native_hold <= grant_native_hold +
                             (!native_request ? 64'd0 :
-                            (grant_kind == 1 ? 64'd128 :
+                            (grant_kind == 1 ? 64'(SCALAR_BYTES) :
                             (grant_kind == 2 ? {32'd0, request_vector_bytes} : 64'd0)));
                         grant_native_shadow_hold <= grant_native_shadow_hold +
                             (!native_request ? 64'd0 :
-                            (grant_kind == 1 ? 64'd128 :
+                            (grant_kind == 1 ? 64'(SCALAR_BYTES) :
                             (grant_kind == 2 ? {32'd0, request_shadow_vector_bytes} : 64'd0)));
                         if (move_to_memo && grant_kind == 0)
                             state <= GRANT_MOVE_ADJUST;

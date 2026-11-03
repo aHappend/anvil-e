@@ -169,7 +169,7 @@ module anvil_en1_replay_audio_attention (
         (norm_received == 0 && raw_received < 1024 &&
             pre_output_index == raw_received &&
             pre_output_last == (raw_received == 1023));
-    anvil_en1_audio_pre_attention pre_attention (
+    anvil_en1_audio_pre_attention #(.RAW_SOURCE_CALLBACK(1)) pre_attention (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == INPUT_START), .start_ready(pre_ready),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold),

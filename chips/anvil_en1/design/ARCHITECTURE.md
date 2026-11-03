@@ -5,7 +5,105 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: deferred audio-query binding
+## Current increment: frame-backed FF raw-source rematerialization
+
+Frame-backed post-attention needs the raw first-feed-forward residual,
+not the additional normalized query stream produced by the standalone
+pre-attention wrapper. Connect its real feed-forward engine directly,
+leaving attention's separate Q/K preprocessing intact. The specialized
+FF reads its immutable raw input frame through the existing callback
+both for input clipping and for final residual addition, instead of
+keeping a duplicate raw vector. No scalar result or hidden vector is
+provided by software.
+
+The callback setting defaults off. Both modes retain the same numerical
+operations and registered request/response behavior; a second raw-input
+read adds real reconstruction traffic. During MLP the child owns working
+and branch (4096 bytes). During output it owns branch (2048) while the
+caller fills raw residual storage (2048). The frame-backed post-attention
+private peak is therefore 4096 rather than 6144 bytes. The local raw
+payload RAM is absent in this specialization, saving 2048 physical
+payload bytes. Unchanged external/shared physical banks are not claimed
+as removed.
+
+The numerical-head preprocessing wrapper also forwards the default-off
+callback option, enabled only for the pinned-memo replay instance. Its
+shared bank 0 becomes the clipped raw-output bank, rather than a duplicate
+raw-input copy. The ledger now sums its partially filled output allocation
+with the child's branch allocation during output. The subsequent
+normalized cache is allocated only on actual normalized output, as
+before. Head preprocessing's private phase ceiling falls to 4096 bytes;
+its shared 6144-byte physical RAM remains disclosed.
+
+This closes redundant raw retention and unused query-normalization work
+in the frame-backed post phase, not whole-system storage feasibility.
+Suspended audio heads/depthwise outputs, other active phases, memos,
+outer consumers and fallback partitions still require reconciliation;
+the old 34014-byte controller census is superseded pending a fresh
+source-derived census. SPEC records the cycle/materialization and
+independent verification obligations. No static elaboration, simulation,
+synthesis or preparation receipt is claimed.
+
+## Prior increment: channel-serial audio history
+
+The connected history/fold path no longer keeps two complete FP32
+convolution-accumulator slices across recursive dependencies. History
+now evaluates one depthwise channel through all five taps, reconstructing
+the actual full residual for each real tap. The existing fold executes
+that channel's real GLU, weight read, separately rounded multiply/add,
+and final BF16 narrowing. Leading padding still performs the real
+zero-times-weight operations in ascending kernel order, including
+exceptional arithmetic. Default vector-fold behavior is retained.
+
+Two completed channels form one aligned output pair; no unfilled high
+half is committed. A partial depthwise output occupies bank 1/slice 0,
+while packed heads use bank 0/slice 1. Consumed residuals and heads
+are released through the existing registered workspace operations.
+The last channel retains the final query residual for lightconv, whose
+source mapping remains unchanged. Each output-pair response completes
+before advancement or successful history completion.
+
+History saves its real channel/low-half state and FP32 partial sum at
+scalar indices 32/33 before yielding. On resume it restores and validates
+them before restarting the suspended child. Existing scheduler,
+numerical-head and head-wrapper checkpoints retain indices 0..31.
+All scalar slots now reserve 34 words/136 bytes, including unused words,
+in live, shadow and prospective grants; bitmap strides and synchronous
+backing extents match. Production/compact backing totals become
+926208/827904 bytes. Physical combined frontier/backing grows by exactly
+512 bytes in both builds, rather than adding an undisclosed payload bank.
+Reset/visibility, tag checking and registered error retirement remain.
+
+The source-derived suspended-vector ceiling falls from 6144 to 4096
+bytes per positive-layer audio frame. The local history controller adds
+156 bits (109 to 128 byte-rounded bytes), changing the preceding
+native controller sum to **34014 bytes**. Scalar visibility metadata
+grows separately by 16 bytes. These counts are not observed allocations,
+elaboration coverage or synthesis measurements.
+
+Twelve maximal suspended frames and their complete scalar slots have
+a conservative `12*(4096+136)=50784`-byte ceiling, 24480 fewer bytes
+than before. Simply adding all current native controllers and active
+private state still gives `34014+6144+50784=90942`, exceeding the
+minimum E2B allowance of 86016 even before memo/outer state. This does
+not prove that all maxima coincide; neither does it establish legal
+fit. Complete reachable native/fallback liveness and physical partition
+reconciliation remain open. No legal-work capacity error is authorized.
+The channel schedule greatly increases residual reconstruction and
+weight/input reads; no total traffic or latency improvement is claimed.
+
+SPEC freezes the updated cycle/checkpoint/layout table and independent
+verification obligations, including channel 511/512, snapshot faults,
+partial outputs, final residual retention, grants and actual absence
+of accumulator-slice requests. Saved four RTL files and both design
+documents using view/rg/glob/apply_patch only. No HDL execution,
+simulation/synthesis harness, experiment or preparation receipt.
+Tests, parent sources, runtime metadata and original failures remain
+unchanged. Next reduce remaining retained head/output state or prove
+reachable fit, reconcile all partitions, then use the reserved static
+elaboration and hand off to independent Verifier. Design is not ready.
+
+## Prior increment: deferred audio-query binding
 
 Packed-history residuals now select `DEFER_QUERY_BINDING=1` in
 `replay_audio_heads`; default zero preserves standalone eager binding.
