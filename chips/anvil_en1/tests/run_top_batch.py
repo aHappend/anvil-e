@@ -87,6 +87,8 @@ def main():
                         help="disable Verilator procedural splitting for FSM scheduling")
     parser.add_argument("--profile-cycles", type=int, default=0,
                         help="optional bounded incomplete run before full numerical execution")
+    parser.add_argument("--pgo", action="store_true",
+                        help="train GCC branch placement on the bounded run and rebuild")
     parser.add_argument("--max-cycles", type=int, default=2000000000)
     args = parser.parse_args()
     models = selected_values(parser, args.models, (1, 2), "--models")
@@ -95,6 +97,8 @@ def main():
     contexts = selected_values(parser, args.contexts, (1, 16, 17), "--contexts")
     if args.max_cycles <= 0:
         parser.error("--max-cycles must be positive")
+    if args.profile_cycles < 0 or args.pgo and args.profile_cycles <= 0:
+        parser.error("--pgo requires a positive --profile-cycles")
     exp = Experiment(args.out, "verifier-top-batched-numerical", source_inputs(), args.repair_of)
     error = None
     try:
@@ -156,7 +160,8 @@ def main():
                "--output-split-cfuncs", "5000"] if args.compact_code else []),
             *(["-fno-split"] if args.preserve_processes else []),
             "--top-module", top, "--Mdir", str(obj),
-            "-j", "2", "-CFLAGS", "-O3",
+            "-j", "2", "-CFLAGS", "-O3" + (" -fprofile-generate" if args.pgo else ""),
+            *(["-LDFLAGS", "-fprofile-generate"] if args.pgo else []),
             *(wrapper_args if args.text_specialization else
               [f"-G{name}={value}" for name, value in parameters.items()]),
             "tests/simulation_schedule.vlt", *sources,
@@ -174,6 +179,19 @@ def main():
             exp.receipt["incomplete_profile"] = next(
                 line for line in output.splitlines() if line.startswith("PERFORMANCE "))
             exp.save()
+            if args.pgo:
+                profiles = list((ROOT / obj).glob("*.gcda"))
+                if not profiles:
+                    raise RuntimeError("GCC profile training retained no counters")
+                exp.receipt["compiler_profiles"] = {
+                    str(path.relative_to(exp.out)): digest(path) for path in profiles}
+                for path in (ROOT / obj).iterdir():
+                    if path.suffix in (".o", ".a", ".gch"):
+                        path.unlink()
+                exp.run("profile-guided-rebuild", [
+                    "make", "-C", str(obj), "-f", "Vanvil_en1_top.mk", "-j", "2",
+                    "VM_USER_CFLAGS=-O3 -fprofile-use",
+                    "VM_USER_LDFLAGS=-fprofile-use", "Vanvil_en1_top"], 1800)
         for name, model, precision, seed, tokens, image_path, expected in cases:
             output = exp.run(name, [
                 str(obj / "Vanvil_en1_top"), str(image_path.relative_to(ROOT)),
