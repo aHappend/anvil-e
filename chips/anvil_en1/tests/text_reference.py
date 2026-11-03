@@ -73,9 +73,11 @@ def rotate(vector, position, global_attention):
     return output
 
 
-def logits(tensors, model, seed, tokens=1):
+def logits(tensors, model, seed, tokens=1, stop_layer=None):
     """Return all last-token logits plus independent observable leaf boundaries."""
     layer_count, owner_count = (35, 15) if model == 1 else (42, 24)
+    if stop_layer is not None and not 0 <= stop_layer <= layer_count:
+        raise ValueError("reference stop layer is outside the production map")
     globals_ = set(range(4, 35, 5) if model == 1 else range(5, 42, 6))
     local_anchor, global_anchor = (13, 14) if model == 1 else (22, 23)
 
@@ -106,7 +108,7 @@ def logits(tensors, model, seed, tokens=1):
     hidden = initial
     states = [initial]
     owner_kv = {}
-    for layer in range(layer_count):
+    for layer in range(layer_count if stop_layer is None else stop_layer):
         dimension = 8 if layer in globals_ else 4
         layer_input = [norm(vector, scale(0x100, layer)) for vector in hidden]
         if layer < owner_count:
