@@ -84,6 +84,28 @@ class EntrypointTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "already retained"):
             run.run("imports", [sys.executable, "--version"])
 
+    def test_interrupted_child_receipt_is_retained_without_rewrite(self):
+        run = self.new_experiment()
+        nested = run.out / "child-12345678" / "receipt.json"
+        script = (
+            "from pathlib import Path; import time; "
+            f"path=Path({str(nested)!r}); path.parent.mkdir(); "
+            "path.write_text('{\"status\":\"running\",\"commands\":[]}\\n'); "
+            "time.sleep(60)")
+        with self.assertRaisesRegex(TimeoutError, "recorded timeout"):
+            run.run("interrupted", [sys.executable, "-c", script], timeout=1)
+        raw = nested.read_bytes()
+        retained = run.receipt["interrupted_children"]
+        self.assertEqual(len(retained), 1)
+        self.assertEqual(retained[0]["path"], str(nested.relative_to(self.root)))
+        self.assertEqual(retained[0]["sha256"], hashlib.sha256(raw).hexdigest())
+        self.assertTrue(retained[0]["retained_without_rewrite"])
+        self.assertEqual(json.loads(raw)["status"], "running")
+        command = run.receipt["commands"][0]
+        self.assertTrue(command["timed_out"])
+        self.assertIsNotNone(command["exit_code"])
+        self.assertIn("ended_at", command)
+
     def test_guard_precedes_fresh_process_sibling_imports(self):
         run = self.new_experiment()
         entry = self.root / "tests/verify.py"
@@ -201,9 +223,9 @@ def main():
         output = exp.run(
             "unit-tests", [sys.executable, "-B", "tests/test_verify_entrypoint.py",
                            "--worker", "--work", str(exp.relative / "unit-work")])
-        if "SUMMARY entrypoint_lifecycle tests=8 rtl_claims=0" not in output:
+        if "SUMMARY entrypoint_lifecycle tests=9 rtl_claims=0" not in output:
             raise RuntimeError("entrypoint unit comparisons did not complete")
-        exp.receipt["unit_tests"] = 8
+        exp.receipt["unit_tests"] = 9
         exp.receipt["scope"] = "Synthetic entrypoint lifecycle only; no RTL simulation or synthesis"
         if args.rtl_smoke:
             exp.receipt["children"] = []

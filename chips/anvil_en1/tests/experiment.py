@@ -13,6 +13,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+FINALIZATION_RESERVE_S = 15
 
 
 def timestamp():
@@ -33,6 +34,7 @@ class Experiment:
         self.receipt = {
             "kind": kind, "argv": list(sys.orig_argv), "cwd": ".",
             "started_at": timestamp(), "timeout_s": 2700, "repair_of": repair_of,
+            "finalization_reserve_s": FINALIZATION_RESERVE_S,
             "source_sha256": {str(path.relative_to(ROOT)):
                               hashlib.sha256(path.read_bytes()).hexdigest()
                               for path in sources if path.is_file()},
@@ -43,13 +45,35 @@ class Experiment:
     def save(self):
         (self.out / "receipt.json").write_text(json.dumps(self.receipt, indent=2) + "\n")
 
+    def retain_interrupted_children(self, command):
+        """Bind interrupted child records without rewriting their last observations."""
+        for path in sorted(self.out.rglob("receipt.json")):
+            if path == self.out / "receipt.json":
+                continue
+            raw = path.read_bytes()
+            try:
+                status = json.loads(raw).get("status")
+            except json.JSONDecodeError as exc:
+                self.receipt.setdefault("malformed_child_receipts", []).append({
+                    "path": str(path.relative_to(ROOT)),
+                    "sha256": hashlib.sha256(raw).hexdigest(), "error": str(exc)})
+                continue
+            if status == "running":
+                self.receipt.setdefault("interrupted_children", []).append({
+                    "path": str(path.relative_to(ROOT)),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                    "observed_status": status, "retained_without_rewrite": True,
+                    "interrupted_by_command": command["stdout"],
+                    "cause": "enclosing_command_timeout",
+                })
+
     def run(self, label, argv, timeout=2400, expected_exit_codes=(0,), cwd=None):
         if any(Path(command["stdout"]).name == label + ".stdout.txt"
                for command in self.receipt["commands"]):
             raise ValueError("command label already retained: " + label)
-        remaining = self.deadline - time.monotonic()
+        remaining = self.deadline - time.monotonic() - FINALIZATION_RESERVE_S
         if remaining <= 0:
-            raise TimeoutError("complete experiment exceeded 2700-second execution budget")
+            raise TimeoutError("remaining execution budget reserved for receipt finalization")
         effective = min(timeout, remaining)
         directory = ROOT if cwd is None else Path(cwd).resolve()
         relative_cwd = directory.relative_to(ROOT)
@@ -88,6 +112,7 @@ class Experiment:
                                 child.wait()
                                 command["exit_code"] = child.returncode
                                 command["timed_out"] = True
+                                self.retain_interrupted_children(command)
                                 raise TimeoutError(f"{label} exceeded its recorded timeout")
                             print(f"PROGRESS phase={label} elapsed_s={int(time.monotonic()-started)} "
                                   f"receipt={self.relative}/receipt.json", flush=True)
