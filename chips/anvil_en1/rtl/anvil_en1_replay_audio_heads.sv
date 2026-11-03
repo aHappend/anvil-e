@@ -1,6 +1,7 @@
 module anvil_en1_replay_audio_heads #(
     parameter integer COMPACT = 0,
-    parameter integer DEFER_QUERY_BINDING = 0
+    parameter integer DEFER_QUERY_BINDING = 0,
+    parameter integer FINAL_FEEDFORWARD = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -63,7 +64,8 @@ module anvil_en1_replay_audio_heads #(
         PAIR_SEND = 7, PAIR_WAIT = 8, PAIR_REGISTER = 9,
         SCALAR_SEND = 10, SCALAR_WAIT = 11, SCALAR_REGISTER = 12,
         RESTORE_CHECK = 13, PUBLISH = 14, RESPONSE = 15,
-        FINAL_BIND_START = 16, FINAL_BIND_WAIT = 17;
+        FINAL_BIND_START = 16, FINAL_BIND_WAIT = 17,
+        FINAL_RAW_START = 18, FINAL_RAW_WAIT = 19;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_SEND = 2,
         S_WAIT = 3, S_REGISTER = 4, S_RESPONSE = 5;
     localparam [31:0] INPUT_MAGIC = 32'h454e3148;
@@ -76,7 +78,7 @@ module anvil_en1_replay_audio_heads #(
     reg [7:0] layer_hold, dependency_layer_hold;
     reg [5:0] slot_hold, dependency_slot_hold;
     reg [11:0] dependency_length_hold;
-    reg dependency_valid_hold, resume_hold, yield_hold, scalar_restore;
+    reg dependency_valid_hold, resume_hold, yield_hold, scalar_restore, raw_binding;
     reg scalar_word, source_dependency, source_tag_bad;
     reg [2:0] head_hold;
     reg [10:0] output_count;
@@ -94,6 +96,9 @@ module anvil_en1_replay_audio_heads #(
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
         if (DEFER_QUERY_BINDING != 0 && DEFER_QUERY_BINDING != 1)
             $fatal(1, "PARAMETER ERROR: DEFER_QUERY_BINDING must be 0 or 1");
+        if ((FINAL_FEEDFORWARD != 0 && FINAL_FEEDFORWARD != 1) ||
+            (FINAL_FEEDFORWARD && !DEFER_QUERY_BINDING))
+            $fatal(1, "PARAMETER ERROR: FINAL_FEEDFORWARD requires DEFER_QUERY_BINDING");
     end
     wire [7:0] logical_layer = layer_hold - 1'b1;
     wire input_continuation = continuation_hold == {INPUT_MAGIC, 128'd0};
@@ -115,7 +120,7 @@ module anvil_en1_replay_audio_heads #(
     wire final_bind_continuation = DEFER_QUERY_BINDING &&
         continuation_hold == final_bind_descriptor;
     wire binding_selected = rst_n && (state == BIND_START || state == BIND_WAIT ||
-        state == FINAL_BIND_START || state == FINAL_BIND_WAIT);
+        (!FINAL_FEEDFORWARD && (state == FINAL_BIND_START || state == FINAL_BIND_WAIT)));
     wire binding_ready, binding_valid, binding_yield;
     wire binding_work_valid, binding_work_rsp_ready;
     wire [3:0] binding_error;
@@ -128,7 +133,8 @@ module anvil_en1_replay_audio_heads #(
     wire binding_bank;
     anvil_en1_replay_frame_input #(.COMPACT(COMPACT), .DOMAIN(2)) predecessor (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && (state == BIND_START || state == FINAL_BIND_START)),
+        .start_valid(rst_n && (state == BIND_START ||
+            (!FINAL_FEEDFORWARD && state == FINAL_BIND_START))),
         .start_ready(binding_ready),
         .model(model_hold), .token(query_hold), .tokens(tokens_hold),
         .frame_layer(layer_hold), .frame_slot(slot_hold), .input_bank(1'b0),
@@ -155,7 +161,9 @@ module anvil_en1_replay_audio_heads #(
         .controller_state_bytes(binding_controller_bytes), .busy()
     );
 
-    wire head_selected = rst_n && (state == HEAD_START || state == HEAD_WAIT ||
+    wire head_running = state == HEAD_WAIT || state == FINAL_RAW_WAIT;
+    wire head_selected = rst_n && (state == HEAD_START || head_running ||
+        state == FINAL_RAW_START ||
         state == PAIR_SEND || state == PAIR_WAIT || state == PAIR_REGISTER);
     wire head_ready, head_valid, head_yield, head_work_valid, head_work_rsp_ready;
     wire head_source_valid, head_source_rsp_ready, head_need_valid;
@@ -187,26 +195,27 @@ module anvil_en1_replay_audio_heads #(
         ((!DEFER_QUERY_BINDING && need_token == query_hold) ||
             (dependency_tag && need_token == dependency_token_hold) ?
             2'd0 : 2'd1);
-    wire [10:0] head_begin = {head_hold, 7'd0};
-    wire [10:0] head_end = head_begin + 11'd128;
+    wire [10:0] head_begin = raw_binding ? 11'd0 : {head_hold, 7'd0};
+    wire [10:0] head_end = raw_binding ? 11'd1024 : head_begin + 11'd128;
     wire output_good = output_count >= head_begin && output_count < head_end &&
         head_output_index == output_count - head_begin &&
         head_output_last == (output_count + 11'd1 == head_end);
     anvil_en1_replay_audio_attention attention (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == HEAD_START), .start_ready(head_ready),
+        .start_valid(rst_n && (state == HEAD_START || state == FINAL_RAW_START)),
+        .start_ready(head_ready), .raw_only(raw_binding),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),
         .frames(frames_hold), .query_token(query_hold), .layer(logical_layer),
         .frame_layer(layer_hold), .head(head_hold), .frame_slot(slot_hold),
         .audio_base(audio_hold), .audio_weights_base(weights_hold),
         .resume_valid(resume_hold), .continuation(continuation_hold),
         .need_valid(head_need_valid),
-        .need_ready(rst_n && state == HEAD_WAIT && source_state == S_IDLE),
+        .need_ready(rst_n && head_running && source_state == S_IDLE),
         .need_action(need_action), .need_model(need_model), .need_precision(need_precision),
         .need_selector(need_selector), .need_generation(need_generation), .need_token(need_token),
         .need_layer(need_layer), .need_head(need_head), .need_component(need_component),
         .source_valid(head_source_valid),
-        .source_ready(rst_n && state == HEAD_WAIT && source_state == S_IDLE),
+        .source_ready(rst_n && head_running && source_state == S_IDLE),
         .source_model(head_source_model), .source_layer(head_source_layer),
         .source_generation(head_source_generation), .source_token(head_source_token),
         .source_index(head_source_index),
@@ -214,13 +223,13 @@ module anvil_en1_replay_audio_heads #(
         .source_rsp_ready(head_source_rsp_ready), .source_rsp_data(source_data_hold),
         .source_rsp_error(source_error_hold != 0),
         .work_req_valid(head_work_valid),
-        .work_req_ready(rst_n && state == HEAD_WAIT && source_state == S_IDLE && work_req_ready),
+        .work_req_ready(rst_n && head_running && source_state == S_IDLE && work_req_ready),
         .work_req_op(head_op), .work_req_domain(head_domain), .work_req_target(head_target),
         .work_req_token(head_token), .work_req_layer(head_layer),
         .work_req_length(head_length), .work_req_component(head_component),
         .work_req_slot(head_slot), .work_req_bank(head_bank),
         .work_req_scalar_index(head_scalar), .work_req_data(head_data),
-        .work_rsp_valid(rst_n && state == HEAD_WAIT && source_state == S_IDLE && work_rsp_valid),
+        .work_rsp_valid(rst_n && head_running && source_state == S_IDLE && work_rsp_valid),
         .work_rsp_ready(head_work_rsp_ready), .work_rsp_data(work_rsp_data),
         .work_rsp_error(work_rsp_error),
         .cmd_valid(cmd_valid), .cmd_ready(head_selected && cmd_ready),
@@ -228,10 +237,10 @@ module anvil_en1_replay_audio_heads #(
         .result_valid(head_selected && result_valid), .result_ready(result_ready),
         .result_data(result_data), .result_error(result_error),
         .output_valid(head_output_valid),
-        .output_ready(rst_n && state == HEAD_WAIT && source_state == S_IDLE),
+        .output_ready(rst_n && head_running && source_state == S_IDLE),
         .output_index(head_output_index), .output_data(head_output_data),
         .output_last(head_output_last), .done_valid(head_valid),
-        .done_ready(rst_n && state == HEAD_WAIT && source_state == S_IDLE && !head_output_valid),
+        .done_ready(rst_n && head_running && source_state == S_IDLE && !head_output_valid),
         .done_error(head_error), .done_yield(head_yield),
         .done_continuation(head_outer), .done_dependency_layer(head_dependency_layer),
         .done_dependency_token(head_dependency_token),
@@ -249,16 +258,16 @@ module anvil_en1_replay_audio_heads #(
         .position_controller_bytes(position_control), .softplus_controller_bytes(softplus_control)
     );
 
-    wire source_send = rst_n && state == HEAD_WAIT && source_state == S_SEND;
-    wire source_wait = rst_n && state == HEAD_WAIT && source_state == S_WAIT;
+    wire source_send = rst_n && head_running && source_state == S_SEND;
+    wire source_wait = rst_n && head_running && source_state == S_WAIT;
     wire local_send = rst_n && (state == PAIR_SEND || state == SCALAR_SEND);
     wire local_wait = rst_n && (state == PAIR_WAIT || state == SCALAR_WAIT);
     assign work_req_valid = (binding_selected && binding_work_valid) ||
         source_send || local_send ||
-        (rst_n && state == HEAD_WAIT && source_state == S_IDLE && head_work_valid);
+        (rst_n && head_running && source_state == S_IDLE && head_work_valid);
     assign work_rsp_ready = (binding_selected && binding_work_rsp_ready) ||
         source_wait || local_wait ||
-        (rst_n && state == HEAD_WAIT && source_state == S_IDLE && head_work_rsp_ready);
+        (rst_n && head_running && source_state == S_IDLE && head_work_rsp_ready);
     always @* begin
         work_req_op = 0;
         work_req_domain = 0;
@@ -289,7 +298,7 @@ module anvil_en1_replay_audio_heads #(
                 work_req_bank = binding_bank;
                 work_req_scalar_index = binding_scalar;
                 work_req_data = binding_data;
-            end else if (source_state != S_IDLE && state == HEAD_WAIT) begin
+            end else if (source_state != S_IDLE && head_running) begin
                 work_req_op = 4;
                 work_req_target = source_dependency ? 1 : 0;
                 work_req_token = source_dependency ? source_token_hold : query_hold;
@@ -299,7 +308,7 @@ module anvil_en1_replay_audio_heads #(
             end else if (state == PAIR_SEND || state == PAIR_WAIT || state == PAIR_REGISTER) begin
                 work_req_op = 6;
                 work_req_target = 2;
-                work_req_bank = 1;
+                work_req_bank = !raw_binding;
                 work_req_component = {1'b0, output_count} - 12'd2;
                 work_req_data = pair_hold;
             end else if (state == SCALAR_SEND || state == SCALAR_WAIT ||
@@ -343,7 +352,7 @@ module anvil_en1_replay_audio_heads #(
         $bits(dependency_token_hold) + $bits(yielded_token) + $bits(layer_hold) +
         $bits(dependency_layer_hold) + $bits(slot_hold) + $bits(dependency_slot_hold) +
         $bits(dependency_length_hold) + $bits(dependency_valid_hold) + $bits(resume_hold) +
-        $bits(yield_hold) + $bits(scalar_restore) + $bits(scalar_word) +
+        $bits(yield_hold) + $bits(scalar_restore) + $bits(raw_binding) + $bits(scalar_word) +
         $bits(source_dependency) + $bits(source_tag_bad) + $bits(head_hold) +
         $bits(output_count) + $bits(low_hold) + $bits(source_data_hold) + $bits(pair_hold) +
         $bits(scalar_hold) + $bits(restored_count) + $bits(source_index_hold) +
@@ -368,7 +377,7 @@ module anvil_en1_replay_audio_heads #(
             if (start_valid && start_ready)
                 first_source_error <= 0;
             case (source_state)
-                S_IDLE: if (state == HEAD_WAIT && head_source_valid) begin
+                S_IDLE: if (head_running && head_source_valid) begin
                     source_index_hold <= head_source_index;
                     source_token_hold <= head_source_token;
                     source_dependency <= DEFER_QUERY_BINDING || head_source_token != query_hold;
@@ -440,6 +449,7 @@ module anvil_en1_replay_audio_heads #(
             dependency_length_hold <= 0;
             dependency_valid_hold <= 0;
             resume_hold <= 0;
+            raw_binding <= 0;
             yield_hold <= 0;
             scalar_restore <= 0;
             scalar_word <= 0;
@@ -479,6 +489,7 @@ module anvil_en1_replay_audio_heads #(
                     dependency_length_hold <= dependency_length;
                     dependency_slot_hold <= dependency_slot;
                     resume_hold <= 0;
+                    raw_binding <= 0;
                     yield_hold <= 0;
                     scalar_restore <= 0;
                     scalar_word <= 0;
@@ -530,8 +541,23 @@ module anvil_en1_replay_audio_heads #(
                 end
                 BIND_START: if (binding_ready)
                     state <= BIND_WAIT;
-                FINAL_BIND_START: if (binding_ready)
-                    state <= FINAL_BIND_WAIT;
+                FINAL_BIND_START: begin
+                    if (FINAL_FEEDFORWARD) begin
+                        if (!dependency_tag || dependency_token_hold != query_hold) begin
+                            yielded_token <= query_hold;
+                            yield_hold <= 1;
+                            yield_continuation <= final_bind_descriptor;
+                            state <= PUBLISH;
+                        end else begin
+                            raw_binding <= 1;
+                            resume_hold <= 0;
+                            output_count <= 0;
+                            low_hold <= 0;
+                            state <= FINAL_RAW_START;
+                        end
+                    end else if (binding_ready)
+                        state <= FINAL_BIND_WAIT;
+                end
                 BIND_WAIT, FINAL_BIND_WAIT: if (binding_valid) begin
                     if (binding_error != 0) begin
                         error_hold <= binding_error;
@@ -551,7 +577,9 @@ module anvil_en1_replay_audio_heads #(
                 end
                 HEAD_START: if (head_ready)
                     state <= HEAD_WAIT;
-                HEAD_WAIT: begin
+                FINAL_RAW_START: if (head_ready)
+                    state <= FINAL_RAW_WAIT;
+                HEAD_WAIT, FINAL_RAW_WAIT: begin
                     if (head_output_valid && source_state == S_IDLE) begin
                         if (error_hold == 0 && first_source_error == 0) begin
                             if (!output_good) begin
@@ -581,6 +609,10 @@ module anvil_en1_replay_audio_heads #(
                         if (error_hold == 0)
                             error_hold <= first_source_error != 0 ?
                                 first_source_error : child_error_hold;
+                        state <= PUBLISH;
+                    end else if (raw_binding) begin
+                        if (child_yield_hold || output_count != 1024 || low_hold != 0)
+                            error_hold <= 7;
                         state <= PUBLISH;
                     end else if (child_yield_hold) begin
                         if (yielded_token >= tokens_hold ||
@@ -617,7 +649,10 @@ module anvil_en1_replay_audio_heads #(
                     low_hold <= 0;
                     if (work_error_hold != 0 && error_hold == 0)
                         error_hold <= work_error_hold;
-                    state <= HEAD_WAIT;
+                    if (raw_binding)
+                        state <= FINAL_RAW_WAIT;
+                    else
+                        state <= HEAD_WAIT;
                 end
                 SCALAR_SEND: if (work_req_ready)
                     state <= SCALAR_WAIT;

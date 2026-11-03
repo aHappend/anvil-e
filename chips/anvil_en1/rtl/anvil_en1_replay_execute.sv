@@ -169,7 +169,7 @@ module anvil_en1_replay_execute #(
         (domain_hold == 2 ? 8'd13 : (layer_hold == 1 ? 8'd15 : 8'd14));
     wire [15:0] native_reservation_bytes = domain_hold == 1 ?
         (input_worker ? 16'd0 : 16'd4608) :
-        (domain_hold == 2 ? (input_worker ? 16'd512 : 16'd6144) :
+        (domain_hold == 2 ? (input_worker ? 16'd512 : 16'd4096) :
             (layer_hold == 1 ? 16'd6432 : 16'd6144));
     wire [63:0] native_reservation = rst_n && native_reserved ?
         {48'd0, native_reservation_bytes} : 64'd0;

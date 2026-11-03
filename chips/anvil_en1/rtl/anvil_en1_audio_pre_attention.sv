@@ -4,6 +4,7 @@ module anvil_en1_audio_pre_attention #(
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
+    input wire raw_only,
     input wire [1:0] model, precision,
     input wire [7:0] layer,
     input wire [31:0] generation, token,
@@ -56,7 +57,7 @@ module anvil_en1_audio_pre_attention #(
     reg [31:0] generation_hold, token_hold, received, index_hold, source_index_hold;
     reg [63:0] weights_hold;
     reg [15:0] raw_hold, clamped_hold, bank_data;
-    reg receive_bad, allocated, visible, bank_error, vector_ram_fault;
+    reg receive_bad, allocated, visible, bank_error, vector_ram_fault, raw_only_hold;
     reg [3:0] child_error_hold, error_hold;
     initial begin
         if (RAW_SOURCE_CALLBACK != 0 && RAW_SOURCE_CALLBACK != 1)
@@ -233,7 +234,8 @@ module anvil_en1_audio_pre_attention #(
         $bits(received) + $bits(index_hold) + $bits(source_index_hold) + $bits(weights_hold) +
         $bits(raw_hold) + $bits(clamped_hold) + $bits(bank_data) + 48 +
         $bits(receive_bad) + $bits(allocated) + $bits(visible) + $bits(bank_error) +
-        $bits(vector_ram_fault) + $bits(child_error_hold) + $bits(error_hold);
+        $bits(vector_ram_fault) + $bits(raw_only_hold) +
+        $bits(child_error_hold) + $bits(error_hold);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -284,6 +286,7 @@ module anvil_en1_audio_pre_attention #(
             raw_hold <= 0;
             clamped_hold <= 0;
             receive_bad <= 0;
+            raw_only_hold <= 0;
             allocated <= 0;
             visible <= 0;
             child_error_hold <= 0;
@@ -303,6 +306,7 @@ module anvil_en1_audio_pre_attention #(
                     generation_hold <= generation;
                     token_hold <= token;
                     weights_hold <= audio_weights_base;
+                    raw_only_hold <= raw_only;
                     received <= 0;
                     receive_bad <= 0;
                     allocated <= 0;
@@ -329,14 +333,15 @@ module anvil_en1_audio_pre_attention #(
                         if (received < 1024)
                             received <= received + 1'b1;
                     end else if (ff_output_valid && output_ready) begin
-                        allocated <= 1;
+                        allocated <= !raw_only_hold;
                         raw_hold <= ff_output_data;
                         index_hold <= ff_output_index;
                         if (!ff_beat_good)
                             receive_bad <= 1;
                         if (received < 1024)
                             received <= received + 1'b1;
-                        state <= CLAMP_START;
+                        if (!raw_only_hold)
+                            state <= CLAMP_START;
                     end else if (ff_valid && !ff_output_valid) begin
                         child_error_hold <= ff_error;
                         state <= FF_CHECK;
@@ -363,7 +368,9 @@ module anvil_en1_audio_pre_attention #(
                     end else if (receive_bad || received != 1024) begin
                         error_hold <= 7;
                         state <= PUBLISH;
-                    end else begin
+                    end else if (raw_only_hold)
+                        state <= PUBLISH;
+                    else begin
                         visible <= 1;
                         state <= NORM_START;
                     end

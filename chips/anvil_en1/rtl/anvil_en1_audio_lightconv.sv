@@ -1,6 +1,7 @@
 module anvil_en1_audio_lightconv #(
     parameter integer EXTERNAL_VECTOR_RAM = 0,
-    parameter integer PRECOMPUTED_DEPTHWISE = 0
+    parameter integer PRECOMPUTED_DEPTHWISE = 0,
+    parameter integer RAW_SOURCE_CALLBACK = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -86,6 +87,8 @@ module anvil_en1_audio_lightconv #(
             $fatal(1, "PARAMETER ERROR: EXTERNAL_VECTOR_RAM must be 0 or 1");
         if (PRECOMPUTED_DEPTHWISE != 0 && PRECOMPUTED_DEPTHWISE != 1)
             $fatal(1, "PARAMETER ERROR: PRECOMPUTED_DEPTHWISE must be 0 or 1");
+        if (RAW_SOURCE_CALLBACK != 0 && RAW_SOURCE_CALLBACK != 1)
+            $fatal(1, "PARAMETER ERROR: RAW_SOURCE_CALLBACK must be 0 or 1");
     end
 
     wire glu_selected = rst_n && (dependency_state == D_START || dependency_state == D_WAIT);
@@ -328,9 +331,9 @@ module anvil_en1_audio_lightconv #(
         source_state == S_READ;
     wire [1:0] bank_write = {rst_n &&
         (state == CONV_STORE || state == WORK_STORE || norm_store),
-        rst_n && state == INPUT_STORE};
+        rst_n && !RAW_SOURCE_CALLBACK && state == INPUT_STORE};
     wire [1:0] bank_read = {rst_n && (state == WORK_READ || callback_read),
-        rst_n && state == RESIDUAL_READ};
+        rst_n && !RAW_SOURCE_CALLBACK && state == RESIDUAL_READ};
     wire [63:0] bank_waddr = {norm_store ? norm_output_index : index_hold, index_hold};
     wire [63:0] bank_raddr = {callback_read ? bank_index : index_hold, index_hold};
     wire [31:0] bank_wdata = {state == CONV_STORE ? conv_hold :
@@ -347,18 +350,25 @@ module anvil_en1_audio_lightconv #(
         assign raw_q = vector_ram_rdata[15:0];
         assign work_q = vector_ram_rdata[31:16];
     end else begin : local_vectors
-        (* ramstyle = "M20K", nomem2reg *) reg [15:0] residual [0:1023];
         (* ramstyle = "M20K", nomem2reg *) reg [15:0] working [0:1023];
-        reg [15:0] residual_read_q, working_read_q;
-        assign raw_q = residual_read_q;
+        reg [15:0] working_read_q;
         assign work_q = working_read_q;
+        if (RAW_SOURCE_CALLBACK == 0) begin : retained_raw
+            (* ramstyle = "M20K", nomem2reg *) reg [15:0] residual [0:1023];
+            reg [15:0] residual_read_q;
+            assign raw_q = residual_read_q;
+            always @(posedge clk) begin
+                if (bank_write[0] && bank_waddr[31:0] < 1024)
+                    residual[bank_waddr[9:0]] <= bank_wdata[15:0];
+                if (bank_read[0] && bank_raddr[31:0] < 1024)
+                    residual_read_q <= residual[bank_raddr[9:0]];
+            end
+        end else begin : callback_raw
+            assign raw_q = 16'd0;
+        end
         always @(posedge clk) begin
-            if (bank_write[0] && bank_waddr[31:0] < 1024)
-                residual[bank_waddr[9:0]] <= bank_wdata[15:0];
             if (bank_write[1] && bank_waddr[63:32] < 1024)
                 working[bank_waddr[41:32]] <= bank_wdata[31:16];
-            if (bank_read[0] && bank_raddr[31:0] < 1024)
-                residual_read_q <= residual[bank_raddr[9:0]];
             if (bank_read[1] && bank_raddr[63:32] < 1024)
                 working_read_q <= working[bank_raddr[41:32]];
         end
@@ -405,9 +415,11 @@ module anvil_en1_audio_lightconv #(
     assign glu_replay_event = rst_n && dependency_state == D_START && glu_ready;
     assign glu_replay_bytes = glu_replay_event ? 32'd2048 : 32'd0;
     assign vector_live_bytes = !rst_n ? 64'd0 :
-        (vector_allocated ? 64'd4096 : 64'd0) + glu_live;
+        (vector_allocated ? (RAW_SOURCE_CALLBACK ? 64'd2048 : 64'd4096) : 64'd0) +
+            glu_live;
     assign vector_physical_bytes = rst_n ?
-        (EXTERNAL_VECTOR_RAM ? 64'd0 : 64'd4096) + glu_physical : 64'd0;
+        (EXTERNAL_VECTOR_RAM ? 64'd0 :
+            (RAW_SOURCE_CALLBACK ? 64'd2048 : 64'd4096)) + glu_physical : 64'd0;
     assign nested_controller_bytes = rst_n ?
         conv_controller + glu_controller + glu_norm_controller +
         glu_projection_controller + glu_clamp_controller + norm_controller +
@@ -422,7 +434,7 @@ module anvil_en1_audio_lightconv #(
         $bits(raw_visible) + $bits(working_visible) + $bits(activation_phase) +
         $bits(source_error_hold) + $bits(receive_bad) + $bits(bank_error) +
         $bits(source_hold) + $bits(conv_hold) + $bits(work_hold) + $bits(output_hold) +
-        (EXTERNAL_VECTOR_RAM ? 0 : 32) + $bits(bank_data) +
+        (EXTERNAL_VECTOR_RAM ? 0 : (RAW_SOURCE_CALLBACK ? 16 : 32)) + $bits(bank_data) +
         $bits(dependency_data) + $bits(projection_hold) + $bits(fp_a) + $bits(fp_b) +
         $bits(fp_value) + $bits(fp_op) + $bits(child_error_hold) + $bits(error_hold) +
         $bits(dependency_child_error) + $bits(dependency_error) + $bits(dependency_failure);
@@ -598,6 +610,9 @@ module anvil_en1_audio_lightconv #(
                         token_hold > 131071 || weights_hold[1:0] != 0) begin
                         error_hold <= 5;
                         state <= PUBLISH;
+                    end else if (RAW_SOURCE_CALLBACK) begin
+                        raw_visible <= 1;
+                        state <= CONV_START;
                     end else
                         state <= SOURCE_SEND;
                 end
@@ -612,6 +627,12 @@ module anvil_en1_audio_lightconv #(
                     if (source_error_hold) begin
                         error_hold <= 7;
                         state <= PUBLISH;
+                    end else if (RAW_SOURCE_CALLBACK) begin
+                        fp_a <= {source_hold, 16'd0};
+                        fp_b <= {projection_hold[15:0], 16'd0};
+                        fp_op <= 0;
+                        fp_return <= RESIDUAL_NARROW;
+                        state <= FP_START;
                     end else
                         state <= INPUT_STORE;
                 end
@@ -761,7 +782,9 @@ module anvil_en1_audio_lightconv #(
                     if (child_error_hold != 0) begin
                         error_hold <= child_error_hold;
                         state <= PUBLISH;
-                    end else
+                    end else if (RAW_SOURCE_CALLBACK)
+                        state <= SOURCE_SEND;
+                    else
                         state <= RESIDUAL_READ;
                 end
                 RESIDUAL_READ: begin

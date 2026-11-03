@@ -5,7 +5,92 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: channel-serial audio history
+Current saved increment: [active audio residual source lifetimes](#current-increment-active-audio-residual-source-lifetimes).
+The connected positive-layer audio private envelope is now 4096 bytes.
+The preceding source-derived native-controller report remains 33243 bytes;
+this increment adds no scalar registers in the connected external-RAM path.
+Whole-system liveness/capacity is still unclosed, and the reserved static
+elaboration has not run.
+
+### Current increment: active audio residual source lifetimes
+
+`audio_lightconv.RAW_SOURCE_CALLBACK`, default zero, permits the caller
+to retain the raw residual instead of copying it into the lightconv.
+At one, validation advances directly to depthwise execution. After each
+clipped projection completes, request that output component's original
+raw BF16 value through the existing registered source channel. Capture
+the response/error before the original FP32 residual add and BF16 narrow.
+The default retained-raw path and both depthwise configurations remain.
+No new arithmetic, weight interpretation or materialization boundary is
+introduced.
+
+The connected replay layer selects the callback for lightconv and for
+mode-2 feed-forward. Its workspace retains raw values in bank 0 until
+their last read. Lightconv's output replaces bank 0 in ascending aligned
+pairs: both old raw components have been accepted by the child before
+the pair write can commit. Subsequent raw reads address only the next,
+not-yet-overwritten output component. During FF2 the complete bank-0
+input remains unchanged; FF2 writes bank 1, and bank 0 is released only
+after FF2's successful completion. Depthwise bank 1 is released after
+lightconv completion, before FF2 starts. Returned workspace pairs and
+partial output pairs remain included in their existing controller census.
+
+| Pre-edge boundary | Registered action / ownership |
+| --- | --- |
+| Callback lightconv accepts start | Capture descriptor and reserve only its working vector; validate before any source/weight access |
+| Supplied depthwise request | Read source indices 1024..2047 before any output; preserve the existing query-token and component checks |
+| Successful projection | Request raw source index equal to the current output index, then register response/error before arithmetic |
+| Nonzero replay output cursor | Permit a source callback only at that exact cursor and below 1024; no historical or overwritten raw read is permitted |
+| First output component of a pair | Keep its scalar low half; do not overwrite workspace raw data yet |
+| Second output component | Both raw reads precede the accepted pair write; await the workspace write response before further output work |
+| FF2 input / final residual passes | Read retained bank 0 through the same callback; output goes to separate bank 1 |
+| Child completion | Keep the source workspace alive until all output writes and child completion checks succeed |
+| Source failure, stalled source/output, reset | Preserve registered error retirement and stalled payloads; reset clears public outputs and validity |
+
+| Connected phase | Private live payload ceiling |
+| --- | ---: |
+| Attention-head preprocessing | 4096 bytes |
+| Frame-backed post-attention | 4096 bytes |
+| Channel history fold | Existing one-vector GLU working bank, 2048 bytes |
+| Supplied-depthwise lightconv with raw callback | 2048 bytes |
+| FF2 with raw callback | 4096 bytes; working allocation is released before final residual output |
+| Final norm/clamp | No private vector bank |
+| Serialized positive-layer maximum | 4096 bytes |
+
+The dispatcher admission descriptor, workspace validation and connected
+child range guards now enforce the same 4096-byte positive-layer maximum,
+with lightconv separately limited to 2048. History/conv/FF mutual-exclusion
+guards remain. This is a genuine payload-lifetime reduction, not a smaller
+grant in front of an unchanged 6144-byte child.
+
+Standalone callback lightconv physically omits its raw 2048-byte RAM and
+16-bit read register. Its local-RAM configuration reports the resulting
+two-byte controller reduction. The connected external-RAM configuration
+adds no register, so the preceding 33243-byte report is unchanged.
+The shared three-bank replay RAM remains physically 6144 bytes because
+FF2 still uses banks 1/2 and its other users retain their address mapping.
+No physical reduction of that shared store is claimed.
+
+This closes the remaining active positive-audio private-phase envelope,
+not the complete reachable storage bound. A conservative comparison is
+now `33243+4096+12*(4096+136) = 88123` bytes, still 2107 above the
+minimum-context E2B allowance even before memo/outer allocations.
+Twelve suspended positive layers imply a layer-zero active worker rather
+than the maximal positive-layer private phase; that observation is not a
+certificate that all legal combinations fit. All reachable suspended
+frames, pinned memos, outer consumers and native/fallback partitions must
+still be reconciled without a legal-work capacity failure.
+
+Independent verification must cover callback on/off, both depthwise
+settings and precisions, exact numerical equivalence, raw indices
+0/1/511/512/513/1023, request/output stalls, source errors after partial
+output, reset, and actual read-before-overwrite workspace handshakes.
+Require no callback-mode raw-bank accesses, proper FF2 input retention,
+the lower admission value and measured summed actual/shadow allocations.
+No compiler, simulation, synthesis or preparation probe ran for this
+increment; the reserved static elaboration remains pending design closure.
+
+### Prior increment: channel-serial audio history
 
 The connected history worker now evaluates depthwise channels in ascending
 order, visiting each channel's five taps in ascending kernel order. It
@@ -209,8 +294,9 @@ output. Thus this frame-backed post-attention phase falls from 6144 to
 The child physically removes its private 2048-byte raw bank. Existing
 external-vector-RAM users retain their physical backing unless separately
 changed. This is not a reduction of suspended history/head/output vectors.
-The preceding 34014-byte native-controller sum must be recounted for the
-new generated hierarchy; it is historical, not a current certificate.
+The source-derived native-controller report is now **33243 bytes**,
+771 fewer than the preceding 34014-byte hierarchy. This is report-expression
+accounting, not an elaborated declaration audit or observed allocation.
 Complete native/fallback and physical-partition fit remain open.
 
 The same default-off callback parameter is forwarded by
@@ -225,6 +311,35 @@ are working+branch 4096, branch+pre-output 4096, then pre-output+normalized
 cache 4096 bytes. Do not retain or claim the old 6144-byte head-preprocessing
 private peak. Physical shared RAM remains 6144 bytes. Full-hierarchy
 envelopes stay conservative until every other active phase is reconciled.
+The connected residual wrapper now diagnoses either private child exceeding
+4096 bytes; its original mutual-exclusion check remains.
+
+| Removed / changed declared controller term | Bits / bytes |
+| --- | ---: |
+| Unused `audio_pre_attention` wrapper | 353 / 45 |
+| Unused output clamp | 75 / 10 |
+| Unused native norm wrapper | 389 / 49 |
+| Its tensor directory | 1605 / 201 |
+| Its external-FP norm, length converter and div/sqrt | 490/62 + 79/10 + 500/63 = 135 bytes |
+| Its external-FP scale reader | 1335 / 167 |
+| Its private FP arithmetic | 542 / 68 |
+| New local FF RAM read registers versus old external-RAM FF | +32 / +4 |
+| Net removed report bytes | 45+10+49+201+135+167+68-4 = 771 |
+
+The audio input/layer nested term is `21792+19-771 = 21040`
+bytes (the +19 is the preceding channel-history scalar controller change).
+The unchanged remaining nine terms sum to 12203 bytes, giving
+`21040+12203 = 33243`. Explicitly absent supplied-head arithmetic is no
+longer instantiated; its already-zero report contributes no additional
+claimed saving. Physical frame-backed post payload falls from 10240 to
+8192 bytes: caller raw/working 4096 plus callback FF working/branch 4096.
+The shared numerical-head pre-attention RAM remains 6144 bytes.
+
+This still does not close capacity: even the deliberately conservative
+comparison `33243+6144+12*(4096+136) = 90171` exceeds the smallest
+86016-byte E2B native allowance before memo/outer state. Not all these
+maxima are proved simultaneous, but no reachable-fit certificate follows.
+The reserved static elaboration remains unused pending design closure.
 
 Independent verification must cover both callback settings, both modes
 and precisions, exact output equivalence, the second raw read of every

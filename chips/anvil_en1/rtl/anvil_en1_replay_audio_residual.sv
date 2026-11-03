@@ -114,7 +114,8 @@ module anvil_en1_replay_audio_residual #(
     wire [31:0] heads_input_bytes, heads_projection_bytes, heads_intermediate_bytes;
     wire [31:0] heads_source_bytes, heads_weight_bytes;
     anvil_en1_replay_audio_heads #(
-        .COMPACT(COMPACT), .DEFER_QUERY_BINDING(PACKED_FRAME)
+        .COMPACT(COMPACT), .DEFER_QUERY_BINDING(PACKED_FRAME),
+        .FINAL_FEEDFORWARD(PACKED_FRAME)
     ) heads (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == HEADS_START), .start_ready(heads_ready),
@@ -179,7 +180,9 @@ module anvil_en1_replay_audio_residual #(
     wire [63:0] norm_control, clamp_control;
     wire post_beat_good = received < 1024 && post_output_index == received &&
         post_output_last == (received == 1023);
-    anvil_en1_audio_attention_residual #(.FRAME_HEADS(1)) post_attention (
+    anvil_en1_audio_attention_residual #(
+        .FRAME_HEADS(1), .PRECOMPUTED_RAW(PACKED_FRAME)
+    ) post_attention (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POST_START), .start_ready(post_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),
@@ -307,7 +310,7 @@ module anvil_en1_replay_audio_residual #(
     assign vector_physical_bytes = !rst_n ? 64'd0 : heads_physical + post_physical;
     wire allocation_phase_fault = rst_n &&
         ((|heads_live && |post_live) ||
-            heads_live > 64'd6144 || post_live > 64'd6144);
+            heads_live > 64'd4096 || post_live > 64'd4096);
     assign post_nested_controller_bytes = !rst_n ? 64'd0 :
         pre_control + unused_head_control + projection_control + projection_clamp_control +
         norm_control + clamp_control;

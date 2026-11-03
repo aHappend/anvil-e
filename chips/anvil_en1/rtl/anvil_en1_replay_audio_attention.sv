@@ -2,6 +2,7 @@ module anvil_en1_replay_audio_attention (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
+    input wire raw_only,
     input wire [1:0] model, precision,
     input wire [31:0] generation, frames, query_token,
     input wire [7:0] layer, frame_layer,
@@ -95,7 +96,7 @@ module anvil_en1_replay_audio_attention (
     reg [63:0] audio_hold, weights_hold;
     reg [159:0] continuation_hold;
     reg [1023:0] checkpoint_hold;
-    reg resume_hold, yield_hold, decision_seen, checkpoint_seen;
+    reg resume_hold, yield_hold, decision_seen, checkpoint_seen, raw_only_hold;
     reg [31:0] scalar_hold;
     reg [3:0] scalar_error_hold, error_hold;
     reg [2:0] source_state;
@@ -172,6 +173,7 @@ module anvil_en1_replay_audio_attention (
     anvil_en1_audio_pre_attention #(.RAW_SOURCE_CALLBACK(1)) pre_attention (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == INPUT_START), .start_ready(pre_ready),
+        .raw_only(raw_only_hold),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold),
         .generation(generation_hold), .token(rebuild_token),
         .audio_weights_base(weights_hold),
@@ -186,7 +188,8 @@ module anvil_en1_replay_audio_attention (
         .cmd_write(), .cmd_addr(pre_addr), .cmd_wdata(),
         .result_valid(pre_selected && result_valid), .result_ready(pre_result_ready),
         .result_data(result_data), .result_error(result_error),
-        .output_valid(pre_output_valid), .output_ready(rst_n && state == INPUT_RUN),
+        .output_valid(pre_output_valid),
+        .output_ready(rst_n && state == INPUT_RUN && (!raw_only_hold || output_ready)),
         .output_kind(pre_output_kind), .output_index(pre_output_index),
         .output_data(pre_output_data), .output_last(pre_output_last),
         .done_valid(pre_valid),
@@ -277,10 +280,15 @@ module anvil_en1_replay_audio_attention (
         (pre_selected && pre_cmd_valid && cmd_ready);
     assign weight_read_bytes = engine_weight_bytes +
         ((pre_selected && pre_cmd_valid && cmd_ready) ? 32'd4 : 32'd0);
-    assign output_valid = run && engine_output_valid;
-    assign output_index = rst_n ? engine_output_index : 10'd0;
-    assign output_data = rst_n ? engine_output_data : 16'd0;
-    assign output_last = output_valid && engine_output_last;
+    assign output_valid = raw_only_hold ?
+        (pre_selected && state == INPUT_RUN && pre_output_valid) :
+        (run && engine_output_valid);
+    assign output_index = !rst_n ? 10'd0 :
+        (raw_only_hold ? pre_output_index[9:0] : engine_output_index);
+    assign output_data = !rst_n ? 16'd0 :
+        (raw_only_hold ? pre_output_data : engine_output_data);
+    assign output_last = output_valid &&
+        (raw_only_hold ? pre_output_last : engine_output_last);
     assign work_req_valid = rst_n && (state == SAVE_SEND || state == RESTORE_SEND);
     assign work_req_op = !rst_n ? 3'd0 : (state == SAVE_SEND ? 3'd6 : 3'd7);
     assign work_req_domain = rst_n ? 2'd2 : 2'd0;
@@ -308,7 +316,8 @@ module anvil_en1_replay_audio_attention (
         $bits(frame_layer_hold) + $bits(head_hold) + $bits(slot_hold) +
         $bits(audio_hold) + $bits(weights_hold) + $bits(continuation_hold) +
         $bits(checkpoint_hold) + $bits(resume_hold) + $bits(yield_hold) +
-        $bits(decision_seen) + $bits(checkpoint_seen) + $bits(scalar_hold) +
+        $bits(decision_seen) + $bits(checkpoint_seen) + $bits(raw_only_hold) +
+        $bits(scalar_hold) +
         $bits(scalar_error_hold) + $bits(error_hold) +
         $bits(source_state) + $bits(cache_token) + $bits(rebuild_token) +
         $bits(raw_received) + $bits(norm_received) + $bits(source_index_hold) +
@@ -401,6 +410,7 @@ module anvil_en1_replay_audio_attention (
             continuation_hold <= 0;
             checkpoint_hold <= 0;
             resume_hold <= 0;
+            raw_only_hold <= 0;
             yield_hold <= 0;
             decision_seen <= 0;
             checkpoint_seen <= 0;
@@ -437,6 +447,7 @@ module anvil_en1_replay_audio_attention (
                     continuation_hold <= continuation;
                     checkpoint_hold <= 0;
                     resume_hold <= resume_valid;
+                    raw_only_hold <= raw_only;
                     yield_hold <= 0;
                     decision_seen <= 0;
                     checkpoint_seen <= 0;
@@ -465,9 +476,12 @@ module anvil_en1_replay_audio_attention (
                         state <= PUBLISH;
                     end else if (frame_layer_hold == 0 || frame_layer_hold > 12 ||
                         {1'b0, layer_hold} + 9'd1 != {1'b0, frame_layer_hold} ||
-                        (resume_hold && !outer_matches)) begin
+                        (resume_hold && (!outer_matches || raw_only_hold))) begin
                         error_hold <= 7;
                         state <= PUBLISH;
+                    end else if (raw_only_hold) begin
+                        rebuild_token <= query_hold;
+                        state <= INPUT_START;
                     end else if (resume_hold)
                         state <= RESTORE_SEND;
                     else
@@ -527,7 +541,7 @@ module anvil_en1_replay_audio_attention (
                 INPUT_START: if (pre_ready)
                     state <= INPUT_RUN;
                 INPUT_RUN: begin
-                    if (pre_output_valid) begin
+                    if (pre_output_valid && (!raw_only_hold || output_ready)) begin
                         if (!pre_beat_good)
                             receive_bad <= 1;
                         if (pre_output_kind) begin
@@ -537,7 +551,7 @@ module anvil_en1_replay_audio_attention (
                                 norm_received <= norm_received + 1'b1;
                         end else if (raw_received < 1024)
                             raw_received <= raw_received + 1'b1;
-                    end else if (pre_valid) begin
+                    end else if (pre_valid && !pre_output_valid) begin
                         input_error_hold <= pre_error;
                         state <= INPUT_CHECK;
                     end
@@ -546,14 +560,18 @@ module anvil_en1_replay_audio_attention (
                     if (input_error_hold != 0) begin
                         if (error_hold == 0)
                             error_hold <= input_error_hold;
-                    end else if (receive_bad || raw_received != 1024 || norm_received != 1024) begin
+                    end else if (receive_bad || raw_received != 1024 ||
+                        norm_received != (raw_only_hold ? 0 : 1024)) begin
                         if (error_hold == 0)
                             error_hold <= 7;
-                    end else begin
+                    end else if (!raw_only_hold) begin
                         cache_token <= rebuild_token;
                         cache_visible <= 1;
                     end
-                    state <= ENGINE_RUN;
+                    if (raw_only_hold)
+                        state <= PUBLISH;
+                    else
+                        state <= ENGINE_RUN;
                 end
                 ENGINE_DRAIN: if (engine_valid) begin
                     if (engine_error != 0) begin

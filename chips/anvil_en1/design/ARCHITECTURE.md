@@ -5,7 +5,61 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: frame-backed FF raw-source rematerialization
+## Current increment: active audio residual source lifetimes
+
+The replay layer now obtains lightconv's residual through a default-off
+`RAW_SOURCE_CALLBACK` specialization, rather than copying the raw frame
+into a private bank. Validation enters depthwise work directly. Each
+successful clipped projection requests its real raw component, registers
+the response/error, then performs the unchanged FP32 add and BF16 narrow.
+The default path retains its original initial raw-copy pass.
+
+Lightconv reads raw bank 0 in ascending output order while its output
+replaces that bank in aligned pairs. Both source reads complete before
+the corresponding pair write, and the caller awaits the write response.
+Its source validator now permits nonzero output cursors only when the
+requested raw index equals that cursor and is below 1024. Supplied
+depthwise reads still precede all outputs. No overwritten raw component
+can be revisited by this schedule.
+
+FF2 also enables the existing raw callback. It rereads unchanged bank 0
+for its input and final residual passes, while writing separate bank 1.
+The original bank release occurs only after successful FF2 completion.
+This keeps every original input live until its actual last read, without
+a private duplicate or off-chip activation spill.
+
+The active private maxima are now 4096 bytes for numerical-head
+preprocessing, frame-backed post-attention and FF2, and 2048 bytes for
+supplied-depthwise lightconv and the channel fold. Final norm/clamp has
+no private vector RAM. Dispatcher admission, workspace descriptor
+validation and child range guards agree on the new serialized 4096-byte
+positive-layer maximum. Existing mutual-exclusion guards remain.
+
+The shared replay payload backing stays physically 6144 bytes. Callback
+lightconv removes a local raw RAM only in its standalone local-RAM
+elaboration; the connected external-RAM variant adds no scalar registers.
+Thus the preceding source-derived native controller report stays 33243
+bytes, not an experimentally observed or elaborated census.
+
+Whole-system capacity is **not closed**. The conservative comparison is
+`33243+4096+12*(4096+136)=88123`, still above minimum-context E2B's
+86016-byte native allowance before memo/outer state. A full-depth
+suspension uses the smaller layer-zero active worker, but no complete
+reachable-case proof follows from that fact. Remaining work is to close
+suspended-vector and pinned-memo/outer lifetimes, reconcile both models'
+ordinary/fallback and physical partitions, and then run the reserved
+static elaboration before independent Verifier handoff.
+
+Saved `audio_lightconv`, `replay_audio_layer`, `replay_execute`,
+`replay_workspace` and both design documents. Used view/rg/glob and
+apply_patch only; no HDL execution, functional/synthesis harness or
+preparation receipt. Tests, parent sources, runtime metadata and original
+failures remain untouched. SPEC freezes the changed cycle/lifetime table
+and independent checks, including source indices around pair and channel
+boundaries, both callback/depthwise settings, read-before-overwrite,
+partial-output errors, reset/stalls and actual/shadow allocation.
+
+## Prior increment: frame-backed FF raw-source rematerialization
 
 Frame-backed post-attention needs the raw first-feed-forward residual,
 not the additional normalized query stream produced by the standalone
@@ -38,11 +92,36 @@ its shared 6144-byte physical RAM remains disclosed.
 This closes redundant raw retention and unused query-normalization work
 in the frame-backed post phase, not whole-system storage feasibility.
 Suspended audio heads/depthwise outputs, other active phases, memos,
-outer consumers and fallback partitions still require reconciliation;
-the old 34014-byte controller census is superseded pending a fresh
-source-derived census. SPEC records the cycle/materialization and
-independent verification obligations. No static elaboration, simulation,
-synthesis or preparation receipt is claimed.
+outer consumers and fallback partitions still require reconciliation.
+The source-derived controller report is now **33243 bytes**, 771 fewer
+than before: remove the unused 45-byte wrapper, 10-byte clamp and
+720-byte complete native norm; add four bytes for the now-local FF
+RAM read registers. SPEC records the nonoverlapping derivation. The
+explicitly removed supplied-head arithmetic subtree previously reported
+zero and supplies no further claimed reduction. These are source report
+counts, not an elaborated census, allocation observation or synthesis.
+
+The frame-backed post's physical payload becomes 8192 instead of 10240
+bytes (4096 caller raw/working plus 4096 child working/branch). Head
+preprocessing's shared physical payload remains 6144. Its two private
+child ceilings are now enforced at 4096 bytes by the existing residual
+wrapper, with the original mutual-exclusion guard retained.
+
+The conservative aggregate `33243+6144+12*(4096+136) = 90171`
+still exceeds minimum-context E2B's 86016-byte allowance before memo/outer
+state; whole-system fit remains unresolved. SPEC records cycle and
+independent verification obligations. Also repaired a duplicate `fold_data`
+wire declaration retained by the preceding history increment. No static
+elaboration, simulation, synthesis or preparation receipt is claimed.
+
+Saved `audio_feedforward`, `audio_pre_attention`,
+`audio_attention_residual`, `replay_audio_attention`,
+`replay_audio_residual`, `replay_audio_history` and both design documents.
+Used view/rg/glob/apply_patch only. Tests, immutable parent sources,
+runtime metadata and retained failures remain untouched. Next reconcile
+the other active audio phases (lightconv/FF2), reachable suspended frames,
+pinned memo/outer consumers and both native/fallback partitions, then
+run the reserved static elaboration before independent Verifier handoff.
 
 ## Prior increment: channel-serial audio history
 

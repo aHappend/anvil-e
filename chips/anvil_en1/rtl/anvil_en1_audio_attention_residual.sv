@@ -1,5 +1,6 @@
 module anvil_en1_audio_attention_residual #(
-    parameter integer FRAME_HEADS = 0
+    parameter integer FRAME_HEADS = 0,
+    parameter integer PRECOMPUTED_RAW = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -52,7 +53,8 @@ module anvil_en1_audio_attention_residual #(
         RESIDUAL_CAPTURE = 18, RESIDUAL_ADD = 19, NARROW = 20,
         OUTPUT_REGISTER = 21, EMIT = 22, OUTPUT_ADVANCE = 23,
         NORM_CHECK = 24, FP_START = 25, FP_WAIT = 26,
-        PUBLISH = 27, RESPONSE = 28;
+        PUBLISH = 27, RESPONSE = 28,
+        RAW_SEND = 29, RAW_WAIT = 30, RAW_STORE = 31;
     localparam [3:0] S_IDLE = 0, S_VALIDATE = 1, S_READ = 2, S_CAPTURE = 3,
         S_RESPONSE = 4, REBUILD_START = 5, REBUILD_WAIT = 6, REBUILD_CHECK = 7;
     reg [5:0] state, fp_return;
@@ -80,6 +82,9 @@ module anvil_en1_audio_attention_residual #(
     initial begin
         if (FRAME_HEADS != 0 && FRAME_HEADS != 1)
             $fatal(1, "PARAMETER ERROR: FRAME_HEADS must be 0 or 1");
+        if ((PRECOMPUTED_RAW != 0 && PRECOMPUTED_RAW != 1) ||
+            (PRECOMPUTED_RAW && !FRAME_HEADS))
+            $fatal(1, "PARAMETER ERROR: PRECOMPUTED_RAW requires FRAME_HEADS");
     end
     wire pre_selected = rst_n && (state == PRE_START || state == PRE_WAIT ||
         (state == HEAD_WAIT && (source_state == REBUILD_START || source_state == REBUILD_WAIT)));
@@ -108,6 +113,7 @@ module anvil_en1_audio_attention_residual #(
     generate if (FRAME_HEADS == 0) begin : standalone_pre_attention
     anvil_en1_audio_pre_attention pre_attention (
         .clk(clk), .rst_n(rst_n),
+        .raw_only(1'b0),
         .start_valid(rst_n && (state == PRE_START ||
             (state == HEAD_WAIT && source_state == REBUILD_START))),
         .start_ready(pre_ready), .model(model_hold), .precision(precision_hold),
@@ -140,7 +146,7 @@ module anvil_en1_audio_attention_residual #(
         .down_clamp_controller_bytes(down_clamp_control),
         .inner_controller_bytes(inner_control), .inner_clamp_controller_bytes(inner_clamp_control)
     );
-    end else begin : frame_raw_feedforward
+    end else if (!PRECOMPUTED_RAW) begin : frame_raw_feedforward
         anvil_en1_audio_feedforward #(.RAW_SOURCE_CALLBACK(1)) feedforward (
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PRE_START), .start_ready(pre_ready),
@@ -176,6 +182,40 @@ module anvil_en1_audio_attention_residual #(
         assign pre_control = 0;
         assign pre_norm_control = 0;
         assign pre_clamp_control = 0;
+    end else begin : supplied_raw_feedforward
+        assign pre_ready = 0;
+        assign pre_valid = 0;
+        assign pre_output_valid = 0;
+        assign pre_output_last = 0;
+        assign pre_output_kind = 0;
+        assign pre_output_index = 0;
+        assign pre_output_data = 0;
+        assign pre_error = 0;
+        assign pre_cmd_valid = 0;
+        assign pre_addr = 0;
+        assign pre_result_ready = 0;
+        assign pre_source_valid = 0;
+        assign pre_source_rsp_ready = 0;
+        assign pre_source_model = 0;
+        assign pre_source_layer = 0;
+        assign pre_source_generation = 0;
+        assign pre_source_token = 0;
+        assign pre_source_index = 0;
+        assign pre_live = 0;
+        assign pre_physical = 0;
+        assign pre_control = 0;
+        assign pre_norm_control = 0;
+        assign pre_clamp_control = 0;
+        assign ff_control = 0;
+        assign ff_norm_control = 0;
+        assign ff_clamp_control = 0;
+        assign mlp_control = 0;
+        assign down_control = 0;
+        assign down_clamp_control = 0;
+        assign inner_control = 0;
+        assign inner_clamp_control = 0;
+        assign intermediate_event = 0;
+        assign intermediate_bytes = 0;
     end endgenerate
     assign pre_controller_bytes = !rst_n ? 64'd0 :
         pre_control + pre_norm_control + pre_clamp_control + ff_control +
@@ -369,6 +409,8 @@ module anvil_en1_audio_attention_residual #(
         !source_tag_bad && source_index_hold < 1024 && source_token_hold < tokens_hold &&
         first_source_error == 0 && (!cache_visible || cache_token != source_token_hold);
     always @(posedge clk) begin
+        if (rst_n && PRECOMPUTED_RAW && state == RAW_STORE && child_error_hold == 0)
+            residual[raw_received[9:0]] <= projection_hold;
         if (pre_selected && pre_output_valid && pre_beat_good) begin
             if (!pre_output_kind && state == PRE_WAIT)
                 residual[pre_output_index[9:0]] <= pre_output_data;
@@ -393,21 +435,27 @@ module anvil_en1_audio_attention_residual #(
     end
     assign start_ready = rst_n && state == IDLE;
     wire frame_source = rst_n && FRAME_HEADS && state == PROJECTION_WAIT;
+    wire raw_source = rst_n && PRECOMPUTED_RAW &&
+        (state == RAW_SEND || state == RAW_WAIT);
     assign source_valid = (pre_selected && pre_source_valid) ||
-        (frame_source && projection_source_valid);
+        (frame_source && projection_source_valid) ||
+        (raw_source && state == RAW_SEND);
     assign source_kind = frame_source;
     assign source_model = !rst_n ? 2'd0 :
-        (pre_selected ? pre_source_model : (frame_source ? model_hold : 2'd0));
+        (pre_selected ? pre_source_model : (frame_source || raw_source ? model_hold : 2'd0));
     assign source_layer = !rst_n ? 8'd0 :
-        (pre_selected ? pre_source_layer : (frame_source ? layer_hold : 8'd0));
+        (pre_selected ? pre_source_layer : (frame_source || raw_source ? layer_hold : 8'd0));
     assign source_generation = !rst_n ? 32'd0 :
-        (pre_selected ? pre_source_generation : (frame_source ? generation_hold : 32'd0));
+        (pre_selected ? pre_source_generation :
+            (frame_source || raw_source ? generation_hold : 32'd0));
     assign source_token = !rst_n ? 32'd0 :
-        (pre_selected ? pre_source_token : (frame_source ? token_hold : 32'd0));
+        (pre_selected ? pre_source_token : (frame_source || raw_source ? token_hold : 32'd0));
     assign source_index = !rst_n ? 32'd0 :
-        (pre_selected ? pre_source_index : (frame_source ? projection_source_index : 32'd0));
+        (pre_selected ? pre_source_index : (frame_source ? projection_source_index :
+            (raw_source ? raw_received : 32'd0)));
     assign source_rsp_ready = (pre_selected && pre_source_rsp_ready) ||
-        (frame_source && projection_source_rsp_ready);
+        (frame_source && projection_source_rsp_ready) ||
+        (raw_source && state == RAW_WAIT);
     assign cmd_valid = pre_selected ? pre_cmd_valid : (head_selected ? head_cmd_valid :
         (projection_selected ? projection_cmd_valid : (norm_selected && norm_cmd_valid)));
     assign cmd_write = 0;
@@ -640,8 +688,32 @@ module anvil_en1_audio_attention_residual #(
                         audio_hold[1:0] != 0 || weights_hold[1:0] != 0) begin
                         error_hold <= 5;
                         state <= PUBLISH;
-                    end else
+                    end else if (PRECOMPUTED_RAW)
+                        state <= RAW_SEND;
+                    else
                         state <= PRE_START;
+                end
+                RAW_SEND: if (source_ready)
+                    state <= RAW_WAIT;
+                RAW_WAIT: if (source_rsp_valid) begin
+                    projection_hold <= source_rsp_data;
+                    child_error_hold <= source_rsp_error ? 4'd3 : 4'd0;
+                    state <= RAW_STORE;
+                end
+                RAW_STORE: begin
+                    if (child_error_hold != 0) begin
+                        error_hold <= child_error_hold;
+                        state <= PUBLISH;
+                    end else begin
+                        raw_allocated <= 1;
+                        raw_received <= raw_received + 1'b1;
+                        if (raw_received == 1023) begin
+                            raw_visible <= 1;
+                            working_allocated <= 1;
+                            state <= PROJECTION_START;
+                        end else
+                            state <= RAW_SEND;
+                    end
                 end
                 PRE_START: if (pre_ready) begin
                     cache_token <= token_hold;

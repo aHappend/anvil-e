@@ -192,7 +192,7 @@ module anvil_en1_replay_audio_layer #(
     wire conv_start = rst_n && state == CONV_START && vector_owner == 0;
     wire ff_start = rst_n && state == FF_START && vector_owner == 0;
     anvil_en1_audio_lightconv #(
-        .EXTERNAL_VECTOR_RAM(1), .PRECOMPUTED_DEPTHWISE(1)
+        .EXTERNAL_VECTOR_RAM(1), .PRECOMPUTED_DEPTHWISE(1), .RAW_SOURCE_CALLBACK(1)
     ) convolution (
         .clk(clk), .rst_n(rst_n),
         .start_valid(conv_start), .start_ready(conv_ready),
@@ -237,7 +237,9 @@ module anvil_en1_replay_audio_layer #(
     wire [63:0] ff_down_clamp_control, ff_inner_control, ff_inner_clamp_control;
     wire ff_intermediate_event;
     wire [31:0] ff_intermediate_bytes;
-    anvil_en1_audio_feedforward #(.EXTERNAL_VECTOR_RAM(1)) feed_forward2 (
+    anvil_en1_audio_feedforward #(
+        .EXTERNAL_VECTOR_RAM(1), .RAW_SOURCE_CALLBACK(1)
+    ) feed_forward2 (
         .clk(clk), .rst_n(rst_n),
         .start_valid(ff_start), .start_ready(ff_ready),
         .model(model_hold), .precision(precision_hold), .mode(2'd2), .layer(logical_layer),
@@ -469,8 +471,8 @@ module anvil_en1_replay_audio_layer #(
          (ff_ram_access && vector_owner != 2) ||
          (|history_live && (|conv_live || |ff_live)) ||
          (|conv_live && |ff_live) ||
-         history_live > 64'd6144 || conv_live > 64'd6144 ||
-         ff_live > 64'd6144);
+         history_live > 64'd4096 || conv_live > 64'd2048 ||
+         ff_live > 64'd4096);
     wire [2:0] vector_range_fault;
     wire vector_access_fault = vector_owner_fault || |vector_range_fault;
     genvar bank;
@@ -568,7 +570,8 @@ module anvil_en1_replay_audio_layer #(
                     if (source_bad ||
                         source_index_hold >= (state == CONV_WAIT ? 2048 : 1024) ||
                         error_hold != 0 || first_source_error != 0 ||
-                        (state != NORM_WAIT && received != 0) ||
+                        (state != NORM_WAIT && received != 0 &&
+                            (source_index_hold >= 1024 || source_index_hold != received)) ||
                         (state == CONV_WAIT && source_token_hold != query_hold)) begin
                         source_error_hold <= first_source_error != 0 ? first_source_error :
                             (error_hold != 0 ? error_hold : 4'd7);
