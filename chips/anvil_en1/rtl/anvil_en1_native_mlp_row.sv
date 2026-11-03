@@ -1,4 +1,6 @@
-module anvil_en1_native_mlp_row (
+module anvil_en1_native_mlp_row #(
+    parameter integer EXTERNAL_FP = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -32,7 +34,15 @@ module anvil_en1_native_mlp_row (
     output wire [31:0] intermediate_bytes,
     output wire [63:0] controller_bytes,
     output wire [63:0] down_controller_bytes, down_clamp_controller_bytes,
-    output wire [63:0] inner_controller_bytes, inner_clamp_controller_bytes
+    output wire [63:0] inner_controller_bytes, inner_clamp_controller_bytes,
+    output wire arithmetic_valid,
+    input wire arithmetic_ready,
+    output wire [2:0] arithmetic_operation,
+    output wire [31:0] arithmetic_a, arithmetic_b,
+    input wire arithmetic_result_valid,
+    output wire arithmetic_result_ready,
+    input wire [31:0] arithmetic_result_data,
+    input wire [3:0] arithmetic_result_error
 );
     localparam [2:0] IDLE = 0, VALIDATE = 1, DOWN_START = 2,
         DOWN_WAIT = 3, REGISTER = 4, PUBLISH = 5, RESPONSE = 6;
@@ -51,6 +61,18 @@ module anvil_en1_native_mlp_row (
     reg [15:0] gate_hold, up_hold, intermediate_hold;
     reg [31:0] activation_hold, output_hold;
     reg [3:0] intermediate_error, first_error, error_hold;
+    localparam [2:0] FP_DOWN = 0, FP_INNER = 1, FP_GEGLU = 2,
+        FP_ACTIVATION = 3, FP_LOCAL = 4;
+    wire [3:0] child_arithmetic_valid, child_arithmetic_result_ready;
+    wire [11:0] child_arithmetic_operation;
+    wire [127:0] child_arithmetic_a, child_arithmetic_b;
+    wire fp_ready, fp_valid;
+    wire [31:0] fp_data;
+    wire [3:0] fp_error;
+    initial begin
+        if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
+    end
 
     wire [1:0] image_class = mode_hold == 0 ? 2'd1 : 2'd2;
     wire [15:0] gate_kind = mode_hold == 0 ? 16'h1109 :
@@ -72,7 +94,13 @@ module anvil_en1_native_mlp_row (
             source_state == S_UP_START || source_state == S_UP_WAIT);
     wire down_selected = rst_n &&
         (state == DOWN_START || state == DOWN_WAIT) && !inner_selected;
-    anvil_en1_clipped_projection down (
+    wire [2:0] fp_owner = inner_selected ? FP_INNER :
+        (source_state == S_GEGLU_START || source_state == S_GEGLU_WAIT ? FP_GEGLU :
+        (source_state == S_ACTIVATION_START || source_state == S_ACTIVATION_WAIT ?
+            FP_ACTIVATION :
+        (source_state == S_NARROW_START || source_state == S_NARROW_WAIT ?
+            FP_LOCAL : FP_DOWN)));
+    anvil_en1_clipped_projection #(.EXTERNAL_FP(1)) down (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_START), .start_ready(down_ready),
         .model(model_hold), .precision(precision_hold), .image_class(image_class),
@@ -92,14 +120,22 @@ module anvil_en1_native_mlp_row (
         .done_ready(rst_n && state == DOWN_WAIT && source_state == S_IDLE),
         .done_data(down_data), .done_error(down_error),
         .controller_bytes(down_controller_bytes),
-        .clamp_controller_bytes(down_clamp_controller_bytes)
+        .clamp_controller_bytes(down_clamp_controller_bytes),
+        .arithmetic_valid(child_arithmetic_valid[FP_DOWN]),
+        .arithmetic_ready(fp_owner == FP_DOWN && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[3*FP_DOWN+:3]),
+        .arithmetic_a(child_arithmetic_a[32*FP_DOWN+:32]),
+        .arithmetic_b(child_arithmetic_b[32*FP_DOWN+:32]),
+        .arithmetic_result_valid(fp_owner == FP_DOWN && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[FP_DOWN]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
 
     wire inner_ready, inner_valid, inner_cmd_valid, inner_result_ready;
     wire [31:0] inner_data;
     wire [63:0] inner_cmd_addr;
     wire [3:0] inner_error;
-    anvil_en1_clipped_projection inner (
+    anvil_en1_clipped_projection #(.EXTERNAL_FP(1)) inner (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_WAIT &&
             (source_state == S_GATE_START || source_state == S_UP_START)),
@@ -121,41 +157,88 @@ module anvil_en1_native_mlp_row (
             (source_state == S_GATE_WAIT || source_state == S_UP_WAIT)),
         .done_data(inner_data), .done_error(inner_error),
         .controller_bytes(inner_controller_bytes),
-        .clamp_controller_bytes(inner_clamp_controller_bytes)
+        .clamp_controller_bytes(inner_clamp_controller_bytes),
+        .arithmetic_valid(child_arithmetic_valid[FP_INNER]),
+        .arithmetic_ready(fp_owner == FP_INNER && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[3*FP_INNER+:3]),
+        .arithmetic_a(child_arithmetic_a[32*FP_INNER+:32]),
+        .arithmetic_b(child_arithmetic_b[32*FP_INNER+:32]),
+        .arithmetic_result_valid(fp_owner == FP_INNER && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[FP_INNER]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
 
-    wire geglu_ready, geglu_valid, activation_ready, activation_valid, fp_ready, fp_valid;
-    wire [31:0] geglu_data, activation_data, fp_data;
-    wire [3:0] geglu_error, activation_error, fp_error;
+    wire geglu_ready, geglu_valid, activation_ready, activation_valid;
+    wire [31:0] geglu_data, activation_data;
+    wire [3:0] geglu_error, activation_error;
     wire [63:0] primitive_geglu_bytes, primitive_activation_bytes, primitive_fp_bytes;
-    anvil_en1_geglu_pair geglu (
+    anvil_en1_geglu_pair #(.EXTERNAL_FP(1)) geglu (
         .controller_bytes(primitive_geglu_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_WAIT && source_state == S_GEGLU_START),
         .start_ready(geglu_ready), .operation(2'd0), .gate_data(gate_hold), .up_data(up_hold),
         .done_valid(geglu_valid),
         .done_ready(rst_n && state == DOWN_WAIT && source_state == S_GEGLU_WAIT),
-        .done_data(geglu_data), .done_error(geglu_error)
+        .done_data(geglu_data), .done_error(geglu_error),
+        .arithmetic_valid(child_arithmetic_valid[FP_GEGLU]),
+        .arithmetic_ready(fp_owner == FP_GEGLU && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[3*FP_GEGLU+:3]),
+        .arithmetic_a(child_arithmetic_a[32*FP_GEGLU+:32]),
+        .arithmetic_b(child_arithmetic_b[32*FP_GEGLU+:32]),
+        .arithmetic_result_valid(fp_owner == FP_GEGLU && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[FP_GEGLU]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    anvil_en1_activation activation (
+    anvil_en1_activation #(.EXTERNAL_FP(1)) activation (
         .controller_bytes(primitive_activation_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == DOWN_WAIT && source_state == S_ACTIVATION_START),
         .start_ready(activation_ready), .operation(2'd3), .operand({gate_hold, 16'd0}),
         .done_valid(activation_valid),
         .done_ready(rst_n && state == DOWN_WAIT && source_state == S_ACTIVATION_WAIT),
-        .done_data(activation_data), .done_error(activation_error)
+        .done_data(activation_data), .done_error(activation_error),
+        .arithmetic_valid(child_arithmetic_valid[FP_ACTIVATION]),
+        .arithmetic_ready(fp_owner == FP_ACTIVATION && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[3*FP_ACTIVATION+:3]),
+        .arithmetic_a(child_arithmetic_a[32*FP_ACTIVATION+:32]),
+        .arithmetic_b(child_arithmetic_b[32*FP_ACTIVATION+:32]),
+        .arithmetic_result_valid(fp_owner == FP_ACTIVATION && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[FP_ACTIVATION]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    anvil_en1_fp32 materialize (
-        .controller_bytes(primitive_fp_bytes),
-        .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == DOWN_WAIT && source_state == S_NARROW_START),
-        .start_ready(fp_ready), .operation(3'd3),
-        .operand_a(activation_hold), .operand_b(32'd0),
-        .done_valid(fp_valid),
-        .done_ready(rst_n && state == DOWN_WAIT && source_state == S_NARROW_WAIT),
-        .done_data(fp_data), .done_error(fp_error)
-    );
+    wire fp_start_valid = rst_n && (fp_owner == FP_LOCAL ?
+        (state == DOWN_WAIT && source_state == S_NARROW_START) :
+        child_arithmetic_valid[fp_owner[1:0]]);
+    wire fp_done_ready = rst_n && (fp_owner == FP_LOCAL ?
+        (state == DOWN_WAIT && source_state == S_NARROW_WAIT) :
+        child_arithmetic_result_ready[fp_owner[1:0]]);
+    wire [2:0] fp_operation = fp_owner == FP_LOCAL ? 3'd3 :
+        child_arithmetic_operation[3*fp_owner[1:0]+:3];
+    wire [31:0] fp_operand_a = fp_owner == FP_LOCAL ? activation_hold :
+        child_arithmetic_a[32*fp_owner[1:0]+:32];
+    wire [31:0] fp_operand_b = fp_owner == FP_LOCAL ? 32'd0 :
+        child_arithmetic_b[32*fp_owner[1:0]+:32];
+    assign arithmetic_valid = EXTERNAL_FP == 1 && fp_start_valid;
+    assign arithmetic_operation = rst_n && EXTERNAL_FP == 1 ? fp_operation : 3'd0;
+    assign arithmetic_a = rst_n && EXTERNAL_FP == 1 ? fp_operand_a : 32'd0;
+    assign arithmetic_b = rst_n && EXTERNAL_FP == 1 ? fp_operand_b : 32'd0;
+    assign arithmetic_result_ready = EXTERNAL_FP == 1 && fp_done_ready;
+    generate if (EXTERNAL_FP == 1) begin : external_arithmetic
+        assign primitive_fp_bytes = 64'd0;
+        assign fp_ready = rst_n && arithmetic_ready;
+        assign fp_valid = rst_n && arithmetic_result_valid;
+        assign fp_data = rst_n ? arithmetic_result_data : 32'd0;
+        assign fp_error = rst_n ? arithmetic_result_error : 4'd0;
+    end else begin : internal_arithmetic
+        anvil_en1_fp32 arithmetic (
+            .controller_bytes(primitive_fp_bytes),
+            .clk(clk), .rst_n(rst_n),
+            .start_valid(fp_start_valid), .start_ready(fp_ready),
+            .operation(fp_operation), .operand_a(fp_operand_a), .operand_b(fp_operand_b),
+            .done_valid(fp_valid), .done_ready(fp_done_ready),
+            .done_data(fp_data), .done_error(fp_error)
+        );
+    end endgenerate
 
     assign start_ready = rst_n && state == IDLE;
     assign source_generation = rst_n ? generation_hold : 32'd0;

@@ -80,6 +80,12 @@ module anvil_en1_vision_post_layer #(
     end
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     wire mlp_selected = rst_n && (state == MLP_START || state == MLP_WAIT);
+    wire fp_ready, fp_valid;
+    wire [31:0] fp_data;
+    wire [3:0] fp_error;
+    wire [1:0] child_arithmetic_valid, child_arithmetic_result_ready;
+    wire [5:0] child_arithmetic_operation;
+    wire [63:0] child_arithmetic_a, child_arithmetic_b;
     wire [15:0] norm_kind = phase == 0 ? 16'h1107 :
         (phase == 1 ? 16'h1108 : 16'h110c);
     wire norm_ready, norm_valid, norm_source_valid, norm_source_rsp_ready;
@@ -88,7 +94,7 @@ module anvil_en1_vision_post_layer #(
     wire [15:0] norm_output_data;
     wire [63:0] norm_addr;
     wire [3:0] norm_error;
-    anvil_en1_native_norm normalization (
+    anvil_en1_native_norm #(.EXTERNAL_FP(1)) normalization (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd1),
@@ -108,14 +114,22 @@ module anvil_en1_vision_post_layer #(
         .output_index(norm_output_index), .output_data(norm_output_data),
         .output_last(norm_output_last), .done_valid(norm_valid),
         .done_ready(rst_n && state == NORM_WAIT && src_state == SRC_IDLE),
-        .done_error(norm_error), .controller_bytes(norm_controller_bytes)
+        .done_error(norm_error), .controller_bytes(norm_controller_bytes),
+        .arithmetic_valid(child_arithmetic_valid[0]),
+        .arithmetic_ready(norm_selected && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[0+:3]),
+        .arithmetic_a(child_arithmetic_a[0+:32]),
+        .arithmetic_b(child_arithmetic_b[0+:32]),
+        .arithmetic_result_valid(norm_selected && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[0]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     wire mlp_ready, mlp_valid, mlp_source_valid, mlp_source_rsp_ready;
     wire mlp_cmd_valid, mlp_result_ready;
     wire [31:0] mlp_source_index, mlp_data;
     wire [63:0] mlp_addr;
     wire [3:0] mlp_error;
-    anvil_en1_native_mlp_row mlp (
+    anvil_en1_native_mlp_row #(.EXTERNAL_FP(1)) mlp (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MLP_START), .start_ready(mlp_ready),
         .model(model_hold), .precision(precision_hold), .mode(2'd0),
@@ -140,22 +154,38 @@ module anvil_en1_vision_post_layer #(
         .down_controller_bytes(down_controller_bytes),
         .down_clamp_controller_bytes(down_clamp_controller_bytes),
         .inner_controller_bytes(inner_controller_bytes),
-        .inner_clamp_controller_bytes(inner_clamp_controller_bytes)
+        .inner_clamp_controller_bytes(inner_clamp_controller_bytes),
+        .arithmetic_valid(child_arithmetic_valid[1]),
+        .arithmetic_ready(mlp_selected && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[3+:3]),
+        .arithmetic_a(child_arithmetic_a[32+:32]),
+        .arithmetic_b(child_arithmetic_b[32+:32]),
+        .arithmetic_result_valid(mlp_selected && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[1]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    wire fp_ready, fp_valid;
-    wire [31:0] fp_data;
-    wire [3:0] fp_error;
     wire narrowing = state == NARROW_START || state == NARROW_WAIT;
     wire [63:0] primitive_fp_bytes;
     anvil_en1_fp32 residual (
         .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && (state == ADD_START || state == NARROW_START)),
-        .start_ready(fp_ready), .operation(narrowing ? 3'd3 : 3'd0),
-        .operand_a(narrowing ? sum_hold : {residual_raw, 16'd0}),
-        .operand_b(narrowing ? 32'd0 : {residual_branch, 16'd0}),
+        .start_valid(rst_n && (norm_selected ? child_arithmetic_valid[0] :
+            (mlp_selected ? child_arithmetic_valid[1] :
+            (state == ADD_START || state == NARROW_START)))),
+        .start_ready(fp_ready),
+        .operation(norm_selected ? child_arithmetic_operation[0+:3] :
+            (mlp_selected ? child_arithmetic_operation[3+:3] :
+            (narrowing ? 3'd3 : 3'd0))),
+        .operand_a(norm_selected ? child_arithmetic_a[0+:32] :
+            (mlp_selected ? child_arithmetic_a[32+:32] :
+            (narrowing ? sum_hold : {residual_raw, 16'd0}))),
+        .operand_b(norm_selected ? child_arithmetic_b[0+:32] :
+            (mlp_selected ? child_arithmetic_b[32+:32] :
+            (narrowing ? 32'd0 : {residual_branch, 16'd0}))),
         .done_valid(fp_valid),
-        .done_ready(rst_n && (state == ADD_WAIT || state == NARROW_WAIT)),
+        .done_ready(rst_n && (norm_selected ? child_arithmetic_result_ready[0] :
+            (mlp_selected ? child_arithmetic_result_ready[1] :
+            (state == ADD_WAIT || state == NARROW_WAIT)))),
         .done_data(fp_data), .done_error(fp_error)
     );
     wire norm_accept = rst_n && state == NORM_WAIT && norm_output_valid;

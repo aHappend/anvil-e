@@ -5,7 +5,57 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: text-worker arithmetic and post-only elaboration
+## Current saved increment: native feed-forward arithmetic overlay
+
+`anvil_en1_clipped_projection`, `anvil_en1_native_norm` and
+`anvil_en1_native_mlp_row` expose the validated, default-off `EXTERNAL_FP`
+service already used by the text primitives. Default standalone callers keep
+real local arithmetic. Clipped projection forwards its projection's service;
+its comparison-only interval clamps do not take arithmetic ownership.
+Native norm forwards its existing norm/scale phase selection without changing
+scale callbacks or normalized-output materialization.
+
+The native MLP row now shares one binary32 unit across down projection, nested
+gate/up projection, GeGLU, audio activation and final BF16 narrowing. Nested
+ownership follows complete registered source start/wait phases, not request
+validity. The down projection's weight/partial sum remain held while a source
+callback executes the inner projection and activation. Its arithmetic response
+has retired before the nested owner starts. Nested scalar completion retires
+before the down callback is answered. Source, weight, result and output stalls
+cannot redirect a pending arithmetic operation.
+
+`anvil_en1_audio_feedforward` and `anvil_en1_vision_post_layer` select external
+mode in their native norm and MLP children and reuse their existing residual
+unit across those serialized phases. No additional operands, ownership queue,
+arithmetic registers, numerical approximation or vector store is introduced.
+The existing primitive byte reports drop only the physically omitted units;
+directories, clamps, converters, dividers, child accumulators, enclosing
+controllers and suspended frame data all retain their charges.
+
+SPEC freezes the complete ownership/boundary table and scoped declaration
+census. Native MLP arithmetic descendants fall from 1111 to 839 bytes
+standalone, or 771 external. Audio feed-forward and vision post each retain
+1141 rather than 1549 bytes in their arithmetic descendants. The 408-byte
+reduction includes the nested row reduction and must not be added twice.
+The row's own 337 bits / 43 bytes are unchanged. Existing ordinary and replay
+instances consume the same child implementation and reports. Audio retains
+its SiLU-plus-narrowing path, not a numerically substituted GeGLU operation.
+
+This retires the native feed-forward/post scalar-sharing milestone in source.
+Whole-system declared-state census, any further required physical overlays,
+and legal-workload actual/production-shadow feasibility of the ordinary
+text, native scratch and fallback partitions remain incomplete. Explicit
+error-7 denial is still a failure for required legal work, not a fit result.
+Perform the reserved fast static elaboration only after those design
+milestones close, then hand off immediately to independent Verifier.
+
+Tools used: glob, view, rg and apply_patch. No commands, experiments, static
+elaboration, simulation, synthesis or preparation receipts were produced.
+Parent sources, verification sources and runtime-owned records, including
+attempt-0003 and the original failure, remain untouched. No repair or
+acceptance is claimed. The design is not ready.
+
+## Prior saved increment: text-worker arithmetic and post-only elaboration
 
 `anvil_en1_gated_projection`, `anvil_en1_softcap` and
 `anvil_en1_attention_head` now expose validated, default-off `EXTERNAL_FP`

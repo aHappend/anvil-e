@@ -1,5 +1,6 @@
 module anvil_en1_clipped_projection #(
-    parameter integer COMPACT = 0
+    parameter integer COMPACT = 0,
+    parameter integer EXTERNAL_FP = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -28,7 +29,15 @@ module anvil_en1_clipped_projection #(
     input wire done_ready,
     output wire [31:0] done_data,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes, clamp_controller_bytes
+    output wire [63:0] controller_bytes, clamp_controller_bytes,
+    output wire arithmetic_valid,
+    input wire arithmetic_ready,
+    output wire [2:0] arithmetic_operation,
+    output wire [31:0] arithmetic_a, arithmetic_b,
+    input wire arithmetic_result_valid,
+    output wire arithmetic_result_ready,
+    input wire [31:0] arithmetic_result_data,
+    input wire [3:0] arithmetic_result_error
 );
     localparam [4:0] IDLE = 0, VALIDATE = 1, IMAGE_START = 2,
         IMAGE_WAIT = 3, BOUND_SEND = 4, BOUND_WAIT = 5, BOUND_REGISTER = 6,
@@ -53,6 +62,8 @@ module anvil_en1_clipped_projection #(
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
+        if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
     end
 
     wire matrix_schema_valid, clip_schema_valid;
@@ -107,7 +118,7 @@ module anvil_en1_clipped_projection #(
     wire [3:0] projection_error;
     wire projection_selected = rst_n &&
         (state == PROJECTION_START || state == PROJECTION_WAIT);
-    anvil_en1_projection projection (
+    anvil_en1_projection #(.EXTERNAL_FP(EXTERNAL_FP)) projection (
         .controller_bytes(primitive_projection_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
@@ -127,7 +138,14 @@ module anvil_en1_clipped_projection #(
         .result_error(result_error),
         .done_valid(projection_valid),
         .done_ready(rst_n && state == PROJECTION_WAIT && source_state == S_IDLE),
-        .done_data(projection_data), .done_error(projection_error)
+        .done_data(projection_data), .done_error(projection_error),
+        .arithmetic_valid(arithmetic_valid), .arithmetic_ready(arithmetic_ready),
+        .arithmetic_operation(arithmetic_operation),
+        .arithmetic_a(arithmetic_a), .arithmetic_b(arithmetic_b),
+        .arithmetic_result_valid(arithmetic_result_valid),
+        .arithmetic_result_ready(arithmetic_result_ready),
+        .arithmetic_result_data(arithmetic_result_data),
+        .arithmetic_result_error(arithmetic_result_error)
     );
 
     wire clamp_ready, clamp_valid;

@@ -1,4 +1,6 @@
-module anvil_en1_native_norm (
+module anvil_en1_native_norm #(
+    parameter integer EXTERNAL_FP = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -30,7 +32,15 @@ module anvil_en1_native_norm (
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes
+    output wire [63:0] controller_bytes,
+    output wire arithmetic_valid,
+    input wire arithmetic_ready,
+    output wire [2:0] arithmetic_operation,
+    output wire [31:0] arithmetic_a, arithmetic_b,
+    input wire arithmetic_result_valid,
+    output wire arithmetic_result_ready,
+    input wire [31:0] arithmetic_result_data,
+    input wire [3:0] arithmetic_result_error
 );
     localparam [3:0] IDLE = 0, VALIDATE = 1, LOOKUP_START = 2,
         LOOKUP_WAIT = 3, NORM_START = 4, NORM_WAIT = 5,
@@ -77,6 +87,10 @@ module anvil_en1_native_norm (
     wire [2:0] norm_arithmetic_operation, weight_arithmetic_operation;
     wire [31:0] norm_arithmetic_a, norm_arithmetic_b;
     wire [31:0] weight_arithmetic_a, weight_arithmetic_b;
+    initial begin
+        if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
+    end
     anvil_en1_tensor_image directory (
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
@@ -152,20 +166,35 @@ module anvil_en1_native_norm (
         .arithmetic_result_ready(weight_arithmetic_result_ready),
         .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    anvil_en1_fp32 arithmetic (
-        .controller_bytes(primitive_fp_bytes),
-        .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && norm_selected &&
-            (scale_phase ? weight_arithmetic_valid : norm_arithmetic_valid)),
-        .start_ready(fp_ready),
-        .operation(scale_phase ? weight_arithmetic_operation : norm_arithmetic_operation),
-        .operand_a(scale_phase ? weight_arithmetic_a : norm_arithmetic_a),
-        .operand_b(scale_phase ? weight_arithmetic_b : norm_arithmetic_b),
-        .done_valid(fp_valid),
-        .done_ready(rst_n && norm_selected &&
-            (scale_phase ? weight_arithmetic_result_ready : norm_arithmetic_result_ready)),
-        .done_data(fp_data), .done_error(fp_error)
-    );
+    wire fp_start_valid = rst_n && norm_selected &&
+        (scale_phase ? weight_arithmetic_valid : norm_arithmetic_valid);
+    wire fp_done_ready = rst_n && norm_selected &&
+        (scale_phase ? weight_arithmetic_result_ready : norm_arithmetic_result_ready);
+    wire [2:0] fp_operation = scale_phase ?
+        weight_arithmetic_operation : norm_arithmetic_operation;
+    wire [31:0] fp_operand_a = scale_phase ? weight_arithmetic_a : norm_arithmetic_a;
+    wire [31:0] fp_operand_b = scale_phase ? weight_arithmetic_b : norm_arithmetic_b;
+    assign arithmetic_valid = EXTERNAL_FP == 1 && fp_start_valid;
+    assign arithmetic_operation = rst_n && EXTERNAL_FP == 1 ? fp_operation : 3'd0;
+    assign arithmetic_a = rst_n && EXTERNAL_FP == 1 ? fp_operand_a : 32'd0;
+    assign arithmetic_b = rst_n && EXTERNAL_FP == 1 ? fp_operand_b : 32'd0;
+    assign arithmetic_result_ready = EXTERNAL_FP == 1 && fp_done_ready;
+    generate if (EXTERNAL_FP == 1) begin : external_arithmetic
+        assign primitive_fp_bytes = 64'd0;
+        assign fp_ready = rst_n && arithmetic_ready;
+        assign fp_valid = rst_n && arithmetic_result_valid;
+        assign fp_data = rst_n ? arithmetic_result_data : 32'd0;
+        assign fp_error = rst_n ? arithmetic_result_error : 4'd0;
+    end else begin : internal_arithmetic
+        anvil_en1_fp32 arithmetic (
+            .controller_bytes(primitive_fp_bytes),
+            .clk(clk), .rst_n(rst_n),
+            .start_valid(fp_start_valid), .start_ready(fp_ready),
+            .operation(fp_operation), .operand_a(fp_operand_a), .operand_b(fp_operand_b),
+            .done_valid(fp_valid), .done_ready(fp_done_ready),
+            .done_data(fp_data), .done_error(fp_error)
+        );
+    end endgenerate
     assign start_ready = rst_n && state == IDLE;
     assign source_valid = norm_selected && norm_source_valid;
     assign source_index = rst_n ? norm_source_index : 32'd0;

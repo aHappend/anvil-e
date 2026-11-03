@@ -42,6 +42,20 @@ unit rather than a local norm unit, five MLP units and a residual unit:
 not additive reductions or whole-system feasibility results. No vector RAM,
 clamp, divider or suspended replay-frame reservation is removed.
 
+| Arithmetic descendants only | Previous declared bytes | Shared declared bytes |
+| --- | --- | --- |
+| Native MLP row: two projections, GeGLU, audio activation, local FP | 1111 | 839 standalone / 771 external |
+| Audio FF: norm/scale arithmetic, MLP arithmetic, residual FP | 1549 | 1141 |
+| Vision post: norm/scale arithmetic, MLP arithmetic, residual FP | 1549 | 1141 |
+
+These rows exclude every enclosing controller, tensor directory and clamp,
+which their unchanged connected reports still add. The MLP row's own
+337 declared register bits remain 43 bytes. Its children retain ascending
+column reductions and their original BF16 result stages. Audio SiLU remains
+the activation-plus-narrowing path; it is not replaced with a multiply-by-one
+GeGLU shortcut. Both parent-contained and replay-contained feed-forward/post
+instances inherit this implementation through their existing literal children.
+
 Latest saved text-path delta: the full text worker shares one binary32 unit
 across norm, scale decoding, projection, rotary, attention, gated MLP/PLE and
 residual/scalar operations. Embedding and final-logit workers similarly share

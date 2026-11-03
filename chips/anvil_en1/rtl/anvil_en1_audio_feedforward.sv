@@ -83,6 +83,12 @@ module anvil_en1_audio_feedforward #(
 
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     wire mlp_selected = rst_n && (state == MLP_START || state == MLP_WAIT);
+    wire fp_ready, fp_valid;
+    wire [31:0] fp_data;
+    wire [3:0] fp_error;
+    wire [1:0] child_arithmetic_valid, child_arithmetic_result_ready;
+    wire [5:0] child_arithmetic_operation;
+    wire [63:0] child_arithmetic_a, child_arithmetic_b;
     wire norm_ready, norm_valid, norm_source_valid, norm_source_rsp_ready;
     wire norm_output_valid, norm_output_last, norm_cmd_valid, norm_result_ready;
     wire [31:0] norm_source_index, norm_output_index;
@@ -91,7 +97,7 @@ module anvil_en1_audio_feedforward #(
     wire [3:0] norm_error;
     wire [15:0] pre_kind = mode_hold == 1 ? 16'h2100 : 16'h2111;
     wire [15:0] post_kind = mode_hold == 1 ? 16'h2103 : 16'h2114;
-    anvil_en1_native_norm norm (
+    anvil_en1_native_norm #(.EXTERNAL_FP(1)) norm (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -112,7 +118,15 @@ module anvil_en1_audio_feedforward #(
         .output_index(norm_output_index), .output_data(norm_output_data),
         .output_last(norm_output_last), .done_valid(norm_valid),
         .done_ready(rst_n && state == NORM_WAIT && source_state == S_IDLE),
-        .done_error(norm_error), .controller_bytes(norm_controller_bytes)
+        .done_error(norm_error), .controller_bytes(norm_controller_bytes),
+        .arithmetic_valid(child_arithmetic_valid[0]),
+        .arithmetic_ready(norm_selected && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[0+:3]),
+        .arithmetic_a(child_arithmetic_a[0+:32]),
+        .arithmetic_b(child_arithmetic_b[0+:32]),
+        .arithmetic_result_valid(norm_selected && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[0]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     wire mlp_ready, mlp_valid, mlp_source_valid, mlp_source_rsp_ready;
     wire mlp_cmd_valid, mlp_result_ready;
@@ -121,7 +135,7 @@ module anvil_en1_audio_feedforward #(
     wire [7:0] mlp_layer;
     wire [63:0] mlp_addr;
     wire [3:0] mlp_error;
-    anvil_en1_native_mlp_row mlp (
+    anvil_en1_native_mlp_row #(.EXTERNAL_FP(1)) mlp (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MLP_START), .start_ready(mlp_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),
@@ -146,7 +160,15 @@ module anvil_en1_audio_feedforward #(
         .controller_bytes(mlp_controller_bytes), .down_controller_bytes(down_controller_bytes),
         .down_clamp_controller_bytes(down_clamp_controller_bytes),
         .inner_controller_bytes(inner_controller_bytes),
-        .inner_clamp_controller_bytes(inner_clamp_controller_bytes)
+        .inner_clamp_controller_bytes(inner_clamp_controller_bytes),
+        .arithmetic_valid(child_arithmetic_valid[1]),
+        .arithmetic_ready(mlp_selected && fp_ready),
+        .arithmetic_operation(child_arithmetic_operation[3+:3]),
+        .arithmetic_a(child_arithmetic_a[32+:32]),
+        .arithmetic_b(child_arithmetic_b[32+:32]),
+        .arithmetic_result_valid(mlp_selected && fp_valid),
+        .arithmetic_result_ready(child_arithmetic_result_ready[1]),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     wire clamp_ready, clamp_valid;
     wire [15:0] clamp_data;
@@ -159,16 +181,22 @@ module anvil_en1_audio_feedforward #(
         .done_data(clamp_data), .done_error(clamp_error),
         .controller_bytes(clamp_controller_bytes)
     );
-    wire fp_ready, fp_valid;
-    wire [31:0] fp_data;
-    wire [3:0] fp_error;
     wire [63:0] primitive_fp_bytes;
     anvil_en1_fp32 arithmetic (
         .controller_bytes(primitive_fp_bytes),
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-        .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-        .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+        .start_valid(rst_n && (norm_selected ? child_arithmetic_valid[0] :
+            (mlp_selected ? child_arithmetic_valid[1] : state == FP_START))),
+        .start_ready(fp_ready),
+        .operation(norm_selected ? child_arithmetic_operation[0+:3] :
+            (mlp_selected ? child_arithmetic_operation[3+:3] : fp_op)),
+        .operand_a(norm_selected ? child_arithmetic_a[0+:32] :
+            (mlp_selected ? child_arithmetic_a[32+:32] : fp_a)),
+        .operand_b(norm_selected ? child_arithmetic_b[0+:32] :
+            (mlp_selected ? child_arithmetic_b[32+:32] : fp_b)),
+        .done_valid(fp_valid),
+        .done_ready(rst_n && (norm_selected ? child_arithmetic_result_ready[0] :
+            (mlp_selected ? child_arithmetic_result_ready[1] : state == FP_WAIT))),
         .done_data(fp_data), .done_error(fp_error)
     );
     wire norm_beat_good = received < 1024 && norm_output_index == received &&
