@@ -5,7 +5,124 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: consuming pre-attention raw/output overlay
+## Current increment: demand-first initial audio tap
+
+`replay_audio_history` now evaluates the oldest nonpadding residual before
+starting any convolution accumulation. `audio_history_fold`'s new
+`FUSE_LEADING_PADDING=1` configuration then evaluates all leading zero taps
+and that actual tap per channel, in ascending kernel order, with the
+existing separately rounded multiply/add engines and real weight reads.
+Its default zero retains standalone single-tap operation. Padding still
+executes positive-zero times the actual weight, including exceptional
+encodings; there is no arithmetic omission or numerical shortcut.
+
+The first nonfinal fold initializes the committed accumulator slices;
+later folds keep their existing pair replacements. For query token zero
+the only fold reduces all five taps in scalar registers and narrows
+directly into the depthwise output, without any accumulator workspace
+operation or phantom accumulator release.
+
+Final BF16 outputs now consume bank 1/slice 0's dead FP32 accumulator
+prefix. Output pair `j` replaces old word `j` only after channels `2*j`
+and `2*j+1` have consumed their old words and finished arithmetic. Before
+the accumulator-slice crossover the destination is strictly behind
+unread words; afterward the remaining reads use slice 1. This is serialized
+committed-pair replacement, not a simultaneous RAM collision. Query zero
+initializes the same slice with the ordinary ordered pair stream because
+there is no old accumulator.
+
+History releases only the consumed suffix slice after final completion.
+The layer reads the depthwise vector from bank 1/slice 0 and releases it
+after successful lightconv, before FF2 reuses that bank. The separate
+bank-0 head/output slice is no longer reallocated for depthwise output.
+The final-fold frame peak is therefore three slices (6144 bytes), or two
+(4096 bytes) at token zero; partial contents remain fully charged and are
+never published as a complete vector before successful completion.
+
+This retires eager leading-padding allocation: a frame's first residual
+dependency descent has at most its entering and partial-head vectors
+(4096 bytes), not those vectors plus padding accumulators (8192 bytes).
+No completed real tap is dropped or restarted on a miss, so this is not
+restart-after-miss speculation under eviction. The added registers appear
+in the fold's local controller census; no array or external spill is added.
+SPEC records the exact cycle/materialization boundaries and pending
+independent-verification obligations.
+
+Later-tap suspension still permits four slices. Whole-system reachable
+mixed-token suspension, outer consumers, private/controller state, memo
+pins, scalar slots, production shadows and physical reservations remain
+unclosed. Recompute the complete connected census, establish legal native
+and fallback fit without erroring legal work, then use the reserved static
+elaboration and hand off to independent Verifier.
+
+Saved three RTL files (`audio_history_fold`, `replay_audio_history`,
+`replay_audio_layer`) and
+both design documents. Used view/rg/glob/apply_patch only; no experiments,
+elaboration, simulation, synthesis or receipts. Tests, parent sources,
+original failures and runtime metadata remain unchanged.
+
+## Prior increment: tap-streamed audio histories
+
+The connected `replay_audio_history` now consumes one computed residual
+history at a time through `audio_history_fold`, instead of retaining five
+residual vectors for the later convolution. The new leaf executes the
+existing GLU, tensor-directory and BF16/Q4 weight readers, binary32
+multiply/add, and final BF16 narrowing. Kernel taps execute oldest to newest
+(`0..4`, distance `4..0`); each channel keeps exactly its original ascending
+tap reduction. Missing causal taps still execute zero times weight and
+addition, preserving exceptional/signed-zero behavior rather than skipping
+arithmetic. No software feature, compression or external activation spill
+is introduced.
+
+Two existing bank-1 frame slices hold all 1024 FP32 accumulators.
+Kernel zero fills them with ordered committed pair streams; later taps
+read/replace a committed pair in place. The residual uses bank-0 raw/head
+slices. Its head slice releases before folding, and its raw slice releases
+after a nonfinal fold. The final tap reuses the dead head slice for the
+complete BF16 depthwise vector, then releases both accumulator slices.
+The frame therefore retains only the raw query residual and computed
+depthwise vector at history completion. SPEC records the exact layout,
+handshake/release table and materialization rules.
+
+Only residual evaluation yields. The real continuation and all accumulator
+state survive it; on resume the interrupted residual finishes before the
+fold runs. Completed taps are never restarted, so this does not rely on
+restart-after-miss progress under memo eviction. Each fold and every
+release must actually return before advancing to the next tap.
+
+Replay lightconv selects its new `PRECOMPUTED_DEPTHWISE=1` configuration:
+source indices below 1024 read raw query residuals, and 1024..2047 read
+the RTL-computed depthwise vector. The parent validates model/layer/
+generation/token/range and accesses the registered workspace response.
+The original clamp, norm, SiLU, projection and residual stages remain
+connected. Default zero preserves the standalone configuration. The
+depthwise vector releases after successful lightconv completion, before FF2.
+
+The new GLU bank and all nested controllers are summed into the connected
+physical/live reports, and actual weight, source, projection and GLU replay
+events propagate through history/layer telemetry. No reservation or
+reported private controller is removed merely because another phase runs.
+Physical private RAM grows by the new GLU bank; an eventual physical
+overlay is distinct from this live-state improvement.
+
+This retires the six-slice retention milestone: the new source-derived
+per-frame ceiling is four slices (8192 bytes), not six (12288 bytes).
+It does **not** close native/deep-frame/fallback feasibility.
+Twelve conservative maximal frames plus their scalar slots still need
+99840 bytes before private/control/outer state. The earlier native
+controller census is no longer current after adding the fold subtree.
+Next: prove a sufficiently tighter reachable bound or further reduce
+suspended state, reconcile every connected actual/shadow/physical partition,
+then use the reserved static elaboration and hand off to independent Verifier.
+
+Saved four RTL files: new `audio_history_fold`, changed
+`replay_audio_history`, `audio_lightconv` and `replay_audio_layer`
+(`rtl/anvil_en1_*.sv`), plus SPEC and this document.
+Only glob/view/rg/apply_patch were used. No experiments, elaboration,
+simulation, synthesis or receipts were produced. Tests, immutable parent
+sources, original failures and runtime metadata remain unchanged.
+
+## Prior increment: consuming pre-attention raw/output overlay
 
 Pre-attention no longer owns a fourth BF16 vector bank. It instantiates
 feed-forward with external vector RAM and owns its three synchronous banks.

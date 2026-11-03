@@ -1,5 +1,6 @@
 module anvil_en1_audio_lightconv #(
-    parameter integer EXTERNAL_VECTOR_RAM = 0
+    parameter integer EXTERNAL_VECTOR_RAM = 0,
+    parameter integer PRECOMPUTED_DEPTHWISE = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -57,7 +58,8 @@ module anvil_en1_audio_lightconv #(
         PROJECTION_START = 24, PROJECTION_WAIT = 25, PROJECTION_CHECK = 26,
         RESIDUAL_READ = 27, RESIDUAL_CAPTURE = 28, RESIDUAL_NARROW = 29,
         OUTPUT_REGISTER = 30, EMIT = 31, OUTPUT_ADVANCE = 32,
-        FP_START = 33, FP_WAIT = 34, PUBLISH = 35, RESPONSE = 36;
+        FP_START = 33, FP_WAIT = 34, PUBLISH = 35, RESPONSE = 36,
+        DEPTHWISE_SEND = 37, DEPTHWISE_WAIT = 38, DEPTHWISE_REGISTER = 39;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_READ = 2,
         S_CAPTURE = 3, S_RESPONSE = 4;
     localparam [2:0] D_IDLE = 0, D_VALIDATE = 1, D_START = 2,
@@ -82,6 +84,8 @@ module anvil_en1_audio_lightconv #(
     initial begin
         if (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)
             $fatal(1, "PARAMETER ERROR: EXTERNAL_VECTOR_RAM must be 0 or 1");
+        if (PRECOMPUTED_DEPTHWISE != 0 && PRECOMPUTED_DEPTHWISE != 1)
+            $fatal(1, "PARAMETER ERROR: PRECOMPUTED_DEPTHWISE must be 0 or 1");
     end
 
     wire glu_selected = rst_n && (dependency_state == D_START || dependency_state == D_WAIT);
@@ -98,7 +102,8 @@ module anvil_en1_audio_lightconv #(
     wire conv_weight_event, conv_projection_event;
     anvil_en1_audio_depthwise_row convolution (
         .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == CONV_START), .start_ready(conv_ready),
+        .start_valid(rst_n && PRECOMPUTED_DEPTHWISE == 0 && state == CONV_START),
+        .start_ready(conv_ready),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold),
         .generation(generation_hold), .token(token_hold), .channel(index_hold),
         .audio_weights_base(weights_hold),
@@ -306,15 +311,20 @@ module anvil_en1_audio_lightconv #(
     end endgenerate
     assign start_ready = rst_n && state == IDLE;
     assign source_valid = !rst_n ? 1'b0 :
-        (glu_selected ? glu_source_valid : state == SOURCE_SEND);
+        (glu_selected ? glu_source_valid :
+            (state == SOURCE_SEND || state == DEPTHWISE_SEND));
     assign source_rsp_ready = !rst_n ? 1'b0 :
-        (glu_selected ? glu_source_rsp_ready : state == SOURCE_WAIT);
+        (glu_selected ? glu_source_rsp_ready :
+            (state == SOURCE_WAIT || state == DEPTHWISE_WAIT));
     assign source_model = !rst_n ? 2'd0 : (glu_selected ? glu_source_model : model_hold);
     assign source_layer = !rst_n ? 8'd0 : (glu_selected ? glu_source_layer : layer_hold);
     assign source_generation = !rst_n ? 32'd0 :
         (glu_selected ? glu_source_generation : generation_hold);
     assign source_token = !rst_n ? 32'd0 : (glu_selected ? glu_source_token : token_hold);
-    assign source_index = !rst_n ? 32'd0 : (glu_selected ? glu_source_index : index_hold);
+    assign source_index = !rst_n ? 32'd0 : (glu_selected ? glu_source_index :
+        (PRECOMPUTED_DEPTHWISE != 0 &&
+            (state == DEPTHWISE_SEND || state == DEPTHWISE_WAIT ||
+             state == DEPTHWISE_REGISTER) ? index_hold + 32'd1024 : index_hold));
     assign cmd_valid = !rst_n ? 1'b0 : (glu_selected ? glu_cmd_valid :
         (conv_selected ? conv_cmd_valid : (norm_selected ? norm_cmd_valid :
         (projection_selected && projection_cmd_valid))));
@@ -562,8 +572,26 @@ module anvil_en1_audio_lightconv #(
                         state <= SOURCE_SEND;
                     end
                 end
-                CONV_START: if (conv_ready)
-                    state <= CONV_WAIT;
+                CONV_START: begin
+                    if (PRECOMPUTED_DEPTHWISE != 0)
+                        state <= DEPTHWISE_SEND;
+                    else if (conv_ready)
+                        state <= CONV_WAIT;
+                end
+                DEPTHWISE_SEND: if (source_ready)
+                    state <= DEPTHWISE_WAIT;
+                DEPTHWISE_WAIT: if (source_rsp_valid) begin
+                    conv_hold <= source_rsp_data;
+                    source_error_hold <= source_rsp_error;
+                    state <= DEPTHWISE_REGISTER;
+                end
+                DEPTHWISE_REGISTER: begin
+                    if (source_error_hold) begin
+                        error_hold <= 7;
+                        state <= PUBLISH;
+                    end else
+                        state <= CONV_STORE;
+                end
                 CONV_WAIT: if (conv_valid && dependency_state == D_IDLE) begin
                     conv_hold <= conv_data[15:0];
                     child_error_hold <= conv_error;

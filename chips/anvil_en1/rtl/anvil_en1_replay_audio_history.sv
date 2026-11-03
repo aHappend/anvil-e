@@ -51,20 +51,21 @@ module anvil_en1_replay_audio_history #(
     output wire [31:0] done_dependency_token,
     output wire [11:0] done_dependency_length,
     output wire input_read_event, projection_event, intermediate_event,
-    output wire source_read_event, weight_read_event, history_replay_event,
+    output wire source_read_event, weight_read_event, history_replay_event, glu_replay_event,
     output wire [31:0] input_read_bytes, projection_bytes, intermediate_bytes,
-    output wire [31:0] source_read_bytes, weight_read_bytes, history_replay_bytes,
+    output wire [31:0] source_read_bytes, weight_read_bytes, history_replay_bytes, glu_replay_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
     output wire [63:0] controller_bytes, nested_controller_bytes
 );
-    localparam [3:0] IDLE = 0, VALIDATE = 1, CHILD_START = 2,
-        CHILD_WAIT = 3, CHILD_CHECK = 4, MOVE_SEND = 5, MOVE_WAIT = 6,
-        MOVE_REGISTER = 7, ADVANCE = 8, PUBLISH = 9, RESPONSE = 10,
-        RELEASE_SEND = 11, RELEASE_WAIT = 12, RELEASE_REGISTER = 13;
+    localparam [4:0] IDLE = 0, VALIDATE = 1, CHILD_START = 2,
+        CHILD_WAIT = 3, CHILD_CHECK = 4, FOLD_START = 5, FOLD_WAIT = 6,
+        FOLD_CHECK = 7, ADVANCE = 8, PUBLISH = 9, RESPONSE = 10,
+        RELEASE_SEND = 11, RELEASE_WAIT = 12, RELEASE_REGISTER = 13,
+        TAP_SETUP = 14;
     localparam [31:0] HISTORY_MAGIC = 32'h454e314c;
     localparam [31:0] INPUT_MAGIC = 32'h454e3148;
     localparam [31:0] HEAD_MAGIC = 32'h454e3141;
-    reg [3:0] state;
+    reg [4:0] state;
     reg [1:0] model_hold, precision_hold, mode_hold, child_mode;
     reg [1:0] dependency_domain_hold, yielded_domain;
     reg [31:0] generation_hold, frames_hold, query_hold, dependency_token_hold;
@@ -76,6 +77,7 @@ module anvil_en1_replay_audio_history #(
     reg [63:0] audio_hold, weights_hold;
     reg [159:0] continuation_hold, child_continuation, yielded_continuation;
     reg dependency_valid_hold, child_yield_hold, child_bank_hold, yield_hold;
+    reg [1:0] release_kind;
     reg [3:0] error_hold, child_error_hold, work_error_hold;
 
     initial begin
@@ -107,6 +109,7 @@ module anvil_en1_replay_audio_history #(
         query_hold, layer_hold, slot_hold, model_hold, precision_hold,
         logical_layer, distance_hold, 35'd0};
     wire child_selected = rst_n && (state == CHILD_START || state == CHILD_WAIT);
+    wire fold_selected = rst_n && (state == FOLD_START || state == FOLD_WAIT);
     wire child_ready, child_valid, child_yield, child_bank;
     wire child_work_valid, child_work_rsp_ready, child_cmd_valid, child_result_ready;
     wire [3:0] child_error;
@@ -125,8 +128,9 @@ module anvil_en1_replay_audio_history #(
     wire [63:0] child_addr;
     wire [63:0] residual_control, heads_control, binding_control, head_control;
     wire [63:0] heads_nested_control, post_control, post_nested_control;
-    wire child_source_event;
-    wire [31:0] child_source_bytes;
+    wire child_source_event, child_weight_event, child_projection_event;
+    wire [31:0] child_source_bytes, child_weight_bytes, child_projection_bytes;
+    wire [63:0] child_live, child_physical;
     anvil_en1_replay_audio_residual #(.COMPACT(COMPACT), .PACKED_FRAME(1)) residual (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == CHILD_START), .start_ready(child_ready),
@@ -135,7 +139,9 @@ module anvil_en1_replay_audio_history #(
         .frame_layer(layer_hold), .frame_slot(slot_hold),
         .audio_base(audio_hold), .audio_weights_base(weights_hold),
         .continuation(child_continuation),
-        .dependency_valid(dependency_valid_hold), .dependency_domain(dependency_domain_hold),
+        .dependency_valid(dependency_valid_hold &&
+            (child_mode == 1 || dependency_token_hold == historical_token)),
+        .dependency_domain(dependency_domain_hold),
         .dependency_layer(dependency_layer_hold), .dependency_token(dependency_token_hold),
         .dependency_length(dependency_length_hold), .dependency_slot(dependency_slot_hold),
         .work_req_valid(child_work_valid),
@@ -161,15 +167,57 @@ module anvil_en1_replay_audio_history #(
         .done_dependency_token(child_dependency_token),
         .done_dependency_length(child_dependency_length),
         .input_read_event(input_read_event), .input_read_bytes(input_read_bytes),
-        .projection_event(projection_event), .projection_bytes(projection_bytes),
+        .projection_event(child_projection_event), .projection_bytes(child_projection_bytes),
         .intermediate_event(intermediate_event), .intermediate_bytes(intermediate_bytes),
         .source_read_event(child_source_event), .source_read_bytes(child_source_bytes),
-        .weight_read_event(weight_read_event), .weight_read_bytes(weight_read_bytes),
-        .vector_live_bytes(vector_live_bytes), .vector_physical_bytes(vector_physical_bytes),
+        .weight_read_event(child_weight_event), .weight_read_bytes(child_weight_bytes),
+        .vector_live_bytes(child_live), .vector_physical_bytes(child_physical),
         .controller_bytes(residual_control), .heads_controller_bytes(heads_control),
         .binding_controller_bytes(binding_control), .head_controller_bytes(head_control),
         .heads_nested_controller_bytes(heads_nested_control),
         .post_controller_bytes(post_control), .post_nested_controller_bytes(post_nested_control)
+    );
+
+    wire fold_ready, fold_valid, fold_work_valid, fold_work_rsp_ready;
+    wire fold_cmd_valid, fold_result_ready, fold_source_event, fold_projection_event;
+    wire [2:0] fold_op;
+    wire [1:0] fold_domain, fold_target;
+    wire [31:0] fold_token, fold_data, fold_source_bytes, fold_projection_bytes;
+    wire [7:0] fold_layer, fold_scalar;
+    wire [11:0] fold_length, fold_component;
+    wire [5:0] fold_slot;
+    wire fold_bank;
+    wire [63:0] fold_addr, fold_live, fold_physical, fold_control, fold_nested;
+    wire [3:0] fold_error;
+    anvil_en1_audio_history_fold #(.FUSE_LEADING_PADDING(1)) fold (
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(rst_n && state == FOLD_START), .start_ready(fold_ready),
+        .model(model_hold), .precision(precision_hold), .generation(generation_hold),
+        .frame_token(query_hold),
+        .source_token(historical_token),
+        .frame_layer(layer_hold), .frame_slot(slot_hold),
+        .kernel(3'd4 - distance_hold), .padding(1'b0),
+        .audio_weights_base(weights_hold),
+        .work_req_valid(fold_work_valid), .work_req_ready(fold_selected && work_req_ready),
+        .work_req_op(fold_op), .work_req_domain(fold_domain), .work_req_target(fold_target),
+        .work_req_token(fold_token), .work_req_layer(fold_layer),
+        .work_req_length(fold_length), .work_req_component(fold_component),
+        .work_req_slot(fold_slot), .work_req_bank(fold_bank),
+        .work_req_scalar_index(fold_scalar), .work_req_data(fold_data),
+        .work_rsp_valid(fold_selected && work_rsp_valid),
+        .work_rsp_ready(fold_work_rsp_ready), .work_rsp_data(work_rsp_data),
+        .work_rsp_error(work_rsp_error),
+        .cmd_valid(fold_cmd_valid), .cmd_ready(fold_selected && cmd_ready),
+        .cmd_write(), .cmd_addr(fold_addr), .cmd_wdata(),
+        .result_valid(fold_selected && result_valid), .result_ready(fold_result_ready),
+        .result_data(result_data), .result_error(result_error),
+        .done_valid(fold_valid), .done_ready(rst_n && state == FOLD_WAIT),
+        .done_error(fold_error), .source_read_event(fold_source_event),
+        .source_read_bytes(fold_source_bytes), .projection_event(fold_projection_event),
+        .projection_bytes(fold_projection_bytes),
+        .glu_replay_event(glu_replay_event), .glu_replay_bytes(glu_replay_bytes),
+        .vector_live_bytes(fold_live), .vector_physical_bytes(fold_physical),
+        .controller_bytes(fold_control), .nested_controller_bytes(fold_nested)
     );
 
     wire frame_operation = (child_op == 4 && child_target == 0) ||
@@ -177,9 +225,9 @@ module anvil_en1_replay_audio_history #(
         (child_op == 6 && child_target >= 2) ||
         (child_op == 3 && (child_target == 0 || child_target == 3));
     assign work_req_valid = (child_selected && child_work_valid) ||
-        (rst_n && (state == MOVE_SEND || state == RELEASE_SEND));
+        (fold_selected && fold_work_valid) || (rst_n && state == RELEASE_SEND);
     assign work_rsp_ready = (child_selected && child_work_rsp_ready) ||
-        (rst_n && (state == MOVE_WAIT || state == RELEASE_WAIT));
+        (fold_selected && fold_work_rsp_ready) || (rst_n && state == RELEASE_WAIT);
     always @* begin
         work_req_op = 0;
         work_req_domain = 0;
@@ -205,6 +253,18 @@ module anvil_en1_replay_audio_history #(
                 work_req_bank = child_work_bank;
                 work_req_scalar_index = child_scalar;
                 work_req_data = child_data;
+            end else if (fold_selected) begin
+                work_req_op = fold_op;
+                work_req_domain = fold_domain;
+                work_req_target = fold_target;
+                work_req_token = fold_token;
+                work_req_layer = fold_layer;
+                work_req_length = fold_length;
+                work_req_component = fold_component;
+                work_req_slot = fold_slot;
+                work_req_bank = fold_bank;
+                work_req_scalar_index = fold_scalar;
+                work_req_data = fold_data;
             end else begin
                 work_req_domain = 2;
                 work_req_token = query_hold;
@@ -216,42 +276,45 @@ module anvil_en1_replay_audio_history #(
                     work_req_op = 7;
                     work_req_target = 2;
                     work_req_component = 0;
-                    work_req_scalar_index = 1;
-                end else if (state == MOVE_SEND || state == MOVE_WAIT ||
-                    state == MOVE_REGISTER) begin
-                    work_req_op = 7;
-                    work_req_target = 3;
-                    work_req_bank = distance_hold != 0;
-                    work_req_scalar_index = distance_hold == 0 ? 8'd2 :
-                        {5'd0, distance_hold} - 8'd1;
+                    work_req_bank = release_kind == 2;
+                    work_req_scalar_index = release_kind == 1 ? 8'd0 : 8'd1;
                 end
             end
         end
     end
-    assign cmd_valid = child_selected && child_cmd_valid;
+    assign cmd_valid = (child_selected && child_cmd_valid) ||
+        (fold_selected && fold_cmd_valid);
     assign cmd_write = 0;
-    assign cmd_addr = child_selected ? child_addr : 64'd0;
+    assign cmd_addr = child_selected ? child_addr : (fold_selected ? fold_addr : 64'd0);
     assign cmd_wdata = 0;
-    assign result_ready = child_selected && child_result_ready;
+    assign result_ready = (child_selected && child_result_ready) ||
+        (fold_selected && fold_result_ready);
     assign start_ready = rst_n && state == IDLE;
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
     assign done_yield = done_valid && yield_hold && error_hold == 0;
     assign done_history_count = done_valid && !done_yield && error_hold == 0 ?
-        last_distance + 3'd1 : 3'd0;
+        3'd1 : 3'd0;
     assign done_continuation = done_yield ? yielded_continuation : 160'd0;
     assign done_dependency_domain = done_yield ? yielded_domain : 2'd0;
     assign done_dependency_layer = done_yield ? yielded_layer : 8'd0;
     assign done_dependency_token = done_yield ? yielded_token : 32'd0;
     assign done_dependency_length = done_yield ? yielded_length : 12'd0;
-    assign source_read_event = child_source_event;
-    assign source_read_bytes = child_source_bytes;
+    assign source_read_event = child_source_event || fold_source_event;
+    assign source_read_bytes = child_source_bytes + fold_source_bytes;
+    assign projection_event = child_projection_event || fold_projection_event;
+    assign projection_bytes = child_projection_bytes + fold_projection_bytes;
+    wire fold_weight_event = fold_selected && fold_cmd_valid && cmd_ready;
+    assign weight_read_event = child_weight_event || fold_weight_event;
+    assign weight_read_bytes = child_weight_bytes + (fold_weight_event ? 32'd4 : 32'd0);
+    assign vector_live_bytes = rst_n ? child_live + fold_live : 64'd0;
+    assign vector_physical_bytes = rst_n ? child_physical + fold_physical : 64'd0;
     assign history_replay_event = rst_n && state == CHILD_START && child_ready &&
         child_mode != 1 && distance_hold != 0;
     assign history_replay_bytes = history_replay_event ? 32'd2048 : 32'd0;
     assign nested_controller_bytes = !rst_n ? 64'd0 :
         residual_control + heads_control + binding_control + head_control +
-        heads_nested_control + post_control + post_nested_control;
+        heads_nested_control + post_control + post_nested_control + fold_control + fold_nested;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) +
         $bits(child_mode) + $bits(dependency_domain_hold) + $bits(yielded_domain) +
@@ -264,7 +327,7 @@ module anvil_en1_replay_audio_history #(
         $bits(child_continuation) + $bits(yielded_continuation) +
         $bits(dependency_valid_hold) + $bits(child_yield_hold) + $bits(child_bank_hold) +
         $bits(yield_hold) + $bits(error_hold) +
-        $bits(child_error_hold) + $bits(work_error_hold);
+        $bits(child_error_hold) + $bits(work_error_hold) + $bits(release_kind);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
 
     always @(posedge clk or negedge rst_n) begin
@@ -301,6 +364,7 @@ module anvil_en1_replay_audio_history #(
             error_hold <= 0;
             child_error_hold <= 0;
             work_error_hold <= 0;
+            release_kind <= 0;
         end else begin
             case (state)
                 IDLE: if (start_valid && start_ready) begin
@@ -323,7 +387,8 @@ module anvil_en1_replay_audio_history #(
                     dependency_token_hold <= dependency_token;
                     dependency_length_hold <= dependency_length;
                     dependency_slot_hold <= dependency_slot;
-                    distance_hold <= 0;
+                    distance_hold <= query_token < 4 ? query_token[2:0] : 3'd4;
+                    release_kind <= 0;
                     error_hold <= 0;
                     child_error_hold <= 0;
                     work_error_hold <= 0;
@@ -349,7 +414,11 @@ module anvil_en1_replay_audio_history #(
                         state <= PUBLISH;
                     end else if (mode_hold > 2 ||
                         (mode_hold != 1 && continuation_hold != 0) ||
-                        (mode_hold == 1 && !input_continuation_tag && !head_continuation_tag)) begin
+                        (mode_hold == 1 && !input_continuation_tag && !head_continuation_tag) ||
+                        (mode_hold == 2 && (!dependency_valid_hold ||
+                            dependency_domain_hold != 2 || dependency_layer_hold != logical_layer ||
+                            dependency_token_hold != query_hold || dependency_length_hold != 1024 ||
+                            dependency_slot_hold >= 16))) begin
                         error_hold <= 7;
                         state <= PUBLISH;
                     end else begin
@@ -362,7 +431,10 @@ module anvil_en1_replay_audio_history #(
                                 child_continuation <= continuation_hold;
                             end
                         end
-                        state <= CHILD_START;
+                        if (mode_hold == 1)
+                            state <= CHILD_START;
+                        else
+                            state <= TAP_SETUP;
                     end
                 end
                 CHILD_START: if (child_ready)
@@ -410,21 +482,40 @@ module anvil_en1_replay_audio_history #(
                         error_hold <= 7;
                         state <= PUBLISH;
                     end else begin
+                        release_kind <= 0;
                         state <= RELEASE_SEND;
                     end
                 end
-                MOVE_SEND: if (work_req_ready)
-                    state <= MOVE_WAIT;
-                MOVE_WAIT: if (work_rsp_valid) begin
-                    work_error_hold <= work_rsp_error;
-                    state <= MOVE_REGISTER;
+                TAP_SETUP: begin
+                    child_continuation <= 0;
+                    if (dependency_valid_hold && dependency_domain_hold == 2 &&
+                        dependency_layer_hold == logical_layer &&
+                        dependency_token_hold == historical_token &&
+                        dependency_length_hold == 1024)
+                        child_mode <= 2;
+                    else
+                        child_mode <= 0;
+                    state <= CHILD_START;
                 end
-                MOVE_REGISTER: begin
+                FOLD_START: if (fold_ready)
+                    state <= FOLD_WAIT;
+                FOLD_WAIT: if (fold_valid) begin
+                    work_error_hold <= fold_error;
+                    state <= FOLD_CHECK;
+                end
+                FOLD_CHECK: begin
                     if (work_error_hold != 0) begin
                         error_hold <= work_error_hold;
                         state <= PUBLISH;
-                    end else
-                        state <= ADVANCE;
+                    end else if (query_hold == 0) begin
+                        state <= PUBLISH;
+                    end else if (distance_hold == 0) begin
+                        release_kind <= 2;
+                        state <= RELEASE_SEND;
+                    end else begin
+                        release_kind <= 1;
+                        state <= RELEASE_SEND;
+                    end
                 end
                 RELEASE_SEND: if (work_req_ready)
                     state <= RELEASE_WAIT;
@@ -436,17 +527,18 @@ module anvil_en1_replay_audio_history #(
                     if (work_error_hold != 0) begin
                         error_hold <= work_error_hold;
                         state <= PUBLISH;
-                    end else if (distance_hold == last_distance)
-                        state <= PUBLISH;
+                    end else if (release_kind == 0)
+                        state <= FOLD_START;
+                    else if (release_kind == 1)
+                        state <= ADVANCE;
                     else
-                        state <= MOVE_SEND;
+                        state <= PUBLISH;
                 end
                 ADVANCE: begin
-                    distance_hold <= distance_hold + 3'd1;
+                    distance_hold <= distance_hold - 3'd1;
                     child_mode <= 0;
                     child_continuation <= 0;
-                    dependency_valid_hold <= 0;
-                    state <= CHILD_START;
+                    state <= TAP_SETUP;
                 end
                 PUBLISH: state <= RESPONSE;
                 RESPONSE: if (done_ready)

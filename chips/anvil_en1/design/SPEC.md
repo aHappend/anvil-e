@@ -5,7 +5,251 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: consuming raw/output RAM overlay
+### Current increment: demand-first initial audio tap
+
+The connected history schedule now starts with the oldest **nonpadding**
+residual, at distance `min(query_token,4)`, before allocating convolution
+accumulators. It no longer executes padding-only frame-wide folds before
+that residual can request its dependencies. The fold leaf adds legal
+parameter `FUSE_LEADING_PADDING=0|1`, default zero; the history instance
+selects one. Default zero preserves standalone single-tap arithmetic,
+including explicitly requested padding taps.
+
+With fusion enabled, the first nonpadding tap reduces its leading
+padding and current tap **per channel** in scalar registers. It reads
+kernel weights in ascending column order `0..first_kernel`, multiplies
+each missing input's BF16 positive zero by its actual weight, and performs
+each separately rounded binary32 addition starting at positive zero.
+Only the real tap invokes GLU. No zero multiplication, exceptional value,
+weight response or rounding boundary is skipped. Independent channels can
+be interleaved differently because they do not share reductions.
+
+For tokens 0..3, `first_kernel=4-token`; for tokens >=4 it is zero.
+Subsequent real residuals retain the existing oldest-to-newest schedule.
+The first completed nonfinal fold initializes the two accumulator slices
+with ordered pair streams even when its kernel is not zero. Later real
+taps read/replace those committed words. For query token zero, all five
+taps reduce per channel during the only fold and narrow directly into
+the depthwise output: **no bank-1 accumulator slice is ever requested,
+reserved, read, written or released**.
+
+| Pre-edge boundary | Registered work / live-frame consequence |
+| --- | --- |
+| New history task | Start distance `min(query,4)`, not an unconditional four |
+| First residual binding or head yield | Save the real unchanged continuation; this history has not started an accumulator stream |
+| First residual succeeds and its head slice release retires | Start the first actual fold; only now may accumulators be initialized |
+| Leading-padding arithmetic completion | Retain its exact FP32 scalar sum, advance one kernel, issue the next real weight read |
+| First real tap's addition completes | Initialize its accumulator pair, or narrow directly when it is also the final tap |
+| Next channel | Restart at kernel zero only for the fused first fold; restart the scalar reduction at positive zero |
+| Token-zero fold completes | Publish raw residual and depthwise output without issuing fictitious releases for absent accumulator slices |
+| Later-tap dependency yield | Preserve already materialized accumulators and the real residual/head continuation exactly as before |
+| Error, reset or response stall | Preserve existing retirement, generation, error and charged-live-state rules; no success or readable vector is manufactured |
+
+This closes the **eager leading-padding allocation** issue and establishes
+a sharper initial-descent bound: before a frame's first successful real
+fold, its suspension retains at most entering and partial-head vectors,
+4096 bytes, rather than also retaining 4096 bytes of padding accumulators.
+For token zero no accumulator allocation occurs anywhere in that frame's
+execution. Completed real taps are never discarded or restarted following
+a dependency miss; progress therefore does not depend on retaining them
+in the evictable memo. The extra scalar control is included in the fold's
+explicit local census; no RAM is added.
+
+The final fold also **consumes** the old accumulators instead of allocating
+a separate BF16 output slice. All configurations of the fold leaf now write
+their final depthwise vector into bank 1/slice 0. For a final fold with
+existing accumulators, the output uses committed-pair replacement
+(`op=6,target=3`). After channels `2*j` and `2*j+1` have each read their old
+FP32 accumulator, completed their fifth addition and narrowed, their packed
+BF16 outputs overwrite word `j` of slice 0. Before channel 512, the old
+accumulator word for channel `c` is word `c` of that slice. Thus at the
+write for odd `c`, destination `(c-1)>>1` is strictly behind every unread
+old word. From channel 512 onward, old accumulators come from the distinct
+slice 1 and all overwritten slice-0 words are already dead.
+
+Every accumulator read response and arithmetic result retires before its
+consuming output write. There is only one workspace transaction outstanding;
+no same-address read-during-write RAM behavior, partial-vector publication
+or hidden vector copy is required. After channel 1023 the complete slice
+contains the BF16 depthwise vector; history releases **only** bank 1/slice 1
+and retains slice 0. In the token-zero fused case no old accumulator exists,
+so output instead uses the normal ordered pair stream (`target=2`) to
+initialize and commit slice 0. Its first partial output reservation is
+counted normally.
+
+| Final-fold frame region | Live contents / retirement |
+| --- | --- |
+| Bank 0, slice 0 | Raw query residual, retained for lightconv |
+| Bank 0, slice 1 | Head output already successfully released; no final-fold write |
+| Bank 1, slice 0 | Consumed old FP32 prefix / unread FP32 suffix and completed BF16 output prefix in the same 2048-byte reservation |
+| Bank 1, slice 1 | Unread old FP32 accumulator suffix; release only after successful final fold |
+| Token-zero specialization | Only raw query and the ordered BF16 output stream are reserved; neither accumulator slice is separately allocated |
+
+`replay_audio_layer` now reads the computed depthwise components from
+bank 1/slice 0 and releases that exact slice after successful lightconv,
+before FF2 can initialize its own bank-1 output. Its raw query source
+remains bank 0/slice 0. Source tags, range checks and registered responses
+are unchanged. Errors retain the shared reservation until unwind; a
+partially transformed accumulator never starts lightconv. This removes
+the separate 2048-byte final-output reservation, lowering the final-fold
+frame peak from four slices to three (6144 bytes), or two slices
+(4096 bytes) at query zero. Residual suspension after earlier real folds
+still has the unchanged four-slice ceiling; this active-phase overlay is
+not a claim that the worst suspended-frame bound fell.
+
+This is not whole-system capacity closure. Later-tap yields can still
+retain four slices, and mixed-token descendants, suspended outer consumers,
+memo pins, scalar slots, private state and the updated complete controller
+census still require reconciliation against both native and fallback
+partitions. Neither a hypothetical memo hit nor a grant-denial error for
+legal work is a capacity solution.
+
+Independent verification must cover query tokens 0,1,2,3,4 and later
+tokens, both precisions, exceptional/signed-zero padding weights, default
+and fused leaf configurations, every ascending-column intermediate
+comparison, first-tap pair-stream commit, later replacements, both
+accumulator-slice boundaries, and source/weight/workspace stalls and errors.
+It must observe no accumulator request at token zero and no accumulator
+reservation before the first real fold, including repeated dependency
+resume, without weakening any existing numerical or allocation check.
+Final-output checks must additionally cover the consuming reads/writes at
+channels 0/1, 510/511, 512/513 and 1022/1023, stable payload under stalls,
+failure during a committed-pair replacement, delayed suffix release, and
+the depthwise-to-FF2 ownership transfer. No extra output-slice allocation
+may be hidden by a counter decrement.
+
+Saved changes: `rtl/anvil_en1_audio_history_fold.sv`,
+`rtl/anvil_en1_replay_audio_history.sv`,
+`rtl/anvil_en1_replay_audio_layer.sv`, SPEC and ARCHITECTURE.
+Only source reads/searches and edits were performed. No experiment,
+elaboration, simulation, synthesis or preparation receipt is claimed.
+The reserved static check remains unused; tests, immutable parent sources,
+original failures and runtime metadata are unchanged.
+
+### Prior increment: tap-streamed audio history folding
+
+The connected audio replay path no longer saves five complete residual
+histories for convolution. `replay_audio_history` evaluates one residual
+at a time, invokes the new `audio_history_fold` leaf, waits for its real
+completion, releases the consumed residual and then evaluates the next
+history. All tap products and reductions still execute in RTL. There is
+no host-generated convolution, cached numerical answer or external spill.
+
+At this prior increment the traversal was kernel column `0..4`, equivalently history distance
+`4..0`. Each tap visits channels `0..1023`. For each channel the leaf uses
+the existing normalized/clipped GLU component engine and the existing
+weight reader for tensor `0x210e`, row channel, column kernel. It widens
+the BF16 GLU result, performs a separately rounded binary32 multiply,
+and adds that product to the channel's binary32 accumulator. Thus
+interleaving independent channels changes neither the ascending-column
+reduction nor any per-channel materialization boundary.
+
+Negative historical positions supply BF16 positive zero **to the
+multiply**, just as the existing depthwise row source does. They do not
+skip the weight read, multiply or addition: `0*infinity`, NaNs and signed
+zero must retain the admitted primitive semantics. These padding taps do
+not invoke a residual encoder or GLU. Kernel zero starts each accumulator
+at binary32 positive zero. The final kernel narrows only after the fifth
+addition. Both precision modes retain their existing weight decoding and
+row-boundary validation; directory type, row count and column count are
+checked before weight access.
+
+| Frame region | Contents / lifetime |
+| --- | --- |
+| Bank 0, slice 0 | Current residual's entering/input storage, then its complete post-attention residual; nonfinal histories release after successful fold completion |
+| Bank 0, slice 1 | Current residual's partial/full head output; release after successful residual completion, before folding; the final tap reuses it for the BF16 depthwise vector |
+| Bank 1, slices 0 and 1 | 1024 binary32 accumulators, 512 aligned 32-bit words per slice; survive residual yields and all intervening taps |
+| Bank 0, slice 2 and bank 1, slice 2 | Not allocated by the new history schedule |
+
+Accumulator word channel `c` has slice `c[9]` and BF16-pair component
+`{c[8:0],1'b0}`. The first tap uses the existing ordered pair-stream write
+operation (`op=6,target=2`) to fill and commit each entire slice. Later
+taps read the committed old word and use the existing committed-pair
+replacement (`op=6,target=3`). They do not invalidate unread suffixes or
+pretend a partially filled first-tap vector is readable. There is no
+additional accumulator array or temporary copy. Successful final output
+publication releases both accumulator slices before returning the two
+surviving vectors.
+
+| Pre-edge handshake / boundary | Registered consequence |
+| --- | --- |
+| Reset or new task acceptance | Clear private control and validity; accepted workspace operations retain the workspace's generation/response rules |
+| Normal task setup | Start distance 4; select a supplied predecessor only when its complete descriptor matches this historical token |
+| Residual dependency yield | Preserve the two accumulator slices and the current residual's real vector/scalar continuation; issue no fold or next-tap work |
+| Successful residual completion and head-slice release response | Start that tap's GLU/weight/accumulator work; no old head slice remains live |
+| First-tap pair write response | Retire that actual write; a slice becomes readable only after its complete ordered stream |
+| Later-tap read response | Register the old accumulator before the FP32 addition; write only after arithmetic completion |
+| Final-tap pair write response | Retire two narrowed BF16 components in the formerly dead head slice |
+| Nonfinal fold completion | Release the consumed raw residual only after successful registered completion, then decrement distance |
+| Final fold completion | Release bank 1 slices 0 and 1 through separate successful responses; retain raw query residual and depthwise output |
+| Error or any stalled response | Keep live reservations; stop new dependent work, retire the current response and propagate its concrete error |
+
+Only residual evaluation can yield. A fold completes its finite 1024-channel
+loop without yielding, and a next tap cannot start before the preceding
+fold and release have retired. On resume, the validated history/head
+continuation identifies exactly the interrupted residual; completed taps
+are neither restarted nor accumulated twice. Existing scheduler dependency
+pins, generation checks, frame tags and scalar continuations remain in use.
+
+`audio_lightconv` adds legal parameter `PRECOMPUTED_DEPTHWISE=0|1`, default
+zero. The default retains its existing connected depthwise/GLU path.
+`replay_audio_layer` selects one and supplies the **computed RTL** depthwise
+vector from its frame. In this mode a source index `0..1023` requests the
+query residual, and `1024..2047` requests depthwise component `index-1024`,
+with the same model/layer/generation/query-token tags. The parent validates
+the range and tags before the registered workspace read. Clamp, learned
+normalization, SiLU, pointwise projection and residual addition remain in
+the original light-convolution engine. It does not rerun or double-narrow
+the depthwise result. After its successful completion the parent releases
+the depthwise slice before FF2; the existing FF2/final-norm releases remain.
+
+The fold's local normalized GLU vector is 2048 physical/live bytes and is
+included in history's summed child reports. It does not coexist with an
+active residual private worker. Its descriptor, source response, arithmetic,
+directory, weight-reader and GLU controller state are included in the
+connected nested controller report. All new weight handshakes contribute
+to the existing weight-traffic events; source, projection and GLU replay
+events are forwarded rather than replaced by the precomputed-path status.
+The history completion count is now one retained raw residual, not the
+old number of materialized histories.
+
+This retires the **six-slice history-retention implementation**, replacing
+its 12288-byte per-frame ceiling with a conservative four-slice,
+8192-byte ceiling. During suspension those slices cover the complete
+4096-byte accumulator plus at most the entering and partial-head vectors.
+During the final fold the same four-slice ceiling instead covers the
+accumulator, raw residual and partial BF16 depthwise vector. All scalar
+slots, memo entries, retained outer features and private/controller state
+remain separately charged. The fold adds private physical RAM/controller
+state; this is not a claim that total FPGA reservation decreased.
+
+Whole-system native/fallback capacity is **not closed**. Twelve maximal
+four-slice frames plus 128-byte scalar slots conservatively require
+`12*(8192+128)=99840` bytes, before private state or outer consumers.
+The earlier 33221-byte native controller census predates the new connected
+leaf and must be recomputed, not reused as a passing bound. A tighter
+reachable-state proof or further genuine streaming/rematerialization is
+still required. The actual and production-shadow ledger, strict savings
+thresholds, native-scratch ceiling and fallback partitions are unchanged.
+
+Independent verification must compare all channels against its separate
+depthwise reference for every tap, both precisions, padding and exceptional
+weights; cover kernel-zero commit, later committed-pair replacement,
+511/512 accumulator-slice crossover, final BF16 packing, interruption at
+each residual/head boundary, repeated resume, private/actual/shadow
+allocations, all release stalls/errors, reset and failed weight responses.
+It must also verify the unchanged default lightconv configuration.
+These are pending obligations, not executed results.
+
+Saved design sources are `rtl/anvil_en1_audio_history_fold.sv`,
+`rtl/anvil_en1_replay_audio_history.sv`, `rtl/anvil_en1_audio_lightconv.sv`
+and `rtl/anvil_en1_replay_audio_layer.sv`, plus this document and
+ARCHITECTURE. Only source reads/searches and edits were performed.
+The reserved static elaboration remains unused; no experiment, simulation,
+synthesis, preparation receipt or acceptance result is claimed. Earlier
+failure records, tests, parent references and runtime state are untouched.
+
+### Prior increment: consuming raw/output RAM overlay
 
 `audio_pre_attention` now owns three synchronous 1024-word BF16 banks and
 uses `audio_feedforward`'s existing external-vector-RAM configuration.

@@ -100,7 +100,6 @@ module anvil_en1_replay_audio_layer #(
     end
     wire [7:0] logical_layer = layer_hold - 1'b1;
     wire [31:0] tokens_hold = (frames_hold + 32'd3) >> 2;
-    wire [2:0] last_distance = query_hold < 4 ? query_hold[2:0] : 3'd4;
     wire history_selected = rst_n && (state == HISTORY_START || state == HISTORY_WAIT);
     wire history_ready, history_valid, history_yield, history_work_valid;
     wire history_work_rsp_ready, history_cmd_valid, history_result_ready;
@@ -116,6 +115,8 @@ module anvil_en1_replay_audio_layer #(
     wire [63:0] history_addr, history_live, history_physical, history_control, history_nested;
     wire history_input_event, history_projection_event, history_intermediate_event;
     wire history_source_event, history_weight_event;
+    wire history_glu_event, conv_glu_event;
+    wire [31:0] history_glu_bytes, conv_glu_bytes;
     wire [31:0] history_input_bytes, history_projection_bytes, history_intermediate_bytes;
     wire [31:0] history_source_bytes, history_weight_bytes;
     anvil_en1_replay_audio_history #(.COMPACT(COMPACT)) histories (
@@ -158,6 +159,7 @@ module anvil_en1_replay_audio_layer #(
         .source_read_event(history_source_event), .source_read_bytes(history_source_bytes),
         .weight_read_event(history_weight_event), .weight_read_bytes(history_weight_bytes),
         .history_replay_event(history_replay_event), .history_replay_bytes(history_replay_bytes),
+        .glu_replay_event(history_glu_event), .glu_replay_bytes(history_glu_bytes),
         .vector_live_bytes(history_live), .vector_physical_bytes(history_physical),
         .controller_bytes(history_control), .nested_controller_bytes(history_nested)
     );
@@ -189,7 +191,9 @@ module anvil_en1_replay_audio_layer #(
     wire [31:0] conv_projection_bytes;
     wire conv_start = rst_n && state == CONV_START && vector_owner == 0;
     wire ff_start = rst_n && state == FF_START && vector_owner == 0;
-    anvil_en1_audio_lightconv #(.EXTERNAL_VECTOR_RAM(1)) convolution (
+    anvil_en1_audio_lightconv #(
+        .EXTERNAL_VECTOR_RAM(1), .PRECOMPUTED_DEPTHWISE(1)
+    ) convolution (
         .clk(clk), .rst_n(rst_n),
         .start_valid(conv_start), .start_ready(conv_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),
@@ -213,7 +217,7 @@ module anvil_en1_replay_audio_layer #(
             !conv_output_valid && !conv_source_valid),
         .done_error(conv_error), .weight_read_event(), .weight_read_bytes(),
         .projection_event(conv_projection_event), .projection_bytes(conv_projection_bytes),
-        .glu_replay_event(glu_replay_event), .glu_replay_bytes(glu_replay_bytes),
+        .glu_replay_event(conv_glu_event), .glu_replay_bytes(conv_glu_bytes),
         .vector_live_bytes(conv_live), .vector_physical_bytes(conv_physical),
         .vector_ram_write(conv_ram_write), .vector_ram_read(conv_ram_read),
         .vector_ram_waddr(conv_ram_waddr), .vector_ram_raddr(conv_ram_raddr),
@@ -318,7 +322,6 @@ module anvil_en1_replay_audio_layer #(
         (state == FF_WAIT && (ff_source_model != model_hold || ff_source_mode != 2 ||
          ff_source_layer != logical_layer || ff_source_generation != generation_hold ||
          ff_source_token != query_hold));
-    wire [31:0] source_distance = query_hold - source_token_hold;
     wire active_output_valid = state == CONV_WAIT ? conv_output_valid :
         (state == FF_WAIT ? ff_output_valid : norm_output_valid);
     wire [31:0] active_output_index = state == CONV_WAIT ? conv_output_index :
@@ -374,9 +377,7 @@ module anvil_en1_replay_audio_layer #(
                     work_req_op = 7;
                     work_req_target = 2;
                     if (phase_hold == 0) begin
-                        work_req_bank = history_count_hold != 2;
-                        work_req_scalar_index = history_count_hold == 2 ? 8'd2 :
-                            {5'd0, history_count_hold} - 8'd3;
+                        work_req_bank = 1;
                     end else
                         work_req_bank = phase_hold == 2;
                 end else if (waiting && source_state != S_IDLE) begin
@@ -427,6 +428,8 @@ module anvil_en1_replay_audio_layer #(
     assign source_read_bytes = history_source_bytes + (source_event ? 32'd2 : 32'd0);
     assign weight_read_event = history_weight_event || weight_event;
     assign weight_read_bytes = history_weight_bytes + (weight_event ? 32'd4 : 32'd0);
+    assign glu_replay_event = history_glu_event || conv_glu_event;
+    assign glu_replay_bytes = history_glu_bytes + conv_glu_bytes;
     assign vector_live_bytes = !rst_n ? 64'd0 : history_live + conv_live + ff_live;
     assign vector_physical_bytes = !rst_n ? 64'd0 :
         history_physical + conv_physical + ff_physical +
@@ -562,21 +565,20 @@ module anvil_en1_replay_audio_layer #(
                     source_state <= S_VALIDATE;
                 end
                 S_VALIDATE: begin
-                    if (source_bad || source_index_hold >= 1024 ||
+                    if (source_bad ||
+                        source_index_hold >= (state == CONV_WAIT ? 2048 : 1024) ||
                         error_hold != 0 || first_source_error != 0 ||
                         (state != NORM_WAIT && received != 0) ||
-                        (state == CONV_WAIT && (source_token_hold > query_hold ||
-                            source_distance > {29'd0, last_distance}))) begin
+                        (state == CONV_WAIT && source_token_hold != query_hold)) begin
                         source_error_hold <= first_source_error != 0 ? first_source_error :
                             (error_hold != 0 ? error_hold : 4'd7);
                         if (first_source_error == 0)
                             first_source_error <= error_hold != 0 ? error_hold : 4'd7;
                         source_state <= S_RESPONSE;
                     end else begin
-                        if (state == CONV_WAIT && source_distance != {29'd0, last_distance}) begin
-                            source_bank_hold <= source_distance != 0;
-                            source_slice_hold <= source_distance == 0 ? 2'd2 :
-                                source_distance[1:0] - 2'd1;
+                        if (state == CONV_WAIT && source_index_hold >= 1024) begin
+                            source_index_hold <= source_index_hold - 32'd1024;
+                            source_bank_hold <= 1;
                         end else if (state == NORM_WAIT)
                             source_bank_hold <= 1;
                         source_state <= S_SEND;
@@ -723,7 +725,7 @@ module anvil_en1_replay_audio_layer #(
                         else
                             yield_hold <= 1;
                         state <= PUBLISH;
-                    end else if (history_count_hold != last_distance + 3'd1) begin
+                    end else if (history_count_hold != 1) begin
                         error_hold <= 7;
                         state <= PUBLISH;
                     end else begin
@@ -815,11 +817,7 @@ module anvil_en1_replay_audio_layer #(
                         state <= PUBLISH;
                     end else if (state == CONV_CHECK) begin
                         received <= 0;
-                        if (history_count_hold == 1) begin
-                            phase_hold <= 1;
-                            state <= FF_START;
-                        end else
-                            state <= RELEASE_SEND;
+                        state <= RELEASE_SEND;
                     end else if (state == FF_CHECK) begin
                         received <= 0;
                         state <= RELEASE_SEND;
@@ -837,12 +835,8 @@ module anvil_en1_replay_audio_layer #(
                         error_hold <= work_error_hold;
                         state <= PUBLISH;
                     end else if (phase_hold == 0) begin
-                        history_count_hold <= history_count_hold - 3'd1;
-                        if (history_count_hold == 2) begin
-                            phase_hold <= 1;
-                            state <= FF_START;
-                        end else
-                            state <= RELEASE_SEND;
+                        phase_hold <= 1;
+                        state <= FF_START;
                     end else if (phase_hold == 1) begin
                         phase_hold <= 2;
                         state <= NORM_START;

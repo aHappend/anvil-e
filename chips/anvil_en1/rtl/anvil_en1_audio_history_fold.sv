@@ -1,4 +1,6 @@
-module anvil_en1_audio_history_fold (
+module anvil_en1_audio_history_fold #(
+    parameter integer FUSE_LEADING_PADDING = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -49,16 +51,17 @@ module anvil_en1_audio_history_fold (
         ACC_WRITE_SEND = 15, ACC_WRITE_WAIT = 16, ACC_WRITE_REGISTER = 17,
         NARROW = 18, PACK = 19, OUTPUT_SEND = 20,
         OUTPUT_WAIT = 21, OUTPUT_REGISTER = 22, ADVANCE = 23,
-        FP_START = 24, FP_WAIT = 25, PUBLISH = 26, RESPONSE = 27;
+        FP_START = 24, FP_WAIT = 25, PUBLISH = 26, RESPONSE = 27,
+        REDUCE_REGISTER = 28;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_SEND = 2,
         S_WAIT = 3, S_REGISTER = 4, S_RESPONSE = 5;
     reg [5:0] state, fp_return;
-    reg [2:0] source_state, kernel_hold, fp_op;
+    reg [2:0] source_state, kernel_hold, requested_kernel_hold, fp_op;
     reg [1:0] model_hold, precision_hold;
     reg [31:0] generation_hold, frame_token_hold, source_token_hold;
     reg [7:0] layer_hold;
     reg [5:0] slot_hold;
-    reg padding_hold, source_bad;
+    reg padding_hold, requested_padding_hold, fused_hold, source_bad;
     reg [63:0] weights_hold, matrix_base, matrix_bytes;
     reg [31:0] matrix_stride, channel_hold, weight_hold, accumulator_hold;
     reg [31:0] fp_a, fp_b, fp_value, product_hold, output_pair;
@@ -66,6 +69,16 @@ module anvil_en1_audio_history_fold (
     reg [15:0] glu_hold, low_hold, source_data_hold;
     reg [3:0] error_hold, source_error_hold, first_source_error, work_error_hold;
 
+    initial begin
+        if (FUSE_LEADING_PADDING != 0 && FUSE_LEADING_PADDING != 1)
+            $fatal(1, "PARAMETER ERROR: FUSE_LEADING_PADDING must be 0 or 1");
+    end
+    wire [2:0] first_kernel = frame_token < 4 ?
+        3'd4 - frame_token[2:0] : 3'd0;
+    wire fuse_start = FUSE_LEADING_PADDING && !padding && kernel == first_kernel;
+    wire initialize_accumulator = fused_hold || requested_kernel_hold == 0;
+    wire [2:0] held_first_kernel = frame_token_hold < 4 ?
+        3'd4 - frame_token_hold[2:0] : 3'd0;
     wire image_selected = rst_n && (state == IMAGE_START || state == IMAGE_WAIT);
     wire image_ready, image_valid, image_cmd_valid, image_result_ready;
     wire [63:0] image_addr, image_base, image_bytes, image_control;
@@ -159,7 +172,7 @@ module anvil_en1_audio_history_fold (
     );
     wire source_send = rst_n && state == GLU_WAIT && source_state == S_SEND;
     wire source_wait = rst_n && state == GLU_WAIT && source_state == S_WAIT;
-    wire accumulator_request = (state == ACC_READ_SEND && kernel_hold != 0) ||
+    wire accumulator_request = (state == ACC_READ_SEND && !initialize_accumulator) ||
         state == ACC_WRITE_SEND;
     wire output_request = state == OUTPUT_SEND;
     assign work_req_valid = source_send || (rst_n && (accumulator_request || output_request));
@@ -169,16 +182,15 @@ module anvil_en1_audio_history_fold (
         (source_send || state == ACC_READ_SEND ? 3'd4 : 3'd6);
     assign work_req_domain = rst_n ? 2'd2 : 2'd0;
     assign work_req_target = !rst_n ? 2'd0 :
-        (output_request ? 2'd2 :
-        (state == ACC_WRITE_SEND ? (kernel_hold == 0 ? 2'd2 : 2'd3) : 2'd0));
+        (output_request ? (initialize_accumulator ? 2'd2 : 2'd3) :
+        (state == ACC_WRITE_SEND ? (initialize_accumulator ? 2'd2 : 2'd3) : 2'd0));
     assign work_req_token = rst_n ? frame_token_hold : 32'd0;
     assign work_req_layer = rst_n ? layer_hold : 8'd0;
     assign work_req_length = rst_n ? 12'd1024 : 12'd0;
     assign work_req_slot = rst_n ? slot_hold : 6'd0;
-    assign work_req_bank = rst_n && accumulator_request;
+    assign work_req_bank = rst_n && (accumulator_request || output_request);
     assign work_req_scalar_index = !rst_n ? 8'd0 :
-        (accumulator_request ? {7'd0, channel_hold[9]} :
-        (output_request ? 8'd1 : 8'd0));
+        (accumulator_request ? {7'd0, channel_hold[9]} : 8'd0);
     assign work_req_component = !rst_n ? 12'd0 :
         (accumulator_request ? {2'd0, channel_hold[8:0], 1'b0} :
         (output_request ? {2'd0, channel_hold[9:1], 1'b0} :
@@ -210,6 +222,7 @@ module anvil_en1_audio_history_fold (
         glu_projection_control + glu_clamp_control + fp_control;
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(fp_return) + $bits(source_state) + $bits(kernel_hold) +
+        $bits(requested_kernel_hold) + $bits(requested_padding_hold) + $bits(fused_hold) +
         $bits(fp_op) + $bits(model_hold) + $bits(precision_hold) +
         $bits(generation_hold) + $bits(frame_token_hold) + $bits(source_token_hold) +
         $bits(layer_hold) + $bits(slot_hold) + $bits(padding_hold) + $bits(source_bad) +
@@ -287,6 +300,7 @@ module anvil_en1_audio_history_fold (
             state <= IDLE;
             fp_return <= 0;
             kernel_hold <= 0;
+            requested_kernel_hold <= 0;
             fp_op <= 0;
             model_hold <= 0;
             precision_hold <= 0;
@@ -296,6 +310,8 @@ module anvil_en1_audio_history_fold (
             layer_hold <= 0;
             slot_hold <= 0;
             padding_hold <= 0;
+            requested_padding_hold <= 0;
+            fused_hold <= 0;
             weights_hold <= 0;
             matrix_base <= 0;
             matrix_bytes <= 0;
@@ -322,8 +338,11 @@ module anvil_en1_audio_history_fold (
                     source_token_hold <= source_token;
                     layer_hold <= frame_layer;
                     slot_hold <= frame_slot;
-                    kernel_hold <= kernel;
-                    padding_hold <= padding;
+                    kernel_hold <= fuse_start ? 3'd0 : kernel;
+                    requested_kernel_hold <= kernel;
+                    padding_hold <= fuse_start ? first_kernel != 0 : padding;
+                    requested_padding_hold <= padding;
+                    fused_hold <= fuse_start;
                     weights_hold <= audio_weights_base;
                     channel_hold <= 0;
                     accumulator_hold <= 0;
@@ -338,10 +357,11 @@ module anvil_en1_audio_history_fold (
                         state <= PUBLISH;
                     end else if (generation_hold == 0 || layer_hold == 0 ||
                         layer_hold > 12 || frame_token_hold > 131071 ||
-                        kernel_hold > 4 || weights_hold[1:0] != 0 ||
-                        padding_hold != (frame_token_hold < 32'd4 - {29'd0, kernel_hold}) ||
-                        (!padding_hold && source_token_hold !=
-                            frame_token_hold - (32'd4 - {29'd0, kernel_hold}))) begin
+                        requested_kernel_hold > 4 || weights_hold[1:0] != 0 ||
+                        requested_padding_hold !=
+                            (frame_token_hold < 32'd4 - {29'd0, requested_kernel_hold}) ||
+                        (!requested_padding_hold && source_token_hold !=
+                            frame_token_hold - (32'd4 - {29'd0, requested_kernel_hold}))) begin
                         error_hold <= 5;
                         state <= PUBLISH;
                     end else
@@ -354,7 +374,8 @@ module anvil_en1_audio_history_fold (
                     matrix_bytes <= image_bytes;
                     matrix_stride <= image_stride;
                     work_error_hold <= image_error;
-                    if (image_rows != 1024 || image_columns != 5)
+                    if (image_rows != 1024 || image_columns != 5 ||
+                        image_type != {6'd0, precision_hold})
                         work_error_hold <= image_error != 0 ? image_error : 4'd5;
                     state <= IMAGE_CHECK;
                 end
@@ -410,6 +431,8 @@ module anvil_en1_audio_history_fold (
                     if (kernel_hold == 0) begin
                         accumulator_hold <= 0;
                         state <= ADD;
+                    end else if (fused_hold) begin
+                        state <= ADD;
                     end else if (work_req_ready)
                         state <= ACC_READ_WAIT;
                 end
@@ -429,11 +452,19 @@ module anvil_en1_audio_history_fold (
                     fp_op <= 0;
                     fp_a <= accumulator_hold;
                     fp_b <= product_hold;
-                    if (kernel_hold == 4)
-                        fp_return <= NARROW;
-                    else
-                        fp_return <= ACC_WRITE_SEND;
+                    fp_return <= REDUCE_REGISTER;
                     state <= FP_START;
+                end
+                REDUCE_REGISTER: begin
+                    if (fused_hold && kernel_hold < requested_kernel_hold) begin
+                        accumulator_hold <= fp_value;
+                        kernel_hold <= kernel_hold + 3'd1;
+                        padding_hold <= kernel_hold + 3'd1 < held_first_kernel;
+                        state <= WEIGHT_START;
+                    end else if (kernel_hold == 4)
+                        state <= NARROW;
+                    else
+                        state <= ACC_WRITE_SEND;
                 end
                 ACC_WRITE_SEND: if (work_req_ready)
                     state <= ACC_WRITE_WAIT;
@@ -482,6 +513,9 @@ module anvil_en1_audio_history_fold (
                         state <= PUBLISH;
                     else begin
                         channel_hold <= channel_hold + 1'b1;
+                        kernel_hold <= fused_hold ? 3'd0 : requested_kernel_hold;
+                        padding_hold <= fused_hold ?
+                            held_first_kernel != 0 : requested_padding_hold;
                         state <= WEIGHT_START;
                     end
                 end
