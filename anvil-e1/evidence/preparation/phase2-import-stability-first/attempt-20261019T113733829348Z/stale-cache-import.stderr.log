@@ -1,3 +1,0 @@
-Traceback (most recent call last):
-  File "<string>", line 20, in <module>
-AssertionError: import rewrote a selected bytecode input
