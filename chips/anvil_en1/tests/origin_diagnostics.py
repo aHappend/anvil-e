@@ -10,7 +10,26 @@ import re
 
 MONITORS = {
     "anvil_en1_allocation_admission": r"""
+    reg [63:0] diagnostic_text_peak = 0, diagnostic_text_shadow_peak = 0;
+    reg [63:0] diagnostic_scratch_peak = 0, diagnostic_scratch_shadow_peak = 0;
+    reg [63:0] diagnostic_equivalent_peak = 0, diagnostic_equivalent_shadow_peak = 0;
+    reg [63:0] diagnostic_reports = 0, diagnostic_denials = 0;
     always @(posedge clk) if (rst_n) begin
+        if (state == WAIT_REPORT && report_valid) begin
+            diagnostic_reports <= diagnostic_reports + 1'b1;
+            if (text_workspace > diagnostic_text_peak)
+                diagnostic_text_peak <= text_workspace;
+            if (text_workspace_shadow > diagnostic_text_shadow_peak)
+                diagnostic_text_shadow_peak <= text_workspace_shadow;
+            if (scratch > diagnostic_scratch_peak)
+                diagnostic_scratch_peak <= scratch;
+            if (scratch_shadow > diagnostic_scratch_shadow_peak)
+                diagnostic_scratch_shadow_peak <= scratch_shadow;
+            if (equivalent > diagnostic_equivalent_peak)
+                diagnostic_equivalent_peak <= equivalent;
+            if (equivalent_shadow > diagnostic_equivalent_shadow_peak)
+                diagnostic_equivalent_shadow_peak <= equivalent_shadow;
+        end
         if (state == WAIT_REPORT && report_valid &&
             (report_partition_error || report_overlap ||
              scratch > scratch_limit || scratch_shadow > scratch_limit ||
@@ -23,6 +42,7 @@ MONITORS = {
                 text_workspace_shadow, text_limit, report_fallback,
                 report_overlap, report_partition_error);
         if (rsp_valid && rsp_ready && !rsp_allowed) begin
+            diagnostic_denials <= diagnostic_denials + 1'b1;
             $display("ORIGIN cycle=%0d path=%m event=denied component=%0d candidate=%0d shadow=%0d legal=%0d limit_failure=%0d payload_scaled=%0d shadow_scaled=%0d baseline_scaled=%0d",
                 diagnostic_cycle, candidate_component, candidate_bytes,
                 candidate_shadow_bytes, candidate_legal_hold, limit_failure,
@@ -31,6 +51,13 @@ MONITORS = {
                 $display("ALLOCATION component=%0d live=%0d shadow=%0d",
                     d, prospective_live[64*d+:64], prospective_shadow[64*d+:64]);
         end
+    end
+    final begin
+        $display("ALLOCATION_SUMMARY path=%m reports=%0d denials=%0d text_peak=%0d text_shadow_peak=%0d scratch_peak=%0d scratch_shadow_peak=%0d equivalent_peak=%0d equivalent_shadow_peak=%0d",
+            diagnostic_reports, diagnostic_denials, diagnostic_text_peak,
+            diagnostic_text_shadow_peak, diagnostic_scratch_peak,
+            diagnostic_scratch_shadow_peak, diagnostic_equivalent_peak,
+            diagnostic_equivalent_shadow_peak);
     end
 """,
     "anvil_en1_frontier_execute": r"""
