@@ -5,7 +5,79 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: native feed-forward arithmetic overlay
+## Current saved increment: allocation arithmetic and ordinary residual alias
+
+Both allocation ledgers retain all eight metrics, all input fields, their
+six-edge observation tags and the existing prospective/completion failure
+paths. Their physical reduction registers now hold checked 32-bit byte counts
+plus sticky overflow, rather than full 64-bit sums. Full input high halves and
+every addition carry are checked. Faulty metrics saturate visibly and assert
+the partition-error output, so narrowing cannot turn a large malformed
+reservation into an admissible small one. Legal ordinary allocations are below
+6 MiB and fallback allocations below 1 MiB; nonnegative partial sums therefore
+fit without loss. Public addresses, output widths, baseline and strict-ratio
+products, and all 64-bit performance counters are unchanged.
+
+The ledger declaration is 8490 bits / 1062 bytes, down from 16426 bits /
+2054 bytes. Two connected instances save 1984 declared bytes together.
+All fault bits, final totals and model/mode/check tags are included.
+The separate prospective controller remains 276 bits / 35 bytes.
+These are declaration counts, not executed synthesis or FPGA measurements.
+
+The ordinary full-text grant now reserves the phase maximum
+`max(3*h+e, 2*h+e+(Q+1)*q)`, with h/e/q the selected hidden/PLE/head byte
+widths. It includes residual/work/query/attention coexistence and the later
+three-hidden-bank feed-forward phase without summing mutually exclusive
+lifetimes. The final attention completion releases normalized work and query
+before branch output projection starts; its stalls cannot bypass that edge.
+Actual child liveness remains independently observed and overrides the grant
+envelope if larger. Default standalone E2B local/global reservations are
+11264/15872 bytes; E4B 15872/19968; compact actual 64/88.
+
+The connected native assembly now wires ordinary full-text residual to the
+executor's retained-hidden backing bank instead of copying it into phase
+bank 0. `frontier_execute.EXTERNAL_HIDDEN_RAM=1` exposes the original enabled
+read/write timing; the full worker's validated `SHARED_RESIDUAL=1` leaves
+residual arithmetic and RAM requests intact but assigns its unique payload
+charge to field 2. Field 20 therefore excludes exactly one hidden vector:
+integrated E2B reservations are 8192/12800, E4B 10752/14848, compact 48/72.
+The native mux rejects competing executor/worker accesses, missing registered
+full-text ownership, insufficient hidden reservation and full-width invalid
+addresses before indexing. Protocol faults remain explicit error 7.
+
+Replay residual and embedding keep the original phase bank 0: a native
+feature Eval may overlap a retained ordinary input, so it cannot use the
+new hidden alias. Ordinary initial source loading finishes before residual
+updates, and output writeback writes the same completed component to the
+same bank. No numerical boundary or callback latency changes. Default
+standalone callers retain local hidden storage and separate residual charges.
+The hidden read register is still charged once by the executor's existing
+`hidden_q` census term; phase-bank read registers retain their separate charge.
+Field 2 discloses the native-declared physical hidden bank once, while field
+20 still discloses every separately needed phase bank and full attention
+buffer. No physical SRAM-capacity reduction is claimed for this alias.
+Owner tiles, frames, metadata and all other retained scalar/vector state
+remain charged.
+
+Read-only Python source inspection was advisory, not an HDL execution or a
+settled whole-system census. Early source-reading helpers did not correctly
+handle all declaration initializers/expressions; their intermediate numbers
+are not design evidence. The checked ledger counts and phase envelope above
+follow directly from the declarations and allocation transitions. Remaining
+work is the complete hierarchy/liveness census and additional overlays needed
+for every legal actual/production-shadow ordinary-text, native-scratch and
+fallback case. In particular, local declaration reductions do not prove the
+32768-byte E2B workspace can fit all concurrently charged controllers and
+vectors. Required-workload denial still fails the contract.
+
+Tools used in this increment: glob, view, rg, apply_patch and Bash/Python for
+read-only source inspection. No RTL experiment, static elaboration, simulation,
+synthesis or new preparation receipt was produced. The reserved static check
+remains pending until design closure, followed immediately by independent
+Verifier handoff. Parent/test sources and runtime-owned records, including the
+original failure and attempt-0003, remain untouched. The design is not ready.
+
+## Prior saved increment: native feed-forward arithmetic overlay
 
 `anvil_en1_clipped_projection`, `anvil_en1_native_norm` and
 `anvil_en1_native_mlp_row` expose the validated, default-off `EXTERNAL_FP`

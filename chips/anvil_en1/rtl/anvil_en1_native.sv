@@ -341,12 +341,19 @@ module anvil_en1_native #(
     wire [47:0] ordinary_vector_waddr, ordinary_vector_raddr;
     wire [47:0] replay_vector_waddr, replay_vector_raddr;
     wire [63:0] ordinary_vector_wdata, replay_vector_wdata, shared_vector_rdata;
+    wire [63:0] ordinary_vector_rdata;
+    wire ordinary_hidden_write, ordinary_hidden_read;
+    wire [31:0] ordinary_hidden_waddr, ordinary_hidden_raddr;
+    wire [15:0] ordinary_hidden_wdata;
+    wire [63:0] executor_hidden_physical_bytes;
     wire [1:0] ordinary_embedding_write, ordinary_embedding_read;
     wire [1:0] replay_embedding_write, replay_embedding_read, embedding_access_fault;
     wire [63:0] ordinary_embedding_waddr, ordinary_embedding_raddr;
     wire [63:0] replay_embedding_waddr, replay_embedding_raddr;
     wire [31:0] ordinary_embedding_wdata, replay_embedding_wdata, shared_embedding_rdata;
     wire [191:0] executor_physical_bytes;
+    assign allocation_physical_bytes[64*2+:64] = executor_hidden_physical_bytes +
+        (rst_n ? (COMPACT ? 64'd16 : 64'd5120) : 64'd0);
     assign allocation_physical_bytes[64*19+:64] = executor_physical_bytes[0+:64];
     assign allocation_physical_bytes[64*20+:64] = executor_physical_bytes[64+:64] +
         (rst_n ? (COMPACT ? 64'd56 : 64'd15872) : 64'd0);
@@ -366,6 +373,42 @@ module anvil_en1_native #(
         text_ram_owner == text_ram_request_owner && !text_ram_overlap;
     wire [31:0] text_hidden_words = COMPACT ? 32'd8 :
         (model_hold == 1 ? 32'd1536 : 32'd2560);
+    wire [63:0] hidden_required_bytes = {32'd0, text_hidden_words} << 1;
+    wire hidden_residual_access = ordinary_vector_write[0] || ordinary_vector_read[0];
+    wire hidden_executor_access = ordinary_hidden_write || ordinary_hidden_read;
+    wire hidden_write_enable = hidden_residual_access ?
+        ordinary_vector_write[0] : ordinary_hidden_write;
+    wire hidden_read_enable = hidden_residual_access ?
+        ordinary_vector_read[0] : ordinary_hidden_read;
+    wire [31:0] hidden_waddr = hidden_residual_access ?
+        {20'd0, ordinary_vector_waddr[0+:12]} : ordinary_hidden_waddr;
+    wire [31:0] hidden_raddr = hidden_residual_access ?
+        {20'd0, ordinary_vector_raddr[0+:12]} : ordinary_hidden_raddr;
+    wire [15:0] hidden_wdata = hidden_residual_access ?
+        ordinary_vector_wdata[0+:16] : ordinary_hidden_wdata;
+    wire hidden_access_fault = rst_n &&
+        ((hidden_residual_access && hidden_executor_access) ||
+         (hidden_residual_access && (!text_ram_owned || text_ram_owner != 1)) ||
+         ((hidden_residual_access || hidden_executor_access) &&
+            allocation_live_bytes[64*2+:64] < hidden_required_bytes) ||
+         (hidden_write_enable && (hidden_waddr >= (COMPACT ? 8 : 2560) ||
+            hidden_waddr >= text_hidden_words)) ||
+         (hidden_read_enable && (hidden_raddr >= (COMPACT ? 8 : 2560) ||
+            hidden_raddr >= text_hidden_words)));
+    localparam integer HIDDEN_WORDS = COMPACT ? 8 : 2560;
+    localparam integer HIDDEN_BITS = $clog2(HIDDEN_WORDS);
+    (* ramstyle = "M20K", nomem2reg *)
+    reg [15:0] ordinary_hidden_payload [0:HIDDEN_WORDS-1];
+    reg [15:0] ordinary_hidden_q;
+    assign ordinary_vector_rdata = {shared_vector_rdata[63:16], ordinary_hidden_q};
+    always @(posedge clk) begin
+        if (rst_n && !hidden_access_fault) begin
+            if (hidden_write_enable)
+                ordinary_hidden_payload[hidden_waddr[HIDDEN_BITS-1:0]] <= hidden_wdata;
+            if (hidden_read_enable)
+                ordinary_hidden_q <= ordinary_hidden_payload[hidden_raddr[HIDDEN_BITS-1:0]];
+        end
+    end
     assign shared_embedding_rdata = {shared_vector_rdata[48+:16],
         shared_vector_rdata[0+:16]};
     genvar embedding_client;
@@ -387,8 +430,8 @@ module anvil_en1_native #(
         localparam integer EMBEDDING_BANK = vector_bank == 3 ? 1 : 0;
         wire [31:0] logical_words = vector_bank == 3 ?
             (COMPACT ? 32'd4 : 32'd256) : text_hidden_words;
-        wire ordinary_access = ordinary_vector_write[vector_bank] ||
-            ordinary_vector_read[vector_bank];
+        wire ordinary_access = vector_bank != 0 &&
+            (ordinary_vector_write[vector_bank] || ordinary_vector_read[vector_bank]);
         wire replay_access = replay_vector_write[vector_bank] ||
             replay_vector_read[vector_bank];
         wire ordinary_embed_access = (vector_bank == 0 || vector_bank == 3) &&
@@ -397,13 +440,15 @@ module anvil_en1_native #(
         wire replay_embed_access = (vector_bank == 0 || vector_bank == 3) &&
             (replay_embedding_write[EMBEDDING_BANK] ||
              replay_embedding_read[EMBEDDING_BANK]);
-        wire write_enable = text_ram_owner == 1 ? ordinary_vector_write[vector_bank] :
+        wire write_enable = text_ram_owner == 1 ?
+            ordinary_access && ordinary_vector_write[vector_bank] :
             (text_ram_owner == 2 ? replay_vector_write[vector_bank] :
             (text_ram_owner == 3 ? ordinary_embed_access &&
                 ordinary_embedding_write[EMBEDDING_BANK] :
             (text_ram_owner == 4 ? replay_embed_access &&
                 replay_embedding_write[EMBEDDING_BANK] : 1'b0)));
-        wire read_enable = text_ram_owner == 1 ? ordinary_vector_read[vector_bank] :
+        wire read_enable = text_ram_owner == 1 ?
+            ordinary_access && ordinary_vector_read[vector_bank] :
             (text_ram_owner == 2 ? replay_vector_read[vector_bank] :
             (text_ram_owner == 3 ? ordinary_embed_access &&
                 ordinary_embedding_read[EMBEDDING_BANK] :
@@ -456,13 +501,15 @@ module anvil_en1_native #(
         end else begin
             if (!text_ram_overlap)
                 text_ram_owner <= text_ram_request_owner;
-            if (|vector_access_fault || |embedding_access_fault || text_ram_overlap)
+            if (|vector_access_fault || |embedding_access_fault || text_ram_overlap ||
+                hidden_access_fault)
                 vector_ram_fault <= 1;
         end
     end
 
     anvil_en1_frontier_execute #(
-        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1),
+        .EXTERNAL_HIDDEN_RAM(1)
     ) frontier (
         .grant_valid(frontier_grant_valid), .grant_ready(frontier_grant_ready),
         .grant_component(frontier_grant_component),
@@ -476,9 +523,12 @@ module anvil_en1_native #(
         .embedding_ram_raddr(ordinary_embedding_raddr),
         .embedding_ram_wdata(ordinary_embedding_wdata),
         .embedding_ram_rdata(shared_embedding_rdata),
+        .hidden_ram_write(ordinary_hidden_write), .hidden_ram_read(ordinary_hidden_read),
+        .hidden_ram_waddr(ordinary_hidden_waddr), .hidden_ram_raddr(ordinary_hidden_raddr),
+        .hidden_ram_wdata(ordinary_hidden_wdata), .hidden_ram_rdata(ordinary_hidden_q),
         .vector_ram_write(ordinary_vector_write), .vector_ram_read(ordinary_vector_read),
         .vector_ram_waddr(ordinary_vector_waddr), .vector_ram_raddr(ordinary_vector_raddr),
-        .vector_ram_wdata(ordinary_vector_wdata), .vector_ram_rdata(shared_vector_rdata),
+        .vector_ram_wdata(ordinary_vector_wdata), .vector_ram_rdata(ordinary_vector_rdata),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(executor_attention_activity),
         .avoided_projection_event(executor_avoided_event),
@@ -555,7 +605,7 @@ module anvil_en1_native #(
         .logit_index(logit_index), .logit_last(logit_last),
         .vector_live_bytes(allocation_live_bytes[64*2+:64]),
         .vector_shadow_bytes(allocation_shadow_bytes[64*2+:64]),
-        .vector_physical_bytes(allocation_physical_bytes[64*2+:64]),
+        .vector_physical_bytes(executor_hidden_physical_bytes),
         .feature_live_bytes(allocation_live_bytes[64*3+:64]),
         .feature_physical_bytes(allocation_physical_bytes[64*3+:64]),
         .frontier_live_bytes(allocation_live_bytes[64*0+:64]),

@@ -1,7 +1,8 @@
 module anvil_en1_asym_attn_ple #(
     parameter integer COMPACT = 0,
     parameter integer POST_ONLY = 0,
-    parameter integer EXTERNAL_VECTOR_RAM = 0
+    parameter integer EXTERNAL_VECTOR_RAM = 0,
+    parameter integer SHARED_RESIDUAL = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -86,8 +87,10 @@ module anvil_en1_asym_attn_ple #(
 );
     generate if ((COMPACT != 0 && COMPACT != 1) ||
         (POST_ONLY != 0 && POST_ONLY != 1) ||
-        (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1)) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT, POST_ONLY and EXTERNAL_VECTOR_RAM must be 0 or 1");
+        (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1) ||
+        (SHARED_RESIDUAL != 0 && SHARED_RESIDUAL != 1) ||
+        (SHARED_RESIDUAL == 1 && EXTERNAL_VECTOR_RAM != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT, POST_ONLY, EXTERNAL_VECTOR_RAM and SHARED_RESIDUAL must be 0 or 1; shared residual requires external vectors");
         assign start_ready = 0;
         assign source_valid = 0;
         assign source_model = 0;
@@ -697,7 +700,8 @@ module anvil_en1_asym_attn_ple #(
 
         assign start_ready = rst_n && state == IDLE;
         wire [63:0] live_residual_work =
-            (residual_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
+            (residual_allocated && !SHARED_RESIDUAL ?
+                {32'd0, hidden_hold} << 1 : 64'd0) +
             (work_allocated ? {32'd0, hidden_hold} << 1 : 64'd0);
         wire [63:0] live_branch_ple =
             (branch_allocated ? {32'd0, hidden_hold} << 1 :
@@ -710,7 +714,7 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] shadow_hidden = model_hold == 1 ? 64'd3072 : 64'd5120;
         wire [63:0] shadow_head = global_hold ? 64'd1024 : 64'd512;
         wire [63:0] shadow_residual_work =
-            (residual_allocated ? shadow_hidden : 64'd0) +
+            (residual_allocated && !SHARED_RESIDUAL ? shadow_hidden : 64'd0) +
             (work_allocated ? shadow_hidden : 64'd0);
         wire [63:0] shadow_branch_ple =
             (branch_allocated ? shadow_hidden :

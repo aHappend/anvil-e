@@ -5,6 +5,106 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+### Checked-width allocation arithmetic and ordinary phase envelope
+
+The allocation ledger keeps its eight coherent metrics and six registered
+edges. Each reduction node now stores a 32-bit byte count and a sticky
+overflow bit instead of an unchecked 64-bit count. The first stage checks
+both operands' complete high halves; each later stage checks its addition
+carry and propagates both child flags. No input address, public byte-count
+port, baseline, CSR counter or 69-bit strict-ratio comparison is narrowed.
+
+An admitted ordinary representation is below 6 MiB, including the 3 MiB
+frontier, at most 1 MiB ring, 1 MiB native scratch, 64 KiB text workspace and
+resident words. A fallback is at most 1 MiB. All reduction terms are
+nonnegative subsets of that representation, so their legal partial sums fit
+32 bits. Oversized or corrupt observations still receive a diagnostic,
+not a truncated small allocation or permission to continue.
+
+| Allocation boundary | Registered result |
+| --- | --- |
+| First addition | Check all 64 input bits; retain low 32 bits and high-half/carry fault |
+| Subsequent addition | One 33-bit carry-detecting addition; preserve either child fault |
+| Workspace subtraction | Check native-subset consistency and unsigned underflow on the same sampled observation |
+| Invalid reduction | Assert `report_partition_error`; expose an affected metric as unsigned64 maximum, never a wrapped success-shaped value |
+| Grant/guard | Either consumer rejects the partition-error report using its existing failure path |
+| Reset/back-to-back observations | Zero outputs during reset; retain the existing model, mode, check-valid and six-edge correspondence |
+
+Each ledger's declared storage is now 8490 bits / 1062 bytes, including
+all node flags, totals and tags, rather than 16426 bits / 2054 bytes.
+Both literal ledgers remain instantiated: their combined declaration
+reduction is 1984 bytes, not a deletion of admission or observation.
+The prospective controller's separate 276 bits / 35 bytes remain charged.
+This is a source declaration count, not a synthesis or timing result.
+
+Ordinary full-text admission now reserves the maximum of its phase envelopes,
+not the sum of banks whose allocated lifetimes cannot coincide. Let `h` be
+hidden-vector bytes, `e` PLE bytes, `q` selected head-vector bytes and `Q`
+the number of query heads. The envelope is
+`max(3*h+e, 2*h+e+(Q+1)*q)`. During attention, residual and normalized work
+coexist with one query and all accumulated attention components. The final
+head retires work and query before output projection starts. Output projection
+therefore needs `2*h+e+Q*q`; later norm/MLP/PLE phases need at most `3*h+e`.
+Every transition releases and reserves its flags on the same registered edge;
+backpressure retains the current phase and cannot create a bank overlap.
+
+| Geometry | Local / global field-20 reservation, bytes |
+| --- | --- |
+| Compact actual | 64 / 88 |
+| E2B production or production shadow | 11264 / 15872 |
+| E4B production or production shadow | 15872 / 19968 |
+
+This changes only the complete private-worker envelope. Independently flagged
+child live bytes still override it if larger. Retained outer vectors, owner
+source/head tiles, suspended frames, scalar state, metadata and physical
+reserved RAM are not removed or reassigned. Whole-system legal-workload fit
+remains unfinished; these local reductions are not a successful allocation
+or an authorization to deny required legal work.
+
+### Ordinary residual and retained-vector backing ownership
+
+`anvil_en1_frontier_execute.EXTERNAL_HIDDEN_RAM` is a legal 0/1 parameter,
+default 0. At 1 it requires `EXTERNAL_VECTOR_RAM=1` and exports its enabled
+synchronous hidden-bank read/write port with complete 32-bit component
+addresses. The caller must connect that bank to the ordinary full-text
+worker's residual bank (vector port 0), not to the replay/embedding phase
+bank. `anvil_en1_asym_attn_ple.SHARED_RESIDUAL` is default 0, legal 0/1;
+1 requires external vector RAM and assigns residual payload accounting to
+the caller. Residual arithmetic, allocated/visibility flags and RAM requests
+remain unchanged.
+
+The connected native assembly selects this mode and retains a separate
+ordinary hidden bank. Its full-text residual port and executor hidden port
+access that one bank. Existing text phase bank 0 still serves replay post
+and embedding; those may overlap a retained ordinary input and must not
+overwrite it. No storage is silently released when a feature callback yields.
+
+| Bank boundary | Ownership / accounting |
+| --- | --- |
+| Ordinary layer start | Field 2 already reserves the complete hidden vector; keep that charge until completion/retention release |
+| Initial residual load | Frontier-backed sources fill the shared bank; retained-vector sources read it and write back the identical input before any residual update |
+| Residual update | All original-input callbacks have retired before normalization/residual processing overwrites the bank |
+| Output | The worker reads its completed residual; the executor's accepted output writes the same component back, with no second vector allocation |
+| Enabled RAM edge | One selected writer and one selected reader, with full physical/model address checks before indexing |
+| Competing executor/worker access | Suppress accesses and latch protocol error 7; never choose one silently |
+| Worker access without registered full-text ownership or field-2 hidden reservation | Suppress access and latch error 7 |
+| Reset | Disable all RAM enables and public external-RAM outputs; leave payload uninitialized and invalidate its visibility |
+| Standalone defaults | Keep the original local executor hidden bank and ordinary private residual charge |
+
+In integrated mode field 20 excludes the residual's `h` bytes from both
+its phase envelope and the child's live/shadow report. Field 2 retains
+those same `h` bytes; no other field changes classification. Integrated
+local/global field-20 reservations are 8192/12800 for E2B, 10752/14848
+for E4B, and 48/72 for compact actual geometry. Default standalone envelopes
+remain the preceding table's values. The physical hidden bank remains
+charged once in field 2, and the separately needed replay/embedding phase
+bank remains in the physical field-20 disclosure. This is a real connected
+backing alias, not removal of idle physical SRAM from the reported FPGA cost.
+The shared hidden read register retains its existing charge through the
+executor's `hidden_q` term in field 24; moving its declaration to the native
+assembly does not add or remove a register. The four replay/embedding phase
+read registers retain their separate native-controller charge.
+
 ### Native feed-forward binary32 ownership
 
 The native MLP row uses one binary32 service for its down projection, nested
@@ -235,8 +335,10 @@ No projected-output count is a weight-bandwidth measurement.
 
 `anvil_en1_allocation_ledger` samples the native 25-field component vector,
 four metadata fields and the top integration reservation each native
-execution cycle. Six independent 32-term balanced adder trees each
-have five register stages and one 64-bit addition per stage. The model
+execution cycle. Eight independent 32-term balanced adder trees each
+have five register stages and one checked 32-bit-value addition per stage.
+The sticky fault bit detects high-half inputs and carry overflow as specified
+above. The model
 and observation-valid tags traverse those same stages. A report therefore
 corresponds to one coherent input cycle, not a mixture of five successive
 allocations. No per-cycle trace, host sum, dynamic division or subtraction
@@ -404,7 +506,9 @@ The connected native assembly uses text banks 0/3 for the embedding worker's
 hidden/PLE payload, respectively. Banks 1/2 retain the text work and
 branch/query payload. No separate integrated embedding payload arrays or
 read registers remain. Standalone child defaults and their enabled-edge
-interfaces are unchanged.
+interfaces are unchanged. Phase bank 0 now serves replay POST_ONLY residual
+and embedding, not ordinary full-text residual. The latter uses the separate
+retained-hidden backing alias specified above.
 
 Ordinary embedding finishes and retires before the full-text worker starts.
 Ordinary owner reprojection reads the frontier/ring, not a recursive text
@@ -442,8 +546,9 @@ This removes another 5632 production / 24 compact bytes of declared physical
 payload and two duplicate 16-bit read registers. Physical field 20 includes
 the four banks once (15872 production / 56 compact bytes), plus the full
 worker's separate attention payload; field 19 has only its external child's
-physical count, which is zero. Live/shadow fields 10/11/19/20 retain their
-original complete charges. Native controller accounting replaces the prior
+physical count, which is zero. Live/shadow fields 10/11/19 retain their complete
+charges. Field 20 excludes only the ordinary residual already charged in
+field 2 through the connected backing alias. Native controller accounting replaces the prior
 96 read-register bits with 64 bits and includes the three-bit owner.
 
 These are local storage ownership and address-partition guards, not the
@@ -755,8 +860,9 @@ uncommitted grant. All added native arbiter state is charged in component 17.
 
 Let `h=2*H`, `q=2*head_dim` and `e=2*PLE` bytes in the selected actual geometry.
 Production shadows use the selected production model even for compact builds.
-The full-text envelope conservatively includes all three hidden banks, PLE
-and all query-head attention output; it does not allocate an MLP-wide tensor.
+The full-text envelope covers the maximum simultaneous phase allocation,
+including every hidden bank, PLE, query and accumulated attention component
+that can coexist. It does not allocate an MLP-wide tensor.
 
 | Field | Complete actual reservation | Production-shadow reservation |
 | --- | --- | --- |
@@ -766,7 +872,7 @@ and all query-head attention output; it does not allocate an MLP-wide tensor.
 | 3, modality staging | `h` | 3072/5120 |
 | 4, local anchor transfer | Compact 8; production 512 | 512 |
 | 19, embedding | `h+e` | `3072+512` / `5120+512` |
-| 20, full text | `3*h+e+Q*q`, with compact Q=2 and production Q=8 | `3*3072+512+8*q` / `3*5120+512+8*q`, production q=512/1024 |
+| 20, full text | `max(3*h+e, 2*h+e+(Q+1)*q)`, minus h in integrated shared-residual mode; compact Q=2 and production Q=8 | Same rule with h=3072/5120, e=512, Q=8 and q=512/1024 |
 
 Each field reports the greater of its complete admitted envelope and actual
 child live allocation while reserved, never their sum. Existing child physical
@@ -1456,8 +1562,10 @@ child allocation cannot disappear merely because dispatch changed.
 ### Text-bank lifetime and physical overlay
 
 The integrated native assembly physically overlays the ordinary full text
-worker's residual/work/branch/PLE banks with the replay text POST_ONLY
-worker's corresponding banks. Both select `EXTERNAL_VECTOR_RAM=1` through
+worker's work/branch/PLE banks with the replay text POST_ONLY
+worker's corresponding banks. Ordinary residual instead shares its executor's
+retained hidden bank as specified above; the fourth phase bank remains for
+replay residual and embedding. Both text workers select `EXTERNAL_VECTOR_RAM=1` through
 their enclosing wrappers; standalone defaults remain 0. For each of four
 banks (residual/work/branch/PLE in ascending packed-lane order), the
 external interface exposes write/read enables, 12-bit component addresses

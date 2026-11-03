@@ -79,11 +79,20 @@ module anvil_en1_allocation_ledger (
         end
     end endgenerate
 
-    reg [8191:0] level0;
-    reg [4095:0] level1;
-    reg [2047:0] level2;
-    reg [1023:0] level3;
-    reg [511:0] level4, totals;
+    localparam integer VALUE_BITS = 32;
+    localparam integer NODE_BITS = VALUE_BITS + 1;
+    reg [128*NODE_BITS-1:0] level0;
+    reg [64*NODE_BITS-1:0] level1;
+    reg [32*NODE_BITS-1:0] level2;
+    reg [16*NODE_BITS-1:0] level3;
+    reg [8*NODE_BITS-1:0] level4, totals;
+    wire [128*NODE_BITS-1:0] next0;
+    wire [64*NODE_BITS-1:0] next1;
+    wire [32*NODE_BITS-1:0] next2;
+    wire [16*NODE_BITS-1:0] next3;
+    wire [8*NODE_BITS-1:0] next4;
+    wire [511:0] expanded_totals;
+    wire [7:0] level4_overflow;
     reg partition_error;
     reg [5:0] valid_pipeline;
     reg [5:0] check_pipeline, fallback_pipeline, overlap_pipeline;
@@ -93,6 +102,50 @@ module anvil_en1_allocation_ledger (
         {workspace_shadow_terms, workspace_terms,
             scratch_shadow_terms, equivalent_shadow_terms,
             scratch_terms, equivalent_terms, replay_terms, payload_terms};
+    function automatic [NODE_BITS-1:0] add_node(
+        input [NODE_BITS-1:0] left, right
+    );
+        reg [VALUE_BITS:0] sum;
+        begin
+            sum = {1'b0, left[VALUE_BITS-1:0]} +
+                {1'b0, right[VALUE_BITS-1:0]};
+            add_node = {left[VALUE_BITS] || right[VALUE_BITS] ||
+                sum[VALUE_BITS], sum[VALUE_BITS-1:0]};
+        end
+    endfunction
+
+    genvar metric, node;
+    generate for (metric=0; metric<8; metric=metric+1) begin : reductions
+        for (node=0; node<16; node=node+1) begin : first
+            wire [63:0] left = input_terms[64*(metric*32+2*node)+:64];
+            wire [63:0] right = input_terms[64*(metric*32+2*node+1)+:64];
+            assign next0[NODE_BITS*(metric*16+node)+:NODE_BITS] =
+                add_node({|left[63:VALUE_BITS], left[VALUE_BITS-1:0]},
+                    {|right[63:VALUE_BITS], right[VALUE_BITS-1:0]});
+        end
+        for (node=0; node<8; node=node+1) begin : second
+            assign next1[NODE_BITS*(metric*8+node)+:NODE_BITS] =
+                add_node(level0[NODE_BITS*(metric*16+2*node)+:NODE_BITS],
+                    level0[NODE_BITS*(metric*16+2*node+1)+:NODE_BITS]);
+        end
+        for (node=0; node<4; node=node+1) begin : third
+            assign next2[NODE_BITS*(metric*4+node)+:NODE_BITS] =
+                add_node(level1[NODE_BITS*(metric*8+2*node)+:NODE_BITS],
+                    level1[NODE_BITS*(metric*8+2*node+1)+:NODE_BITS]);
+        end
+        for (node=0; node<2; node=node+1) begin : fourth
+            assign next3[NODE_BITS*(metric*2+node)+:NODE_BITS] =
+                add_node(level2[NODE_BITS*(metric*4+2*node)+:NODE_BITS],
+                    level2[NODE_BITS*(metric*4+2*node+1)+:NODE_BITS]);
+        end
+        assign next4[NODE_BITS*metric+:NODE_BITS] =
+            add_node(level3[NODE_BITS*(metric*2)+:NODE_BITS],
+                level3[NODE_BITS*(metric*2+1)+:NODE_BITS]);
+        assign level4_overflow[metric] = level4[NODE_BITS*metric+VALUE_BITS];
+        assign expanded_totals[64*metric+:64] =
+            totals[NODE_BITS*metric+VALUE_BITS] ? 64'hffffffffffffffff :
+                {32'd0, totals[NODE_BITS*metric+:VALUE_BITS]};
+    end endgenerate
     wire overlap = observation_fallback &&
         |component_live_bytes[64*5+:64] &&
         (|component_live_bytes[0+:64] || |component_live_bytes[64+:64]);
@@ -112,16 +165,19 @@ module anvil_en1_allocation_ledger (
     assign report_overlap = rst_n && overlap_pipeline[5];
     assign report_model = rst_n ? model_pipeline[11:10] : 2'd0;
     assign report_partition_error = rst_n && partition_error;
-    assign payload_bytes = rst_n ? totals[0+:64] : 64'd0;
-    assign replay_bytes = rst_n ? totals[64+:64] : 64'd0;
-    assign equivalent_bytes = rst_n ? totals[128+:64] : 64'd0;
-    assign native_scratch_bytes = rst_n ? totals[192+:64] : 64'd0;
-    assign equivalent_shadow_bytes = rst_n ? totals[256+:64] : 64'd0;
-    assign native_scratch_shadow_bytes = rst_n ? totals[320+:64] : 64'd0;
-    assign text_workspace_bytes = rst_n ? totals[384+:64] : 64'd0;
-    assign text_workspace_shadow_bytes = rst_n ? totals[448+:64] : 64'd0;
+    assign payload_bytes = rst_n ? expanded_totals[0+:64] : 64'd0;
+    assign replay_bytes = rst_n ? expanded_totals[64+:64] : 64'd0;
+    assign equivalent_bytes = rst_n ? expanded_totals[128+:64] : 64'd0;
+    assign native_scratch_bytes = rst_n ? expanded_totals[192+:64] : 64'd0;
+    assign equivalent_shadow_bytes = rst_n ? expanded_totals[256+:64] : 64'd0;
+    assign native_scratch_shadow_bytes = rst_n ? expanded_totals[320+:64] : 64'd0;
+    assign text_workspace_bytes = rst_n ? expanded_totals[384+:64] : 64'd0;
+    assign text_workspace_shadow_bytes = rst_n ? expanded_totals[448+:64] : 64'd0;
 
-    integer metric, node;
+    wire workspace_underflow =
+        level4[6*NODE_BITS+:VALUE_BITS] < level4[3*NODE_BITS+:VALUE_BITS];
+    wire shadow_workspace_underflow =
+        level4[7*NODE_BITS+:VALUE_BITS] < level4[5*NODE_BITS+:VALUE_BITS];
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             level0 <= 0;
@@ -144,32 +200,22 @@ module anvil_en1_allocation_ledger (
             overlap_pipeline <= {overlap_pipeline[4:0], overlap};
             partition_pipeline <= {partition_pipeline[3:0], subset_error};
             model_pipeline <= {model_pipeline[9:0], observation_model};
-            totals[0+:384] <= level4[0+:384];
-            totals[384+:64] <= level4[384+:64] - level4[192+:64];
-            totals[448+:64] <= level4[448+:64] - level4[320+:64];
-            partition_error <= partition_pipeline[4] ||
-                level4[384+:64] < level4[192+:64] ||
-                level4[448+:64] < level4[320+:64];
-            for (metric=0; metric<8; metric=metric+1) begin
-                for (node=0; node<16; node=node+1)
-                    level0[64*(metric*16+node)+:64] <=
-                        input_terms[64*(metric*32+2*node)+:64] +
-                        input_terms[64*(metric*32+2*node+1)+:64];
-                for (node=0; node<8; node=node+1)
-                    level1[64*(metric*8+node)+:64] <=
-                        level0[64*(metric*16+2*node)+:64] +
-                        level0[64*(metric*16+2*node+1)+:64];
-                for (node=0; node<4; node=node+1)
-                    level2[64*(metric*4+node)+:64] <=
-                        level1[64*(metric*8+2*node)+:64] +
-                        level1[64*(metric*8+2*node+1)+:64];
-                for (node=0; node<2; node=node+1)
-                    level3[64*(metric*2+node)+:64] <=
-                        level2[64*(metric*4+2*node)+:64] +
-                        level2[64*(metric*4+2*node+1)+:64];
-                level4[64*metric+:64] <=
-                    level3[64*(metric*2)+:64] + level3[64*(metric*2+1)+:64];
-            end
+            totals[0+:6*NODE_BITS] <= level4[0+:6*NODE_BITS];
+            totals[6*NODE_BITS+:NODE_BITS] <=
+                {level4_overflow[6] || level4_overflow[3] || workspace_underflow,
+                    level4[6*NODE_BITS+:VALUE_BITS] -
+                        level4[3*NODE_BITS+:VALUE_BITS]};
+            totals[7*NODE_BITS+:NODE_BITS] <=
+                {level4_overflow[7] || level4_overflow[5] || shadow_workspace_underflow,
+                    level4[7*NODE_BITS+:VALUE_BITS] -
+                        level4[5*NODE_BITS+:VALUE_BITS]};
+            partition_error <= partition_pipeline[4] || |level4_overflow ||
+                workspace_underflow || shadow_workspace_underflow;
+            level0 <= next0;
+            level1 <= next1;
+            level2 <= next2;
+            level3 <= next3;
+            level4 <= next4;
         end
     end
 endmodule

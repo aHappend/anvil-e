@@ -1,7 +1,8 @@
 module anvil_en1_frontier_execute #(
     parameter integer COMPACT = 0,
     parameter integer EXTERNAL_VECTOR_RAM = 0,
-    parameter integer EXTERNAL_EMBEDDING_RAM = 0
+    parameter integer EXTERNAL_EMBEDDING_RAM = 0,
+    parameter integer EXTERNAL_HIDDEN_RAM = 0
 ) (
     input wire clk, rst_n,
     input wire control_valid,
@@ -153,6 +154,10 @@ module anvil_en1_frontier_execute #(
     output wire [63:0] embedding_ram_waddr, embedding_ram_raddr,
     output wire [31:0] embedding_ram_wdata,
     input wire [31:0] embedding_ram_rdata,
+    output wire hidden_ram_write, hidden_ram_read,
+    output wire [31:0] hidden_ram_waddr, hidden_ram_raddr,
+    output wire [15:0] hidden_ram_wdata,
+    input wire [15:0] hidden_ram_rdata,
     output wire [63:0] reported_controller_bytes,
     output wire [3:0] attention_activity,
     output wire avoided_projection_event,
@@ -218,7 +223,8 @@ module anvil_en1_frontier_execute #(
     reg [31:0] logits_normalized_count;
     reg logits_normalized_bad;
     reg [31:0] source_index_hold;
-    reg [15:0] source_data_hold, hidden_q, ple_q;
+    reg [15:0] source_data_hold, ple_q;
+    wire [15:0] hidden_q;
     reg read_owner;
     reg [31:0] read_generation_hold, read_token_hold, read_data_hold;
     reg [7:0] read_layer_hold;
@@ -230,8 +236,6 @@ module anvil_en1_frontier_execute #(
     reg [31:0] feature_request_token, feature_request_index;
     reg [15:0] feature_q, feature_data_hold;
     reg feature_error_hold;
-    (* ramstyle = "M20K", nomem2reg *)
-    reg [15:0] hidden_payload [0:MAX_H-1];
     (* ramstyle = "M20K", nomem2reg *)
     reg [15:0] feature_payload [0:MAX_H-1];
     localparam integer CONTROLLER_BITS =
@@ -284,6 +288,9 @@ module anvil_en1_frontier_execute #(
             $fatal(1, "PARAMETER ERROR: COMPACT must be 0 or 1");
         if (EXTERNAL_EMBEDDING_RAM != 0 && EXTERNAL_EMBEDDING_RAM != 1)
             $fatal(1, "PARAMETER ERROR: EXTERNAL_EMBEDDING_RAM must be 0 or 1");
+        if ((EXTERNAL_HIDDEN_RAM != 0 && EXTERNAL_HIDDEN_RAM != 1) ||
+            (EXTERNAL_HIDDEN_RAM == 1 && EXTERNAL_VECTOR_RAM != 1))
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_HIDDEN_RAM must be 0 or 1; external hidden storage requires external vectors");
     end
 
     wire native_model;
@@ -316,10 +323,22 @@ module anvil_en1_frontier_execute #(
         (selected_global ? 64'd16 : 64'd8) :
         (selected_global ? 64'd1024 : 64'd512);
     wire [63:0] shadow_head_bytes = selected_global ? 64'd1024 : 64'd512;
-    wire [63:0] layer_bytes = (hidden_bytes << 1) + hidden_bytes +
-        64'(2*P) + (head_bytes << (COMPACT ? 1 : 3));
-    wire [63:0] layer_shadow = (shadow_hidden_bytes << 1) + shadow_hidden_bytes +
-        64'd512 + (shadow_head_bytes << 3);
+    wire [63:0] layer_attention_bytes = (hidden_bytes << 1) +
+        64'(2*P) + head_bytes + (head_bytes << (COMPACT ? 1 : 3));
+    wire [63:0] layer_feedforward_bytes = (hidden_bytes << 1) +
+        hidden_bytes + 64'(2*P);
+    wire [63:0] layer_phase_bytes = layer_attention_bytes > layer_feedforward_bytes ?
+        layer_attention_bytes : layer_feedforward_bytes;
+    wire [63:0] layer_bytes = layer_phase_bytes -
+        (EXTERNAL_HIDDEN_RAM ? hidden_bytes : 64'd0);
+    wire [63:0] layer_attention_shadow = (shadow_hidden_bytes << 1) +
+        64'd512 + shadow_head_bytes + (shadow_head_bytes << 3);
+    wire [63:0] layer_feedforward_shadow = (shadow_hidden_bytes << 1) +
+        shadow_hidden_bytes + 64'd512;
+    wire [63:0] layer_phase_shadow = layer_attention_shadow > layer_feedforward_shadow ?
+        layer_attention_shadow : layer_feedforward_shadow;
+    wire [63:0] layer_shadow = layer_phase_shadow -
+        (EXTERNAL_HIDDEN_RAM ? shadow_hidden_bytes : 64'd0);
     wire [63:0] candidate_bytes = allocation_component == 0 ? reserved_frontier_bytes :
         (allocation_component == 1 ? reserved_ring_bytes :
         (allocation_component == 2 ? vector_reservation_bytes :
@@ -561,7 +580,8 @@ module anvil_en1_frontier_execute #(
         (state == ANCHOR_START || state == ANCHOR_WAIT);
     wire layer_selected = state == LAYER_START || state == LAYER_WAIT;
     anvil_en1_asym_attn_ple #(
-        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
+        .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
+        .SHARED_RESIDUAL(EXTERNAL_HIDDEN_RAM)
     ) text_layer (
         .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
         .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
@@ -725,7 +745,8 @@ module anvil_en1_frontier_execute #(
         (layer_reserved && (child_execution_bytes[64+:64] > layer_bytes ||
             child_execution_shadow[64+:64] > layer_shadow));
     assign execution_shadow_bytes[128+:64] = execution_live_bytes[128+:64];
-    assign vector_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
+    assign vector_physical_bytes = rst_n && !EXTERNAL_HIDDEN_RAM ?
+        64'(2*MAX_H) : 64'd0;
     assign feature_live_bytes = rst_n && (feature_allocated || feature_reserved) ?
         {32'd0, hidden_hold} << 1 : 64'd0;
     assign feature_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
@@ -826,15 +847,43 @@ module anvil_en1_frontier_execute #(
         logits_normalized_count < hidden_hold &&
         logits_store_last == (logits_normalized_count == hidden_hold - 1'b1);
 
+    wire hidden_embedding_write = rst_n && state == EMBED_WAIT &&
+        operation == 1 && embed_input_valid && input_beat_ok;
+    wire hidden_result_write = rst_n && (state == LAYER_WAIT || state == EVAL_WAIT) &&
+        received_valid && h_beat_ok;
+    wire hidden_logits_write = rst_n && state == LOGITS_WAIT &&
+        logits_store_valid && logits_store_ok;
+    wire hidden_write = hidden_embedding_write || hidden_result_write || hidden_logits_write;
+    wire [31:0] hidden_waddr = hidden_embedding_write ? embed_input_index :
+        (hidden_result_write ? received_index : logits_store_index);
+    wire [15:0] hidden_wdata = hidden_embedding_write ? embed_input_data :
+        (hidden_result_write ? received_data : logits_store_data);
+    wire hidden_read = rst_n &&
+        ((source_state == S_LOCAL_READ && !source_is_ple_hold) ||
+            state == WRITE_LOW_READ || state == WRITE_HIGH_READ);
+    wire [31:0] hidden_raddr = source_state == S_LOCAL_READ ? source_index_hold :
+        (state == WRITE_LOW_READ ? write_component : write_component + 32'd1);
+    assign hidden_ram_write = EXTERNAL_HIDDEN_RAM == 1 && hidden_write;
+    assign hidden_ram_read = EXTERNAL_HIDDEN_RAM == 1 && hidden_read;
+    assign hidden_ram_waddr = rst_n && EXTERNAL_HIDDEN_RAM == 1 ? hidden_waddr : 32'd0;
+    assign hidden_ram_raddr = rst_n && EXTERNAL_HIDDEN_RAM == 1 ? hidden_raddr : 32'd0;
+    assign hidden_ram_wdata = rst_n && EXTERNAL_HIDDEN_RAM == 1 ? hidden_wdata : 16'd0;
+    generate if (EXTERNAL_HIDDEN_RAM == 1) begin : external_hidden
+        assign hidden_q = hidden_ram_rdata;
+    end else begin : internal_hidden
+        (* ramstyle = "M20K", nomem2reg *)
+        reg [15:0] payload [0:MAX_H-1];
+        reg [15:0] read_q;
+        assign hidden_q = read_q;
+        always @(posedge clk) begin
+            if (hidden_write)
+                payload[hidden_waddr[H_BITS-1:0]] <= hidden_wdata;
+            if (hidden_read)
+                read_q <= payload[hidden_raddr[H_BITS-1:0]];
+        end
+    end endgenerate
+
     always @(posedge clk) begin
-        if (rst_n && state == EMBED_WAIT && operation == 1 &&
-            embed_input_valid && input_beat_ok)
-            hidden_payload[embed_input_index[H_BITS-1:0]] <= embed_input_data;
-        else if (rst_n && (state == LAYER_WAIT || state == EVAL_WAIT) &&
-            received_valid && h_beat_ok)
-            hidden_payload[received_index[H_BITS-1:0]] <= received_data;
-        else if (rst_n && state == LOGITS_WAIT && logits_store_valid && logits_store_ok)
-            hidden_payload[logits_store_index[H_BITS-1:0]] <= logits_store_data;
         if (rst_n && state == FEATURE_WAIT && eval_output_valid && feature_beat_ok)
             feature_payload[eval_output_index[H_BITS-1:0]] <= eval_output_data;
         else if (rst_n && state == EMBED_WAIT && embed_ple_valid && ple_beat_ok &&
@@ -844,13 +893,6 @@ module anvil_en1_frontier_execute #(
             feature_q <= feature_payload[feature_request_index[H_BITS-1:0]];
         else if (rst_n && source_state == S_LOCAL_READ && source_is_ple_hold)
             ple_q <= feature_payload[source_index_hold[H_BITS-1:0]];
-        if (rst_n && source_state == S_LOCAL_READ) begin
-            if (!source_is_ple_hold)
-                hidden_q <= hidden_payload[source_index_hold[H_BITS-1:0]];
-        end else if (rst_n && state == WRITE_LOW_READ)
-            hidden_q <= hidden_payload[write_component[H_BITS-1:0]];
-        else if (rst_n && state == WRITE_HIGH_READ)
-            hidden_q <= hidden_payload[H_BITS'(write_component + 32'd1)];
     end
 
     always @(posedge clk or negedge rst_n) begin
