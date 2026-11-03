@@ -63,6 +63,7 @@ module anvil_en1_tensor_image #(
         reg [159:0] prior_entry;
         reg [31:0] word_hold;
         reg memory_error_hold, found, header_word_error, entry_word_error;
+        reg ordered_prefix;
         reg [3:0] word_index, error_hold;
         reg [31:0] entry_index, prior_index;
         reg [1:0] product_index;
@@ -78,6 +79,7 @@ module anvil_en1_tensor_image #(
             $bits(address_hold) + $bits(header) + $bits(entry) +
             $bits(prior_entry) + $bits(word_hold) + $bits(memory_error_hold) +
             $bits(found) + $bits(header_word_error) + $bits(entry_word_error) +
+            $bits(ordered_prefix) +
             $bits(word_index) + $bits(error_hold) +
             $bits(entry_index) + $bits(prior_index) + $bits(product_index) +
             $bits(partial_product) + $bits(required_bytes) + $bits(output_base) +
@@ -123,6 +125,11 @@ module anvil_en1_tensor_image #(
             {1'b0, directory_base} + {27'd0, prior_index, 6'd0};
         wire [64:0] prior_end =
             {1'b0, prior_entry[95:32]} + {1'b0, prior_entry[159:96]};
+        wire [15:0] entry_key_layer = entry[31:16] + 16'd1;
+        wire [31:0] entry_order_key = {entry_key_layer, entry[15:0]};
+        // A certified prefix needs only its last key and payload end.
+        wire ordered_successor = entry_order_key > prior_entry[31:0] &&
+            !prior_end[64] && entry_offset >= prior_end[63:0];
         wire [63:0] columns_wide = {32'd0, shape_columns};
         wire [63:0] q4_blocks_exact = (columns_wide + 31) >> 5;
         wire [63:0] q4_bytes = (q4_blocks_exact << 4) + (q4_blocks_exact << 1);
@@ -203,6 +210,7 @@ module anvil_en1_tensor_image #(
                 found <= 0;
                 header_word_error <= 0;
                 entry_word_error <= 0;
+                ordered_prefix <= 0;
                 word_index <= 0;
                 error_hold <= 0;
                 entry_index <= 0;
@@ -230,6 +238,7 @@ module anvil_en1_tensor_image #(
                         found <= 0;
                         header_word_error <= 0;
                         entry_word_error <= 0;
+                        ordered_prefix <= 1;
                         word_index <= 0;
                         error_hold <= 0;
                         entry_index <= 0;
@@ -347,8 +356,12 @@ module anvil_en1_tensor_image #(
                             prior_index <= 0;
                             if (entry_index == 0)
                                 state <= ENTRY_FINISH;
-                            else
+                            else if (ordered_prefix && ordered_successor)
+                                state <= ENTRY_FINISH;
+                            else begin
+                                ordered_prefix <= 0;
                                 state <= PAIR_START;
+                            end
                         end
                     end
                     PAIR_START: begin
@@ -391,6 +404,8 @@ module anvil_en1_tensor_image #(
                         end
                     end
                     ENTRY_FINISH: begin
+                        if (ordered_prefix)
+                            prior_entry <= {entry_bytes, entry_offset, entry_order_key};
                         if (entry[31:0] == {layer_hold, kind_hold}) begin
                             found <= 1;
                             output_base <= payload_sum[63:0];

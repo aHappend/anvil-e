@@ -5,7 +5,70 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current static diagnostic and repair
+### Current repair: workspace widths and bounded directory validation
+
+The retained whole-top failure at `replay_workspace.sv:288` is in
+`evidence/preparation/synthesis-declaration-repair-20261103T043019Z-8fceeaee/receipt.json`.
+The existing typed declarations of `vector_bit_index`, `native_request`,
+`production_text_vector_bytes`, `request_shadow_vector_bytes` and
+`request_vector_bytes` now precede their first uses in that generate scope.
+Their widths, expressions, accounting and arithmetic are unchanged.
+
+The source-matched bounded top diagnostic at
+`evidence/preparation/top-public-progress-20261103T043245Z-b1b56db9/receipt.json`
+stopped incomplete after 2,000,000 cycles: 177755 accepted reads/responses,
+177735 directory reads, no payload reads and no logits. This is not a
+numerical pass or evidence of neural computation.
+
+`tensor_image` now certifies an ordered prefix while still reading and
+validating every header and complete directory entry on every lookup.
+Its bijective comparison key is `{uint16(layer+1), kind}`: global layer
+`0xffff` precedes layer zero without changing the external tensor ID.
+If keys strictly increase and each payload begins at or after the previous
+payload end, transitivity proves all prior identities distinct and all prior
+payloads disjoint. The existing 160-bit `prior_entry` stores the preceding
+key, offset and length in this mode. Once either condition fails, certification
+is permanently disabled for that lookup and the original all-prior external
+scan validates this and every remaining entry. Arbitrary directory and payload
+orderings remain legal; no ordering requirement is added to the image ABI.
+
+| Boundary | Registered behavior |
+| --- | --- |
+| Active reset | Clear certification and all existing public valid outputs |
+| Accepted lookup | Start a new certification; never reuse an earlier image's validation |
+| First fully validated entry | Store its key/offset/length at `ENTRY_FINISH` |
+| Certified successor | Check all existing shape, length, reserved-word, bounds and directory-overlap rules first; advance to `ENTRY_FINISH` without redundant prior rereads |
+| Non-successor | Clear certification before entering the unchanged `PAIR_START`/`PAIR_VALIDATE` scan from prior index zero |
+| Duplicate or overlapping entry | Cannot pass the ordered proof; original scan rejects with error 5 |
+| Memory error or stalled response | Retain registered error-2 retirement and stable response payload; issue no replacement successful result |
+| Last entry and completion | Preserve `FINISH`, `PUBLISH`, `RESPONSE`; no early payload access or early successful response |
+
+This adds one counted controller bit, from 1605 to 1606 bits per reader;
+the rounded charge remains 201 bytes. No RAM, validation cache, tensor copy
+or numerical shortcut is added. For a completely certified directory, the
+address-level read count is `16+16*n`, instead of
+`16+16*n+3*n*(n-1)`: 8656 versus 881836 reads for E2B and 10656 versus
+1335336 for E4B. These are source-derived counts, not measured speedups.
+Repeated lookups still validate the full directory, and unordered images
+retain quadratic worst-case work. End-to-end completion within the existing
+budget remains an independent verification requirement, not a claim here.
+
+Independent Verifier must recheck whole-top synthesis, certified and unordered
+valid directories, duplicate identities with disjoint payloads, nonadjacent
+overlaps, reserved words and length/address faults, reset/stalls/errors, then
+rebuild the source-matched bounded top progress run. No timeout or acceptance
+threshold is changed. Original receipts, tests and parent sources are unchanged.
+
+The single fast static check for these repairs passed: Icarus 12.0
+`-g2012 -t null -s anvil_en1_top`, all native and immutable-parent RTL,
+exit zero, empty stderr and retained hierarchy dump, 14.705 seconds,
+180-second watchdog not reached. Exact expanded command, source hashes,
+version, raw streams and repair provenance are retained at
+`evidence/preparation/static-workspace-directory-repair-20261103T044222Z-7c18f486/receipt.json`.
+RTL hashes cover the saved repairs; document hashes precede this status
+annotation. No functional simulation or synthesis was run by Designer.
+
+### Retained static diagnostics and repairs
 
 The reserved static command ran once with Icarus 12.0:
 `iverilog -g2012 -t null -s anvil_en1_top -N <fresh-output>/elaboration.txt`

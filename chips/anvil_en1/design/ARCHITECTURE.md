@@ -5,7 +5,45 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current handoff: generate-scope declaration-order repair
+## Current handoff: workspace declarations and directory traversal repair
+
+`rtl/anvil_en1_replay_workspace.sv` relocates five existing typed wires
+before their first use, repairing the next whole-top width-resolution failure
+retained at
+`evidence/preparation/synthesis-declaration-repair-20261103T043019Z-8fceeaee/receipt.json`.
+No expression, width, accounting rule or registered behavior changes there.
+
+`rtl/anvil_en1_tensor_image.sv` removes the quadratic prior-reread path
+for entries whose normalized layer/kind keys and disjoint payload ranges
+form an increasing prefix. It reuses the existing prior-entry register;
+one additional certification bit is included in `controller_bytes`, with
+no rounded-byte increase. Every entry still undergoes complete validation.
+Any ordering failure switches permanently to the original exhaustive scan
+for the rest of that lookup, preserving arbitrary-order image compatibility,
+duplicate detection and nonadjacent overlap rejection. SPEC records the
+proof, exact cycle boundaries, counts and required independent cases.
+There is no cross-lookup validation cache or stale-image assumption.
+
+The retained source-matched top progress receipt,
+`evidence/preparation/top-public-progress-20261103T043245Z-b1b56db9/receipt.json`,
+failed incomplete before any tensor payload read or logit. Its 177735 directory
+reads motivated this traversal repair, not a change to the workload or budget.
+The source-derived linear certified-path read counts do not prove top-level
+completion, numerical correctness, synthesis or timing. Independent Verifier
+must rebuild and recheck those outcomes. Tests, immutable references, runtime
+metadata and all prior receipts remain untouched.
+
+One fast static Icarus 12.0 whole-top elaboration passed with exit zero,
+empty stderr and a hierarchy dump in 14.705 seconds, without timeout:
+`evidence/preparation/static-workspace-directory-repair-20261103T044222Z-7c18f486/receipt.json`.
+The existing project retention helper records exact argv, hashes, tool version,
+raw streams and a link to the retained workspace synthesis failure. Its RTL
+hashes include both repairs; document hashes precede this outcome annotation.
+Only `-t null` ran, not functional simulation or synthesis. Independent
+whole-top synthesis and bounded progress rechecks remain required, as do
+all six mandatory suites and the native timing/STA/HIL gates.
+
+## Retained handoff: attention generate-scope declaration-order repair
 
 Both retained whole-top Yosys attempts failed to resolve the width of
 `engine.attention_component_data` in the output-conversion concatenation:

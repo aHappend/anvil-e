@@ -282,6 +282,13 @@ module anvil_en1_replay_workspace #(
         wire private_request = op_hold == 7 && target_hold == 1;
         wire move_history = op_hold == 7 && target_hold == 3;
         wire move_to_memo = op_hold == 3 && target_hold == 2 && request_data == 1;
+        wire [8:0] vector_bit_index = vector_index_hold;
+        wire native_request = domain_hold != 0;
+        wire [31:0] production_text_vector_bytes = model_hold == 1 ? 32'd3072 : 32'd5120;
+        wire [31:0] request_shadow_vector_bytes = domain_hold == 0 || domain_hold == 3 ?
+            production_text_vector_bytes : (domain_hold == 1 ? 32'd1536 : 32'd2048);
+        wire [31:0] request_vector_bytes = COMPACT &&
+            (domain_hold == 0 || domain_hold == 3) ? 32'd16 : request_shadow_vector_bytes;
         wire move_account_valid = vector_reserved[vector_bit_index] &&
             vector_occupied[vector_bit_index] &&
             !pair_progress_valid[vector_bit_index] &&
@@ -364,7 +371,6 @@ module anvil_en1_replay_workspace #(
         wire [8:0] selected_vector_index = ({3'd0, slot_hold} << 2) +
             ({3'd0, slot_hold} << 1) + (bank_hold ? 9'd3 : 9'd0) +
             {7'd0, vector_slice};
-        wire [8:0] vector_bit_index = vector_index_hold;
         wire [8:0] history_source_index =
             ({3'd0, slot_hold} << 2) + ({3'd0, slot_hold} << 1);
         wire history_move_state_valid = slot_hold == top_slot &&
@@ -393,11 +399,6 @@ module anvil_en1_replay_workspace #(
         wire flags_valid = write_first == (pair_index == 0) &&
             write_last == (pair_index == (length_hold >> 1) - 1'b1);
         wire [7:0] allocated_frames = {1'b0, depth} + {7'd0, pending_push};
-        wire [31:0] production_text_vector_bytes = model_hold == 1 ? 32'd3072 : 32'd5120;
-        wire [31:0] request_shadow_vector_bytes = domain_hold == 0 || domain_hold == 3 ?
-            production_text_vector_bytes : (domain_hold == 1 ? 32'd1536 : 32'd2048);
-        wire [31:0] request_vector_bytes = COMPACT &&
-            (domain_hold == 0 || domain_hold == 3) ? 32'd16 : request_shadow_vector_bytes;
         wire [31:0] request_frame_bytes = domain_hold == 2 ? 32'd12288 :
             request_vector_bytes << 1;
         wire [31:0] request_shadow_frame_bytes = domain_hold == 2 ? 32'd12288 :
@@ -438,7 +439,6 @@ module anvil_en1_replay_workspace #(
         wire [63:0] shadow_scalars = live_scalars;
         wire [63:0] shadow_memos = {32'd0, shadow_memo_payload_bytes} +
             (pending_memo ? {32'd0, request_shadow_vector_bytes} : 64'd0);
-        wire native_request = domain_hold != 0;
         wire native_pop = response_tag[38:37] != 0;
         wire native_victim = memo_occupied[slot_hold[3:0]] &&
             replaced_memo_domain != 0;
