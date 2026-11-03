@@ -169,7 +169,7 @@ module anvil_en1_replay_execute #(
         (domain_hold == 2 ? 8'd13 : (layer_hold == 1 ? 8'd15 : 8'd14));
     wire [15:0] native_reservation_bytes = domain_hold == 1 ?
         (input_worker ? 16'd0 : 16'd4608) :
-        (domain_hold == 2 ? (input_worker ? 16'd512 : 16'd16384) :
+        (domain_hold == 2 ? (input_worker ? 16'd512 : 16'd10240) :
             (layer_hold == 1 ? 16'd6432 : 16'd6144));
     wire [63:0] native_reservation = rst_n && native_reserved ?
         {48'd0, native_reservation_bytes} : 64'd0;
@@ -216,6 +216,7 @@ module anvil_en1_replay_execute #(
     wire [31:0] write_data;
     wire [3:0] work_rsp_error;
     wire [63:0] workspace_controller_bytes;
+    wire history_move_read_event;
     anvil_en1_eval_schedule #(.COMPACT(COMPACT)) scheduler (
         .clk(clk), .rst_n(rst_n),
         .grant_valid(grant_valid), .grant_ready(grant_ready),
@@ -274,6 +275,7 @@ module anvil_en1_replay_execute #(
         .backing_reserved_bytes(backing_reserved_bytes),
         .visibility_metadata_bytes(visibility_metadata_bytes),
         .memo_hit_event(memo_hit_event), .memo_eviction_event(memo_eviction_event),
+        .history_move_read_event(history_move_read_event),
         .backing_valid(backing_valid), .backing_ready(backing_ready),
         .backing_generation(backing_generation), .backing_write(backing_write),
         .backing_addr(backing_addr), .backing_wdata(backing_wdata),
@@ -1058,9 +1060,11 @@ module anvil_en1_replay_execute #(
     assign query_projection_event = text_query_event;
     assign query_projection_bytes = text_query_bytes;
     assign source_read_event = text_source_event || vision_source_event ||
-        audio_layer_source_event || feature_source_event || image_feature_source_event;
+        audio_layer_source_event || feature_source_event || image_feature_source_event ||
+        history_move_read_event;
     assign source_read_bytes = text_source_bytes + vision_source_bytes +
-        audio_layer_source_bytes + feature_source_bytes + image_feature_source_bytes;
+        audio_layer_source_bytes + feature_source_bytes + image_feature_source_bytes +
+        (history_move_read_event ? 32'd4 : 32'd0);
     assign embedding_live_bytes = input_embedding_live + text_embedding_live;
     assign embedding_shadow_bytes = input_embedding_shadow + text_embedding_shadow;
     assign embedding_physical_bytes = rst_n ?

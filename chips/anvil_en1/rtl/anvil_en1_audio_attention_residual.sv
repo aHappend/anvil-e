@@ -544,7 +544,7 @@ module anvil_en1_audio_attention_residual #(
                     row_hold <= 0;
                     head_hold <= 0;
                     raw_allocated <= 1;
-                    cache_allocated <= 1;
+                    cache_allocated <= !FRAME_HEADS;
                     head_allocated <= 0;
                     working_allocated <= 0;
                     raw_visible <= 0;

@@ -54,6 +54,7 @@ module anvil_en1_replay_workspace #(
     input wire memo_pin_valid,
     input wire [3:0] memo_pin_slot,
     output wire memo_hit_event, memo_eviction_event,
+    output wire history_move_read_event,
     output wire backing_valid,
     input wire backing_ready,
     output wire [31:0] backing_generation,
@@ -101,6 +102,7 @@ module anvil_en1_replay_workspace #(
         assign grant_rsp_ready = 0;
         assign memo_hit_event = 0;
         assign memo_eviction_event = 0;
+        assign history_move_read_event = 0;
         assign backing_valid = 0;
         assign backing_generation = 0;
         assign backing_write = 0;
@@ -277,6 +279,7 @@ module anvil_en1_replay_workspace #(
         wire request_session_valid = active && native_model &&
             request_generation == generation_hold;
         wire private_request = op_hold == 7 && target_hold == 1;
+        wire move_history = op_hold == 7 && target_hold == 3;
         wire move_to_memo = op_hold == 3 && target_hold == 2 && request_data == 1;
         wire move_account_valid = vector_reserved[vector_bit_index] &&
             vector_occupied[vector_bit_index] &&
@@ -318,7 +321,7 @@ module anvil_en1_replay_workspace #(
             request_data == {private_shadow_bytes, private_actual_bytes};
         wire [15:0] native_private_bytes = domain_hold == 1 ?
             (layer_hold == 0 ? 16'd0 : 16'd4608) :
-            (domain_hold == 2 ? (layer_hold == 0 ? 16'd512 : 16'd16384) :
+            (domain_hold == 2 ? (layer_hold == 0 ? 16'd512 : 16'd10240) :
                 (layer_hold == 1 ? 16'd6432 : 16'd6144));
         wire native_private_descriptor_valid =
             ((domain_hold == 1 && layer_hold <= 16 && scalar_index_hold == 12) ||
@@ -335,15 +338,18 @@ module anvil_en1_replay_workspace #(
             ({26'd0, slot_hold} << 11) + ({26'd0, slot_hold} << 10);
         wire vector_operation = op_hold == 3 || op_hold == 4 ||
             (op_hold == 6 && target_hold >= 2) ||
-            (op_hold == 7 && target_hold == 2);
+            (op_hold == 7 && target_hold >= 2);
         wire [1:0] vector_slice = domain_hold == 2 && vector_operation ?
             scalar_index_hold[1:0] : 2'd0;
         wire slice_valid = scalar_index_hold == 0 ||
             (domain_hold == 2 && scalar_index_hold < 3 &&
                 ((op_hold == 4 && target_hold == 0) ||
                  (op_hold == 6 && target_hold == 2) ||
-                 (op_hold == 7 && target_hold == 2)));
+                 (op_hold == 7 && target_hold >= 2)));
         wire release_descriptor_valid = component_hold == 0 && request_data == 0;
+        wire history_move_descriptor_valid = domain_hold == 2 &&
+            layer_hold != 0 && release_descriptor_valid &&
+            (bank_hold ? scalar_index_hold < 3 : scalar_index_hold == 2);
         wire [31:0] vector_base = frame_base +
             (bank_hold ? 32'(BANK_WORDS) : 32'd0) +
             ({30'd0, vector_slice} << 9);
@@ -357,14 +363,26 @@ module anvil_en1_replay_workspace #(
             ({3'd0, slot_hold} << 1) + (bank_hold ? 9'd3 : 9'd0) +
             {7'd0, vector_slice};
         wire [8:0] vector_bit_index = vector_index_hold;
+        wire [8:0] history_source_index =
+            ({3'd0, slot_hold} << 2) + ({3'd0, slot_hold} << 1);
+        wire history_move_state_valid = slot_hold == top_slot &&
+            vector_reserved[history_source_index] &&
+            vector_occupied[history_source_index] &&
+            !pair_progress_valid[history_source_index] &&
+            !vector_reserved_q && !vector_present_q && !pair_active_q &&
+            frame_payload_bytes >= request_vector_bytes &&
+            shadow_frame_payload_bytes >= request_shadow_vector_bytes &&
+            native_frame_payload_bytes >= request_vector_bytes &&
+            native_shadow_frame_bytes >= request_shadow_vector_bytes;
         wire [11:0] expected_pair_component = {pair_index_q, 1'b0};
         wire [31:0] selected_vector_base = target_hold == 0 ? vector_base : memo_base;
         wire [31:0] copy_frame_base =
             ({26'd0, copy_source_slot} << 11) +
                 ({26'd0, copy_source_slot} << 10);
-        wire [31:0] copy_source_base = target_hold == 3 ?
+        wire [31:0] copy_source_base = move_history ? frame_base :
+            (target_hold == 3 ?
             32'(MEMO_BASE) + ({26'd0, copy_source_slot} << (COMPACT ? 9 : 11)) :
-            copy_frame_base + (bank_hold ? 32'(BANK_WORDS) : 32'd0);
+            copy_frame_base + (bank_hold ? 32'(BANK_WORDS) : 32'd0));
         wire [31:0] copy_destination_base = target_hold == 3 ? vector_base : memo_base;
         wire [TAG_BITS-1:0] copy_memo_tag = {model_hold, generation_hold,
             domain_hold, request_data[25:18], request_data[16:0], length_hold};
@@ -518,6 +536,8 @@ module anvil_en1_replay_workspace #(
         assign memo_eviction_event = rst_n && eviction_pulse;
         wire backing_in_range = {14'd0, backing_address_hold} < TOTAL_WORDS;
         assign backing_valid = rst_n && state == BACKING_SEND && backing_in_range;
+        assign history_move_read_event = move_history && backing_valid &&
+            backing_ready && !backing_write_hold;
         assign backing_generation = rst_n ? generation_hold : 32'd0;
         assign backing_write = rst_n && backing_write_hold;
         assign backing_addr = rst_n ? backing_address_hold : 18'd0;
@@ -769,7 +789,7 @@ module anvil_en1_replay_workspace #(
                             state <= PUBLISH;
                         end else if ((op_hold == 6 &&
                             target_hold != 0 && target_hold != 2 && target_hold != 3) ||
-                            (op_hold == 7 && target_hold > 2)) begin
+                            (move_history && !history_move_descriptor_valid)) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else if (op_hold == 7 && target_hold == 2 &&
@@ -861,6 +881,24 @@ module anvil_en1_replay_workspace #(
                                 state <= READ_SETUP;
                         end else if (op_hold == 6 && target_hold >= 2)
                             state <= PAIR_SETUP;
+                        else if (move_history) begin
+                            if (!history_move_state_valid) begin
+                                error_hold <= 7;
+                                state <= PUBLISH;
+                            end else begin
+                                // One reservation covers the unread suffix and copied prefix.
+                                vector_reserved[history_source_index] <= 0;
+                                vector_occupied[history_source_index] <= 0;
+                                pair_progress_valid[history_source_index] <= 0;
+                                pair_next_index[11*history_source_index+:11] <= 0;
+                                vector_reserved[vector_bit_index] <= 1;
+                                vector_occupied[vector_bit_index] <= 0;
+                                pair_progress_valid[vector_bit_index] <= 0;
+                                pair_next_index[11*vector_bit_index+:11] <= 0;
+                                response_slot <= slot_hold;
+                                state <= COPY_READ;
+                            end
+                        end
                         else if (op_hold == 7 && target_hold == 2) begin
                             if (!vector_reserved_q || !vector_present_q || pair_active_q ||
                                 frame_payload_bytes < request_vector_bytes ||

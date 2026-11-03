@@ -76,6 +76,7 @@ module anvil_en1_eval_schedule #(
     output wire grant_rsp_ready,
     input wire grant_allowed,
     output wire memo_hit_event, memo_eviction_event,
+    output wire history_move_read_event,
     output wire backing_valid,
     input wire backing_ready,
     output wire [31:0] backing_generation,
@@ -209,6 +210,7 @@ module anvil_en1_eval_schedule #(
             work_req_target == 0 && current_work_tag && work_req_scalar_index >= 8) ||
         (work_req_op == 7 && work_req_target == 1 && current_work_tag) ||
         (work_req_op == 7 && work_req_target == 2 && current_work_tag) ||
+        (work_req_op == 7 && work_req_target == 3 && current_work_tag) ||
         (work_req_op == 6 && work_req_target >= 2 && current_work_tag);
     wire pass_request = rst_n && state == TASK_WAIT && !pass_busy &&
         !task_done_valid && work_req_valid;
@@ -285,6 +287,7 @@ module anvil_en1_eval_schedule #(
         .visibility_metadata_bytes(visibility_metadata_bytes),
         .controller_bytes(workspace_controller_bytes),
         .memo_hit_event(memo_hit_event), .memo_eviction_event(memo_eviction_event),
+        .history_move_read_event(history_move_read_event),
         .backing_valid(backing_valid), .backing_ready(backing_ready),
         .backing_generation(backing_generation), .backing_write(backing_write),
         .backing_addr(backing_addr), .backing_wdata(backing_wdata),

@@ -5,7 +5,88 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: predecessor-first audio chains at later tokens
+## Current saved increment: frame-backed audio private-bank reconciliation
+
+The replay post-attention worker already disables local head/cache RAM
+accesses under `FRAME_HEADS=1`, but job acceptance still reserved the unused
+normalized cache. Its allocation flag now follows `!FRAME_HEADS`, as the
+cache-rebuild path already does. Standalone numerical behavior is unchanged.
+
+The connected frame-backed post worker's live-vector maximum is 10240
+bytes: its 2048-byte raw reservation plus the pre-attention working bank
+(2048) plus the feed-forward child's three banks (6144). The feed-forward
+response retires before pre-attention normalization; pre-attention retires
+before the outer working bank is admitted. Projection, output normalization
+and residual addition then retain only raw+working, 4096 bytes, through
+output and completion stalls. The complete private audio maximum, including
+the other serialized children, is max(10240 heads, 10240 post, 6144
+convolution/GLU, 6144 feed-forward) = 10240 bytes.
+
+The residual's post-overrun guard, layer's history-overrun guard, dispatcher
+admission descriptor and workspace descriptor validator all use this bound.
+They still observe the full child sums and reject coexistence; no observed
+allocation is replaced by a phase-selected value. Layer-zero admission
+remains 512 bytes. All scalar/controller and suspended workspace charges
+remain independent. Physical RAM and declared controller counts are
+unchanged; the conservative ordinary-text envelope remains <=32200 bytes.
+
+This retires the false frame-backed cache reservation and reconciles this
+private subtree's phase maximum, saving 6144 bytes of conservative audio
+preflight allowance. The prior minimum-context E2B scratch remainder becomes
+42555 bytes before frame/scalar/memo/feature allocations. It is not a
+whole-system fit or a reduction of six-slice suspended history.
+
+Saved changes: `rtl/anvil_en1_audio_attention_residual.sv`,
+`rtl/anvil_en1_replay_audio_residual.sv`,
+`rtl/anvil_en1_replay_audio_layer.sv`,
+`rtl/anvil_en1_replay_execute.sv`,
+`rtl/anvil_en1_replay_workspace.sv`, SPEC and this document.
+Actual tools: glob, view, rg and apply_patch. No elaboration, functional
+simulation, synthesis or preparation receipt was produced. Tests, immutable
+parent sources, original failures and runtime metadata remain untouched.
+Remaining: suspended-history storage and finite legal deep-native/fallback
+partition reconciliation, then reserved static elaboration and independent
+Verifier handoff.
+
+## Prior saved increment: consuming audio-history relocation
+
+The nonfinal audio residual now uses a connected workspace consuming move,
+`op=7,target=3`, instead of the history worker's per-pair read/write loop
+followed by source release. The move is restricted to the fully tagged top
+audio frame, from committed bank-0/slice-0 scratch to an empty legal history
+slice. It transfers reservation ownership atomically, copies actual data
+through the existing backing FSM, and commits destination visibility only
+after the final successful write response. During transfer, one complete
+2048-byte reservation covers the remaining source suffix and completed
+destination prefix. On failure both representations are unreadable and the
+reservation remains charged until pop/invalidation.
+
+The numerical history traversal and convolution layout are unchanged.
+Attention's dead slice 1 still retires first; the final residual still stays
+in scratch. Source reads are counted from actual accepted backing reads,
+including failed responses, through workspace/scheduler/dispatcher wiring,
+not inferred from accepting a complete move. No additional RAM, sequential
+workspace state or external transaction is introduced. Removing the history
+pair register, component cursor, release flag and one FSM bit removes
+46 declared controller bits; physical payload capacity is unchanged.
+
+This retires the nonfinal-history copy overlap milestone: one extra
+2048-byte vector is no longer needed while relocating a completed residual.
+It does **not** reduce the six-slice suspended audio ceiling, prove the
+minimum-context native-scratch budget, or establish complete fallback fit.
+The conservative <=32200-byte E2B C=64 text bound remains an upper bound.
+
+Saved changes: `rtl/anvil_en1_replay_audio_history.sv`,
+`rtl/anvil_en1_replay_workspace.sv`, `rtl/anvil_en1_eval_schedule.sv`,
+`rtl/anvil_en1_replay_execute.sv`, SPEC and this document. Actual tools:
+glob, view, rg and apply_patch. No elaboration, functional simulation,
+synthesis or preparation receipt was produced. Tests, immutable parent
+sources, original failures and runtime metadata remain untouched.
+Remaining: suspended-history storage, complete native/deep-frame/fallback
+partition feasibility and per-instance accounting, then the reserved fast
+static elaboration and independent-Verifier handoff.
+
+## Prior saved increment: predecessor-first audio chains at later tokens
 
 `anvil_en1_eval_schedule.sv` now admits the ascending-layer audio schedule
 for every legal audio token, including nested dependency misses. Each chain

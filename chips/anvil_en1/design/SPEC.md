@@ -5,7 +5,129 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: predecessor-first replay for every native audio token
+### Current increment: frame-backed audio private-bank reconciliation
+
+The connected replay residual instantiates `audio_attention_residual` with
+`FRAME_HEADS=1`. In that mode the head projection reads the real workspace
+head vector. The worker never writes or reads its local `heads` or
+`normalized_source` arrays: both accesses are guarded by `!FRAME_HEADS`.
+Its job-acceptance assignment nevertheless marked the unused normalized
+cache allocated. That assignment now matches the existing cache-rebuild
+assignment, `cache_allocated <= !FRAME_HEADS`. Standalone mode retains its
+original allocation and numerical behavior.
+
+The complete source-derived live-vector envelope for this connected instance
+is 10240 bytes, rather than the previous conservative 16384-byte envelope:
+
+| Phase / transition | Live private storage, excluding separately charged workspace |
+| --- | --- |
+| Job acceptance / pre-attention start | One 2048-byte raw-residual reservation; no local head/cache reservation |
+| Pre-attention feed-forward | Outer raw 2048 + pre-attention working 2048 + feed-forward's three 2048-byte banks = 10240 bytes |
+| Pre-attention normalization / held completion | Outer raw 2048 + pre-attention working 2048 = 4096 bytes; feed-forward releases its banks when its done response is accepted, before normalization starts |
+| Successful pre-check / output projection | Pre-attention has retired; outer raw 2048 + output working 2048 = 4096 bytes |
+| Output norm / residual addition / held completion | The same raw and working banks stay charged through output stalls and the held done response |
+| Failure | Keep all still-allocated banks charged through the existing child drain and response retirement; no early release or success-shaped fallback |
+| Active reset | Allocation/visibility flags and public reports clear through existing reset behavior |
+
+`audio_pre_attention` reports its own working reservation **plus**
+`audio_feedforward.vector_live_bytes`; the latter charges all three banks
+until its response retires. `audio_attention_residual` adds that whole
+child report to every live outer allocation flag. No selected-child mux or
+inferred phase value replaces these independent observations. Native MLP,
+norm, projection and clamp descendants in this branch contain scalar
+arithmetic/controller state, already reported separately, not additional
+unreported vector banks.
+
+The replay residual's post-phase overrun guard and audio layer's history
+overrun guard now both enforce 10240 bytes, while preserving their
+pairwise-coexistence checks. Replay dispatcher field-13 admission and the
+workspace's independently validated field-13 descriptor both use 10240
+bytes for audio layers 1..12. The complete audio private maximum is thus
+max(10240 replay heads, 10240 post-attention, 6144 convolution/GLU,
+6144 feed-forward) = 10240 bytes. Layer-zero subsampling stays 512 bytes.
+Prospective admission and the actual child-sum observer remain separate;
+an observed overrun is still error 7, never a silently clipped report.
+
+This removes a false 2048-byte live-bank reservation and tightens the
+conservative admission envelope by 6144 bytes. It does not remove physical
+RAM, controller declarations, frame slices, scalar continuations, memo
+entries or preserved modality features. Applying only this admission delta
+to the previously documented 36411-byte minimum-context E2B remainder
+leaves 42555 bytes before those other live native allocations. Neither
+remainder establishes that legal deep replay fits.
+
+Independent verification must compare both FRAME_HEADS configurations,
+both precisions, pre-attention raw/normalized stream ordering, child
+completion and output stalls, failures in each private phase, and reset.
+It must check the actual child sum against the grant and account every
+suspended history slice separately. The six-slice suspended-history
+ceiling, native/deep-frame/fallback feasibility and final per-instance
+reconciliation remain open. No diagnostic, simulation or synthesis was
+run; the reserved static elaboration remains pending design closure.
+
+### Prior increment: consuming audio-history relocation
+
+The packed audio-history worker now moves each nonfinal completed residual
+from scratch bank 0/slice 0 to its existing retained-history destination.
+It no longer reserves a second complete vector while copying the first.
+The numerical residual, history order, history destinations, final scratch
+residual and subsequent convolution callbacks are unchanged. This removes
+the copy-phase duplicate, not the six-slice worst-case suspension envelope.
+
+The internal workspace operation is `op=7,target=3`. It requires the complete
+current top-frame descriptor, domain 2, layer 1..12, component/data zero, and
+destination bank 0/slice 2 or bank 1/slice 0..2. The source is always that
+frame's bank 0/slice 0. No new top-level port, vector bank, continuation
+field, external-memory request class or model operation is introduced.
+
+| Pre-edge / post-edge boundary | Relocation behavior |
+| --- | --- |
+| Request acceptance | Register the descriptor through the existing workspace request path; no backing access occurs on acceptance |
+| Validation | Reject malformed fields with error 5; reject a stale/non-top frame, uncommitted/partial source, occupied/reserved/partial destination or invalid actual/native/shadow accounting with error 7 |
+| Registered tag check / ownership transfer | Atomically clear source reservation/visibility/progress and reserve the destination without committing its visibility; preserve all four frame payload subtotals |
+| Copy read / capture / write | Reuse the existing serialized backing FSM and its registered pair temporaries for all 512 pairs; the one 2048-byte reservation covers the unread source suffix and acknowledged destination prefix |
+| Final successful write response | Commit destination visibility only through the existing `VECTOR_COMMIT` stage, then publish the held workspace response |
+| Backing failure | Retire the actual response and return its error; neither source nor incomplete destination is readable; the destination reservation remains charged until frame pop or invalidation |
+| History continuation | Advance distance only after the successful relocation response; do not issue a separate source release or admit a successor while the move is outstanding |
+| Reset / invalidation | Preserve existing backing-generation cancellation and drain semantics; reset clears both source and destination validity |
+
+Source and destination are disjoint 512-word regions. Source contents become
+private to the move FSM as soon as the ownership transfer commits; public
+frame reads cannot access them. Already copied source pairs are dead rather
+than a second live representation. The destination's full reservation remains
+charged throughout copy stalls and failures. Scalar `copy_data`,
+`backing_result` and response registers retain their existing controller
+charges. Since no aggregate payload grows, relocation needs no new capacity
+grant and does not evict a memo or bypass a previously required growth grant.
+Physical backing capacity is unchanged.
+
+The history worker still releases dead attention output slice 1 before this
+move, or before publishing the final residual. Its old pair-data register,
+component cursor and release-selection flag are removed; the smaller FSM
+encoding removes one more bit, for 46 fewer declared controller bits.
+Workspace, scheduler and dispatcher add only wires. The conservative
+<=32200-byte E2B C=64 text envelope is retained as an upper bound, not a new
+measured allocation claim.
+
+The workspace reports each **accepted backing read** of a history move to
+the dispatcher through `history_move_read_event`. The dispatcher adds exactly
+four internal source-read bytes per event, including a read whose later
+response fails. It does not infer a 2048-byte read from move acceptance.
+The history worker no longer reports the eliminated per-pair workspace-read
+requests, avoiding double counting. These are internal transfers, not DDR
+reads or reduced total external traffic.
+
+Independent verification must cover every destination, full data equality,
+source unreadability after transfer, destination unreadability before final
+commit, rejected live/partial/stale destinations and sources, non-top moves,
+every read/write error and stall boundary, source-read event counts, frame
+pop, reset/invalidation, and unchanged yield/resume and convolution results.
+Whole-system native/deep-frame/fallback feasibility and the six-slice
+suspended-history bound remain open. No elaboration, simulation, synthesis
+or preparation receipt was produced in this increment; the reserved static
+elaboration remains pending complete design closure.
+
+### Prior increment: predecessor-first replay for every native audio token
 
 The scheduler now uses its ascending-layer audio chain for every legal audio
 token, not only token zero. Direct audio roots and missed nested audio
@@ -1776,7 +1898,7 @@ compact text builds, so actual and production-shadow envelopes are equal.
 | 12 | Vision domain 1, frame layer 0 | 0: patch reconstruction streams scalar arithmetic, with no private vector bank |
 | 12 | Vision domain 1, frame layers 1..16 | 4608: guarded phase maximum of projected branch 1536, input/head tile 1664 and post raw/branch/MLP 4608 |
 | 13 | Audio domain 2, frame layer 0 | 512: both 256-byte subsample point banks |
-| 13 | Audio domain 2, frame layers 1..12 | 16384: guarded phase maximum of replay-head cache/pre-attention 10240, post-attention outer/pre-attention upper bound 16384, convolution/GLU 6144 and feed-forward 6144 |
+| 13 | Audio domain 2, frame layers 1..12 | 10240: guarded phase maximum of replay-head cache/pre-attention 10240, frame-backed post-attention raw/pre-attention 10240, convolution/GLU 6144 and feed-forward 6144 |
 | 14 | Reconstructed-feature domain 3, frame layer 2 | 6144: projected audio 3072 and modality-input 3072 |
 | 15 | Reconstructed-feature domain 3, frame layer 1 | 6432: complete declared mask-bank envelope 3360, pooled vision 1536 and modality-input 1536 |
 

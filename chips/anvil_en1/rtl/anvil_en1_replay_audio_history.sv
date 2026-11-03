@@ -57,27 +57,25 @@ module anvil_en1_replay_audio_history #(
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
     output wire [63:0] controller_bytes, nested_controller_bytes
 );
-    localparam [4:0] IDLE = 0, VALIDATE = 1, CHILD_START = 2,
-        CHILD_WAIT = 3, CHILD_CHECK = 4, READ_SEND = 5, READ_WAIT = 6,
-        READ_REGISTER = 7, WRITE_SEND = 8, WRITE_WAIT = 9,
-        WRITE_REGISTER = 10, ADVANCE = 11, PUBLISH = 12, RESPONSE = 13,
-        RELEASE_SEND = 14, RELEASE_WAIT = 15, RELEASE_REGISTER = 16;
+    localparam [3:0] IDLE = 0, VALIDATE = 1, CHILD_START = 2,
+        CHILD_WAIT = 3, CHILD_CHECK = 4, MOVE_SEND = 5, MOVE_WAIT = 6,
+        MOVE_REGISTER = 7, ADVANCE = 8, PUBLISH = 9, RESPONSE = 10,
+        RELEASE_SEND = 11, RELEASE_WAIT = 12, RELEASE_REGISTER = 13;
     localparam [31:0] HISTORY_MAGIC = 32'h454e314c;
     localparam [31:0] INPUT_MAGIC = 32'h454e3148;
     localparam [31:0] HEAD_MAGIC = 32'h454e3141;
-    reg [4:0] state;
+    reg [3:0] state;
     reg [1:0] model_hold, precision_hold, mode_hold, child_mode;
     reg [1:0] dependency_domain_hold, yielded_domain;
     reg [31:0] generation_hold, frames_hold, query_hold, dependency_token_hold;
-    reg [31:0] yielded_token, pair_hold;
+    reg [31:0] yielded_token;
     reg [7:0] layer_hold, dependency_layer_hold, yielded_layer;
     reg [5:0] slot_hold, dependency_slot_hold;
-    reg [11:0] dependency_length_hold, yielded_length, component_hold;
+    reg [11:0] dependency_length_hold, yielded_length;
     reg [2:0] distance_hold;
     reg [63:0] audio_hold, weights_hold;
     reg [159:0] continuation_hold, child_continuation, yielded_continuation;
     reg dependency_valid_hold, child_yield_hold, child_bank_hold, yield_hold;
-    reg release_input;
     reg [3:0] error_hold, child_error_hold, work_error_hold;
 
     initial begin
@@ -179,9 +177,9 @@ module anvil_en1_replay_audio_history #(
         (child_op == 6 && child_target >= 2) ||
         (child_op == 3 && (child_target == 0 || child_target == 3));
     assign work_req_valid = (child_selected && child_work_valid) ||
-        (rst_n && (state == READ_SEND || state == WRITE_SEND || state == RELEASE_SEND));
+        (rst_n && (state == MOVE_SEND || state == RELEASE_SEND));
     assign work_rsp_ready = (child_selected && child_work_rsp_ready) ||
-        (rst_n && (state == READ_WAIT || state == WRITE_WAIT || state == RELEASE_WAIT));
+        (rst_n && (state == MOVE_WAIT || state == RELEASE_WAIT));
     always @* begin
         work_req_op = 0;
         work_req_domain = 0;
@@ -212,24 +210,20 @@ module anvil_en1_replay_audio_history #(
                 work_req_token = query_hold;
                 work_req_layer = layer_hold;
                 work_req_length = 1024;
-                work_req_component = component_hold;
                 work_req_slot = slot_hold;
                 if (state == RELEASE_SEND || state == RELEASE_WAIT ||
                     state == RELEASE_REGISTER) begin
                     work_req_op = 7;
                     work_req_target = 2;
                     work_req_component = 0;
-                    work_req_scalar_index = release_input ? 8'd0 : 8'd1;
-                end else if (state == READ_SEND || state == READ_WAIT || state == READ_REGISTER)
-                    work_req_op = 4;
-                else if (state == WRITE_SEND || state == WRITE_WAIT ||
-                    state == WRITE_REGISTER) begin
-                    work_req_op = 6;
-                    work_req_target = 2;
+                    work_req_scalar_index = 1;
+                end else if (state == MOVE_SEND || state == MOVE_WAIT ||
+                    state == MOVE_REGISTER) begin
+                    work_req_op = 7;
+                    work_req_target = 3;
                     work_req_bank = distance_hold != 0;
                     work_req_scalar_index = distance_hold == 0 ? 8'd2 :
                         {5'd0, distance_hold} - 8'd1;
-                    work_req_data = pair_hold;
                 end
             end
         end
@@ -250,9 +244,8 @@ module anvil_en1_replay_audio_history #(
     assign done_dependency_layer = done_yield ? yielded_layer : 8'd0;
     assign done_dependency_token = done_yield ? yielded_token : 32'd0;
     assign done_dependency_length = done_yield ? yielded_length : 12'd0;
-    wire copy_read_event = rst_n && state == READ_SEND && work_req_ready;
-    assign source_read_event = child_source_event || copy_read_event;
-    assign source_read_bytes = child_source_bytes + (copy_read_event ? 32'd4 : 32'd0);
+    assign source_read_event = child_source_event;
+    assign source_read_bytes = child_source_bytes;
     assign history_replay_event = rst_n && state == CHILD_START && child_ready &&
         child_mode != 1 && distance_hold != 0;
     assign history_replay_bytes = history_replay_event ? 32'd2048 : 32'd0;
@@ -263,14 +256,14 @@ module anvil_en1_replay_audio_history #(
         $bits(state) + $bits(model_hold) + $bits(precision_hold) + $bits(mode_hold) +
         $bits(child_mode) + $bits(dependency_domain_hold) + $bits(yielded_domain) +
         $bits(generation_hold) + $bits(frames_hold) + $bits(query_hold) +
-        $bits(dependency_token_hold) + $bits(yielded_token) + $bits(pair_hold) +
+        $bits(dependency_token_hold) + $bits(yielded_token) +
         $bits(layer_hold) + $bits(dependency_layer_hold) + $bits(yielded_layer) +
         $bits(slot_hold) + $bits(dependency_slot_hold) + $bits(dependency_length_hold) +
-        $bits(yielded_length) + $bits(component_hold) + $bits(distance_hold) +
+        $bits(yielded_length) + $bits(distance_hold) +
         $bits(audio_hold) + $bits(weights_hold) + $bits(continuation_hold) +
         $bits(child_continuation) + $bits(yielded_continuation) +
         $bits(dependency_valid_hold) + $bits(child_yield_hold) + $bits(child_bank_hold) +
-        $bits(yield_hold) + $bits(release_input) + $bits(error_hold) +
+        $bits(yield_hold) + $bits(error_hold) +
         $bits(child_error_hold) + $bits(work_error_hold);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
 
@@ -288,7 +281,6 @@ module anvil_en1_replay_audio_history #(
             query_hold <= 0;
             dependency_token_hold <= 0;
             yielded_token <= 0;
-            pair_hold <= 0;
             layer_hold <= 0;
             dependency_layer_hold <= 0;
             yielded_layer <= 0;
@@ -296,7 +288,6 @@ module anvil_en1_replay_audio_history #(
             dependency_slot_hold <= 0;
             dependency_length_hold <= 0;
             yielded_length <= 0;
-            component_hold <= 0;
             distance_hold <= 0;
             audio_hold <= 0;
             weights_hold <= 0;
@@ -307,7 +298,6 @@ module anvil_en1_replay_audio_history #(
             child_yield_hold <= 0;
             child_bank_hold <= 0;
             yield_hold <= 0;
-            release_input <= 0;
             error_hold <= 0;
             child_error_hold <= 0;
             work_error_hold <= 0;
@@ -334,15 +324,12 @@ module anvil_en1_replay_audio_history #(
                     dependency_length_hold <= dependency_length;
                     dependency_slot_hold <= dependency_slot;
                     distance_hold <= 0;
-                    component_hold <= 0;
-                    pair_hold <= 0;
                     error_hold <= 0;
                     child_error_hold <= 0;
                     work_error_hold <= 0;
                     child_yield_hold <= 0;
                     child_bank_hold <= 0;
                     yield_hold <= 0;
-                    release_input <= 0;
                     yielded_domain <= 0;
                     yielded_layer <= 0;
                     yielded_token <= 0;
@@ -423,41 +410,21 @@ module anvil_en1_replay_audio_history #(
                         error_hold <= 7;
                         state <= PUBLISH;
                     end else begin
-                        release_input <= 0;
                         state <= RELEASE_SEND;
                     end
                 end
-                READ_SEND: if (work_req_ready)
-                    state <= READ_WAIT;
-                READ_WAIT: if (work_rsp_valid) begin
-                    pair_hold <= work_rsp_data;
+                MOVE_SEND: if (work_req_ready)
+                    state <= MOVE_WAIT;
+                MOVE_WAIT: if (work_rsp_valid) begin
                     work_error_hold <= work_rsp_error;
-                    state <= READ_REGISTER;
+                    state <= MOVE_REGISTER;
                 end
-                READ_REGISTER: begin
+                MOVE_REGISTER: begin
                     if (work_error_hold != 0) begin
                         error_hold <= work_error_hold;
                         state <= PUBLISH;
                     end else
-                        state <= WRITE_SEND;
-                end
-                WRITE_SEND: if (work_req_ready)
-                    state <= WRITE_WAIT;
-                WRITE_WAIT: if (work_rsp_valid) begin
-                    work_error_hold <= work_rsp_error;
-                    state <= WRITE_REGISTER;
-                end
-                WRITE_REGISTER: begin
-                    if (work_error_hold != 0) begin
-                        error_hold <= work_error_hold;
-                        state <= PUBLISH;
-                    end else if (component_hold == 1022) begin
-                        release_input <= 1;
-                        state <= RELEASE_SEND;
-                    end else begin
-                        component_hold <= component_hold + 12'd2;
-                        state <= READ_SEND;
-                    end
+                        state <= ADVANCE;
                 end
                 RELEASE_SEND: if (work_req_ready)
                     state <= RELEASE_WAIT;
@@ -469,22 +436,16 @@ module anvil_en1_replay_audio_history #(
                     if (work_error_hold != 0) begin
                         error_hold <= work_error_hold;
                         state <= PUBLISH;
-                    end else if (release_input)
-                        state <= ADVANCE;
-                    else if (distance_hold == last_distance)
+                    end else if (distance_hold == last_distance)
                         state <= PUBLISH;
-                    else begin
-                        component_hold <= 0;
-                        state <= READ_SEND;
-                    end
+                    else
+                        state <= MOVE_SEND;
                 end
                 ADVANCE: begin
                     distance_hold <= distance_hold + 3'd1;
                     child_mode <= 0;
                     child_continuation <= 0;
                     dependency_valid_hold <= 0;
-                    component_hold <= 0;
-                    pair_hold <= 0;
                     state <= CHILD_START;
                 end
                 PUBLISH: state <= RESPONSE;
