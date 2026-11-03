@@ -1232,6 +1232,7 @@ module anvil_en1_replay_workspace #(
                         end else begin
                             pending_memo <= 1;
                             if (move_to_memo) begin
+                                // The pending charge covers the source suffix and destination prefix.
                                 vector_reserved[vector_bit_index] <= 0;
                                 vector_occupied[vector_bit_index] <= 0;
                                 pair_progress_valid[vector_bit_index] <= 0;

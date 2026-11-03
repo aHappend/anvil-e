@@ -173,8 +173,18 @@ module anvil_en1_eval_schedule #(
             dependency_layer <= 12)));
     wire [255:0] return_record = {RETURN_MAGIC, current_domain, current_layer,
         current_token, current_length, current_frame, 4'd0, continuation_hold};
+    wire root_linear = (root_domain == 0 && root_token == 0 && tokens_hold == 1) ||
+        root_domain == 2;
+    wire audio_linear_dependency = dependency_domain == 2 &&
+        dependency_layer != 0;
+    wire [3:0] audio_return_target = ws_response_continuation[163:160];
+    wire audio_return_valid = audio_return_target == 0 ||
+        (audio_return_target <= 12 && current_domain == 2 &&
+            completed_domain == current_domain && completed_token == current_token &&
+            completed_layer == current_layer && completed_length == 1024 &&
+            completed_layer <= {4'd0, audio_return_target});
     wire parent_record_valid = ws_response_continuation[255:224] == RETURN_MAGIC &&
-        ws_response_continuation[163:160] == 0 &&
+        audio_return_valid &&
         ws_response_continuation[169:164] ==
             (frame_depth[5:0] - 6'd1);
     wire current_work_tag = work_req_domain == current_domain &&
@@ -224,7 +234,7 @@ module anvil_en1_eval_schedule #(
         .grant_allowed(grant_allowed),
         .memo_pin_valid((dependency_valid_hold &&
             (state == TASK_START || state == TASK_WAIT)) ||
-            (push_kind == 2 &&
+            ((push_kind == 2 || push_kind == 3) &&
             (state == PUSH_SETUP || state == WS_SEND ||
              state == WS_WAIT || state == PUSH_RESULT))),
         .memo_pin_slot(dependency_slot[3:0]),
@@ -456,9 +466,8 @@ module anvil_en1_eval_schedule #(
                         current_domain <= root_domain;
                         current_token <= root_token;
                         current_length <= root_length;
-                        linear_hold <= root_domain == 0 && tokens_hold == 1 &&
-                            root_token == 0;
-                        if (root_domain == 0 && tokens_hold == 1 && root_token == 0)
+                        linear_hold <= root_linear;
+                        if (root_linear)
                             current_layer <= 0;
                         else
                             current_layer <= root_layer;
@@ -541,7 +550,8 @@ module anvil_en1_eval_schedule #(
                     ws_op <= 0;
                     ws_target <= 0;
                     ws_domain <= push_kind == 1 ? dependency_domain : current_domain;
-                    ws_layer <= push_kind == 1 ? dependency_layer : current_layer;
+                    ws_layer <= push_kind == 1 ?
+                        (audio_linear_dependency ? 8'd0 : dependency_layer) : current_layer;
                     ws_token <= push_kind == 1 ? dependency_token : current_token;
                     ws_length <= push_kind == 1 ? dependency_length : current_length;
                     ws_slot <= 0;
@@ -549,7 +559,14 @@ module anvil_en1_eval_schedule #(
                     ws_component <= 0;
                     ws_scalar_index <= 0;
                     ws_data <= 0;
-                    ws_continuation <= push_kind == 1 ? return_record : 256'd0;
+                    if (push_kind == 1) begin
+                        if (audio_linear_dependency)
+                            ws_continuation <= {return_record[255:164],
+                                dependency_layer[3:0], return_record[159:0]};
+                        else
+                            ws_continuation <= return_record;
+                    end else if (push_kind != 3)
+                        ws_continuation <= 0;
                     ws_return <= PUSH_RESULT;
                     state <= WS_SEND;
                 end
@@ -559,7 +576,7 @@ module anvil_en1_eval_schedule #(
                     current_token <= ws_token;
                     current_length <= ws_length;
                     current_frame <= ws_response_slot;
-                    if (push_kind == 2) begin
+                    if (push_kind == 2 || push_kind == 3) begin
                         mode_hold <= 2;
                         dependency_valid_hold <= 1;
                     end else begin
@@ -669,6 +686,18 @@ module anvil_en1_eval_schedule #(
                     end else if (!parent_record_valid) begin
                         error_hold <= 7;
                         state <= INVALIDATE_SEND;
+                    end else if (audio_return_target != 0 &&
+                        completed_layer < {4'd0, audio_return_target}) begin
+                        dependency_domain <= completed_domain;
+                        dependency_layer <= completed_layer;
+                        dependency_token <= completed_token;
+                        dependency_length <= completed_length;
+                        dependency_slot <= completed_slot;
+                        current_layer <= completed_layer + 1'b1;
+                        push_kind <= 3;
+                        lookup_dependency <= 0;
+                        ws_continuation <= ws_response_continuation;
+                        state <= PUSH_SETUP;
                     end else begin
                         current_domain <= ws_response_continuation[223:222];
                         current_layer <= ws_response_continuation[221:214];

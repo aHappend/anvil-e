@@ -5,7 +5,112 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: consuming completed-result memo transfer
+### Current increment: predecessor-first replay for every native audio token
+
+The scheduler now uses its ascending-layer audio chain for every legal audio
+token, not only token zero. Direct audio roots and missed nested audio
+dependencies begin at layer zero of the requested token, then supply each
+genuine completed predecessor to the next layer in mode 2. A completed layer
+is transferred to memo and popped before its successor is pushed. Text and
+bidirectional vision scheduling are unchanged.
+
+This is a dependency-order optimization, not a claim that later audio layers
+have no historical dependencies. `replay_audio_history` still evaluates all
+present convolution histories. Each attention head still requests its actual
+permitted lower-layer tokens through the existing continuation/yield path.
+Those dependencies may suspend the active audio frame and enter other audio
+chains. On return, the unchanged numerical continuation resumes that frame
+before its own result can complete; no historical input is replaced by the
+same-token predecessor. Layer-zero work still reconstructs immutable inputs.
+Every descent reduces the encoder layer, and every chain successor is bounded
+by the saved target layer 1..12.
+
+| Boundary | Later-token chain behavior |
+| --- | --- |
+| Direct root | Preserve the requested root token and layer limit; start that token at layer zero |
+| Nested memo miss | Preserve the original consumer and continuation; store the requested audio layer in return-record bits 163:160 and start the requested dependency token at layer zero |
+| Supplied predecessor | Existing input binding validates domain 2, the exact preceding layer, the same query token, length 1024 and a genuine memo slot before copying |
+| Historical miss within a successor | Preserve all still-live frame slices and the real head/history continuation; evaluate the requested lower-layer token normally |
+| Chain result pop | Validate the returned frame's full metadata, return magic and parent slot; require the completed audio token/layer to match the currently popped frame and not exceed the saved target |
+| Intermediate successor | Preserve the consumer return record; pin the completed predecessor during successor admission, then enter mode 2 |
+| Target completion | Restore the saved consumer with the actual completed dependency token/layer/slot in mode 1 |
+| Backpressure, failure, reset | Keep the existing registered request, drain, error and generation-invalidation paths; no completed vector is inferred from a mode bit |
+
+This retires the initially avoidable same-token ancestor descent for later
+audio tokens: a layer-12 request no longer pushes twelve empty same-token
+ancestors before reconstructing its layer-zero input. Only one frame of that
+particular chain is retained between completed layers. Nested historical
+evaluations and their suspended consumers remain fully charged; their total
+depth and six-slice storage ceiling have **not** been reduced to one frame.
+No new registers, RAM, continuation width or physical-memory saving is claimed;
+the conservative <=32200-byte E2B C=64 text declaration envelope is unchanged.
+
+Independent verification must cover direct and nested tokens 0,1,4,5 and
+chunk boundaries, layers 0,1,12, both precisions, target memo hits/misses,
+real historical yields/resumes during a successor, nested chain return tokens,
+memo eviction, stalls, reset and failed backing/input/weight responses. Compare
+all numerical outputs and observe actual frame/slice allocations. Whole-system
+native/deep-frame/fallback fit and later-token suspended-history storage remain
+open; this schedule change alone is not allocation or termination evidence.
+No diagnostic was executed and the reserved static elaboration remains pending.
+
+### Prior increment: linear first-token native audio replay
+
+Audio token zero has no historical text/encoder-token dependency: causal
+attention sees only token zero and the four absent convolution taps are
+positive BF16 zero. Its layer-zero subsampling reconstructs original inputs;
+each later audio layer needs only its completed predecessor at token zero.
+This property does not apply to bidirectional vision or later audio tokens.
+The scheduler now exploits this exact chain for direct domain-2/token-0
+roots and for missed domain-2/token-0 dependencies nested beneath another
+evaluation. Numerical workers, traversal/reduction order and model geometry
+are unchanged.
+
+| Scheduler boundary | First-token audio behavior |
+| --- | --- |
+| Root validation | Begin at audio layer zero, retaining the requested layer as the existing root limit; ordinary single-token text roots retain their existing linear path |
+| Dependency lookup | Look up the originally requested audio layer first; a memo hit resumes its consumer normally |
+| Miss / first push | Save the real consumer return record, put the requested audio layer 1..12 in bits 163:160, and push audio layer zero instead of the requested upper layer |
+| Completed layer | Perform the existing consuming result-to-memo transfer, retire its actual backing responses, and pop its frame before any successor frame is admitted |
+| Intermediate pop | Validate return magic, consumer frame slot, target 1..12, and completed audio domain/token/length/layer; preserve the consumer record and push the next layer in supplied-predecessor mode 2 |
+| Successor push | Pin the genuine completed predecessor memo throughout push setup and workspace request/response stalls, as for the existing root-linear path |
+| Target pop | Restore the original consumer and its unchanged 160-bit numerical continuation, supplying exactly the requested target memo in resume mode 1 |
+| Failure/reset | Use existing error, drain, generation invalidation and cancellation paths; no incomplete layer result or manufactured predecessor can resume a consumer |
+
+Bits 163:160 of the internal 256-bit scheduler return record are now an
+audio-chain target (zero means the existing ordinary return). This is not a
+change to a worker's public 160-bit continuation. `push_kind=3` denotes
+the nested linear successor; its existing two-bit register is sufficient.
+The existing workspace-request continuation register carries the original
+consumer record to each successor push. No new retained scalar, frame
+field, RAM, arithmetic worker or external transaction class is introduced.
+The complete descriptor and admission checks remain in force for every
+actual frame/memo allocation. Owner/native input and weight traffic still
+reflect all real recomputation.
+
+For one direct audio root, this removes up to twelve simultaneously
+suspended ancestor frames from the naive layer-12-to-layer-0 descent:
+at most one audio evaluation frame is live during the linear chain.
+For a nested audio-token-zero miss the already suspended consumer frames
+remain charged, but there is at most one additional audio-chain frame.
+Each active layer still reserves its actual vectors, scalar slot and
+private numerical scratch; completed memos remain charged and evictable,
+except for the explicitly pinned predecessor. No reduction of physical
+backing capacity or complete-system minimum-context fit is inferred.
+The controller declaration census and its <=32200-byte E2B C=64 text
+envelope are unchanged because the new conditions use only wires.
+
+Independent verification must cover direct and nested token-zero audio
+requests at layers 0,1,12, target memo hits/misses, both precisions, real
+intermediate pop/push and memo eviction, backpressure and reset/error at
+every transfer, and unchanged numerical outputs. It must observe bounded
+audio frame depth rather than accepting a mode bit. Later-token six-slice
+audio suspension, whole-hierarchy native/fallback partition feasibility
+and actual mode-transition liveness remain open design milestones. No
+functional/synthesis probe or preparation receipt was created; the one
+reserved static elaboration remains pending design closure.
+
+### Prior increment: consuming completed-result memo transfer
 
 The scheduler's completed-result handover now uses an explicit consuming
 variant of the existing workspace `op=3,target=2` frame-to-memo operation.

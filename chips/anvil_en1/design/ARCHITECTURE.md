@@ -5,7 +5,74 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: consuming completed-result memo handover
+## Current saved increment: predecessor-first audio chains at later tokens
+
+`anvil_en1_eval_schedule.sv` now admits the ascending-layer audio schedule
+for every legal audio token, including nested dependency misses. Each chain
+reconstructs that token's layer-zero input, moves genuine completed results
+to memo, pops their frames, then admits the next layer with its pinned
+same-token predecessor. The internal return record retains the requested
+target layer and original consumer continuation. Chain return validation now
+checks the completed token and layer against the popped audio frame instead
+of assuming token zero. No new retained scalar or RAM is introduced.
+
+Later-token attention and convolution are not approximated by this schedule.
+The numerical workers still yield for each missing historical lower-layer
+vector, retain live slices, and resume their actual continuation after that
+dependency completes. Nested historical chains therefore remain possible.
+Only the initially unnecessary same-token ancestor descent is retired:
+the chain no longer retains empty upper same-token frames while first
+reconstructing layer zero. This does not certify a one-frame bound for
+later-token execution or solve its six-slice suspended-history requirement.
+All controller, frame, memo, private-worker and production-shadow charges
+remain; the <=32200-byte E2B C=64 text declaration envelope is unchanged.
+
+Saved changes: `rtl/anvil_en1_eval_schedule.sv`, SPEC and this document.
+Actual tools: glob, view, rg and apply_patch. No elaboration, simulation,
+synthesis or preparation receipt was produced. Tests, parent sources,
+original failures and runtime metadata remain untouched. Remaining design
+closure: later-token suspended-history storage, complete native/deep-frame/
+fallback allocation feasibility and per-instance reconciliation, then the
+reserved static elaboration and independent-Verifier handoff.
+
+## Prior saved increment: bounded first-token audio chain
+
+`anvil_en1_eval_schedule.sv` now evaluates native audio token zero from
+layer zero upwards using its real completed predecessor. This works both
+for direct audio roots and for a missing token-zero audio dependency
+under a suspended consumer. Causal attention at token zero has no other
+token and convolution's absent taps remain zeros; bidirectional vision
+and later audio tokens retain their original schedules.
+
+A nested miss first looks up its actual requested target. If absent, the
+existing 256-bit return record saves that target in its four formerly
+reserved bits while preserving the original consumer and numerical
+continuation. Each genuine result is transferred to memo and its frame
+popped before the next audio layer is pushed. The completed predecessor
+is pinned through successor admission stalls and passed through existing
+mode 2. At the target layer the scheduler restores the original consumer
+with its real memo dependency. Full return-tag checks and existing error/
+reset cancellation remain; no software result or direct-memory bypass
+supplies a vector.
+
+The retired milestone is token-zero audio ancestor retention: the chain
+has at most one active audio frame instead of a layer-deep collection of
+suspended audio frames, excluding pre-existing outer consumers. All
+actual frame, memo, private-worker and controller charges remain. No new
+register, RAM or wider state encoding is added; the source-derived
+<=32200-byte E2B C=64 text declaration envelope is unchanged. This is not
+proof that all native/deep-frame/fallback workloads fit. Later-token
+six-slice audio retention, whole-hierarchy partition reconciliation and
+actual memo/regeneration/mode-transition closure remain unfinished.
+
+Saved changes: `rtl/anvil_en1_eval_schedule.sv`, SPEC and this document.
+Actual tools: glob, view, rg and apply_patch. No elaboration, simulation,
+synthesis or preparation receipt was produced. Tests, parent sources,
+original failures and runtime metadata remain untouched. The reserved
+static elaboration follows complete design closure, before immediate
+independent-Verifier handoff.
+
+## Prior saved increment: consuming completed-result memo handover
 
 The scheduler now sets `req_data=1` on its existing internal frame-to-memo
 operation. The workspace preserves `req_data=0` as a nonconsuming copy.
