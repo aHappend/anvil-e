@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--repair-of")
     parser.add_argument("--hierarchical", action="store_true")
     parser.add_argument("--threads", type=int, choices=(1, 2, 4), default=1)
+    parser.add_argument("--tokens", type=int, choices=(1, 16, 17), default=1)
     args = parser.parse_args()
     exp = Experiment(args.out, "verifier-top-throughput-profile", source_inputs(), args.repair_of)
     error = None
@@ -39,6 +40,7 @@ def main():
         exp.receipt["parameters"] = parameters
         exp.receipt["hierarchical_arithmetic"] = args.hierarchical
         exp.receipt["simulation_threads"] = args.threads
+        exp.receipt["tokens"] = args.tokens
         exp.receipt["scope"] = (
             "200000-cycle public-top compiler profile with real weights and input; "
             "an incomplete numerical job is expected, never counted as neural completion.")
@@ -86,7 +88,8 @@ def main():
         executable = obj / "Vanvil_en1_top"
         output = exp.run("simulation", [
             "env", "GMON_OUT_PREFIX=" + str(exp.relative / "gmon"),
-            str(executable), str(path.relative_to(ROOT)), "1", "0", "17", "200000"],
+            str(executable), str(path.relative_to(ROOT)), "1", "0", "17", "200000",
+            str(args.tokens)],
             2400, (1,))
         stderr = (exp.out / "simulation.stderr.txt").read_text()
         if ("INCOMPLETE cycle_limit=200000 " not in output or
