@@ -77,6 +77,8 @@ def main():
     parser.add_argument("--contexts", default="1,16,17")
     parser.add_argument("--capacity", type=int, choices=(1, 3, 64), default=3)
     parser.add_argument("--fallback", action="store_true")
+    parser.add_argument("--compiler-optimization", choices=("0", "1", "2", "3"), default="3",
+                        help="Verilator optimization level; C++ remains -O3")
     parser.add_argument("--max-cycles", type=int, default=2000000000)
     args = parser.parse_args()
     models = selected_values(parser, args.models, (1, 2), "--models")
@@ -127,7 +129,8 @@ def main():
         sources = [str(path.relative_to(ROOT)) for path in source_inputs()
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
         exp.run("compile", [
-            "verilator", "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
+            "verilator", "--cc", "--exe", "--build",
+            "-O" + args.compiler_optimization, "-Wno-fatal",
             "--top-module", "anvil_en1_top", "--Mdir", str(obj),
             "-j", "2", "-CFLAGS", "-O3",
             *[f"-G{name}={value}" for name, value in parameters.items()],
