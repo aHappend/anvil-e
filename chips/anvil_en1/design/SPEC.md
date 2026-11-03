@@ -5,7 +5,148 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: bounded readers and demand-granted feature output
+### Current increment: replay-result lifetime and connected partition census
+
+The frontier fallback result and fallback owner-source result now follow the
+same demand-grant rule as the ordinary native-feature destination. Do not
+reserve an empty destination while its evaluator descends. This applies to
+the connected fallback path, not just a leaf accounting output.
+
+| Pre-edge boundary | Registered ownership / action |
+| --- | --- |
+| Frontier has drained/inactivated ordinary frontier and ring and bound replay backing | Start the actual evaluator without a component-2 destination reservation or hidden allocation |
+| Fallback owner request passes validation | Start its actual owner-input evaluator without a component-6 raw-source reservation |
+| First real result becomes valid | Leave output ready low; enter the existing allocation request/wait states for the complete destination |
+| Grant succeeds | Register the reservation, return to the result-wait state, then permit the first data handshake on a later edge |
+| Accepted frontier result beat | Only a handshake may write hidden RAM or advance the count; establish hidden allocation at the first accepted beat |
+| Accepted owner result beat | Preserve the existing ordered-index/last checks, actual RAM write, count and full-vector commit |
+| Error completion before any output | Consume the actual completion without allocating a destination; preserve the concrete evaluator error |
+| First-output grant denied | Preserve error 7; accept/discard all remaining result beats without RAM writes, counts or successful commit, then consume actual evaluator completion before returning failure |
+| Result stall / grant stall | The evaluator retains its valid payload; neither consumer fabricates data or acknowledges an ungranted beat |
+| Reset | Disable readiness, memory enables and validity through the existing asynchronous control resets; invalidate unfilled payload |
+
+`frontier_execute.EVAL_OUTPUT_DRAIN` and `owner_replay.EVAL_DRAIN` use unused
+encodings in the existing six-/five-bit controllers. No destination RAM,
+holding vector, scalar register or controller-byte reduction is introduced.
+The ordinary owner's component-6 grant remains before owner-tile execution:
+that bank is required for its normalized source even though its raw input
+comes from the preserved frontier. Ring-hit behavior is unchanged.
+
+The result lifetime follows the connected scheduler, not a prediction about
+when replay ought to finish: `eval_schedule` copies a completed result to
+memo, pops its frame, walks `AFTER_POP` until the root is complete, and only
+then enters `OUTPUT_SETUP`/`OUTPUT_LOW`. Hence every suspended frame and
+active worker has retired before a real root output triggers either new
+destination grant. Output still reads the actual completed memo. Memo and
+its readback/pair registers remain charged until the existing invalidate and
+response retirement. A full destination is conservatively reserved throughout
+output; no disappearing-prefix accounting is used.
+
+The following reconciles current nonoverlapping report expressions at
+production geometry and connected external-vector settings. Primitive
+external-FP reports exclude only their absent local FP32 service; the owning
+service remains counted. All values are per-instance byte-rounded source
+counts, **not elaborated, simulated or synthesized measurements**.
+
+| Connected report | Bytes |
+| --- | ---: |
+| Norm / projection / rotary, each with external FP | 135 / 173 / 296 |
+| Ordinary full text / replay post-only text | 2014 / 1320 |
+| Embedding / final logits | 841 / 960 |
+| Owner tile / complete owner replay | 1074 / 1151 |
+| Replay original input, including its embedding | 936 |
+| Replay text worker and all separately reported text descendants, including original input | 5398 |
+| Complete replay executor, including scheduler, dispatcher, workspace controller and native descendants | 31121 |
+| Binding reported subtree, field 22 | 32290 |
+| Native-reconstruction subset of field 22, counted once in M | 26085 |
+| Ordinary frontier executor, field 24 | 4140 |
+| Binding own / native assembly own, fields 16 / 17 | 139 / 162 |
+| Scheduler + memory arbiter + cache + prospective admission, field 23, C=64 | 501 |
+| Top own + memory bridge + CSR + observation ledger + guard | 1690 |
+| Frontier / ring / replay visibility metadata | 768 / 768 / 1208 |
+| Resident metadata, C=64 | 280 |
+
+Both ledger counts must use the current mode-conditioned fallback leaves:
+observation has 142 retained nodes including outputs, admission 121. With
+24 bits per node and 42 tag/error bits, their reports are 432 and 369
+bytes. Admission adds its own 35 bytes; top integration includes observation
+only. The older 408/345-byte ledger figures predate the fallback split.
+Replay metadata is `80*25+64+3*384+4224+16+32+64*34 = 9664` bits,
+or 1208 bytes; the older 1192-byte figure is not the current expression.
+These corrections increase, rather than hide, their respective charges.
+
+At C=64 the fixed non-native workspace subtotal, including all metadata and
+integration, is 15861 bytes. It is
+`(32290-26085)+4140+139+162+501+1690+768+768+1208+280`.
+Use the conservative 15862-byte envelope for both compact actual and
+production-shadow analysis: the compact ring can add one rounded controller
+byte, while other connected compact declarations do not grow. Smaller C
+does not enlarge either resident metadata or its fixed-width controller.
+
+| Necessary phase envelope, excluding evictable memo payload | Conservative bytes / derivation |
+| --- | --- |
+| Ordinary E2B text with global owner miss | `15862+7168+3584+3072+1024 = 30710`, below 32768 |
+| Ordinary E4B equivalent | `15862+11264+5632+5120+1024 = 38902`, below 65536 |
+| Fallback fixed working state, including native controllers and all 64 resident words | `15862+26085+256 = 42203` |
+| Fallback replay post maximum, either model | `42203+(3*5120+512)+512 = 58587`, below 65536 |
+| Fallback active native feature maximum | `42203+6432 = 48635` |
+| Fallback root output / subsequent owner tile | `42203+5120+1024 = 48347` |
+
+The post bound counts its independently retained PLE in addition to the
+worker's full three-vector/PLE reservation; it does not assume that those
+copies alias. The new demand grants remove the otherwise concurrent empty
+5120-byte outer result from that phase. Native encoder frame vectors,
+scalar continuations and memo payload remain in field 5, not in this
+fallback working subtotal. Ordinary owner misses use the frontier/ring,
+not the fallback evaluator, so their source and head tile are explicitly
+included in the ordinary rows. Ordinary feature evaluators have no text
+ancestor frames; their native frames/memos remain part of M.
+
+The strictly decreasing scheduler rank is at most 61 (E4B text layer 42).
+Consequently at most 61 live frames, each at most 12288 vector bytes, occupy
+749568 bytes, below the 786432-byte frame partition. Their complete scalar
+slots require at most `61*136=8296` bytes, below 65536. Sixteen memo vectors
+need at most `16*5120=81920` live bytes, below 131072. Including the
+58587-byte working envelope gives a coarse full-depth fallback upper bound
+of 898371 bytes, below 1 MiB. This bound does not certify the strict savings
+ratio for arbitrary test-forced fallback at minimum contexts: the linear
+single-token path and the actual reachable partially allocated text/native
+stack must be reconciled against their smaller baseline as well.
+
+The backing layout remains 786432 frame bytes, 131072 reserved memo bytes
+and 8704 scalar bytes, totaling 926208 bytes. Ordinary execution maps this
+store after the 3 MiB frontier; fallback maps it at zero only after ordinary
+payload invalidation and replay binding. The physical frontier array still
+reserves 4071936 bytes. Do not claim that idle physical RAM, separate worker
+banks, or the local ring disappeared from FPGA resource cost.
+
+This closes the empty replay-result lifetime obstruction and supersedes the
+old connected text/controller census. It is not complete capacity or hardware
+acceptance. Remaining design work is a complete reachable small-context
+fallback/shadow ledger (including native input/feature and restored text
+continuations), per-instance declaration/physical-backing reconciliation,
+then the reserved fast static elaboration and independent Verifier handoff.
+Unpinned memo eviction and all legal-work allocation grants still need actual
+independent observation; no denied legal request is authorized.
+
+Independent verification must cover both changed consumers, both models and
+precisions, real replay/memo misses, stalled first output through the grant,
+no pre-grant RAM write/count/allocation, exactly one destination grant,
+ordered complete output and commit, pre-output memory failure, denied-grant
+draining, reset on each stalled channel and the following usable session.
+Native numerical rules, public interfaces, six mandatory commands and
+allocation/traffic thresholds are unchanged.
+
+Saved `rtl/anvil_en1_frontier_execute.sv`,
+`rtl/anvil_en1_owner_replay.sv` and both design documents. Used view, rg,
+glob, apply_patch and read-only Python source-expression arithmetic. Early
+read-only census expressions were corrected to exclude initialized-wire
+expression commas and to normalize whitespace; none ran HDL or produced
+acceptance evidence. No static elaboration, simulation, synthesis,
+preparation harness or receipt ran. Tests, parent sources, runtime metadata
+and retained failures remain untouched.
+
+### Prior increment: bounded readers and demand-granted feature output
 
 Native normalization reads its schema-fixed BF16 scale vector
 with a dedicated registered word-read FSM, not the general matrix/Q4 reader.
@@ -54,8 +195,11 @@ holding the producer's output stalled through the existing allocation FSM.
 Only after the registered successful grant may the first output handshake,
 RAM write or received-count update occur. All subsequent feature beats retain
 the same reservation until the existing embedding-consumption release.
-An error before the first output needs no destination allocation. A grant
-failure follows the existing error path, never a successful feature result.
+An error before the first output needs no destination allocation. If that
+first-output grant fails, retain error 7 and enter `FEATURE_DRAIN`: accept
+and discard the already started evaluator's remaining output without RAM
+writes or successful counts, retire its actual done response, then publish
+the failure. Do not leave a stalled root evaluator blocking session drain.
 Reset, error retirement and stalled-payload stability remain unchanged.
 No new output bank, hidden buffer or controller register is introduced;
 physical feature RAM is still disclosed at its full original extent.
@@ -149,7 +293,9 @@ propagation, malformed extents and overflowing descriptors without offending
 accesses. For outer features, require no destination allocation or RAM write
 while encoders descend, a held real first output through the grant, exactly
 one grant before its first acceptance, and the unchanged complete output and
-embedding-release protocol. Observe actual pinned memo lifetimes, retained
+embedding-release protocol. Deny the first-output grant and require no writes,
+full evaluator retirement, preserved error 7 and a usable following session.
+Observe actual pinned memo lifetimes, retained
 pool vectors, final-binding slices and native production shadows.
 
 Saved four RTL files (`native_norm`, `weight_read`, `tensor_image`,

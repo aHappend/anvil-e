@@ -183,7 +183,7 @@ module anvil_en1_frontier_execute #(
         TOKEN_ADDRESS = 31, TOKEN_SEND = 32, TOKEN_WAIT = 33, TOKEN_CLASSIFY = 34,
         FEATURE_START = 35, FEATURE_WAIT = 36, FEATURE_COMMIT = 37,
         ALLOCATION_SEND = 38, ALLOCATION_WAIT = 39,
-        EMBED_PRIVATE_GRANT = 40, EVAL_VECTOR_GRANT = 41;
+        EMBED_PRIVATE_GRANT = 40, EVAL_OUTPUT_DRAIN = 41, FEATURE_DRAIN = 42;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_LOCAL_READ = 2,
         S_LOCAL_CAPTURE = 3, S_FRONTIER_SEND = 4, S_FRONTIER_WAIT = 5,
         S_RESPONSE = 6;
@@ -413,7 +413,7 @@ module anvil_en1_frontier_execute #(
     wire image_allowed = modality_hold == 1 || modality_hold == 3;
     wire audio_allowed = modality_hold == 2 || modality_hold == 3;
     wire feature_eval = state == FEATURE_START || state == FEATURE_WAIT ||
-        state == FEATURE_COMMIT;
+        state == FEATURE_COMMIT || state == FEATURE_DRAIN;
 
     wire frontier_control_ready, frontier_control_valid;
     wire [3:0] frontier_control_error;
@@ -791,8 +791,12 @@ module anvil_en1_frontier_execute #(
     assign eval_tokens_base = rst_n ? tokens_base_hold : 64'd0;
     assign eval_weights_base = rst_n ? weights_base_hold : 64'd0;
     assign eval_output_ready = rst_n &&
-        (state == EVAL_WAIT || (state == FEATURE_WAIT && feature_reserved));
-    assign eval_done_ready = rst_n && (state == EVAL_WAIT || state == FEATURE_WAIT);
+        (state == FEATURE_DRAIN || state == EVAL_OUTPUT_DRAIN ||
+            (state == EVAL_WAIT && vector_reserved) ||
+            (state == FEATURE_WAIT && feature_reserved));
+    assign eval_done_ready = rst_n &&
+        (state == EVAL_WAIT || state == FEATURE_WAIT ||
+            state == FEATURE_DRAIN || state == EVAL_OUTPUT_DRAIN);
     assign cmd_valid = rst_n && (memory_owner == M_TOKEN ? state == TOKEN_SEND :
         (memory_owner == M_EMBED ? embed_cmd_valid :
         (memory_owner == M_LAYER ? layer_cmd_valid :
@@ -856,7 +860,8 @@ module anvil_en1_frontier_execute #(
     wire ple_beat_ok = !p_bad && !p_complete && p_count < P &&
         embed_ple_index == p_count && embed_ple_last == (p_count == P-1);
     wire receive_layer = state == LAYER_WAIT;
-    wire received_valid = receive_layer ? layer_output_valid : eval_output_valid;
+    wire received_valid = receive_layer ? layer_output_valid :
+        eval_output_valid && eval_output_ready;
     wire [31:0] received_index = receive_layer ? layer_output_index : eval_output_index;
     wire [15:0] received_data = receive_layer ? layer_output_data : eval_output_data;
     wire received_last = receive_layer ? layer_output_last : eval_output_last;
@@ -1380,7 +1385,7 @@ module anvil_en1_frontier_execute #(
                         state <= PUBLISH;
                     end else begin
                         frontier_operation <= 3;
-                        frontier_return <= EVAL_VECTOR_GRANT;
+                        frontier_return <= EVAL_START;
                         state <= FRONTIER_CONTROL;
                     end
                 end
@@ -1396,7 +1401,12 @@ module anvil_en1_frontier_execute #(
                 ALLOCATION_WAIT: if (grant_rsp_valid && grant_rsp_ready) begin
                     if (!grant_allowed) begin
                         error_hold <= 7;
-                        state <= PUBLISH;
+                        if (allocation_component == 3 && allocation_return == FEATURE_WAIT)
+                            state <= FEATURE_DRAIN;
+                        else if (allocation_component == 2 && allocation_return == EVAL_WAIT)
+                            state <= EVAL_OUTPUT_DRAIN;
+                        else
+                            state <= PUBLISH;
                     end else begin
                         case (allocation_component)
                             0: begin
@@ -1424,11 +1434,6 @@ module anvil_en1_frontier_execute #(
                         else
                             state <= PUBLISH;
                     end
-                end
-                EVAL_VECTOR_GRANT: begin
-                    allocation_component <= 2;
-                    allocation_return <= EVAL_START;
-                    state <= ALLOCATION_SEND;
                 end
                 EMBED_PRIVATE_GRANT: begin
                     allocation_component <= 19;
@@ -1518,6 +1523,10 @@ module anvil_en1_frontier_execute #(
                         state <= ALLOCATION_SEND;
                     end
                 end
+                FEATURE_DRAIN: if (eval_done_valid && eval_done_ready)
+                    state <= PUBLISH;
+                EVAL_OUTPUT_DRAIN: if (eval_done_valid && eval_done_ready)
+                    state <= PUBLISH;
                 EMBED_START: if (embed_ready) begin
                     p_allocated <= token_modality == 0;
                     if (operation == 1)
@@ -1593,7 +1602,13 @@ module anvil_en1_frontier_execute #(
                     state <= LAYER_WAIT;
                 end
                 LAYER_WAIT, EVAL_WAIT: begin
-                    if (received_valid) begin
+                    if (state == EVAL_WAIT && eval_output_valid && !vector_reserved) begin
+                        allocation_component <= 2;
+                        allocation_return <= EVAL_WAIT;
+                        state <= ALLOCATION_SEND;
+                    end else if (received_valid) begin
+                        if (state == EVAL_WAIT)
+                            h_allocated <= 1;
                         h_committed <= 0;
                         if (!h_beat_ok)
                             h_bad <= 1;
@@ -1671,7 +1686,7 @@ module anvil_en1_frontier_execute #(
                 end
                 EVAL_START: if (eval_start_ready) begin
                     fallback_configured <= 1;
-                    h_allocated <= 1;
+                    h_allocated <= 0;
                     h_committed <= 0;
                     h_count <= 0;
                     h_bad <= 0;

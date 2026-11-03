@@ -5,7 +5,69 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: bounded readers and demand-granted feature output
+## Current increment: replay-result lifetime and partition reconciliation
+
+Both fallback result consumers now delay their full empty destination until
+the first real evaluator output. The frontier executor starts fallback replay
+without component 2; owner replay starts fallback owner-input evaluation
+without component 6. Each holds the first output stalled through its existing
+registered allocation request/response, then accepts/writes data only after
+the successful grant. Frontier counting and RAM writes now explicitly require
+the result handshake. The ordinary owner path still grants its normalized
+source bank before its owner tile starts; local-ring hits are unchanged.
+
+Grant denial retains error 7 and drains/discards the active evaluator's
+remaining output and actual completion without RAM writes, successful counts
+or commit. It cannot strand a live evaluator behind an error response.
+Pre-output evaluator failures need no destination grant. Existing state widths
+and registers suffice, so controller and physical RAM reports do not shrink.
+Reset and stalled-payload rules retain their original contract.
+
+This lifetime change follows the actual scheduler: root output starts only
+after completed-vector memoization, frame pop and return-stack retirement.
+Thus no unfilled outer result reservation is needed during text/native
+descent. The completed memo and scalar readback remain charged while output
+is stalled. There is no host answer, hidden vector or numerical change.
+
+SPEC now reconciles current byte-rounded source report equations, rather than
+reusing the older connected counts. Complete replay is 31121 bytes; binding's
+reported subtree 32290; its native subset 26085; ordinary executor 4140.
+The current fallback-aware observation/admission ledgers are 432/369 bytes,
+not the earlier 408/345. Replay visibility metadata is 1208 bytes, not 1192.
+Counting each term once gives 15861 fixed non-native workspace bytes at C=64;
+the conservative compact/production envelope is 15862.
+
+Ordinary E2B/E4B global coexistence envelopes, including retained vectors and
+owner source/head, become 30710/38902 bytes against 32768/65536. Fallback's
+fixed working envelope including native controllers and resident words is
+42203; the largest replay-post envelope is 58587 bytes against 65536.
+The new output scheduling removes an otherwise simultaneous empty 5120-byte
+destination from that post phase. Native feature and final owner-tile phases
+have smaller working envelopes. These are source-derived bounds, not measured
+allocation peaks or independent declaration-coverage results.
+
+Rank at most 61 bounds the generic frame payload by 749568 bytes, scalar
+slots by 8296, and sixteen live memo vectors by 81920. Together with the
+working envelope the coarse fallback bound is 898371 bytes, below 1 MiB.
+The bound alone does not establish strict savings for all small test-forced
+fallback contexts; reachable frame allocations and the linear single-token
+path still require their own smaller-context/shadow reconciliation.
+The 926208-byte replay backing layout and its ordinary/fallback remapping
+are unchanged. Full physical frontier reservation remains 4071936 bytes;
+idle backing, separate worker RAM and the ring are not removed FPGA memory.
+
+Saved `frontier_execute`, `owner_replay` and both design documents. Used
+view/rg/glob/apply_patch and read-only Python source arithmetic; no HDL,
+functional/synthesis harness, preparation receipt or reserved static
+elaboration. No verification, parent or runtime-owned file was edited.
+Remaining before ready: finish the reachable small-context fallback/native
+and production-shadow allocation ledger, reconcile all per-instance
+declarations/physical backing, then use the reserved static elaboration and
+hand off immediately to independent Verifier. Actual grant/eviction,
+first-output backpressure, denied-grant drain, reset and numerical behavior
+remain independent verification obligations. No acceptance threshold changes.
+
+## Prior increment: bounded readers and demand-granted feature output
 
 Native normalization now reads its schema-fixed BF16 scales directly with a
 registered address/read/response FSM. It validates the complete vector extent
@@ -42,7 +104,11 @@ the output stalled, perform the existing component-3 grant, then accept/write
 the first beat only after grant success. The original complete vector and
 embedding-consumption release still apply. Physical destination RAM remains;
 there is no hidden staging register/vector or speculative write. Errors before
-output do not allocate a destination.
+output do not allocate a destination. A denied first-output grant retains error
+7 and drains/discards the already started evaluator's remaining output and real
+completion, without writes or successful counts, before reporting failure.
+This prevents the new deferred-grant error path from leaving a stalled root
+that would block session drain. The added state fits the existing six-bit FSM.
 
 SPEC now enumerates finite post-eviction necessary encoder sets, including
 136-byte scalar slots, the one protected source memo, active audio final binding
@@ -69,7 +135,7 @@ rereading the exact setup code. No HDL execution, preparation receipt,
 functional/synthesis harness or reserved static elaboration. Tests, parent
 sources, runtime metadata and retained failures remain untouched. Independent
 Verifier must exercise exact scale encodings/errors, all partial-product stages,
-first-output backpressure/grant ordering, final binding, memo/pool lifetimes and
+first-output backpressure/grant ordering and denial draining, final binding, memo/pool lifetimes and
 the unchanged numerical results. Design is not yet a ready handoff.
 
 ## Prior increment: native MLP specialization and controller reconciliation

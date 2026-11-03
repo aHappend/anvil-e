@@ -144,7 +144,7 @@ module anvil_en1_owner_replay #(
             EVAL_START = 7, EVAL_WAIT = 8, EVAL_COMMIT = 9,
             TILE_START = 10, TILE_WAIT = 11, PUBLISH = 12, RESPONSE = 13,
             RAW_GRANT_SEND = 14, RAW_GRANT_WAIT = 15,
-            TILE_GRANT_SEND = 16, TILE_GRANT_WAIT = 17;
+            TILE_GRANT_SEND = 16, TILE_GRANT_WAIT = 17, EVAL_DRAIN = 18;
         localparam [2:0] SOURCE_IDLE = 0, SOURCE_VALIDATE = 1,
             SOURCE_READ = 2, SOURCE_CAPTURE = 3,
             FRONTIER_SEND = 4, FRONTIER_WAIT = 5, SOURCE_RESPONSE = 6;
@@ -289,8 +289,9 @@ module anvil_en1_owner_replay #(
         assign eval_layer = rst_n ? owner_hold : 8'd0;
         assign eval_token = rst_n ? token_hold : 32'd0;
         assign eval_tokens = rst_n ? tokens_hold : 32'd0;
-        assign eval_output_ready = rst_n && state == EVAL_WAIT;
-        assign eval_done_ready = rst_n && state == EVAL_WAIT;
+        assign eval_output_ready = rst_n &&
+            ((state == EVAL_WAIT && raw_allocated) || state == EVAL_DRAIN);
+        assign eval_done_ready = rst_n && (state == EVAL_WAIT || state == EVAL_DRAIN);
         assign raw_source_live_bytes = rst_n && raw_allocated ?
             {32'd0, hidden_hold} << 1 : 64'd0;
         assign raw_source_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
@@ -492,6 +493,8 @@ module anvil_en1_owner_replay #(
                             state <= PUBLISH;
                         else if (!fallback_hold && owner_hold == owners - 8'd2)
                             state <= RING_SEND;
+                        else if (fallback_hold)
+                            state <= EVAL_START;
                         else
                             state <= RAW_GRANT_SEND;
                     end
@@ -513,11 +516,14 @@ module anvil_en1_owner_replay #(
                     RAW_GRANT_WAIT: if (grant_rsp_valid && grant_rsp_ready) begin
                         if (!grant_allowed) begin
                             error_hold <= 7;
-                            state <= PUBLISH;
+                            if (fallback_hold)
+                                state <= EVAL_DRAIN;
+                            else
+                                state <= PUBLISH;
                         end else begin
                             raw_allocated <= 1;
                             if (fallback_hold)
-                                state <= EVAL_START;
+                                state <= EVAL_WAIT;
                             else
                                 state <= TILE_GRANT_SEND;
                         end
@@ -526,7 +532,9 @@ module anvil_en1_owner_replay #(
                         state <= EVAL_WAIT;
                     end
                     EVAL_WAIT: begin
-                        if (eval_output_valid && eval_output_ready) begin
+                        if (eval_output_valid && !raw_allocated)
+                            state <= RAW_GRANT_SEND;
+                        else if (eval_output_valid && eval_output_ready) begin
                             if (!vector_beat_valid)
                                 vector_bad <= 1;
                             else begin
@@ -541,6 +549,8 @@ module anvil_en1_owner_replay #(
                             state <= EVAL_COMMIT;
                         end
                     end
+                    EVAL_DRAIN: if (eval_done_valid && eval_done_ready)
+                        state <= PUBLISH;
                     EVAL_COMMIT: begin
                         if (eval_error_hold != 0 || vector_bad ||
                             !vector_complete || vector_count != hidden_hold) begin
