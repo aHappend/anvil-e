@@ -137,9 +137,9 @@ def main():
         parameters = {"COMPACT": 1, "RESIDENT_ENTRIES": args.capacity,
                       "FORCE_FALLBACK": int(args.fallback), **COMPACT_PARENT}
         receipt["parameters"] = parameters
-        command = ["verilator", "--cc", "--exe", "--build", "-Wno-fatal",
+        command = ["verilator", "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
                    "--top-module", "anvil_en1_top", "--Mdir", str(obj),
-                   "-j", "2", "-CFLAGS", "-O1"]
+                   "-j", "2", "-CFLAGS", "-O3"]
         command += [f"-G{key}={value}" for key, value in parameters.items()]
         command += [*sources, str(ROOT / "tests/top_smoke.cpp")]
         run("compile", command, 1800)
