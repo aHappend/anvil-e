@@ -1,6 +1,7 @@
 """Public workspace visibility/allocation regression and production synthesis."""
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -15,7 +16,10 @@ def main():
     parser.add_argument("--out", default="evidence/preparation/workspace")
     parser.add_argument("--repair-of")
     parser.add_argument("--synthesis", action="store_true")
+    parser.add_argument("--defects", action="store_true")
     args = parser.parse_args()
+    if args.synthesis and args.defects:
+        parser.error("--defects is a simulation option")
     exp = Experiment(args.out, "verifier-workspace", source_inputs(), args.repair_of)
     error = None
     try:
@@ -68,6 +72,40 @@ def main():
             output = exp.run("simulation", [str(obj / "Vanvil_en1_replay_workspace")], 2400)
             if "SUMMARY workspace cases=" not in output:
                 raise RuntimeError("incomplete workspace comparisons")
+            exp.receipt["simulation_summary"] = output.strip()
+            shutil.rmtree(ROOT / obj)
+            if args.defects:
+                original = (ROOT / "rtl/anvil_en1_replay_workspace.sv").read_text()
+                mutations = (
+                    ("partial-visible", "if (pair_write_last)\n                                occupied <= 1;",
+                     "if (1'b1)\n                                occupied <= 1;",
+                     "UNFILLED_VECTOR_VISIBILITY"),
+                    ("missing-live-frame-allocation", "live_frames + live_scalars + live_memos",
+                     "live_frames + live_memos", "ALLOCATION_LEDGER"),
+                )
+                exp.receipt["mutations"] = []
+                for name, needle, replacement, assertion in mutations:
+                    if original.count(needle) != 1:
+                        raise RuntimeError(f"mutation site is not unique: {name}")
+                    source = exp.out / (name + ".sv")
+                    source.write_text(original.replace(needle, replacement))
+                    exp.receipt["mutations"].append({
+                        "name": name, "path": str(source.relative_to(ROOT)),
+                        "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                        "intended_assertion": assertion})
+                    exp.save()
+                    exp.run(name + "-compile", [
+                        "verilator", "--cc", "--exe", "--build", "-Wno-fatal",
+                        "--top-module", "anvil_en1_replay_workspace", "--Mdir", str(obj),
+                        "-GCOMPACT=1", "-j", "2", str(source.relative_to(ROOT)),
+                        "rtl/anvil_en1_geometry.sv", str(ROOT / "tests/workspace.cpp")], 1800)
+                    exp.run(name + "-simulation",
+                            [str(obj / "Vanvil_en1_replay_workspace")], 2400, (1,))
+                    stderr = (exp.out / (name + "-simulation.stderr.txt")).read_text()
+                    if "FAIL " + assertion not in stderr:
+                        raise RuntimeError(f"mutant missed its intended assertion: {name}")
+                    exp.receipt["mutations"][-1]["rejected_by_intended_assertion"] = True
+                    shutil.rmtree(ROOT / obj)
     except (OSError, RuntimeError, TimeoutError, ValueError, KeyError) as exc:
         error = exc
     finally:

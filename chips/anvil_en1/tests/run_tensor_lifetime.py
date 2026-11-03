@@ -56,7 +56,7 @@ def main():
                                  reset, invalidate, immutable, revoke, inject,
                                  invalidate_done])
 
-                case("first", reads=full, reset=1)
+                case("first", reads=full, reset=int(model == 1 and precision == 0))
                 case("hit")
                 for index in range(1, 9):
                     case(f"fill-{index}", index=index, reads=index + 17)
