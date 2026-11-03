@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/top-profile")
     parser.add_argument("--repair-of")
+    parser.add_argument("--hierarchical", action="store_true")
     args = parser.parse_args()
     exp = Experiment(args.out, "verifier-top-throughput-profile", source_inputs(), args.repair_of)
     error = None
@@ -34,17 +36,28 @@ def main():
         parameters = dict(COMPACT=1, RESIDENT_ENTRIES=64, FORCE_FALLBACK=0,
                           **COMPACT_PARENT)
         exp.receipt["parameters"] = parameters
+        exp.receipt["hierarchical_arithmetic"] = args.hierarchical
         exp.receipt["scope"] = (
             "200000-cycle public-top compiler profile with real weights and input; "
             "an incomplete numerical job is expected, never counted as neural completion.")
         exp.save()
         obj = exp.relative / "compile-obj"
+        compiler = ["verilator"]
+        if args.hierarchical:
+            root = exp.run("verilator-root", [
+                "verilator", "--getenv", "VERILATOR_ROOT"], 30).strip()
+            binary = shutil.which("verilator_bin")
+            if not root or binary is None:
+                raise RuntimeError("hierarchical profiling requires the installed Verilator binary")
+            compiler = ["env", "VERILATOR_BIN=" + os.path.relpath(binary, root), binary]
         sources = [str(path.relative_to(ROOT)) for path in source_inputs()
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
         exp.run("compile", [
-            "verilator", "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
+            *compiler, "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
             "--top-module", "anvil_en1_top", "--Mdir", str(obj),
             "-j", "2", "-CFLAGS", "-O3 -pg", "-LDFLAGS", "-pg",
+            *(["--hierarchical", "tests/simulation_hierarchy.vlt"]
+              if args.hierarchical else []),
             *[f"-G{name}={value}" for name, value in parameters.items()],
             "tests/simulation_schedule.vlt", *sources,
             str(ROOT / "tests/top_smoke.cpp")], 1800)
