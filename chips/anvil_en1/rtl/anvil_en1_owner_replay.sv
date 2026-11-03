@@ -67,6 +67,13 @@ module anvil_en1_owner_replay #(
     output wire result_ready,
     input wire [31:0] result_data,
     input wire result_error,
+    output wire grant_valid,
+    input wire grant_ready,
+    output wire [4:0] grant_component,
+    output wire [63:0] grant_payload_bytes, grant_shadow_bytes,
+    input wire grant_rsp_valid,
+    output wire grant_rsp_ready,
+    input wire grant_allowed,
     output wire [63:0] raw_source_live_bytes, raw_source_physical_bytes,
     output wire [63:0] tile_live_bytes, tile_physical_bytes,
     output wire [63:0] controller_bytes,
@@ -114,6 +121,11 @@ module anvil_en1_owner_replay #(
         assign cmd_addr = 0;
         assign cmd_wdata = 0;
         assign result_ready = 0;
+        assign grant_valid = 0;
+        assign grant_component = 0;
+        assign grant_payload_bytes = 0;
+        assign grant_shadow_bytes = 0;
+        assign grant_rsp_ready = 0;
         assign raw_source_live_bytes = 0;
         assign raw_source_physical_bytes = 0;
         assign tile_live_bytes = 0;
@@ -126,15 +138,17 @@ module anvil_en1_owner_replay #(
     end else begin : replay
         localparam integer MAX_H = COMPACT ? 8 : 2560;
         localparam integer H_BITS = $clog2(MAX_H);
-        localparam [3:0] IDLE = 0, CONTROL_VALIDATE = 1,
+        localparam [4:0] IDLE = 0, CONTROL_VALIDATE = 1,
             CONTROL_PUBLISH = 2, CONTROL_RESPONSE = 3,
             VALIDATE = 4, RING_SEND = 5, RING_WAIT = 6,
             EVAL_START = 7, EVAL_WAIT = 8, EVAL_COMMIT = 9,
-            TILE_START = 10, TILE_WAIT = 11, PUBLISH = 12, RESPONSE = 13;
+            TILE_START = 10, TILE_WAIT = 11, PUBLISH = 12, RESPONSE = 13,
+            RAW_GRANT_SEND = 14, RAW_GRANT_WAIT = 15,
+            TILE_GRANT_SEND = 16, TILE_GRANT_WAIT = 17;
         localparam [2:0] SOURCE_IDLE = 0, SOURCE_VALIDATE = 1,
             SOURCE_READ = 2, SOURCE_CAPTURE = 3,
             FRONTIER_SEND = 4, FRONTIER_WAIT = 5, SOURCE_RESPONSE = 6;
-        reg [3:0] state;
+        reg [4:0] state;
         reg [2:0] source_state;
         reg active, fallback_hold, invalidate_hold, control_fallback_hold;
         reg raw_allocated, raw_committed, vector_bad, vector_complete;
@@ -283,6 +297,18 @@ module anvil_en1_owner_replay #(
         assign tile_live_bytes = rst_n && tile_allocated ?
             {32'd0, dimension_hold} << 1 : 64'd0;
         assign tile_physical_bytes = rst_n ? (COMPACT ? 64'd16 : 64'd1024) : 64'd0;
+        wire raw_grant = state == RAW_GRANT_SEND || state == RAW_GRANT_WAIT;
+        assign grant_valid = rst_n &&
+            (state == RAW_GRANT_SEND || state == TILE_GRANT_SEND);
+        assign grant_component = !rst_n ? 5'd0 : (raw_grant ? 5'd6 : 5'd7);
+        assign grant_payload_bytes = !rst_n ? 64'd0 :
+            (raw_grant ? {32'd0, hidden_hold} << 1 :
+                {32'd0, dimension_hold} << 1);
+        assign grant_shadow_bytes = !rst_n ? 64'd0 :
+            (raw_grant ? {52'd0, selected_hidden} << 1 :
+                (global_owner ? 64'd1024 : 64'd512));
+        assign grant_rsp_ready = rst_n &&
+            (state == RAW_GRANT_WAIT || state == TILE_GRANT_WAIT);
         assign ring_hit_event = rst_n && ring_hit_pulse;
         assign busy = rst_n && state != IDLE;
 
@@ -464,12 +490,10 @@ module anvil_en1_owner_replay #(
                             token_hold > 131071 || component_hold[0] ||
                             {22'd0, component_hold} >= selected_dimension || !valid_head)
                             state <= PUBLISH;
-                        else if (fallback_hold)
-                            state <= EVAL_START;
-                        else if (owner_hold == owners - 8'd2)
+                        else if (!fallback_hold && owner_hold == owners - 8'd2)
                             state <= RING_SEND;
                         else
-                            state <= TILE_START;
+                            state <= RAW_GRANT_SEND;
                     end
                     RING_SEND: if (ring_read_ready)
                         state <= RING_WAIT;
@@ -482,10 +506,23 @@ module anvil_en1_owner_replay #(
                             ring_hit_pulse <= 1;
                             state <= PUBLISH;
                         end else
-                            state <= TILE_START;
+                            state <= RAW_GRANT_SEND;
+                    end
+                    RAW_GRANT_SEND: if (grant_ready)
+                        state <= RAW_GRANT_WAIT;
+                    RAW_GRANT_WAIT: if (grant_rsp_valid && grant_rsp_ready) begin
+                        if (!grant_allowed) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else begin
+                            raw_allocated <= 1;
+                            if (fallback_hold)
+                                state <= EVAL_START;
+                            else
+                                state <= TILE_GRANT_SEND;
+                        end
                     end
                     EVAL_START: if (eval_start_ready) begin
-                        raw_allocated <= 1;
                         state <= EVAL_WAIT;
                     end
                     EVAL_WAIT: begin
@@ -513,15 +550,24 @@ module anvil_en1_owner_replay #(
                             state <= PUBLISH;
                         end else begin
                             raw_committed <= 1;
+                            state <= TILE_GRANT_SEND;
+                        end
+                    end
+                    TILE_GRANT_SEND: if (grant_ready)
+                        state <= TILE_GRANT_WAIT;
+                    TILE_GRANT_WAIT: if (grant_rsp_valid && grant_rsp_ready) begin
+                        if (!grant_allowed) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else begin
+                            tile_allocated <= 1;
                             state <= TILE_START;
                         end
                     end
                     TILE_START: if (tile_ready) begin
-                        raw_allocated <= 1;
                         normalized_count <= 0;
                         normalized_committed <= 0;
                         normalized_bad <= 0;
-                        tile_allocated <= 1;
                         state <= TILE_WAIT;
                     end
                     TILE_WAIT: begin
@@ -551,7 +597,12 @@ module anvil_en1_owner_replay #(
                             state <= PUBLISH;
                         end
                     end
-                    PUBLISH: state <= RESPONSE;
+                    PUBLISH: begin
+                        raw_allocated <= 0;
+                        raw_committed <= 0;
+                        tile_allocated <= 0;
+                        state <= RESPONSE;
+                    end
                     RESPONSE: if (regen_rsp_ready) begin
                         raw_allocated <= 0;
                         raw_committed <= 0;

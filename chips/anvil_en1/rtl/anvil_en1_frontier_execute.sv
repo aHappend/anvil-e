@@ -131,9 +131,18 @@ module anvil_en1_frontier_execute #(
     output wire [63:0] vector_shadow_bytes,
     output wire [63:0] feature_live_bytes, feature_physical_bytes,
     output wire [63:0] frontier_live_bytes, frontier_physical_bytes,
+    output wire [63:0] frontier_shadow_bytes,
     output wire [63:0] frontier_metadata_bytes,
     output wire [63:0] ring_live_bytes, ring_physical_bytes, ring_metadata_bytes,
+    output wire [63:0] ring_shadow_bytes,
     output wire [63:0] anchor_live_bytes, anchor_physical_bytes,
+    output wire grant_valid,
+    input wire grant_ready,
+    output wire [4:0] grant_component,
+    output wire [63:0] grant_payload_bytes, grant_shadow_bytes,
+    input wire grant_rsp_valid,
+    output wire grant_rsp_ready,
+    input wire grant_allowed,
     output wire [191:0] execution_live_bytes, execution_physical_bytes,
     output wire [191:0] execution_shadow_bytes,
     output wire [3:0] vector_ram_write, vector_ram_read,
@@ -166,7 +175,9 @@ module anvil_en1_frontier_execute #(
         ANCHOR_WAIT = 24, EVAL_START = 25, EVAL_WAIT = 26,
         LOGITS_START = 27, LOGITS_WAIT = 28, PUBLISH = 29, RESPONSE = 30,
         TOKEN_ADDRESS = 31, TOKEN_SEND = 32, TOKEN_WAIT = 33, TOKEN_CLASSIFY = 34,
-        FEATURE_START = 35, FEATURE_WAIT = 36, FEATURE_COMMIT = 37;
+        FEATURE_START = 35, FEATURE_WAIT = 36, FEATURE_COMMIT = 37,
+        ALLOCATION_SEND = 38, ALLOCATION_WAIT = 39,
+        EMBED_PRIVATE_GRANT = 40, EVAL_VECTOR_GRANT = 41;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_LOCAL_READ = 2,
         S_LOCAL_CAPTURE = 3, S_FRONTIER_SEND = 4, S_FRONTIER_WAIT = 5,
         S_RESPONSE = 6;
@@ -176,6 +187,12 @@ module anvil_en1_frontier_execute #(
         FEATURE_READ = 2, FEATURE_CAPTURE = 3, FEATURE_RESPONSE = 4;
     localparam [2:0] M_NONE = 0, M_EMBED = 1, M_LAYER = 2, M_LOGITS = 3, M_TOKEN = 4;
     reg [5:0] state, frontier_return, ring_return;
+    reg [4:0] allocation_component;
+    reg [5:0] allocation_return;
+    reg frontier_reserved, ring_reserved, vector_reserved, feature_reserved;
+    reg anchor_reserved, embedding_reserved, layer_reserved;
+    reg [63:0] frontier_reservation_hold, frontier_shadow_hold;
+    reg [63:0] ring_reservation_hold, ring_shadow_hold;
     reg [2:0] operation, source_state;
     reg [1:0] model_hold, precision_hold, modality_hold, frontier_operation;
     reg [1:0] read_state;
@@ -218,6 +235,12 @@ module anvil_en1_frontier_execute #(
     reg [15:0] feature_payload [0:MAX_H-1];
     localparam integer CONTROLLER_BITS =
         $bits(state) + $bits(frontier_return) + $bits(ring_return) +
+        $bits(allocation_component) + $bits(allocation_return) +
+        $bits(frontier_reserved) + $bits(ring_reserved) +
+        $bits(vector_reserved) + $bits(feature_reserved) + $bits(anchor_reserved) +
+        $bits(embedding_reserved) + $bits(layer_reserved) +
+        $bits(frontier_reservation_hold) + $bits(frontier_shadow_hold) +
+        $bits(ring_reservation_hold) + $bits(ring_shadow_hold) +
         $bits(operation) + $bits(source_state) + $bits(model_hold) +
         $bits(precision_hold) + $bits(modality_hold) + $bits(frontier_operation) +
         $bits(read_state) + $bits(feature_state) + $bits(generation_hold) +
@@ -262,12 +285,86 @@ module anvil_en1_frontier_execute #(
     end
 
     wire native_model;
+    wire [31:0] padded_count = (tokens_hold + 32'd15) & 32'hfffffff0;
+    wire [31:0] ring_tokens = padded_count > (COMPACT ? 4 : 512) ?
+        (COMPACT ? 32'd4 : 32'd512) : padded_count;
+    wire [31:0] shadow_ring_tokens = padded_count > 512 ? 32'd512 : padded_count;
+    wire [63:0] shadow_frontier_bytes = model_hold == 1 ?
+        ({32'd0, padded_count} << 11) + ({32'd0, padded_count} << 10) :
+        ({32'd0, padded_count} << 12) + ({32'd0, padded_count} << 10);
+    wire [63:0] reserved_frontier_bytes = COMPACT ?
+        {32'd0, padded_count} << 4 : shadow_frontier_bytes;
+    wire [63:0] reserved_ring_bytes = {32'd0, ring_tokens} <<
+        (COMPACT ? 4 : (model_hold == 1 ? 10 : 11));
+    wire [63:0] shadow_ring_bytes = {32'd0, shadow_ring_tokens} <<
+        (model_hold == 1 ? 10 : 11);
+    wire [63:0] actual_frontier_bytes, actual_ring_bytes, actual_anchor_bytes;
+    wire [191:0] child_execution_bytes, child_execution_shadow;
+    wire [63:0] hidden_bytes = {32'd0, hidden_hold} << 1;
+    wire [63:0] shadow_hidden_bytes = model_hold == 1 ? 64'd3072 : 64'd5120;
+    wire [63:0] embedding_bytes = hidden_bytes + 64'(2*P);
+    wire [63:0] embedding_shadow = shadow_hidden_bytes + 64'd512;
+    wire [63:0] vector_reservation_bytes = operation == 7 ?
+        hidden_bytes : embedding_bytes;
+    wire [63:0] vector_reservation_shadow = operation == 7 ?
+        shadow_hidden_bytes : embedding_shadow;
+    wire selected_global;
+    wire [63:0] head_bytes = COMPACT ?
+        (selected_global ? 64'd16 : 64'd8) :
+        (selected_global ? 64'd1024 : 64'd512);
+    wire [63:0] shadow_head_bytes = selected_global ? 64'd1024 : 64'd512;
+    wire [63:0] layer_bytes = (hidden_bytes << 1) + hidden_bytes +
+        64'(2*P) + (head_bytes << (COMPACT ? 1 : 3));
+    wire [63:0] layer_shadow = (shadow_hidden_bytes << 1) + shadow_hidden_bytes +
+        64'd512 + (shadow_head_bytes << 3);
+    wire [63:0] candidate_bytes = allocation_component == 0 ? reserved_frontier_bytes :
+        (allocation_component == 1 ? reserved_ring_bytes :
+        (allocation_component == 2 ? vector_reservation_bytes :
+        (allocation_component == 3 ? hidden_bytes :
+        (allocation_component == 4 ? 64'(COMPACT ? 8 : 512) :
+        (allocation_component == 19 ? embedding_bytes : layer_bytes)))));
+    wire [63:0] candidate_shadow = allocation_component == 0 ? shadow_frontier_bytes :
+        (allocation_component == 1 ? shadow_ring_bytes :
+        (allocation_component == 2 ? vector_reservation_shadow :
+        (allocation_component == 3 ? shadow_hidden_bytes :
+        (allocation_component == 4 ? 64'd512 :
+        (allocation_component == 19 ? embedding_shadow : layer_shadow)))));
+    assign frontier_live_bytes = !rst_n ? 64'd0 :
+        (frontier_reserved && frontier_reservation_hold > actual_frontier_bytes ?
+            frontier_reservation_hold : actual_frontier_bytes);
+    assign frontier_shadow_bytes = rst_n && frontier_reserved ?
+        frontier_shadow_hold : 64'd0;
+    assign ring_live_bytes = !rst_n ? 64'd0 :
+        (ring_reserved && ring_reservation_hold > actual_ring_bytes ?
+            ring_reservation_hold : actual_ring_bytes);
+    assign ring_shadow_bytes = rst_n && ring_reserved ? ring_shadow_hold : 64'd0;
+    assign anchor_live_bytes = !rst_n ? 64'd0 :
+        (anchor_reserved && 64'(COMPACT ? 8 : 512) > actual_anchor_bytes ?
+            64'(COMPACT ? 8 : 512) : actual_anchor_bytes);
+    assign execution_live_bytes[0+:64] = !rst_n ? 64'd0 :
+        (embedding_reserved && embedding_bytes > child_execution_bytes[0+:64] ?
+            embedding_bytes : child_execution_bytes[0+:64]);
+    assign execution_shadow_bytes[0+:64] = !rst_n ? 64'd0 :
+        (embedding_reserved && embedding_shadow > child_execution_shadow[0+:64] ?
+            embedding_shadow : child_execution_shadow[0+:64]);
+    assign execution_live_bytes[64+:64] = !rst_n ? 64'd0 :
+        (layer_reserved && layer_bytes > child_execution_bytes[64+:64] ?
+            layer_bytes : child_execution_bytes[64+:64]);
+    assign execution_shadow_bytes[64+:64] = !rst_n ? 64'd0 :
+        (layer_reserved && layer_shadow > child_execution_shadow[64+:64] ?
+            layer_shadow : child_execution_shadow[64+:64]);
+    assign execution_live_bytes[128+:64] = child_execution_bytes[128+:64];
+    assign grant_valid = rst_n && state == ALLOCATION_SEND;
+    assign grant_component = rst_n ? allocation_component : 5'd0;
+    assign grant_payload_bytes = rst_n ? candidate_bytes : 64'd0;
+    assign grant_shadow_bytes = rst_n ? candidate_shadow : 64'd0;
+    assign grant_rsp_ready = rst_n && state == ALLOCATION_WAIT;
     wire [7:0] selected_layers, selected_owners;
     wire [11:0] selected_hidden;
     anvil_en1_geometry geometry (
         .rst_n(rst_n), .model(model_hold), .layer(layer_hold),
         .is_native(native_model), .layers(selected_layers), .owners(selected_owners),
-        .owner(), .is_global(), .hidden(selected_hidden), .intermediate()
+        .owner(), .is_global(selected_global), .hidden(selected_hidden), .intermediate()
     );
     wire session_matches = task_model == model_hold &&
         task_precision == precision_hold && task_generation == generation_hold &&
@@ -311,7 +408,7 @@ module anvil_en1_frontier_execute #(
         .control_rsp_valid(frontier_control_valid),
         .control_rsp_ready(rst_n && state == FRONTIER_CONTROL_WAIT),
         .control_error(frontier_control_error), .fallback_needed(frontier_capacity_fallback),
-        .padded_tokens(), .live_bytes(frontier_live_bytes),
+        .padded_tokens(), .live_bytes(actual_frontier_bytes),
         .physical_payload_bytes(frontier_physical_bytes),
         .controller_bytes(frontier_controller_bytes),
         .token_metadata_bytes(frontier_metadata_bytes),
@@ -355,7 +452,7 @@ module anvil_en1_frontier_execute #(
         .control_generation(generation_hold), .control_tokens(tokens_hold),
         .control_rsp_valid(ring_control_valid),
         .control_rsp_ready(rst_n && state == RING_CONTROL_WAIT),
-        .control_error(ring_control_error), .live_bytes(ring_live_bytes),
+        .control_error(ring_control_error), .live_bytes(actual_ring_bytes),
         .physical_payload_bytes(ring_physical_bytes), .token_metadata_bytes(ring_metadata_bytes),
         .controller_bytes(ring_controller_bytes),
         .write_start_valid(anchor_write_start_valid), .write_start_ready(anchor_write_start_ready),
@@ -441,8 +538,8 @@ module anvil_en1_frontier_execute #(
         .result_ready(embed_result_ready), .result_data(result_data), .result_error(result_error),
         .done_valid(embed_done), .done_ready(rst_n && state == EMBED_WAIT),
         .done_error(embed_error),
-        .live_payload_bytes(execution_live_bytes[0+:64]),
-        .production_shadow_bytes(execution_shadow_bytes[0+:64]),
+        .live_payload_bytes(child_execution_bytes[0+:64]),
+        .production_shadow_bytes(child_execution_shadow[0+:64]),
         .physical_payload_bytes(execution_physical_bytes[0+:64])
     );
     wire layer_req_valid, layer_req_value, layer_rsp_ready;
@@ -508,8 +605,8 @@ module anvil_en1_frontier_execute #(
         .output_index(layer_output_index), .output_data(layer_output_data),
         .output_last(layer_output_last), .done_valid(layer_done),
         .done_ready(rst_n && state == LAYER_WAIT), .done_error(layer_error),
-        .live_payload_bytes(execution_live_bytes[64+:64]),
-        .production_shadow_bytes(execution_shadow_bytes[64+:64]),
+        .live_payload_bytes(child_execution_bytes[64+:64]),
+        .production_shadow_bytes(child_execution_shadow[64+:64]),
         .physical_payload_bytes(execution_physical_bytes[64+:64])
     );
     wire anchor_ready, anchor_done, anchor_req_valid, anchor_req_value, anchor_rsp_ready;
@@ -553,7 +650,7 @@ module anvil_en1_frontier_execute #(
         .write_last(anchor_write_last), .write_done_valid(anchor_write_done_valid),
         .write_done_ready(anchor_write_done_ready), .write_done_error(anchor_write_done_error),
         .done_valid(anchor_done), .done_ready(rst_n && state == ANCHOR_WAIT),
-        .done_error(anchor_error), .live_payload_bytes(anchor_live_bytes),
+        .done_error(anchor_error), .live_payload_bytes(actual_anchor_bytes),
         .physical_payload_bytes(anchor_physical_bytes)
     );
     anvil_en1_final_logits #(.COMPACT(COMPACT), .EXTERNAL_PAYLOAD_RAM(1)) logits (
@@ -580,7 +677,7 @@ module anvil_en1_frontier_execute #(
         .logit_index(logit_index), .logit_last(logit_last),
         .done_valid(logits_done), .done_ready(rst_n && state == LOGITS_WAIT),
         .done_error(logits_error),
-        .live_payload_bytes(execution_live_bytes[128+:64]),
+        .live_payload_bytes(child_execution_bytes[128+:64]),
         .physical_payload_bytes(execution_physical_bytes[128+:64])
     );
 
@@ -602,15 +699,21 @@ module anvil_en1_frontier_execute #(
     assign owner_read_rsp_valid = rst_n && read_state == READ_RESPONSE && read_owner;
     assign owner_read_rsp_data = rst_n ? read_data_hold : 32'd0;
     assign owner_read_rsp_error = rst_n ? read_error_hold : 4'd0;
-    assign vector_live_bytes = rst_n ?
+    wire [63:0] actual_vector_bytes =
         (h_allocated ? {32'd0, hidden_hold} << 1 : 64'd0) +
-        (p_allocated ? 64'(2*P) : 64'd0) : 64'd0;
-    assign vector_shadow_bytes = rst_n ?
+        (p_allocated ? 64'(2*P) : 64'd0);
+    wire [63:0] actual_vector_shadow =
         (h_allocated ? (model_hold == 1 ? 64'd3072 : 64'd5120) : 64'd0) +
-        (p_allocated ? 64'd512 : 64'd0) : 64'd0;
+        (p_allocated ? 64'd512 : 64'd0);
+    assign vector_live_bytes = !rst_n ? 64'd0 :
+        (vector_reserved && vector_reservation_bytes > actual_vector_bytes ?
+            vector_reservation_bytes : actual_vector_bytes);
+    assign vector_shadow_bytes = !rst_n ? 64'd0 :
+        (vector_reserved && vector_reservation_shadow > actual_vector_shadow ?
+            vector_reservation_shadow : actual_vector_shadow);
     assign execution_shadow_bytes[128+:64] = execution_live_bytes[128+:64];
     assign vector_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
-    assign feature_live_bytes = rst_n && feature_allocated ?
+    assign feature_live_bytes = rst_n && (feature_allocated || feature_reserved) ?
         {32'd0, hidden_hold} << 1 : 64'd0;
     assign feature_physical_bytes = rst_n ? 64'(2*MAX_H) : 64'd0;
     assign modality_valid = 1'b0;
@@ -916,6 +1019,19 @@ module anvil_en1_frontier_execute #(
             state <= IDLE;
             frontier_return <= 0;
             ring_return <= 0;
+            allocation_component <= 0;
+            allocation_return <= 0;
+            frontier_reserved <= 0;
+            ring_reserved <= 0;
+            vector_reserved <= 0;
+            feature_reserved <= 0;
+            anchor_reserved <= 0;
+            embedding_reserved <= 0;
+            layer_reserved <= 0;
+            frontier_reservation_hold <= 0;
+            frontier_shadow_hold <= 0;
+            ring_reservation_hold <= 0;
+            ring_shadow_hold <= 0;
             operation <= 0;
             model_hold <= 0;
             precision_hold <= 0;
@@ -974,6 +1090,12 @@ module anvil_en1_frontier_execute #(
             case (state)
                 IDLE: begin
                     if (control_valid && control_ready) begin
+                        h_allocated <= 0;
+                        h_committed <= 0;
+                        p_allocated <= 0;
+                        p_committed <= 0;
+                        feature_allocated <= 0;
+                        feature_committed <= 0;
                         is_control <= 1;
                         invalidate_hold <= control_invalidate;
                         model_hold <= control_model;
@@ -1059,7 +1181,9 @@ module anvil_en1_frontier_execute #(
                             0: begin
                                 frontier_operation <= 0;
                                 frontier_return <= CONFIG_FRONTIER_DONE;
-                                state <= FRONTIER_CONTROL;
+                                allocation_component <= 0;
+                                allocation_return <= FRONTIER_CONTROL;
+                                state <= ALLOCATION_SEND;
                             end
                             1, 3, 5: begin
                                 input_count <= 0;
@@ -1078,7 +1202,11 @@ module anvil_en1_frontier_execute #(
                                 end
                                 state <= TOKEN_ADDRESS;
                             end
-                            2: state <= ANCHOR_START;
+                            2: begin
+                                allocation_component <= 4;
+                                allocation_return <= ANCHOR_START;
+                                state <= ALLOCATION_SEND;
+                            end
                             4: begin
                                 frontier_operation <= 2;
                                 frontier_return <= PUBLISH;
@@ -1109,6 +1237,8 @@ module anvil_en1_frontier_execute #(
                 FRONTIER_CONTROL: if (control_ingress && frontier_control_ready)
                     state <= FRONTIER_CONTROL_WAIT;
                 FRONTIER_CONTROL_WAIT: if (frontier_control_valid) begin
+                    if (frontier_control_error == 0 && frontier_operation == 1)
+                        frontier_reserved <= 0;
                     if (frontier_control_error != 0 ||
                         (frontier_operation == 0 && frontier_capacity_fallback)) begin
                         error_hold <= frontier_control_error != 0 ? frontier_control_error : 4'd7;
@@ -1126,6 +1256,8 @@ module anvil_en1_frontier_execute #(
                 RING_CONTROL: if (ring_control_ready)
                     state <= RING_CONTROL_WAIT;
                 RING_CONTROL_WAIT: if (ring_control_valid) begin
+                    if (ring_control_error == 0 && ring_invalidate)
+                        ring_reserved <= 0;
                     if (ring_control_error != 0) begin
                         error_hold <= ring_control_error;
                         state <= PUBLISH;
@@ -1141,14 +1273,60 @@ module anvil_en1_frontier_execute #(
                         state <= PUBLISH;
                     end else begin
                         frontier_operation <= 3;
-                        frontier_return <= EVAL_START;
+                        frontier_return <= EVAL_VECTOR_GRANT;
                         state <= FRONTIER_CONTROL;
                     end
                 end
                 CONFIG_FRONTIER_DONE: begin
                     ring_invalidate <= 0;
                     ring_return <= PUBLISH;
-                    state <= RING_CONTROL;
+                    allocation_component <= 1;
+                    allocation_return <= RING_CONTROL;
+                    state <= ALLOCATION_SEND;
+                end
+                ALLOCATION_SEND: if (grant_valid && grant_ready)
+                    state <= ALLOCATION_WAIT;
+                ALLOCATION_WAIT: if (grant_rsp_valid && grant_rsp_ready) begin
+                    if (!grant_allowed) begin
+                        error_hold <= 7;
+                        state <= PUBLISH;
+                    end else begin
+                        case (allocation_component)
+                            0: begin
+                                frontier_reserved <= 1;
+                                frontier_reservation_hold <= candidate_bytes;
+                                frontier_shadow_hold <= candidate_shadow;
+                            end
+                            1: begin
+                                ring_reserved <= 1;
+                                ring_reservation_hold <= candidate_bytes;
+                                ring_shadow_hold <= candidate_shadow;
+                            end
+                            2: vector_reserved <= 1;
+                            3: feature_reserved <= 1;
+                            4: anchor_reserved <= 1;
+                            19: embedding_reserved <= 1;
+                            20: layer_reserved <= 1;
+                            default: error_hold <= 7;
+                        endcase
+                        if (allocation_component == 0 || allocation_component == 1 ||
+                            allocation_component == 2 || allocation_component == 3 ||
+                            allocation_component == 4 || allocation_component == 19 ||
+                            allocation_component == 20)
+                            state <= allocation_return;
+                        else
+                            state <= PUBLISH;
+                    end
+                end
+                EVAL_VECTOR_GRANT: begin
+                    allocation_component <= 2;
+                    allocation_return <= EVAL_START;
+                    state <= ALLOCATION_SEND;
+                end
+                EMBED_PRIVATE_GRANT: begin
+                    allocation_component <= 19;
+                    allocation_return <= EMBED_START;
+                    state <= ALLOCATION_SEND;
                 end
                 TOKEN_ADDRESS: begin
                     if (token_address_sum[64] || token_address_end[64]) begin
@@ -1183,9 +1361,13 @@ module anvil_en1_frontier_execute #(
                             feature_count <= 0;
                             feature_bad <= 0;
                             feature_complete <= 0;
-                            state <= FEATURE_START;
-                        end else
-                            state <= EMBED_START;
+                            allocation_component <= 3;
+                            allocation_return <= FEATURE_START;
+                        end else begin
+                            allocation_component <= 2;
+                            allocation_return <= EMBED_PRIVATE_GRANT;
+                        end
+                        state <= ALLOCATION_SEND;
                     end
                 end
                 FEATURE_START: if (eval_start_ready) begin
@@ -1216,11 +1398,14 @@ module anvil_en1_frontier_execute #(
                         feature_count != hidden_hold) begin
                         error_hold <= child_error != 0 ? child_error : 4'd7;
                         feature_allocated <= 0;
+                        feature_reserved <= 0;
                         feature_committed <= 0;
                         state <= PUBLISH;
                     end else begin
                         feature_committed <= 1;
-                        state <= EMBED_START;
+                        allocation_component <= 2;
+                        allocation_return <= EMBED_PRIVATE_GRANT;
+                        state <= ALLOCATION_SEND;
                     end
                 end
                 EMBED_START: if (embed_ready) begin
@@ -1233,6 +1418,7 @@ module anvil_en1_frontier_execute #(
                     if (feature_state == FEATURE_RESPONSE && embed_modality_rsp_ready &&
                         !feature_error_hold && feature_request_index == hidden_hold - 1'b1) begin
                         feature_allocated <= 0;
+                        feature_reserved <= 0;
                         feature_committed <= 0;
                         p_allocated <= 1;
                     end
@@ -1255,12 +1441,14 @@ module anvil_en1_frontier_execute #(
                         end
                     end
                     if (embed_done) begin
+                        embedding_reserved <= 0;
                         child_error <= embed_error;
                         state <= EMBED_COMMIT;
                     end
                 end
                 EMBED_COMMIT: begin
                     feature_allocated <= 0;
+                    feature_reserved <= 0;
                     feature_committed <= 0;
                     if (child_error != 0 || input_bad || !input_complete ||
                         input_count != hidden_hold || p_bad || !p_complete || p_count != P) begin
@@ -1284,7 +1472,9 @@ module anvil_en1_frontier_execute #(
                             h_count <= 0;
                             h_bad <= 0;
                             h_complete <= 0;
-                            state <= LAYER_START;
+                            allocation_component <= 20;
+                            allocation_return <= LAYER_START;
+                            state <= ALLOCATION_SEND;
                         end
                     end
                 end
@@ -1304,6 +1494,8 @@ module anvil_en1_frontier_execute #(
                         end
                     end
                     if (state == LAYER_WAIT ? layer_done : eval_done_valid) begin
+                        if (state == LAYER_WAIT)
+                            layer_reserved <= 0;
                         child_error <= state == LAYER_WAIT ? layer_error : eval_done_error;
                         state <= VECTOR_COMMIT;
                     end
@@ -1363,6 +1555,7 @@ module anvil_en1_frontier_execute #(
                 ANCHOR_START: if (anchor_ready)
                     state <= ANCHOR_WAIT;
                 ANCHOR_WAIT: if (anchor_done) begin
+                    anchor_reserved <= 0;
                     error_hold <= anchor_error;
                     state <= PUBLISH;
                 end
@@ -1404,8 +1597,14 @@ module anvil_en1_frontier_execute #(
                     end
                     state <= RESPONSE;
                 end
-                RESPONSE: if (is_control ? control_rsp_ready : task_done_ready)
+                RESPONSE: if (is_control ? control_rsp_ready : task_done_ready) begin
+                    vector_reserved <= 0;
+                    feature_reserved <= 0;
+                    anchor_reserved <= 0;
+                    embedding_reserved <= 0;
+                    layer_reserved <= 0;
                     state <= IDLE;
+                end
                 default: begin
                     active <= 0;
                     h_committed <= 0;

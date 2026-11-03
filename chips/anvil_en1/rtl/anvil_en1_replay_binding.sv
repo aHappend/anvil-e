@@ -173,6 +173,34 @@ module anvil_en1_replay_binding #(
     reg [7:0] root_layer;
     reg [63:0] root_tokens_base, root_weights_base;
     reg [3:0] control_error_hold, root_error_hold;
+    localparam [1:0] GRANT_IDLE = 0, GRANT_SEND = 1, GRANT_WAIT = 2;
+    reg [1:0] grant_state;
+    reg grant_owner;
+    reg grant_fault;
+    reg [4:0] grant_component_hold;
+    reg [63:0] grant_payload_hold, grant_shadow_hold;
+    reg [63:0] grant_native_hold, grant_native_shadow_hold;
+    wire owner_grant_valid, owner_grant_ready, owner_grant_rsp_ready;
+    wire replay_grant_valid, replay_grant_ready, replay_grant_rsp_ready;
+    wire [4:0] owner_grant_component, replay_grant_component;
+    wire [63:0] owner_grant_bytes, owner_grant_shadow;
+    wire [63:0] replay_grant_bytes, replay_grant_shadow;
+    wire [63:0] replay_grant_native, replay_grant_native_shadow;
+    wire owner_grant_response = rst_n && grant_state == GRANT_WAIT && grant_owner;
+    wire replay_grant_response = rst_n && grant_state == GRANT_WAIT && !grant_owner;
+    assign grant_valid = rst_n && grant_state == GRANT_SEND &&
+        (grant_owner ? owner_grant_valid : replay_grant_valid);
+    assign grant_component = rst_n ? grant_component_hold : 5'd0;
+    assign grant_payload_bytes = rst_n ? grant_payload_hold : 64'd0;
+    assign grant_shadow_bytes = rst_n ? grant_shadow_hold : 64'd0;
+    assign grant_native_bytes = rst_n ? grant_native_hold : 64'd0;
+    assign grant_native_shadow_bytes = rst_n ? grant_native_shadow_hold : 64'd0;
+    assign owner_grant_ready = rst_n && grant_state == GRANT_SEND &&
+        grant_owner && grant_ready;
+    assign replay_grant_ready = rst_n && grant_state == GRANT_SEND &&
+        !grant_owner && grant_ready;
+    assign grant_rsp_ready = rst_n && grant_state == GRANT_WAIT &&
+        (grant_owner ? owner_grant_rsp_ready : replay_grant_rsp_ready);
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -184,6 +212,9 @@ module anvil_en1_replay_binding #(
     wire owner_control_ready, owner_control_valid;
     wire [3:0] owner_control_error;
     wire owner_busy, replay_busy, owner_regen_ready;
+    wire owner_grant_eligible = owner_grant_valid && !replay_busy;
+    wire memory_protocol_error;
+    assign protocol_error = rst_n && (memory_protocol_error || grant_fault);
     wire owner_eval_valid, owner_eval_ready, owner_eval_output_ready, owner_eval_done_ready;
     wire [1:0] owner_eval_model, owner_eval_precision, owner_eval_domain;
     wire [31:0] owner_eval_generation, owner_eval_tokens, owner_eval_token;
@@ -197,7 +228,8 @@ module anvil_en1_replay_binding #(
     wire [63:0] client_cmd_wdata, client_result_data;
     wire [1:0] client_result_valid, client_result_ready, client_result_error;
     wire control_open = rst_n && control_state == CONTROL_IDLE &&
-        root_state == ROOT_IDLE && !owner_busy && !replay_busy;
+        root_state == ROOT_IDLE && !owner_busy && !replay_busy &&
+        grant_state == GRANT_IDLE;
     wire root_open = rst_n && active && control_state == CONTROL_IDLE &&
         root_state == ROOT_IDLE;
     wire owner_route = rst_n && root_owner && root_state == ROOT_WAIT;
@@ -226,7 +258,8 @@ module anvil_en1_replay_binding #(
     assign eval_done_error = !rst_n ? 4'd0 :
         (root_error_valid ? root_error_hold : engine_done_error);
     assign busy = rst_n && (control_state != CONTROL_IDLE ||
-        root_state != ROOT_IDLE || owner_busy || replay_busy);
+        root_state != ROOT_IDLE || owner_busy || replay_busy ||
+        grant_state != GRANT_IDLE);
     localparam integer BINDING_BITS = $bits(control_state) + $bits(root_state) +
         $bits(active) + $bits(invalidate_hold) + $bits(fallback_hold) + $bits(root_owner) +
         $bits(model_hold) + $bits(precision_hold) + $bits(modality_hold) +
@@ -237,7 +270,11 @@ module anvil_en1_replay_binding #(
         $bits(root_model) + $bits(root_precision) + $bits(root_modality) + $bits(root_domain) +
         $bits(root_generation) + $bits(root_tokens) + $bits(root_token) +
         $bits(root_layer) + $bits(root_tokens_base) + $bits(root_weights_base) +
-        $bits(control_error_hold) + $bits(root_error_hold);
+        $bits(control_error_hold) + $bits(root_error_hold) +
+        $bits(grant_state) + $bits(grant_owner) + $bits(grant_fault) +
+        $bits(grant_component_hold) +
+        $bits(grant_payload_hold) + $bits(grant_shadow_hold) +
+        $bits(grant_native_hold) + $bits(grant_native_shadow_hold);
     assign binding_state_bytes = rst_n ? 64'((BINDING_BITS + 7) >> 3) : 64'd0;
     wire [63:0] owner_controller_bytes, replay_controller_bytes, memory_controller_bytes;
     assign reported_controller_bytes = !rst_n ? 64'd0 :
@@ -293,6 +330,11 @@ module anvil_en1_replay_binding #(
         .cmd_wdata(client_cmd_wdata[0+:32]),
         .result_valid(client_result_valid[0]), .result_ready(client_result_ready[0]),
         .result_data(client_result_data[0+:32]), .result_error(client_result_error[0]),
+        .grant_valid(owner_grant_valid), .grant_ready(owner_grant_ready),
+        .grant_component(owner_grant_component),
+        .grant_payload_bytes(owner_grant_bytes), .grant_shadow_bytes(owner_grant_shadow),
+        .grant_rsp_valid(owner_grant_response && grant_rsp_valid),
+        .grant_rsp_ready(owner_grant_rsp_ready), .grant_allowed(grant_allowed),
         .raw_source_live_bytes(owner_source_live_bytes),
         .raw_source_physical_bytes(owner_source_physical_bytes),
         .tile_live_bytes(owner_tile_live_bytes), .tile_physical_bytes(owner_tile_physical_bytes),
@@ -306,12 +348,13 @@ module anvil_en1_replay_binding #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
         .EXTERNAL_EMBEDDING_RAM(EXTERNAL_EMBEDDING_RAM)
     ) replay (
-        .grant_valid(grant_valid), .grant_ready(grant_ready),
-        .grant_component(grant_component),
-        .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
-        .grant_native_bytes(grant_native_bytes),
-        .grant_native_shadow_bytes(grant_native_shadow_bytes),
-        .grant_rsp_valid(grant_rsp_valid), .grant_rsp_ready(grant_rsp_ready),
+        .grant_valid(replay_grant_valid), .grant_ready(replay_grant_ready),
+        .grant_component(replay_grant_component),
+        .grant_payload_bytes(replay_grant_bytes), .grant_shadow_bytes(replay_grant_shadow),
+        .grant_native_bytes(replay_grant_native),
+        .grant_native_shadow_bytes(replay_grant_native_shadow),
+        .grant_rsp_valid(replay_grant_response && grant_rsp_valid),
+        .grant_rsp_ready(replay_grant_rsp_ready),
         .grant_allowed(grant_allowed),
         .embedding_ram_write(embedding_ram_write), .embedding_ram_read(embedding_ram_read),
         .embedding_ram_waddr(embedding_ram_waddr), .embedding_ram_raddr(embedding_ram_raddr),
@@ -410,9 +453,48 @@ module anvil_en1_replay_binding #(
         .cmd_input(cmd_input), .cmd_replay(),
         .result_valid(result_valid), .result_ready(result_ready),
         .result_data(result_data), .result_error(result_error),
-        .drain_valid(1'b0), .drain_done_ready(1'b1), .protocol_error(protocol_error),
+        .drain_valid(1'b0), .drain_done_ready(1'b1),
+        .protocol_error(memory_protocol_error),
         .controller_bytes(memory_controller_bytes)
     );
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            grant_state <= GRANT_IDLE;
+            grant_owner <= 0;
+            grant_fault <= 0;
+            grant_component_hold <= 0;
+            grant_payload_hold <= 0;
+            grant_shadow_hold <= 0;
+            grant_native_hold <= 0;
+            grant_native_shadow_hold <= 0;
+        end else begin
+            case (grant_state)
+                GRANT_IDLE: if (owner_grant_eligible || replay_grant_valid) begin
+                    grant_owner <= owner_grant_eligible;
+                    grant_component_hold <= owner_grant_eligible ?
+                        owner_grant_component : replay_grant_component;
+                    grant_payload_hold <= owner_grant_eligible ?
+                        owner_grant_bytes : replay_grant_bytes;
+                    grant_shadow_hold <= owner_grant_eligible ?
+                        owner_grant_shadow : replay_grant_shadow;
+                    grant_native_hold <= owner_grant_eligible ?
+                        native_workspace_bytes : replay_grant_native;
+                    grant_native_shadow_hold <= owner_grant_eligible ?
+                        native_workspace_shadow_bytes : replay_grant_native_shadow;
+                    grant_state <= GRANT_SEND;
+                end
+                GRANT_SEND: if (grant_valid && grant_ready)
+                    grant_state <= GRANT_WAIT;
+                GRANT_WAIT: if (grant_rsp_valid && grant_rsp_ready)
+                    grant_state <= GRANT_IDLE;
+                default: begin
+                    grant_fault <= 1;
+                    grant_state <= GRANT_IDLE;
+                end
+            endcase
+        end
+    end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

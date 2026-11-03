@@ -167,7 +167,8 @@ module anvil_en1_replay_execute #(
         (state == NATIVE_GRANT_SEND || state == NATIVE_GRANT_WAIT);
     wire [7:0] native_component = domain_hold == 1 ? 8'd12 :
         (domain_hold == 2 ? 8'd13 : (layer_hold == 1 ? 8'd15 : 8'd14));
-    wire [15:0] native_reservation_bytes = domain_hold == 1 ? 16'd7808 :
+    wire [15:0] native_reservation_bytes = domain_hold == 1 ?
+        (input_worker ? 16'd0 : 16'd7808) :
         (domain_hold == 2 ? (input_worker ? 16'd512 : 16'd38912) :
             (layer_hold == 1 ? 16'd6432 : 16'd6144));
     wire [63:0] native_reservation = rst_n && native_reserved ?
@@ -1207,7 +1208,7 @@ module anvil_en1_replay_execute #(
                         length_hold != (domain_hold == 2 ? 12'd1024 :
                         (domain_hold == 1 ? 12'd768 :
                         (COMPACT ? 12'd8 : (model_hold == 1 ? 12'd1536 : 12'd2560)))) ||
-                        (domain_hold == 1 && (native_patches_hold == 0 ||
+                        (domain_hold == 1 && (layer_hold > 16 || native_patches_hold == 0 ||
                             token_hold >= native_patches_hold)) ||
                         (domain_hold == 2 && (layer_hold > 12 || native_audio_frames_hold == 0 ||
                             native_audio_frames_hold > 131072 ||
@@ -1307,7 +1308,8 @@ module anvil_en1_replay_execute #(
                     end
                 end
                 PUBLISH: begin
-                    if (error_hold == 0 && (embedding_ram_fault || native_vector_fault)) begin
+                    if (error_hold == 0 && (embedding_ram_fault ||
+                        native_vector_fault || native_reservation_fault)) begin
                         error_hold <= 7;
                         done_dependency_hold <= 0;
                     end

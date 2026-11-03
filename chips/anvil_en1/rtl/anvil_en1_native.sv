@@ -80,6 +80,12 @@ module anvil_en1_native #(
     reg mask_owner, mask_value, mask_error;
     reg [31:0] mask_token_hold;
     reg [63:0] mask_address;
+    localparam [1:0] GRANT_IDLE = 0, GRANT_SEND = 1, GRANT_WAIT = 2;
+    reg [1:0] grant_state;
+    reg grant_owner, grant_fault;
+    reg [4:0] grant_component_hold;
+    reg [63:0] grant_payload_hold, grant_shadow_hold;
+    reg [63:0] grant_native_hold, grant_native_shadow_hold;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -99,14 +105,7 @@ module anvil_en1_native #(
     genvar shadow_component;
     generate for (shadow_component=0; shadow_component<25;
         shadow_component=shadow_component+1) begin : production_allocations
-        if (shadow_component==0)
-            assign allocation_shadow_bytes[64*shadow_component+:64] =
-                |allocation_live_bytes[0+:64] ? production_frontier_bytes : 64'd0;
-        else if (shadow_component==1)
-            assign allocation_shadow_bytes[64*shadow_component+:64] =
-                |allocation_live_bytes[64+:64] ?
-                    {32'd0, production_window} << (model_hold == 1 ? 10 : 11) : 64'd0;
-        else if (shadow_component==3 || shadow_component==6)
+        if (shadow_component==3 || shadow_component==6)
             assign allocation_shadow_bytes[64*shadow_component+:64] =
                 |allocation_live_bytes[64*shadow_component+:64] ?
                     production_hidden_bytes : 64'd0;
@@ -115,7 +114,8 @@ module anvil_en1_native #(
                 allocation_live_bytes[64*shadow_component+:64] << (COMPACT ? 6 : 0);
         else if (shadow_component==5)
             assign allocation_shadow_bytes[64*shadow_component+:64] = workspace_shadow_bytes;
-        else if (shadow_component!=2 && shadow_component!=8 && shadow_component!=10 &&
+        else if (shadow_component!=0 && shadow_component!=1 &&
+            shadow_component!=2 && shadow_component!=8 && shadow_component!=10 &&
             shadow_component!=11 && shadow_component!=19 && shadow_component!=20 &&
             shadow_component!=21)
             assign allocation_shadow_bytes[64*shadow_component+:64] =
@@ -146,7 +146,8 @@ module anvil_en1_native #(
     wire memory_fault, binding_fault;
     wire drain_ready, drain_done;
     wire core_idle = state == IDLE && meta_state == META_IDLE &&
-        mask_state == MASK_IDLE && !executor_busy && !binding_busy && !schedule_busy;
+        mask_state == MASK_IDLE && !executor_busy && !binding_busy && !schedule_busy &&
+        grant_state == GRANT_IDLE;
     wire workers_drained = !executor_busy && !binding_busy &&
         meta_state == META_IDLE && mask_state == MASK_IDLE;
     assign start_ready = rst_n && core_idle && !protocol_error;
@@ -158,7 +159,8 @@ module anvil_en1_native #(
     assign allocation_fallback = rst_n && selected_fallback;
     reg vector_ram_fault;
     reg [2:0] text_ram_owner;
-    assign protocol_error = rst_n && (memory_fault || binding_fault || vector_ram_fault);
+    assign protocol_error = rst_n &&
+        (memory_fault || binding_fault || vector_ram_fault || grant_fault);
 
     wire [1:0] meta_valid, meta_ready, meta_rsp_valid, meta_rsp_ready;
     wire [243:0] meta_payload;
@@ -279,6 +281,32 @@ module anvil_en1_native #(
     wire [4:0] grant_component;
     wire [63:0] grant_payload_bytes, grant_shadow_bytes;
     wire [63:0] grant_native_bytes, grant_native_shadow_bytes;
+    wire binding_grant_valid, binding_grant_ready;
+    wire binding_grant_rsp_valid, binding_grant_rsp_ready;
+    wire [4:0] binding_grant_component;
+    wire [63:0] binding_grant_bytes, binding_grant_shadow;
+    wire [63:0] binding_grant_native, binding_grant_native_shadow;
+    wire frontier_grant_valid, frontier_grant_ready;
+    wire frontier_grant_rsp_valid, frontier_grant_rsp_ready;
+    wire [4:0] frontier_grant_component;
+    wire [63:0] frontier_grant_bytes, frontier_grant_shadow;
+    assign grant_valid = rst_n && grant_state == GRANT_SEND &&
+        (grant_owner ? binding_grant_valid : frontier_grant_valid);
+    assign grant_component = rst_n ? grant_component_hold : 5'd0;
+    assign grant_payload_bytes = rst_n ? grant_payload_hold : 64'd0;
+    assign grant_shadow_bytes = rst_n ? grant_shadow_hold : 64'd0;
+    assign grant_native_bytes = rst_n ? grant_native_hold : 64'd0;
+    assign grant_native_shadow_bytes = rst_n ? grant_native_shadow_hold : 64'd0;
+    assign binding_grant_ready = rst_n && grant_state == GRANT_SEND &&
+        grant_owner && grant_ready;
+    assign frontier_grant_ready = rst_n && grant_state == GRANT_SEND &&
+        !grant_owner && grant_ready;
+    assign binding_grant_rsp_valid = rst_n && grant_state == GRANT_WAIT &&
+        grant_owner && grant_rsp_valid;
+    assign frontier_grant_rsp_valid = rst_n && grant_state == GRANT_WAIT &&
+        !grant_owner && grant_rsp_valid;
+    assign grant_rsp_ready = rst_n && grant_state == GRANT_WAIT &&
+        (grant_owner ? binding_grant_rsp_ready : frontier_grant_rsp_ready);
     wire [63:0] admission_controller_bytes;
     wire [255:0] shadow_metadata_bytes = !rst_n ? 256'd0 :
         {allocation_metadata_bytes[255:128], 64'd2304, 64'd1152};
@@ -440,6 +468,12 @@ module anvil_en1_native #(
     anvil_en1_frontier_execute #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
     ) frontier (
+        .grant_valid(frontier_grant_valid), .grant_ready(frontier_grant_ready),
+        .grant_component(frontier_grant_component),
+        .grant_payload_bytes(frontier_grant_bytes),
+        .grant_shadow_bytes(frontier_grant_shadow),
+        .grant_rsp_valid(frontier_grant_rsp_valid),
+        .grant_rsp_ready(frontier_grant_rsp_ready), .grant_allowed(grant_allowed),
         .embedding_ram_write(ordinary_embedding_write),
         .embedding_ram_read(ordinary_embedding_read),
         .embedding_ram_waddr(ordinary_embedding_waddr),
@@ -529,9 +563,11 @@ module anvil_en1_native #(
         .feature_live_bytes(allocation_live_bytes[64*3+:64]),
         .feature_physical_bytes(allocation_physical_bytes[64*3+:64]),
         .frontier_live_bytes(allocation_live_bytes[64*0+:64]),
+        .frontier_shadow_bytes(allocation_shadow_bytes[64*0+:64]),
         .frontier_physical_bytes(allocation_physical_bytes[64*0+:64]),
         .frontier_metadata_bytes(allocation_metadata_bytes[64*0+:64]),
         .ring_live_bytes(allocation_live_bytes[64*1+:64]),
+        .ring_shadow_bytes(allocation_shadow_bytes[64*1+:64]),
         .ring_physical_bytes(allocation_physical_bytes[64*1+:64]),
         .ring_metadata_bytes(allocation_metadata_bytes[64*1+:64]),
         .anchor_live_bytes(allocation_live_bytes[64*4+:64]),
@@ -546,12 +582,12 @@ module anvil_en1_native #(
     anvil_en1_replay_binding #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
     ) binding (
-        .grant_valid(grant_valid), .grant_ready(grant_ready),
-        .grant_component(grant_component),
-        .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
-        .grant_native_bytes(grant_native_bytes),
-        .grant_native_shadow_bytes(grant_native_shadow_bytes),
-        .grant_rsp_valid(grant_rsp_valid), .grant_rsp_ready(grant_rsp_ready),
+        .grant_valid(binding_grant_valid), .grant_ready(binding_grant_ready),
+        .grant_component(binding_grant_component),
+        .grant_payload_bytes(binding_grant_bytes), .grant_shadow_bytes(binding_grant_shadow),
+        .grant_native_bytes(binding_grant_native),
+        .grant_native_shadow_bytes(binding_grant_native_shadow),
+        .grant_rsp_valid(binding_grant_rsp_valid), .grant_rsp_ready(binding_grant_rsp_ready),
         .grant_allowed(grant_allowed),
         .embedding_ram_write(replay_embedding_write),
         .embedding_ram_read(replay_embedding_read),
@@ -712,7 +748,11 @@ module anvil_en1_native #(
         $bits(mask_state) + $bits(meta_owner) + $bits(meta_request) +
         $bits(meta_response) + $bits(mask_owner) + $bits(mask_value) +
         $bits(mask_error) + $bits(mask_token_hold) + $bits(mask_address) +
-        $bits(vector_ram_fault) + $bits(text_ram_owner) + 64;
+        $bits(vector_ram_fault) + $bits(text_ram_owner) +
+        $bits(grant_state) + $bits(grant_owner) + $bits(grant_fault) +
+        $bits(grant_component_hold) + $bits(grant_payload_hold) +
+        $bits(grant_shadow_hold) + $bits(grant_native_hold) +
+        $bits(grant_native_shadow_hold) + 64;
     assign allocation_live_bytes[64*17+:64] = rst_n ?
         64'((STATE_BITS+7) >> 3) : 64'd0;
     assign allocation_physical_bytes[64*5+:64] = 64'd0;
@@ -724,6 +764,49 @@ module anvil_en1_native #(
             admission_controller_bytes : 64'd0;
     assign allocation_physical_bytes[64*23+:64] = allocation_live_bytes[64*23+:64];
     assign allocation_physical_bytes[64*24+:64] = allocation_live_bytes[64*24+:64];
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            grant_state <= GRANT_IDLE;
+            grant_owner <= 0;
+            grant_fault <= 0;
+            grant_component_hold <= 0;
+            grant_payload_hold <= 0;
+            grant_shadow_hold <= 0;
+            grant_native_hold <= 0;
+            grant_native_shadow_hold <= 0;
+        end else begin
+            case (grant_state)
+                GRANT_IDLE: begin
+                    if (binding_grant_valid) begin
+                        grant_owner <= 1;
+                        grant_component_hold <= binding_grant_component;
+                        grant_payload_hold <= binding_grant_bytes;
+                        grant_shadow_hold <= binding_grant_shadow;
+                        grant_native_hold <= binding_grant_native;
+                        grant_native_shadow_hold <= binding_grant_native_shadow;
+                        grant_state <= GRANT_SEND;
+                    end else if (frontier_grant_valid) begin
+                        grant_owner <= 0;
+                        grant_component_hold <= frontier_grant_component;
+                        grant_payload_hold <= frontier_grant_bytes;
+                        grant_shadow_hold <= frontier_grant_shadow;
+                        grant_native_hold <= native_workspace_bytes;
+                        grant_native_shadow_hold <= native_workspace_shadow_bytes;
+                        grant_state <= GRANT_SEND;
+                    end
+                end
+                GRANT_SEND: if (grant_valid && grant_ready)
+                    grant_state <= GRANT_WAIT;
+                GRANT_WAIT: if (grant_rsp_valid && grant_rsp_ready)
+                    grant_state <= GRANT_IDLE;
+                default: begin
+                    grant_fault <= 1;
+                    grant_state <= GRANT_IDLE;
+                end
+            endcase
+        end
+    end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

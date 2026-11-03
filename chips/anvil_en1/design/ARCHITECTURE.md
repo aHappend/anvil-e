@@ -5,7 +5,87 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: replay text private-bank admission
+## Current saved increment: owner-source and projection-tile admission
+
+`anvil_en1_owner_replay.sv` now admits the complete existing raw/normalized
+source bank before fallback Eval or ordinary owner projection, then admits
+the complete local/global head bank before projection start. These replace
+existing ledger fields 6/7 through `anvil_en1_allocation_admission.sv`.
+Actual compact/production and production-shadow byte totals remain distinct.
+The raw reservation survives nested Eval and tile-grant stalls. Projection
+retains both banks until its accepted result; returned pair/error state
+remains in the existing controller charge. Ring hits allocate neither bank.
+
+`anvil_en1_replay_binding.sv` registers and serializes owner and existing
+workspace/private grant descriptors, retaining the selected route until
+response acceptance. Owner selection waits for replay idle, so an earlier
+Eval retires/invalidate its workspace before the next owner-grant snapshot.
+Workspace eviction/retry and its dependency pin are unchanged. The owner
+raw bank is already charged while owner-triggered replay executes. Denial
+returns explicit error 7 without the denied child start or spill; it is
+not proof that all legal workloads fit. Illegal arbiter state latches the
+existing binding/native protocol-error path.
+
+All new arbiter/descriptor and wider owner-state bits are counted in
+existing controller ledger fields. No payload bank, numerical operation,
+tensor format, public top port or alias map changes. SPEC adds the exact
+reservation sizes, release rules and cycle/degenerate-boundary table.
+
+Remaining closure milestones: ordinary/frontier grants, arithmetic accounting,
+remaining physical overlays and legal-case feasibility (including conservative
+native private-bank envelopes); then the reserved static elaboration and
+independent Verifier handoff. Not ready.
+
+Tools used: glob, view, rg and apply_patch only. No command, experiment,
+static elaboration, simulation, synthesis or installation ran, and no new
+preparation receipt exists. Parent, tests and runtime-owned files remain
+untouched. Attempt-0003 is preserved without a claimed repair.
+
+## Prior saved increment: native replay private-bank admission
+
+`anvil_en1_replay_execute.sv` now preflights vision, audio and reconstructed
+image/audio-feature workers before child start. Requests use the existing
+owned-frame operation 7/target 1 protocol and named allocation fields 12..15.
+`anvil_en1_replay_workspace.sv` validates the domain, layer, exact envelope
+and frame/session before the existing deterministic pinned-memo
+eviction/admission path. `anvil_en1_allocation_admission.sv` now permits
+these four replacement fields in addition to workspace and replay-text
+private fields. No top interface, tensor boundary or numerical rule changes.
+
+Native complete-bank envelopes are 7808 bytes for a vision layer (zero for
+streamed patch input), 512 for audio input, 38912 for the conservatively
+summed nested audio-layer banks, 6144 for audio-feature reconstruction and
+6432 for image-feature reconstruction. Compact text builds still execute
+production-width encoders, so these envelopes have identical actual and
+production-shadow counts. SPEC records the decomposition and cycle table.
+The envelopes deliberately include conservative phase overlap; their size
+is not a legal-case feasibility or physical resource-fit result.
+
+The dispatcher reserves only after accepting the successful workspace
+response. No native child start or command precedes this reservation.
+Reservations remain charged across source/output/child stalls, nested
+workspace grants, child completion/yield and a held task response, then
+release on accepted task completion. Reports retain the larger of the full
+reservation and actual child live totals. An over-envelope child report
+also sets the existing dispatcher failure path rather than being hidden
+by the reservation. The added reservation state is charged once in the
+dispatcher and native-controller subset. No payload RAM is added.
+
+Remaining closure milestones: ordinary execution and owner-projection
+grants, remaining arithmetic accounting, physical overlays and legal-case
+feasibility (including the conservative native envelopes); then the reserved
+static elaboration and independent Verifier handoff. Denial exhaustion is
+still explicit error 7 and an implementation failure, never an accepted
+fallback or permission to spill. Not ready.
+
+Tools used: view, glob, rg and apply_patch only. No command, experiment,
+static check, simulation, synthesis or installation ran; no new preparation
+receipt exists. The partial apply_patch failure was a missing edit-context
+match, corrected against the unchanged dispatcher source; it is not an RTL
+execution result. Parent, tests and runtime-owned files remain untouched.
+Attempt-0003 is preserved without a claimed repair.
+
+## Prior saved increment: replay text private-bank admission
 
 The connected admission channel now names its replacement allocation field.
 Workspace growth retains field 5; replay text attention tile, retained PLE,

@@ -87,11 +87,16 @@ module anvil_en1_allocation_admission (
             case (state)
                 IDLE: if (req_valid && req_ready) begin
                     baseline_hold <= matched_payload_bytes;
-                    candidate_legal_hold <= candidate_component == 5 ||
+                    candidate_legal_hold <= candidate_component == 0 ||
+                        candidate_component == 1 || candidate_component == 2 ||
+                        candidate_component == 3 || candidate_component == 4 ||
+                        candidate_component == 5 ||
+                        candidate_component == 6 || candidate_component == 7 ||
                         candidate_component == 8 || candidate_component == 9 || candidate_component == 10 ||
                         candidate_component == 11 || candidate_component == 12 ||
                         candidate_component == 13 || candidate_component == 14 ||
-                        candidate_component == 15;
+                        candidate_component == 15 || candidate_component == 19 ||
+                        candidate_component == 20;
                     allowed_hold <= 0;
                     state <= WAIT_REPORT;
                 end

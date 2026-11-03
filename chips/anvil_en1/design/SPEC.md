@@ -5,14 +5,17 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-Latest saved allocation delta: replay text attention-tile, retained PLE,
-embedding and post private banks, including the layer-0 text-input worker,
-now use the selected-field whole-system admission path documented below.
-Complete bank reservations remain charged through actual child completion;
-denials run real completed-memo eviction/retry. Private native workers,
-ordinary execution, remaining overlays and legal-case feasibility are still
-unfinished. The reserved static elaboration has not run; this is not a ready
-handoff or a verification result.
+Latest saved allocation delta: owner rematerialization now admits its complete
+raw/normalized source bank (field 6) before fallback Eval or ordinary projection,
+and its complete head tile (field 7) before projection. A registered binding
+arbiter shares the existing whole-system admission path with replay workspace
+and private workers. Ring hits allocate neither owner bank. Denial returns
+error 7 without starting the denied work; feasibility remains to be established.
+Replay text/native private-worker admission and pinned-memo eviction remain
+connected. Ordinary execution, remaining arithmetic accounting, overlays and
+legal-case feasibility are still unfinished.
+The reserved static elaboration has not run; this is not a ready handoff or
+a verification result.
 
 ## Connected parent-compatible top and session boundary
 
@@ -602,9 +605,9 @@ No new backing write, stream acceptance or copy read precedes admission.
 | Internal signal | Meaning |
 | --- | --- |
 | `grant_valid/grant_ready` | One accepted prospective-allocation request; the four byte totals remain stable while stalled |
-| `grant_component[4:0]` | Replacement allocation field: 5 for workspace growth, 8/9/10/11 for replay attention-tile/PLE/embedding/post reservations; other fields reject |
+| `grant_component[4:0]` | Replacement allocation field: 5 for workspace growth, 6/7 for owner source/head-tile, 8/9/10/11 for replay attention-tile/PLE/embedding/post, 12/13/14/15 for native vision/audio/audio-feature/image-feature reservations; other fields reject |
 | `grant_payload_bytes/grant_shadow_bytes[63:0]` | Complete prospective actual/shadow allocation for the selected field, not a byte increment |
-| `grant_native_bytes/grant_native_shadow_bytes[63:0]` | Native-domain subsets of those same prospective totals, not additional allocations |
+| `grant_native_bytes/grant_native_shadow_bytes[63:0]` | Native-domain subsets of workspace field 5; private requests preserve that field's existing subset, since their selected fields are already included directly in native scratch |
 | `grant_rsp_valid/grant_rsp_ready` | One held decision for the accepted request; no second request before retirement |
 | `grant_allowed` | Held positive decision; zero is a denial, never a successful allocation or permission to spill |
 | Workspace `memo_pin_valid/memo_pin_slot[3:0]` | Scheduler's active dependency memo; snapshot before frame/scalar admission and retain through retries |
@@ -651,13 +654,67 @@ candidate/pin registers are included in workspace controller accounting.
 No additional payload RAM is declared by this path. Its added register
 reservation is disclosed even if synthesis can prune unused ledger outputs.
 
-Remaining closure: admit private native/text worker and arithmetic reservations
-before growth, finish
+Remaining closure: admit ordinary execution growth and close
+remaining arithmetic accounting, finish
 physical overlays and establish that every required legal case has sufficient
 unspillable workspace. Repeated denial after all evictable memos are gone is
 not a permitted substitute for exact replay. The remaining grant paths must
 be closed before the reserved static elaboration and independent Verifier
 handoff. No functional or synthesis experiment has run for this increment.
+
+### Owner-source and projection-tile admission
+
+`anvil_en1_owner_replay` now requests field 6 before exposing an Eval start
+or starting ordinary owner projection. The complete raw/normalized bank
+reservation is `2*H` bytes: compact actual 16, production shadow 3072/5120
+for E2B/E4B. This is the existing single bank, first filled by fallback
+Eval when required and then overwritten by normalized values at the frozen
+normalization boundary. There is no second normalized-vector allocation.
+
+After fallback Eval has completed, or directly after ordinary source
+admission, it requests field 7 for the complete projected head bank.
+Local/global actual bytes are 8/16 in compact geometry and 512/1024 in
+production; the production-shadow bytes are always 512/1024. Each request
+is a replacement of the corresponding existing ledger field, not a byte
+increment. The raw reservation remains charged while the tile decision
+is pending, and both remain charged through projection and its stalls.
+The existing controller reservation includes returned scalar/pair data.
+
+The binding arbitrates owner and workspace/private grants without a new
+external interface. It selects and registers one complete descriptor,
+retains its requester identity until decision acceptance, and permits no
+other request through that arbitration interval. Owner selection waits
+until the replay scheduler is idle. Thus a prior Eval completes its output,
+workspace invalidation and done handshake before a new owner grant
+snapshot; owner field 6 is already charged during an owner-triggered Eval.
+The workspace path's pinned-memo eviction/retry remains unchanged. Owner
+grants do not evict live replay frames or read uncommitted source data.
+
+| Owner/binding boundary | Pre-edge handshake / post-edge action |
+| --- | --- |
+| Reset | Clear grant validity, binding descriptor/route and fault state, and owner allocation flags; payload RAM remains uninitialized/invisible |
+| Ring hit | Accept the actual ring response and publish its pair without requesting either owner allocation |
+| Ring miss or non-ring owner | Enter raw-grant send only after descriptor validation and hidden/head geometry capture |
+| Binding selection | When idle, select an eligible owner request before a workspace request; register all four byte totals and field identity, with no downstream acceptance on this selection edge |
+| Admission request | Present the registered descriptor until the existing admission request handshake; route ready only to the selected requester |
+| Held decision | Route validity only to the captured requester and retain the descriptor/route through backpressure |
+| Positive raw decision | Set `raw_allocated`; only a later edge can accept Eval start or issue the tile request |
+| Eval output/done stalls | Retain the entire raw bank while independent replay allocations grow/shrink; visibility still requires every checked output beat and successful Eval completion |
+| Positive tile decision | Set `tile_allocated`; only a later edge can accept projection start |
+| Projection/source/memory stall | Retain raw and tile reservations and all original descriptor fields |
+| Child completion | Accept the tile result, retire raw/tile payload reservations, and retain the returned pair/error through the owner response handshake |
+| Denial or malformed Eval result | Publish explicit error 7 (or the child's existing error); retire any earlier owner reservation without starting the denied child or issuing a spill |
+| Invalid arbitration state | Latch the existing binding/native protocol-error path; no successful allocation is fabricated |
+
+Both grant-routing state and descriptor registers are included once in binding
+field 16. The owner FSM's wider state encoding is included in its existing
+subtree controller field 22. No additional payload RAM is declared.
+An owner denial with no live replay workspace is still an implementation
+feasibility failure, not accepted behavior for a required legal workload.
+This closes the owner-source/head-bank grant path, not ordinary/frontier
+admission, remaining arithmetic accounting, physical overlays, functional
+correctness, RAM inference or timing. No execution check has run for this
+increment; the reserved static elaboration remains pending.
 
 ### Replay text private-storage admission
 
@@ -665,7 +722,7 @@ Before the replay text worker starts embedding reconstruction, it requests
 workspace operation 7, target 1, using its current frame descriptor, bank 0,
 component 0 and the allocation field in the scalar-index field. Request data
 packs the complete production-shadow byte count in bits 31:16 and the actual
-byte count in bits 15:0. The only legal private encodings are:
+byte count in bits 15:0. Legal text private encodings are:
 
 | Allocation field | Complete reservation | Compact actual / production shadow |
 | --- | --- | --- |
@@ -674,7 +731,8 @@ byte count in bits 15:0. The only legal private encodings are:
 | 10 | Embedding hidden and PLE banks | 24 / `2*H+512` bytes |
 | 11 | POST_ONLY residual, working, branch and PLE banks | 56 / `6*H+512` bytes |
 
-Production actual equals production shadow. Other target-1 encodings reject.
+Production actual equals production shadow. Native private encodings are
+specified in the next subsection; all other target-1 encodings reject.
 Field 10 also applies to the layer-0 text-input worker; fields 8/9/11 require
 a nonzero text frame layer. The input worker obtains admission after validating
 its token/modality dependency and before embedding start. It retains the whole
@@ -723,11 +781,64 @@ growth cannot consume promised bank capacity while a child is filling it,
 and an unexpected child overrun remains visible. Reservation bits are charged
 in worker controller bytes; no additional payload RAM is declared.
 
-This closes the replay text attention-tile/PLE/embedding/post and text-input embedding private-bank paths only.
-Ordinary execution
-and remaining native workers still require their own grant-time closure. The selected-field
+This closes the replay text attention-tile/PLE/embedding/post and text-input embedding private-bank paths.
+Ordinary execution/owner projection still requires grant-time closure. The selected-field
 mechanism does not establish legal-case feasibility, physical inference,
 numerical correctness or acceptance.
+
+### Replay native private-storage admission
+
+The replay dispatcher requests operation 7/target 1 using the same captured
+current frame descriptor and dependency-memo pin before starting a native
+worker. Its scalar index selects the existing ledger field below; component
+and bank must both be zero. Both packed 16-bit byte counts must equal the
+selected envelope. Native encoder dimensions remain production widths in
+compact text builds, so actual and production-shadow envelopes are equal.
+
+| Field | Worker / legal frame | Complete private-bank envelope, bytes |
+| --- | --- | --- |
+| 12 | Vision domain 1, frame layer 0 | 0: patch reconstruction streams scalar arithmetic, with no private vector bank |
+| 12 | Vision domain 1, frame layers 1..16 | 7808: projected branch 1536, input/head tile 1664, post raw/branch/MLP 4608 |
+| 13 | Audio domain 2, frame layer 0 | 512: both 256-byte subsample point banks |
+| 13 | Audio domain 2, frame layers 1..12 | 38912: replay-head cache/pre-attention 10240, post-attention outer/pre-attention upper bound 16384, convolution/GLU 6144, feed-forward 6144 |
+| 14 | Reconstructed-feature domain 3, frame layer 2 | 6144: projected audio 3072 and modality-input 3072 |
+| 15 | Reconstructed-feature domain 3, frame layer 1 | 6432: complete declared mask-bank envelope 3360, pooled vision 1536 and modality-input 1536 |
+
+These are conservative reservations, not claims that mutually serialized
+nested banks all contain live data simultaneously. In particular, the
+FRAME_HEADS post-attention sum bounds all four outer allocation flags even
+where a particular phase uses fewer banks. The image envelope reserves the
+entire declared mask bank rather than treating its smaller occupied prefix
+as additional available budget. Physical disclosure is unchanged and remains
+separate. No vector RAM is added by admission.
+
+| Native boundary | Pre-edge handshake / post-edge action |
+| --- | --- |
+| Task capture | Register the immutable worker descriptor; clear the prior reservation only after its task response was accepted |
+| Validation | Reject illegal lengths, layer/position ranges and missing original-input geometry before requesting admission |
+| Preflight send | Hold the complete field/byte/frame request until scheduler/workspace acceptance; no native child starts or external command issues |
+| Preflight wait | Workspace validates the owned frame/session and runs full-ledger admission, retaining the dependency pin through completed-memo eviction/retry |
+| Success acceptance | Set one reservation bit; enter the selected native child's start state on the following edge |
+| Child/source/output stall | Keep the entire selected envelope charged, including while nested frame-vector grants are pending |
+| Child done/yield acceptance | Drain the child and publish its result, keeping the envelope through held dispatcher task completion |
+| Task completion acceptance | Release the envelope; suspended frame/scalar/memo state remains independently charged |
+| Denial exhaustion/error | Publish explicit error 7 (or the concrete workspace error) without starting the denied child; this remains an implementation failure, not accepted fallback |
+| Reset | Cancel preflight/reservation validity and drive public handshake/allocation outputs to zero; do not initialize payload RAM |
+
+Each native component reports the larger of its entire reservation and the
+underlying child live sum. An unexpected child live sum beyond its granted
+envelope is also latched as a dispatcher fault and prevents a successful
+publication. The reservation bit is included once in dispatcher controller
+accounting and its native-reconstruction subset. Later frame/memo growth
+therefore sees the still-promised private banks in its prospective ledger.
+Native private preflight leaves workspace field 5 and its native subset
+unchanged; it does not reserve a second copy in workspace RAM.
+
+The conservative envelopes and all legal workloads still require feasibility
+closure, including small-context native-scratch limits and fallback
+continuation depth. Ordinary/frontier workers, owner-projection grants,
+remaining arithmetic accounting and physical overlays remain unfinished.
+No static, functional, numerical or synthesis check has run for this increment.
 
 ### Context-bounded memo grants and exact eviction
 
