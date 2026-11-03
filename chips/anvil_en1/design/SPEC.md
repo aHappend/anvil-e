@@ -5,6 +5,85 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+### Retained PLE backing and connected controller census
+
+`anvil_en1_frontier_execute.SHARED_PLE` and
+`anvil_en1_asym_attn_ple.SHARED_PLE` are default-off, legal 0/1 parameters.
+They require external vector RAM. The connected native executor selects both:
+the full-text worker's vector port 3 accesses the executor's retained PLE
+in `feature_payload`, not a second copy in the shared text-phase bank.
+Replay and embedding continue to use the separate phase bank.
+
+| Boundary | Ownership, visibility and accounting |
+| --- | --- |
+| Embedding | Only the executor writes retained PLE; all components and the final accepted beat must commit before text starts |
+| Text initial PLE load | Read the retained component through the existing callback, then write the identical value through worker port 3; do not release the retained allocation at the last callback |
+| Text normalization/MLP/gated PLE | Worker port 3 reads the same retained PLE under the registered layer reservation; original token PLE stays immutable |
+| Worker bank edge | Check the complete 12-bit component address, layer ownership, committed retained PLE and absence of native-feature ownership before indexing |
+| Conflicting retained/worker access | Suppress RAM accesses and latch the existing allocation fault; completion reports error 7 |
+| Layer completion | Release retained PLE at vector commit, including the existing error/invalidation paths |
+| Reset | Disable worker/retained RAM enables; leave payload uninitialized and invalidate all visibility |
+| Byte ledger | Field 2 charges retained PLE once; shared worker live/shadow bytes and field-20 reservations exclude exactly that PLE vector |
+| Physical disclosure | Keep the executor feature bank and the replay/embedding text-phase PLE bank in their original physical fields; no SRAM-capacity removal is claimed |
+| Standalone defaults | Keep the existing private PLE copy and last-load release when `SHARED_PLE=0` |
+
+This removes 512 production/shadow bytes (8 compact actual bytes) from the
+integrated field-20 reservation. Combined with shared residual, the integrated
+local/global reservations become 7680/12288 bytes for E2B,
+10240/14336 for E4B and 40/64 for compact actual geometry. No scalar register
+or native/replay allocation is removed.
+
+The following finite census evaluates the connected controller-byte
+expressions with production geometry, external vector/embedding/hidden RAM,
+and C=3. It includes every retained child report reached by those expressions;
+it is source accounting, not an HDL execution, synthesis result or proof that
+the lists cover every declaration. Independent verification must audit
+declaration coverage and dynamically observe allocations.
+
+| Connected report | Byte-rounded declared bytes |
+| --- | --- |
+| Ordinary executor own controller | 172 |
+| Ordinary executor, including frontier/ring, embedding, full text, anchor and final logits | 4896 |
+| Binding own controller, field 16 | 139 |
+| Native assembly own controller and phase RAM read registers, field 17 | 162 |
+| Replay dispatcher own controller, including native RAM ownership/read state | 143 |
+| Replay text workers and their separate arithmetic/controller descendants | 6461 |
+| Replay vision controllers and descendants | 6907 |
+| Replay audio controllers and descendants | 25859 |
+| Complete replay executor, including scheduler, dispatcher and workspace controller | 42382 |
+| Owner replay including owner tile | 1365 |
+| Binding arbiter | 18 |
+| Complete reported binding subtree, field 22 | 43765 |
+| Native-reconstruction subset of field 22, charged to native scratch | 36485 |
+| Frontier scheduler / native arbiter / cache controller | 21 / 18 / 59 |
+| Prospective allocation controller including its ledger | 1097 |
+| Combined field 23 | 1195 |
+| Top own controller / native external-memory bridge | 295 / 17 |
+| CSR counters, snapshots and protocol state | 945 |
+| Observation ledger / completion guard | 1062 / 27 |
+| Top integration total | 2346 |
+| Frontier / local-ring / replay visibility metadata | 1152 / 2304 / 1720 |
+| Resident metadata, C=3 | 27 |
+
+Native scratch is a subset, not an additional copy of field 22.
+The metadata and integration terms remain in the equivalent-byte total and
+text partition exactly as wired. Their separate physical disclosure is not
+permission to remove them from that ledger.
+
+Before the PLE backing alias, the fixed non-native text terms sum to 21221
+bytes at C=3. The global field-20 envelope (12800), retained hidden/PLE
+(3584), owner source (3072) and owner head tile (1024) would require a
+41701-byte reservation if they coexist. Sharing PLE reduces that envelope
+to 41189, still above 32768. This is a conservative source-derived
+reservation calculation, not an observed transaction or a passing workload.
+Even the local analogous reservation is not certified by a declaration count.
+Required legal workloads must not be denied to satisfy this ceiling.
+Further actual overlays/scheduling changes, complete payload liveness
+analysis, native scratch/deep-frame feasibility and fallback eviction/
+regeneration feasibility remain design work. The single reserved static
+elaboration remains pending until that closure; no functional or synthesis
+preparation harness is authorized for Designer.
+
 ### Checked-width allocation arithmetic and ordinary phase envelope
 
 The allocation ledger keeps its eight coherent metrics and six registered

@@ -509,7 +509,7 @@ module anvil_en1_native #(
 
     anvil_en1_frontier_execute #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1),
-        .EXTERNAL_HIDDEN_RAM(1)
+        .EXTERNAL_HIDDEN_RAM(1), .SHARED_PLE(1)
     ) frontier (
         .grant_valid(frontier_grant_valid), .grant_ready(frontier_grant_ready),
         .grant_component(frontier_grant_component),

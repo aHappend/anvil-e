@@ -2,7 +2,8 @@ module anvil_en1_asym_attn_ple #(
     parameter integer COMPACT = 0,
     parameter integer POST_ONLY = 0,
     parameter integer EXTERNAL_VECTOR_RAM = 0,
-    parameter integer SHARED_RESIDUAL = 0
+    parameter integer SHARED_RESIDUAL = 0,
+    parameter integer SHARED_PLE = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -89,8 +90,10 @@ module anvil_en1_asym_attn_ple #(
         (POST_ONLY != 0 && POST_ONLY != 1) ||
         (EXTERNAL_VECTOR_RAM != 0 && EXTERNAL_VECTOR_RAM != 1) ||
         (SHARED_RESIDUAL != 0 && SHARED_RESIDUAL != 1) ||
-        (SHARED_RESIDUAL == 1 && EXTERNAL_VECTOR_RAM != 1)) begin : invalid_parameters
-        initial $fatal(1, "PARAMETER ERROR: COMPACT, POST_ONLY, EXTERNAL_VECTOR_RAM and SHARED_RESIDUAL must be 0 or 1; shared residual requires external vectors");
+        (SHARED_PLE != 0 && SHARED_PLE != 1) ||
+        ((SHARED_RESIDUAL == 1 || SHARED_PLE == 1) &&
+            EXTERNAL_VECTOR_RAM != 1)) begin : invalid_parameters
+        initial $fatal(1, "PARAMETER ERROR: COMPACT, POST_ONLY, EXTERNAL_VECTOR_RAM, SHARED_RESIDUAL and SHARED_PLE must be 0 or 1; shared retained vectors require external vectors");
         assign start_ready = 0;
         assign source_valid = 0;
         assign source_model = 0;
@@ -706,7 +709,7 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] live_branch_ple =
             (branch_allocated ? {32'd0, hidden_hold} << 1 :
                 (query_allocated ? {32'd0, dimension_hold} << 1 : 64'd0)) +
-            (ple_allocated ? 64'(2*P) : 64'd0);
+            (ple_allocated && !SHARED_PLE ? 64'(2*P) : 64'd0);
         wire [63:0] live_attention = attention_allocated ?
             {32'd0, dimension_hold} << (COMPACT ? 2 : 4) : 64'd0;
         assign live_payload_bytes = rst_n ?
@@ -719,7 +722,7 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] shadow_branch_ple =
             (branch_allocated ? shadow_hidden :
                 (query_allocated ? shadow_head : 64'd0)) +
-            (ple_allocated ? 64'd512 : 64'd0);
+            (ple_allocated && !SHARED_PLE ? 64'd512 : 64'd0);
         assign production_shadow_bytes = rst_n ?
             (shadow_residual_work + shadow_branch_ple) +
                 (attention_allocated ? shadow_head << 3 : 64'd0) : 64'd0;

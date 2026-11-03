@@ -5,7 +5,72 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: allocation arithmetic and ordinary residual alias
+## Current saved increment: connected census and retained PLE backing
+
+The connected native full-text path now uses the executor's retained PLE
+backing instead of copying it into the replay/embedding text-phase PLE bank.
+`frontier_execute.SHARED_PLE=1` routes worker vector port 3 to the existing
+`feature_payload` bank and returns its enabled synchronous read register.
+The outward phase-bank port 3 is disabled for this worker only; replay and
+embedding keep their separate backing. `asym_attn_ple.SHARED_PLE=1`
+removes the duplicate live/shadow charge, not the numerical PLE path.
+Both parameters default off, diagnose illegal values, and require external
+vector RAM.
+
+The original embedding stream must commit the complete retained PLE before
+text starts. The text load callback then writes back the identical component.
+The executor keeps its PLE visibility/allocation until vector commit, rather
+than releasing it after the last initial-load callback. Every worker bank
+access checks registered layer ownership/reservation, retained visibility,
+native-feature exclusion and the complete component address. Conflicting
+worker/executor accesses suppress RAM enables and latch the existing
+allocation fault for error-7 completion. Reset does not initialize payload.
+There is no new scalar register, numerical approximation or external access.
+
+SPEC freezes the complete ownership/boundary table. Field 2 charges the one
+retained PLE; field 20 excludes the worker's duplicate PLE. Integrated E2B
+local/global reservations fall from 8192/12800 to 7680/12288 bytes, E4B
+from 10752/14848 to 10240/14336, and compact actual from 48/72 to 40/64.
+The executor feature bank and the replay/embedding phase PLE bank remain
+physically present and disclosed in their existing fields. This is a
+connected live-backing alias, not removal of physical FPGA RAM.
+
+A finite read-only source census now resolves the connected production
+controller-report hierarchy, rather than extrapolating from isolated leaf
+reductions. At C=3, field 22 is 43765 bytes, of which 36485 is the existing
+native-reconstruction subset. Field 24 is 4896, field 23 is 1195, binding
+own state is 139, native own state is 162, metadata totals 5203, and top
+integration is 2346. SPEC records the nonoverlapping subtotals and the
+source-accounting qualification: these numbers evaluate existing report
+expressions; they neither audit every RTL declaration independently nor
+observe a workload.
+
+The resulting fixed non-native text terms are 21221 bytes. With global
+full-text, retained hidden/PLE and owner-source/head reservations, the
+source-derived coexistence envelope was 41701 bytes and is now 41189.
+Both exceed the E2B 32768-byte text ceiling. This retires the ambiguity
+about whether the prior local reductions alone established fit: they do
+not. It is not a measured runtime failure, permission to weaken the ceiling,
+or justification for denying required legal work.
+
+Remaining design closure is concrete: reduce that simultaneous ordinary
+text envelope with genuine backing/scheduling overlays; independently
+audit declaration-to-report coverage; establish native scratch and suspended
+frame bounds and actual/production-shadow fallback feasibility, including
+memo eviction/regeneration and mode transitions. The reserved static
+elaboration remains pending until closure, then independent Verifier follows
+immediately. The design is not ready.
+
+Tools used: glob, view, rg, apply_patch and read-only Bash/Python source
+inspection. The first simple source inspector rejected a multiline Python
+expression, and a later focused inspector could not resolve a parameterized
+tag width; the connected expression inspector resolved the reported
+subtrees. These were source-reading helpers, not RTL diagnostic probes.
+No HDL elaboration, simulation, synthesis, preparation harness or receipt
+was produced. Test/parent sources and runtime-owned records, including the
+original failure and attempt-0003, remain untouched.
+
+## Prior saved increment: allocation arithmetic and ordinary residual alias
 
 Both allocation ledgers retain all eight metrics, all input fields, their
 six-edge observation tags and the existing prospective/completion failure

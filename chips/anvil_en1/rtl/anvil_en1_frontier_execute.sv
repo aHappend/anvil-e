@@ -2,7 +2,8 @@ module anvil_en1_frontier_execute #(
     parameter integer COMPACT = 0,
     parameter integer EXTERNAL_VECTOR_RAM = 0,
     parameter integer EXTERNAL_EMBEDDING_RAM = 0,
-    parameter integer EXTERNAL_HIDDEN_RAM = 0
+    parameter integer EXTERNAL_HIDDEN_RAM = 0,
+    parameter integer SHARED_PLE = 0
 ) (
     input wire clk, rst_n,
     input wire control_valid,
@@ -291,6 +292,9 @@ module anvil_en1_frontier_execute #(
         if ((EXTERNAL_HIDDEN_RAM != 0 && EXTERNAL_HIDDEN_RAM != 1) ||
             (EXTERNAL_HIDDEN_RAM == 1 && EXTERNAL_VECTOR_RAM != 1))
             $fatal(1, "PARAMETER ERROR: EXTERNAL_HIDDEN_RAM must be 0 or 1; external hidden storage requires external vectors");
+        if ((SHARED_PLE != 0 && SHARED_PLE != 1) ||
+            (SHARED_PLE == 1 && EXTERNAL_VECTOR_RAM != 1))
+            $fatal(1, "PARAMETER ERROR: SHARED_PLE must be 0 or 1; shared PLE requires external vectors");
     end
 
     wire native_model;
@@ -330,7 +334,8 @@ module anvil_en1_frontier_execute #(
     wire [63:0] layer_phase_bytes = layer_attention_bytes > layer_feedforward_bytes ?
         layer_attention_bytes : layer_feedforward_bytes;
     wire [63:0] layer_bytes = layer_phase_bytes -
-        (EXTERNAL_HIDDEN_RAM ? hidden_bytes : 64'd0);
+        (EXTERNAL_HIDDEN_RAM ? hidden_bytes : 64'd0) -
+        (SHARED_PLE ? 64'(2*P) : 64'd0);
     wire [63:0] layer_attention_shadow = (shadow_hidden_bytes << 1) +
         64'd512 + shadow_head_bytes + (shadow_head_bytes << 3);
     wire [63:0] layer_feedforward_shadow = (shadow_hidden_bytes << 1) +
@@ -338,7 +343,8 @@ module anvil_en1_frontier_execute #(
     wire [63:0] layer_phase_shadow = layer_attention_shadow > layer_feedforward_shadow ?
         layer_attention_shadow : layer_feedforward_shadow;
     wire [63:0] layer_shadow = layer_phase_shadow -
-        (EXTERNAL_HIDDEN_RAM ? shadow_hidden_bytes : 64'd0);
+        (EXTERNAL_HIDDEN_RAM ? shadow_hidden_bytes : 64'd0) -
+        (SHARED_PLE ? 64'd512 : 64'd0);
     wire [63:0] candidate_bytes = allocation_component == 0 ? reserved_frontier_bytes :
         (allocation_component == 1 ? reserved_ring_bytes :
         (allocation_component == 2 ? vector_reservation_bytes :
@@ -579,13 +585,28 @@ module anvil_en1_frontier_execute #(
     wire anchor_selected = operation == 2 &&
         (state == ANCHOR_START || state == ANCHOR_WAIT);
     wire layer_selected = state == LAYER_START || state == LAYER_WAIT;
+    wire [3:0] layer_vector_write, layer_vector_read;
+    wire [47:0] layer_vector_waddr, layer_vector_raddr;
+    wire [63:0] layer_vector_wdata;
+    wire [63:0] layer_vector_rdata = SHARED_PLE ?
+        {ple_q, vector_ram_rdata[47:0]} : vector_ram_rdata;
+    assign vector_ram_write = SHARED_PLE ?
+        {1'b0, layer_vector_write[2:0]} : layer_vector_write;
+    assign vector_ram_read = SHARED_PLE ?
+        {1'b0, layer_vector_read[2:0]} : layer_vector_read;
+    assign vector_ram_waddr = SHARED_PLE ?
+        {12'd0, layer_vector_waddr[35:0]} : layer_vector_waddr;
+    assign vector_ram_raddr = SHARED_PLE ?
+        {12'd0, layer_vector_raddr[35:0]} : layer_vector_raddr;
+    assign vector_ram_wdata = SHARED_PLE ?
+        {16'd0, layer_vector_wdata[47:0]} : layer_vector_wdata;
     anvil_en1_asym_attn_ple #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
-        .SHARED_RESIDUAL(EXTERNAL_HIDDEN_RAM)
+        .SHARED_RESIDUAL(EXTERNAL_HIDDEN_RAM), .SHARED_PLE(SHARED_PLE)
     ) text_layer (
-        .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
-        .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
-        .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),
+        .vector_ram_write(layer_vector_write), .vector_ram_read(layer_vector_read),
+        .vector_ram_waddr(layer_vector_waddr), .vector_ram_raddr(layer_vector_raddr),
+        .vector_ram_wdata(layer_vector_wdata), .vector_ram_rdata(layer_vector_rdata),
         .controller_bytes(layer_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
@@ -734,7 +755,8 @@ module anvil_en1_frontier_execute #(
     assign vector_shadow_bytes = !rst_n ? 64'd0 :
         (vector_reserved && vector_reservation_shadow > actual_vector_shadow ?
             vector_reservation_shadow : actual_vector_shadow);
-    wire reservation_overrun =
+    wire shared_ple_fault;
+    wire reservation_overrun = shared_ple_fault ||
         (frontier_reserved && actual_frontier_bytes > frontier_reservation_hold) ||
         (ring_reserved && actual_ring_bytes > ring_reservation_hold) ||
         (anchor_reserved && actual_anchor_bytes > 64'(COMPACT ? 8 : 512)) ||
@@ -883,16 +905,40 @@ module anvil_en1_frontier_execute #(
         end
     end endgenerate
 
+    wire feature_write = rst_n && state == FEATURE_WAIT &&
+        eval_output_valid && feature_beat_ok;
+    wire retained_ple_write = rst_n && state == EMBED_WAIT &&
+        embed_ple_valid && ple_beat_ok && p_allocated && !feature_allocated;
+    wire feature_read = rst_n && feature_state == FEATURE_READ;
+    wire retained_ple_read = rst_n && source_state == S_LOCAL_READ &&
+        source_is_ple_hold;
+    wire shared_ple_write = rst_n && SHARED_PLE == 1 && layer_vector_write[3];
+    wire shared_ple_read = rst_n && SHARED_PLE == 1 && layer_vector_read[3];
+    wire [31:0] feature_write_index = shared_ple_write ?
+        {20'd0, layer_vector_waddr[36+:12]} :
+        (feature_write ? eval_output_index : embed_ple_index);
+    wire [15:0] feature_write_data = shared_ple_write ?
+        layer_vector_wdata[48+:16] :
+        (feature_write ? eval_output_data : embed_ple_data);
+    wire [31:0] ple_read_index = shared_ple_read ?
+        {20'd0, layer_vector_raddr[36+:12]} : source_index_hold;
+    assign shared_ple_fault = rst_n && SHARED_PLE == 1 &&
+        (((shared_ple_write || shared_ple_read) &&
+            (!layer_selected || !layer_reserved || !p_allocated ||
+                !p_committed || feature_allocated)) ||
+         (shared_ple_write && (feature_write || retained_ple_write ||
+            layer_vector_waddr[36+:12] >= P)) ||
+         (shared_ple_read && (feature_read || retained_ple_read ||
+            layer_vector_raddr[36+:12] >= P)));
     always @(posedge clk) begin
-        if (rst_n && state == FEATURE_WAIT && eval_output_valid && feature_beat_ok)
-            feature_payload[eval_output_index[H_BITS-1:0]] <= eval_output_data;
-        else if (rst_n && state == EMBED_WAIT && embed_ple_valid && ple_beat_ok &&
-            p_allocated && !feature_allocated)
-            feature_payload[embed_ple_index[H_BITS-1:0]] <= embed_ple_data;
-        if (rst_n && feature_state == FEATURE_READ)
-            feature_q <= feature_payload[feature_request_index[H_BITS-1:0]];
-        else if (rst_n && source_state == S_LOCAL_READ && source_is_ple_hold)
-            ple_q <= feature_payload[source_index_hold[H_BITS-1:0]];
+        if (rst_n && !shared_ple_fault) begin
+            if (feature_write || retained_ple_write || shared_ple_write)
+                feature_payload[feature_write_index[H_BITS-1:0]] <= feature_write_data;
+            if (feature_read)
+                feature_q <= feature_payload[feature_request_index[H_BITS-1:0]];
+            else if (retained_ple_read || shared_ple_read)
+                ple_q <= feature_payload[ple_read_index[H_BITS-1:0]];
+        end
     end
 
     always @(posedge clk or negedge rst_n) begin
@@ -1675,7 +1721,7 @@ module anvil_en1_frontier_execute #(
                     state <= PUBLISH;
                 end
             endcase
-            if (state == LAYER_WAIT && source_state == S_RESPONSE &&
+            if (!SHARED_PLE && state == LAYER_WAIT && source_state == S_RESPONSE &&
                 layer_source_rsp_ready && source_is_ple_hold &&
                 !source_error_hold && source_index_hold == P-1) begin
                 p_allocated <= 0;
