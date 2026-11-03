@@ -41,6 +41,7 @@ def main():
                         help="append observers to disposable RTL copies; not acceptance")
     parser.add_argument("--split-schedule", action="store_true",
                         help="split independent array elements in the compiled scheduler")
+    parser.add_argument("--threads", type=int, choices=(1, 2, 4), default=1)
     args = parser.parse_args()
     if args.max_cycles <= 0:
         parser.error("--max-cycles must be positive")
@@ -126,12 +127,14 @@ def main():
                 ("make-version", ["make", "--version"])):
             run(label, command, 30)
         image, tensors = make_text_image(args.model, args.precision, args.seed)
-        (out / "image.bin").write_bytes(image)
+        images = out / "checkpoint-images"
+        images.mkdir()
+        (images / "image.bin").write_bytes(image)
         expected = logits(tensors, args.model, args.seed)
         (out / "expected.json").write_text(json.dumps(expected, indent=2) + "\n")
         receipt["fixtures"] = {
             name: hashlib.sha256((out / name).read_bytes()).hexdigest()
-            for name in ("image.bin", "expected.json")
+            for name in ("checkpoint-images/image.bin", "expected.json")
         }
         receipt["expected_computed_before_observation"] = True
         save()
@@ -162,14 +165,14 @@ def main():
         receipt["parameters"] = parameters
         command = ["verilator", "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
                    "--top-module", "anvil_en1_top", "--Mdir", str(obj),
-                   "-j", "2", "-CFLAGS", "-O3"]
+                   "--threads", str(args.threads), "-j", "2", "-CFLAGS", "-O3"]
         command += [f"-G{key}={value}" for key, value in parameters.items()]
         if args.split_schedule:
             command += ["tests/simulation_schedule.vlt"]
         command += [*sources, str(ROOT / "tests/top_smoke.cpp")]
         run("compile", command, 1800)
         output = run("simulation", [str(obj / "Vanvil_en1_top"),
-                                   str(relative / "image.bin"), str(args.model),
+                                   str(relative / "checkpoint-images/image.bin"), str(args.model),
                                    str(args.precision), str(args.seed),
                                    str(args.max_cycles)], 2400)
         observed = []

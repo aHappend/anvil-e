@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--out", default="evidence/preparation/top-profile")
     parser.add_argument("--repair-of")
     parser.add_argument("--hierarchical", action="store_true")
+    parser.add_argument("--threads", type=int, choices=(1, 2, 4), default=1)
     args = parser.parse_args()
     exp = Experiment(args.out, "verifier-top-throughput-profile", source_inputs(), args.repair_of)
     error = None
@@ -37,6 +38,7 @@ def main():
                           **COMPACT_PARENT)
         exp.receipt["parameters"] = parameters
         exp.receipt["hierarchical_arithmetic"] = args.hierarchical
+        exp.receipt["simulation_threads"] = args.threads
         exp.receipt["scope"] = (
             "200000-cycle public-top compiler profile with real weights and input; "
             "an incomplete numerical job is expected, never counted as neural completion.")
@@ -74,6 +76,7 @@ def main():
         exp.run("compile", [
             *compiler, "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
             "--top-module", top, "--Mdir", str(obj),
+            "--threads", str(args.threads),
             "-j", "2", "-CFLAGS", "-O3 -pg", "-LDFLAGS", "-pg",
             *(["--hierarchical", "tests/simulation_hierarchy.vlt"]
               if args.hierarchical else []),
