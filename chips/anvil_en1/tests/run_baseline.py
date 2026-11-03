@@ -13,6 +13,50 @@ from experiment import Experiment, ROOT, source_inputs
 from text_cases import digest, load, prepare
 
 
+def compare_traffic(output, cases, metadata):
+    if not cases:
+        raise RuntimeError("baseline requires nonempty public-handshake comparisons")
+    observed = {}
+    summaries = []
+    for line in output.splitlines():
+        if line.startswith("CASE "):
+            _, name, *fields = line.split()
+            if name in observed:
+                raise RuntimeError("duplicate baseline completion: " + name)
+            observed[name] = {key: int(value) for key, value in
+                              (field.split("=") for field in fields)}
+        elif line.startswith("SUMMARY baseline "):
+            summaries.append({key: int(value) for key, value in
+                              (field.split("=") for field in line.split()[2:])})
+    if set(observed) != {case[0] for case in cases} or len(summaries) != 1:
+        raise RuntimeError("incomplete actual-handshake baseline")
+    observations = []
+    for name, model, tokens, writes, reads, _ in cases:
+        counts = observed[name]
+        if (counts["write_bytes"] != writes or counts["read_bytes"] != reads or
+                writes <= 0 or reads <= 0 or counts["sources"] <= 0 or
+                counts["responses"] * 4 != writes + reads):
+            raise RuntimeError("baseline public-transaction conservation: " + name)
+        case = metadata[name]
+        observations.append({
+            "kind": "matched-unshared-public-traffic",
+            "model": model, "precision": case["precision"], "seed": case["seed"],
+            "tokens": tokens, "external_kv_write_bytes": counts["write_bytes"],
+            "external_kv_read_bytes": counts["read_bytes"],
+            "accepted_external_kv_bytes": counts["write_bytes"] + counts["read_bytes"],
+            "responses": counts["responses"], "comparisons": counts["sources"],
+            "completed": True, "mismatches": 0,
+        })
+    summary = summaries[0]
+    if (summary["cases"] != len(cases) or
+            summary["write_bytes"] != sum(row["write_bytes"] for row in observed.values()) or
+            summary["read_bytes"] != sum(row["read_bytes"] for row in observed.values()) or
+            summary["responses"] != sum(row["responses"] for row in observed.values()) or
+            summary["owner_pairs"] != sum(row["sources"] for row in observed.values())):
+        raise RuntimeError("baseline aggregate conservation")
+    return observations
+
+
 def schedule(model, tokens, expected):
     layers, owners, local_anchor, global_anchor, period = (
         (35, 15, 13, 14, 5) if model == 1 else (42, 24, 22, 23, 6))
@@ -56,11 +100,13 @@ def main():
                              ("make", "--version")):
             exp.run(tool + "-version", [tool, option], 30)
         cases = []
+        metadata = {}
         fixture_hashes = {}
         manifest_path = (ROOT / args.fixture_set if args.fixture_set else
                          prepare(exp, (1, 2), (0, 1), seeds, (1, 16, 17)))
         for case in load(manifest_path, (1, 2), (0, 1), seeds, (1, 16, 17)):
             name, model, tokens = case["name"], case["model"], case["tokens"]
+            metadata[name] = case
             rows = list(schedule(model, tokens, case["reference"]))
             path = exp.out / (name + "-commands.txt")
             path.write_text("".join(" ".join(map(str, row)) + "\n" for row in rows))
@@ -95,9 +141,7 @@ def main():
             "-j", "2", "tests/kv_baseline.sv", str(ROOT / "tests/kv_baseline.cpp")], 1800)
         output = exp.run("simulation", [str(obj / "Vkv_baseline"),
                                        str(manifest.relative_to(ROOT))], 2400)
-        if (f"SUMMARY baseline cases={len(cases)} " not in output or
-                sum(line.startswith("CASE ") for line in output.splitlines()) != len(cases)):
-            raise RuntimeError("incomplete actual-handshake baseline")
+        exp.receipt["observations"] = compare_traffic(output, cases, metadata)
         exp.receipt["cases"] = [
             {"name": name, "model": model, "tokens": tokens,
              "expected_write_bytes": writes, "expected_read_bytes": reads}

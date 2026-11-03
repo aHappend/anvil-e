@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_top_batch import compare
+from run_baseline import compare_traffic
 import text_cases
 from experiment import Experiment, source_inputs
 
@@ -126,6 +127,38 @@ class SharedFixtureTests(unittest.TestCase):
             self.load()
 
 
+class BaselineTrafficTests(unittest.TestCase):
+    def setUp(self):
+        self.cases = [["cell", 1, 17, 64, 16, "commands.txt"]]
+        self.metadata = {"cell": {"precision": 1, "seed": 43}}
+        self.output = (
+            "CASE cell write_bytes=64 read_bytes=16 responses=20 sources=4\n"
+            "SUMMARY baseline cases=1 write_bytes=64 read_bytes=16 "
+            "responses=20 owner_pairs=4\n")
+
+    def test_completed_actual_traffic_is_retained(self):
+        records = compare_traffic(self.output, self.cases, self.metadata)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["accepted_external_kv_bytes"], 80)
+        self.assertEqual(records[0]["comparisons"], 4)
+        self.assertEqual(records[0]["precision"], 1)
+        self.assertTrue(records[0]["completed"])
+
+    def test_missing_duplicate_zero_and_inconsistent_traffic_are_rejected(self):
+        for output in (
+                "", self.output.splitlines()[1],
+                self.output + self.output.splitlines()[0] + "\n",
+                self.output.replace("sources=4", "sources=0"),
+                self.output.replace("responses=20", "responses=19", 1),
+                self.output.replace("write_bytes=64", "write_bytes=60", 1),
+                self.output.replace("owner_pairs=4", "owner_pairs=5")):
+            with self.subTest(output=output), self.assertRaises(RuntimeError):
+                compare_traffic(output, self.cases, self.metadata)
+        with self.assertRaises(RuntimeError):
+            compare_traffic("SUMMARY baseline cases=0 write_bytes=0 read_bytes=0 "
+                            "responses=0 owner_pairs=0\n", [], {})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/top-batch-checker")
@@ -144,9 +177,9 @@ def main():
         exp.run("python-version", [sys.executable, "--version"], 30)
         output = exp.run("unit-tests", [
             sys.executable, "-B", "tests/test_top_batch.py", "--worker"])
-        if "SUMMARY batch_checker tests=8 rtl_claims=0" not in output:
+        if "SUMMARY batch_checker tests=10 rtl_claims=0" not in output:
             raise RuntimeError("batch checker comparisons did not complete")
-        exp.receipt["unit_tests"] = 8
+        exp.receipt["unit_tests"] = 10
     except (OSError, RuntimeError, TimeoutError, ValueError, KeyError) as exc:
         error = exc
     return exp.finish(error)
