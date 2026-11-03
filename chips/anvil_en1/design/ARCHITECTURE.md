@@ -5,7 +5,36 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current handoff: report-sizing repairs statically elaborate
+## Current handoff: generate-scope declaration-order repair
+
+Both retained whole-top Yosys attempts failed to resolve the width of
+`engine.attention_component_data` in the output-conversion concatenation:
+`evidence/preparation/synthesis-top-initial-20261103T035403Z-aabb1589/receipt.json`
+and
+`evidence/preparation/synthesis-top-deferred-20261103T035515Z-7be8d9c4/receipt.json`.
+Those receipts and raw diagnostics remain unchanged.
+
+In `rtl/anvil_en1_asym_attn_ple.sv`, the existing 16-bit
+`attention_component_data` declaration now precedes its first use.
+Inspection of the same generate scope also found `head_offset` used in
+the weight-reader column expression before declaration; its existing
+32-bit declaration and unchanged expression now precede that use.
+These are declaration relocations only: arithmetic, connectivity,
+registered behavior, report widths and allocation charges are unchanged.
+No verification sources, parent sources or runtime metadata were edited.
+
+This repair was inspected with file reads and source search; no compiler,
+simulation or synthesis command ran in this handoff. Earlier static
+receipts below predate these relocations and are not current-source
+acceptance. Independent Verifier must recheck the affected whole-top
+synthesis and rebuild a source-matched bounded progress diagnostic linked
+to the retained simulation timeout at
+`evidence/preparation/top-parent-geometry-repair-20261103T034532Z-05aaa34c/receipt.json`.
+Do not repeat the unchanged timed-out workload or increase its timeout.
+All six mandatory suites and fresh native timing-lint, Quartus STA and
+HIL gates remain pending; this is a design repair handoff, not acceptance.
+
+## Retained handoff: report-sizing repairs statically elaborate
 
 The saved RTL is ready for independent Verifier handoff. One newly
 authorized Icarus 12.0 static elaboration of the report-sizing repairs

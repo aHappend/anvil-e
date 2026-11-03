@@ -223,6 +223,10 @@ module anvil_en1_asym_attn_ple #(
         reg [31:0] output_accumulator;
         wire [31:0] output_value = rotary_data_hold;
         wire [31:0] output_weight = scalar_hold;
+        wire [15:0] attention_component_data;
+        wire [31:0] head_offset = COMPACT ?
+            ({28'd0, head} << (global_hold ? 3 : 2)) :
+            ({28'd0, head} << (global_hold ? 9 : 8));
         reg residual_allocated, work_allocated, branch_allocated;
         reg query_allocated, attention_allocated, ple_allocated;
         wire [15:0] residual_q, work_q, branch_q, ple_q;
@@ -455,7 +459,6 @@ module anvil_en1_asym_attn_ple #(
         wire attention_ready, attention_valid, query_valid, query_rsp_ready;
         wire attention_component_valid, attention_component_last;
         wire [9:0] query_component, attention_component_index;
-        wire [15:0] attention_component_data;
         wire [3:0] attention_error;
         if (POST_ONLY) begin : no_attention
             assign attention_controller_bytes = 0;
@@ -651,9 +654,6 @@ module anvil_en1_asym_attn_ple #(
             .done_data(fp_data), .done_error(fp_error)
         );
 
-        wire [31:0] head_offset = COMPACT ?
-            ({28'd0, head} << (global_hold ? 3 : 2)) :
-            ({28'd0, head} << (global_hold ? 9 : 8));
         wire [31:0] rotary_second_index = pair_index + (dimension_hold >> 1);
         wire norm_write = rst_n && state == NORM_WAIT && normalized_valid;
         wire residual_read = rst_n && ((src_state == S_READ && src_bank == B_RESIDUAL) ||
