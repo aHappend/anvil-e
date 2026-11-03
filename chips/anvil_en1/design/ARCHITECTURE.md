@@ -1655,6 +1655,12 @@ admission omits only its two unused breakdown metrics with
 and subset checks remain. Five registered sum levels and the sixth output/
 partition level preserve the existing cycle contract.
 
+The controller register census is bound to the 32-bit `CONTROLLER_BITS`
+local parameter during elaboration, rather than a runtime wire initializer
+calling the zero-argument census function. Its arithmetic and byte rounding
+are unchanged for both `REPORT_BREAKDOWN` settings. This portability repair
+adds no state or cycles and does not change any reduction or partition check.
+
 Legal allocations total less than 2^23 bytes: ordinary frontier, ring, native
 scratch, complete text workspace and resident words total at most 5,308,672
 bytes, and fallback at most 1 MiB. Each sum node therefore uses 23 value bits

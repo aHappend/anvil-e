@@ -626,6 +626,12 @@ state except explicit generated readback banks and metadata. Generated
 readback widths are already charged by the existing conditional
 16/32/48/64-bit terms or their aliased read-data operands; allocation
 ledger reduction registers use `registered_nodes()*NODE_BITS`.
+`CONTROLLER_BITS` is a 32-bit elaboration-time local parameter, including
+the unchanged pipeline/status register widths. The zero-argument census
+function is not invoked as a runtime continuous expression; this avoids
+Icarus generating malformed VVP for that call. The byte rounding, reset
+gating, legal `REPORT_BREAKDOWN` settings and six-stage report latency
+are unchanged.
 `tensor_shape` and the public descriptor/checkpoint packing outputs
 are combinational, not additional retained storage. This audit is
 source/declaration reconciliation, not proof of no latches, actual

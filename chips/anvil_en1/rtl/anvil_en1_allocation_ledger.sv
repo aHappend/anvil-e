@@ -282,7 +282,7 @@ module anvil_en1_allocation_ledger #(
         native_workspace_shadow_bytes > component_shadow_bytes[64*5+:64] ||
         native_controller_bytes > component_live_bytes[64*22+:64] ||
         native_controller_bytes > component_shadow_bytes[64*22+:64];
-    wire [31:0] CONTROLLER_BITS = registered_nodes()*NODE_BITS +
+    localparam [31:0] CONTROLLER_BITS = registered_nodes()*NODE_BITS +
         $bits(partition_error) +
         $bits(valid_pipeline) + $bits(model_pipeline) + $bits(check_pipeline) +
         $bits(fallback_pipeline) + $bits(overlap_pipeline) + $bits(partition_pipeline);
