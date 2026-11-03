@@ -16,6 +16,16 @@ REFERENCE_SOURCES = (
 )
 
 
+def selected_values(parser, raw, legal, name):
+    try:
+        values = tuple(int(value) for value in raw.split(","))
+    except ValueError:
+        parser.error(name + " must contain comma-separated integers")
+    if not values or len(set(values)) != len(values) or any(v not in legal for v in values):
+        parser.error(name + " must select distinct values from " + ",".join(map(str, legal)))
+    return values
+
+
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 

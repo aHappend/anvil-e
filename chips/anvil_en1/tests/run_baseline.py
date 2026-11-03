@@ -10,7 +10,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
-from text_cases import digest, load, prepare
+from text_cases import digest, load, prepare, selected_values
 
 
 def compare_traffic(output, cases, metadata):
@@ -89,10 +89,14 @@ def main():
     parser.add_argument("--fixture-set",
                         help="source-bound freshly generated independent text-cases manifest")
     parser.add_argument("--seeds", default="17,43,89")
+    parser.add_argument("--models", default="1,2")
+    parser.add_argument("--precisions", default="0,1")
+    parser.add_argument("--contexts", default="1,16,17")
     args = parser.parse_args()
-    seeds = [int(value) for value in args.seeds.split(",")]
-    if not seeds or len(set(seeds)) != len(seeds) or any(s not in (17, 43, 89) for s in seeds):
-        parser.error("--seeds must select distinct frozen seeds 17,43,89")
+    models = selected_values(parser, args.models, (1, 2), "--models")
+    precisions = selected_values(parser, args.precisions, (0, 1), "--precisions")
+    seeds = selected_values(parser, args.seeds, (17, 43, 89), "--seeds")
+    contexts = selected_values(parser, args.contexts, (1, 16, 17), "--contexts")
     exp = Experiment(args.out, "verifier-handshake-kv-baseline", source_inputs(), args.repair_of)
     error = None
     try:
@@ -103,8 +107,8 @@ def main():
         metadata = {}
         fixture_hashes = {}
         manifest_path = (ROOT / args.fixture_set if args.fixture_set else
-                         prepare(exp, (1, 2), (0, 1), seeds, (1, 16, 17)))
-        for case in load(manifest_path, (1, 2), (0, 1), seeds, (1, 16, 17)):
+                         prepare(exp, models, precisions, seeds, contexts))
+        for case in load(manifest_path, models, precisions, seeds, contexts):
             name, model, tokens = case["name"], case["model"], case["tokens"]
             metadata[name] = case
             rows = list(schedule(model, tokens, case["reference"]))

@@ -20,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from experiment import Experiment, ROOT, source_inputs
 from numerical_reference import decode
 from simulation_config import COMPACT_PARENT
-from text_cases import digest, load, prepare
+from text_cases import digest, load, prepare, selected_values
+from verify import parse_result, require_child_sources
 
 
 def compare(output, expected, tokens):
@@ -58,13 +59,6 @@ def compare(output, expected, tokens):
     return counts, max(errors)
 
 
-def selected_values(parser, raw, legal, name):
-    values = tuple(int(value) for value in raw.split(","))
-    if not values or len(set(values)) != len(values) or any(v not in legal for v in values):
-        parser.error(name + " must select distinct values from " + ",".join(map(str, legal)))
-    return values
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default="evidence/preparation/top-batch")
@@ -89,6 +83,9 @@ def main():
                         help="optional bounded incomplete run before full numerical execution")
     parser.add_argument("--pgo", action="store_true",
                         help="train GCC branch placement on the bounded run and rebuild")
+    parser.add_argument("--build-jobs", type=int, choices=(1, 2, 4, 8), default=2)
+    parser.add_argument("--with-baseline", action="store_true",
+                        help="execute a matched bus baseline using the same fresh references")
     parser.add_argument("--max-cycles", type=int, default=2000000000)
     args = parser.parse_args()
     models = selected_values(parser, args.models, (1, 2), "--models")
@@ -128,6 +125,29 @@ def main():
                           FORCE_FALLBACK=int(args.fallback), **COMPACT_PARENT)
         exp.receipt["parameters"] = parameters
         exp.save()
+        baseline = {}
+        if args.with_baseline:
+            output = exp.run("matched-baseline", [
+                sys.executable, "-B", "tests/run_baseline.py",
+                "--fixture-set", str(manifest_path.relative_to(ROOT)),
+                "--models", args.models, "--precisions", args.precisions,
+                "--seeds", args.seeds, "--contexts", args.contexts,
+                "--out", str(exp.relative / "baseline")], 2700)
+            path, receipt = parse_result(output, ROOT)
+            if exp.relative not in path.parents:
+                raise RuntimeError("baseline receipt is outside this fresh run")
+            require_child_sources(receipt, exp.receipt["source_sha256"])
+            if receipt["independent_fixture_manifest"] != exp.receipt["independent_fixture_manifest"]:
+                raise RuntimeError("baseline and candidate did not bind the same fixture manifest")
+            exp.receipt["children"] = [{
+                "name": "matched-baseline", "receipt": str(path),
+                "sha256": digest(ROOT / path)}]
+            for record in receipt["observations"]:
+                key = tuple(record[field] for field in ("model", "precision", "seed", "tokens"))
+                if key in baseline or record["accepted_external_kv_bytes"] <= 0:
+                    raise RuntimeError("baseline denominator is duplicated or empty")
+                baseline[key] = record["accepted_external_kv_bytes"]
+            exp.save()
         obj = exp.relative / "compile-obj"
         sources = [str(path.relative_to(ROOT)) for path in source_inputs()
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
@@ -160,7 +180,8 @@ def main():
                "--output-split-cfuncs", "5000"] if args.compact_code else []),
             *(["-fno-split"] if args.preserve_processes else []),
             "--top-module", top, "--Mdir", str(obj),
-            "-j", "2", "-CFLAGS", "-O3" + (" -fprofile-generate" if args.pgo else ""),
+            "-j", str(args.build_jobs),
+            "-CFLAGS", "-O3" + (" -fprofile-generate" if args.pgo else ""),
             *(["-LDFLAGS", "-fprofile-generate"] if args.pgo else []),
             *(wrapper_args if args.text_specialization else
               [f"-G{name}={value}" for name, value in parameters.items()]),
@@ -189,7 +210,8 @@ def main():
                     if path.suffix in (".o", ".a", ".gch"):
                         path.unlink()
                 exp.run("profile-guided-rebuild", [
-                    "make", "-C", str(obj), "-f", "Vanvil_en1_top.mk", "-j", "2",
+                    "make", "-C", str(obj), "-f", "Vanvil_en1_top.mk",
+                    "-j", str(args.build_jobs),
                     "VM_USER_CFLAGS=-O3 -fprofile-use",
                     "VM_USER_LDFLAGS=-fprofile-use", "Vanvil_en1_top"], 1800)
         for name, model, precision, seed, tokens, image_path, expected in cases:
@@ -204,6 +226,19 @@ def main():
                 "completed": True, "mismatches": 0, "public_counts": counts,
                 "maximum_logit_absolute_error": maximum_error,
             })
+            if args.with_baseline:
+                denominator = baseline[model, precision, seed, tokens]
+                if 100 * counts["kv_bytes"] >= 45 * denominator:
+                    raise RuntimeError("candidate external KV traffic exceeds the strict bound")
+                exp.receipt["observations"].append({
+                    "kind": "candidate-public-kv-traffic",
+                    "model": model, "precision": precision, "seed": seed,
+                    "capacity": args.capacity, "tokens": tokens,
+                    "fallback": int(args.fallback),
+                    "accepted_external_kv_bytes": counts["kv_bytes"],
+                    "matched_unshared_external_kv_bytes": denominator,
+                    "comparisons": counts["reads"], "completed": True, "mismatches": 0,
+                })
             exp.save()
     except (OSError, RuntimeError, TimeoutError, ValueError, KeyError) as exc:
         error = exc
