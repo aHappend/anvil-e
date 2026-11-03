@@ -5,7 +5,165 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current repair: overlay certified-hit staging with directory scratch
+### Current repair: remove deterministic descriptor copies, not live allocations
+
+The retained legal-C64 failure is
+`evidence/preparation/top-resident64-20261103T073745Z-ae9a7362/receipt.json`
+(error 7, cycle 1762635, 44333 reads, zero logits). Its first-origin
+reproduction,
+`evidence/preparation/top-resident64-origin-20261103T074935Z-7e9e2cd3/receipt.json`,
+locates the denied component-7 owner-4 head grant at cycle 1762603:
+32833 production-shadow text bytes against 32768. Scratch, ratio, overlap
+and partition predicates pass. The previous staging overlay alone was
+insufficient. Neither failure is a timeout or a numerical completion.
+
+`anvil_en1_tensor_image` retains eight fully associative round-robin entries,
+the complete-image certificate, lifetime revocation and the existing hit
+staging/response edges. Each entry now stores only a 22-bit legal tensor key
+and its validated 64-bit absolute base. The key contains the full 16-bit kind
+and a six-bit layer (0..41, or 63 for the `16'hffff` sentinel). BASE_VALIDATE
+still checks the full, untruncated layer through `requested_shape` before
+any search: invalid layers cannot alias a legal entry. Model, precision,
+image class, input geometry and base remain in the unchanged lifetime key.
+
+Rows, columns, type and row stride are deterministic functions of that
+registered key, not arbitrary image metadata. The miss path still validates
+every corresponding directory field, required length, alignment and address
+sum before certification or insertion. The shared `tensor_stride` expression
+is used for both current-entry validation and requested geometry, including
+partial Q4 rows. Output geometry is now combinational from the registered
+request, gated by the retained successful nonzero output address. Successful
+addresses cannot be zero: entry offsets are at least 64 and overflowing
+base-plus-offset sums are rejected. Start/reset/error publication clears
+that address exactly where the former geometry registers were cleared.
+No live descriptor output changes during a stalled response or lifetime
+revocation. The output base and byte length remain registered.
+
+A hit reconstructs the exact 64-bit byte length as rows times validated
+32-bit stride; it does not truncate lengths to 32 bits, fetch an external
+length, or introduce a combinational 32-by-32 multiplier. Four unsigned
+16-by-16 partial products feed two registered shifted subtotals and then
+one registered 64-bit sum. All intermediate registers are slices of the
+existing directory `entry` scratch, which is dead on a hit. Misses overwrite
+every entry word before validation. There is no new retained bank or flag.
+
+| Pre-edge boundary | Post-edge state / storage |
+| --- | --- |
+| Active reset | Base/length and validity clear; derived geometry is zero |
+| E0 start acceptance | Register the full request; clear prior base/length |
+| E1 BASE_VALIDATE, certified legal request | Register four 32-bit products in `entry[255:128]` |
+| E2 CACHE_SEARCH, hit | Stage cached base in `entry[63:0]`, register two 64-bit product subtotals in `entry[255:128]` |
+| E3 CACHE_CAPTURE | Register base and summed byte length; registered request supplies the same geometry |
+| E4 PUBLISH / E5 earliest response acceptance | Unchanged; revocation/error priority and stalled-response stability remain |
+| Certified miss / uncertified image | Original directory scan, all-prior fallback, validation and memory-response edges remain |
+| Invalid layer/model/precision or stride overflow | Reject before cache search or offending memory access |
+
+This removes real sequential state: `8*(264-86)+104 = 1528` bits per reader.
+The 104 final-output geometry bits are removed as well as duplicate cache
+payload/key bits. The reader census becomes 1983 bits / 248 rounded bytes,
+down from 3511 / 439; all parent live, shadow and physical controller sums
+automatically fall by 191 bytes per connected reader. Invalid cache entries
+remain charged. The retained 49-reader hierarchy has eight non-native
+readers (three frontier, five binding) and 41 in the native-reconstruction
+subset. Their source-derived reductions are 1528 text bytes, 7831 native
+controller bytes and 9359 total bytes. No allocation threshold, resident
+capacity, native feature classification or neural arithmetic changes.
+
+#### Reconciled phase envelopes
+
+The older 30710-byte global-owner envelope below used a stale controller
+census; it was not a bound for the sources in the failed C64 receipt.
+Subtracting its actual nonfixed shadow terms
+`7168+3584+3072+1024 = 14848` from the observed 32833 gives **17985**
+fixed text bytes, not 15862. With this repair the same compact source terms
+give **16457**, before any new execution. The corresponding source deltas
+are:
+
+| Connected report | Retained observation before repair | Source-derived after repair |
+| --- | ---: | ---: |
+| Binding controller subtree, field 22 (46 readers) | 41728 | 32942 |
+| Native subset of field 22 (41 readers) | 34195 | 26364 |
+| Frontier controller subtree, field 24 (three readers) | 4936 | 4363 |
+| Fixed text subtotal, C64 | 17985 | 16457 |
+
+The last subtotal is
+`(32942-26364)+4363+139+162+501+1690+768+768+1208+280`.
+It includes both ledgers, all integration/controllers and production-shadow
+visibility metadata; resident data words themselves are separate. Outside
+the native subset the two text engines' `output_row` registers are the only
+counted scalars whose widths grow from compact to production: nine extra
+bits per instance, at most two rounded bytes each. The ring's counted
+lane-valid/tag widths do not grow in sum. Other compact/production address
+width changes are array index expressions, not additional retained scalar
+registers. Native encoders retain production geometry; the original-input
+embedding's counted scalar widths and native shared-bank control widths
+are fixed. Use conservative ceilings **16464** fixed text bytes and
+**26368** native controller bytes, rather than treating the observed compact
+report as a production measurement.
+
+For general C the fixed ceiling is
+`F(C)=16464-280+ceil(35*C/8)`. Cache controller widths do not depend on C.
+Every term below counts a reserved whole vector until its real release,
+not just its filled prefix. Let H be 3072/5120 BF16 hidden-vector bytes and
+D be 512/1024 local/global head-vector bytes.
+
+| Ordinary phase, excluding M/frontier/ring/resident words | Conservative additional bytes above F(C) |
+| --- | --- |
+| Global attention with owner miss, including a shared consumer | `(H+512)+(2*H+D)+(H+D)`, at most `4*H+2560` |
+| Local attention / local ring wrap or miss | Same expression with D=512; strictly smaller |
+| Owner hit | No larger than the miss; no private shared-layer KV allocation |
+| MLP, PLE and output drain, with full layer reservation retained | `(H+512)+(2*H+1024)`, smaller than the global miss |
+| Embedding or final-logit phase | At most `2*H+1024`; feature/embedding native scratch is also counted in M |
+| Anchor fill, including source/head rematerialization | At most `(H+512)+512+(H+1024)`, smaller than the global miss |
+| Stalled/error response and task transition | No extra vector; grants survive until the existing release/retirement edges |
+
+The frontier retires embedding-private state before granting a layer, and
+layer-private state before logits/anchor/next-task work. Owner source/head
+state retires before its response. Native feature descent has no surviving
+ordinary text worker. These lifetime facts, not an excluded allocation,
+justify the phase maxima.
+
+| Capacity | F(C) | E2B ordinary global maximum | E4B ordinary global maximum | E2B fallback working maximum | E4B fallback working maximum |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 16189 | 31037 | 39229 | 52801 | 58945 |
+| 3 | 16198 | 31046 | 39238 | 52818 | 58962 |
+| 64 | 16464 | 31312 | 39504 | 53328 | 59472 |
+
+Ordinary limits remain 32768/65536, and the fallback working limit remains
+65536. The fallback expression is
+`F(C)+26368+4*C+max(3*H+1024,6432,H+1024)`:
+all controllers, resident words, largest post work including separately
+retained PLE, native feature worker and outer result/owner phases are covered.
+Frame/scalar/memo payload stays in field 5, not omitted from the full ledger.
+Using the historical full-depth frame/scalar/memo overestimate gives
+`749568+8296+81920+59472 = 899256` bytes, below 1 MiB.
+
+The historical native necessary cuts also need the controller correction;
+the original 85229 number alone is not current evidence. Replacing their
+26085 controller term with the conservative 26368 gives audio positive/zero
+**85480/82032** and vision positive/patch **85512/82576** bytes. All include
+the protected predecessor, scalar slots and the real simultaneous vectors,
+and stay below the minimum E2B M limit of 86016; E4B's minimum is 200704.
+The separate feature/embedding envelope becomes **59832**. Unpinned memo
+entries are still genuinely evicted by the existing grant FSM, not excluded
+from an observation. Keeping the unchanged conservative 86016 native subtotal
+in the small-context fallback bound and correcting its fixed text term gives
+**283064/487864** bytes for E2B/E4B. Both remain strictly below 45% of their
+minimum padded baselines, separately. Larger contexts only increase those
+baselines. No limit or matched baseline has been raised.
+
+These are source/lifetime bounds and deltas from retained observations, not
+repaired measured peaks, numerical completion or physical implementation.
+Independent Verifier must measure both live/shadow peaks at C=1,3,64 for both
+models, exercise real fallback/memo eviction and native cuts, compare every
+logit, recheck hit/miss/length/lifetime/error/stall behavior and synthesize the
+new registered length arithmetic. Large text PLE lengths, dynamic input-row
+high halves, Q4 partial rows and invalid-layer aliases are required affected
+boundaries. Original failure receipts remain immutable. Designer runs no
+functional or synthesis experiment; hardware timing/RAM/board gates remain
+unverified.
+
+### Retained repair: overlay certified-hit staging with directory scratch
 
 The first-origin diagnostic is retained at
 `evidence/preparation/top-first-origin-20261103T062331Z-3cbf5c57/receipt.json`.

@@ -5,7 +5,81 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current handoff: remove redundant tensor-reader hit staging
+## Current handoff: legal-C64 allocation repair and complete phase reconciliation
+
+`rtl/anvil_en1_tensor_image.sv` removes deterministic descriptor copies from
+real sequential storage. Eight-entry associative round-robin capacity,
+certification, directory validation, immutable-image lifetime, revocation,
+stalled-response stability and the certified-hit staging overlay remain.
+An entry now keeps a 22-bit legal kind/layer key and its 64-bit validated
+base. Full-layer validation precedes the compact key, so invalid layers
+cannot hit by truncation. Geometry comes from the registered requested shape.
+The registered nonzero successful base gates the derived output geometry;
+start/reset/error clearing and response latency are unchanged.
+
+Exact byte length is reconstructed from requested rows and stride in the
+three existing hit edges: E1 registers four unsigned 16-by-16 products,
+E2 registers two shifted subtotals, E3 registers their 64-bit sum and the
+staged base. All intermediates reuse otherwise dead directory-entry scratch.
+There is neither an extra retained vector nor a combinational full-width
+multiplier/divider. Q4 row rounding uses the same stride helper as miss
+validation. Misses overwrite every entry word before validating it.
+No neural reduction order, owner result, external transaction or hit edge
+changes. The separated audio request/completion nets remain untouched.
+
+The original C64 failure remains at
+`evidence/preparation/top-resident64-20261103T073745Z-ae9a7362/receipt.json`;
+it completed with error 7 at cycle 1762635, 44333 reads and zero logits.
+The attribution receipt is
+`evidence/preparation/top-resident64-origin-20261103T074935Z-7e9e2cd3/receipt.json`:
+owner 4/component 0 needs the component-7 head grant, producing 32833
+production-shadow text bytes at cycle 1762603 against 32768. Other allocation
+predicates pass. The prior 29-byte staging repair did not close this defect.
+
+The repair removes 1528 declared bits / 191 rounded bytes per reader,
+including the former final geometry registers. Reader state is now
+1983 bits / 248 bytes. The unchanged 49-reader hierarchy therefore saves
+9359 total bytes: 1528 in the eight-reader text subset and 7831 in the
+41-reader native subset. Invalid entries are still charged, and all parent
+physical/live/shadow report expressions propagate the actual removal.
+
+The old 30710-byte global-owner envelope used a stale fixed census:
+the retained 32833 observation contains 14848 vector/head bytes and
+17985 fixed bytes, not 15862. The repaired compact source subtotal is 16457;
+SPEC derives a conservative compact/production ceiling of 16464 at C64,
+including the two text engines' wider production row registers. Native
+controllers have a separate conservative ceiling of 26368 bytes.
+
+| C | Ordinary E2B / E4B global-miss envelope | Fallback E2B / E4B working envelope |
+| --- | ---: | ---: |
+| 1 | 31037 / 39229 | 52801 / 58945 |
+| 3 | 31046 / 39238 | 52818 / 58962 |
+| 64 | 31312 / 39504 | 53328 / 59472 |
+
+Ordinary ceilings remain 32768/65536, fallback working 65536. SPEC includes
+all other phases: local misses/ring hits, MLP/PLE with full reservations,
+embedding/logits, anchor materialization, stalls/errors and handoff edges.
+The largest corrected necessary native encoder cut is 85512, below the
+unchanged minimum E2B scratch allowance 86016. Feature reconstruction is
+bounded by 59832. With every frame, memo, scalar and working allocation
+included, the conservative full-depth fallback bound is 899256 bytes;
+the separate reachable small-context bounds are 283064/487864, still below
+45% of their individual minimum padded baselines. No capacity or threshold
+change, omitted live copy, external spill or favorable-value assumption is
+used. These source-level bounds supersede the older census-dependent
+envelopes below; they are not passing execution evidence.
+
+Independent Verifier follows this static-only handoff. Measure real
+production-shadow/live grants and numerical completion for both models and
+C=1,3,64, then affected fallback/native phases and synthesis. Cover length
+high halves, dynamic input rows, partial Q4 blocks, key rejection, eviction,
+reset/revocation during staging and stable stalled responses. Establish bounded
+source-matched replay cost before repeating an expensive full-top attempt.
+Current timing lint, Quartus STA, physical RAM mapping and board acceptance
+remain unestablished. Designer has not executed simulation or synthesis.
+Prior receipts, tests, parent sources and shared-runtime metadata are unchanged.
+
+## Retained handoff: remove redundant tensor-reader hit staging
 
 The first-origin diagnostic
 `evidence/preparation/top-first-origin-20261103T062331Z-3cbf5c57/receipt.json`

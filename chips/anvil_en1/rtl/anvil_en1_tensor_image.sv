@@ -73,13 +73,11 @@ module anvil_en1_tensor_image #(
         reg [31:0] partial_product;
         reg [63:0] required_bytes;
         reg [63:0] output_base, output_bytes;
-        reg [31:0] output_rows, output_columns, output_stride;
-        reg [7:0] output_type;
         reg certified, reuse_hold, cache_allowed, lifetime_lost;
         reg [7:0] descriptor_valid;
         reg [2:0] descriptor_cursor;
         wire [7:0] descriptor_hits;
-        wire [1855:0] descriptor_payloads;
+        wire [511:0] descriptor_payloads;
         reg descriptor_hit;
         reg [2:0] descriptor_index;
         integer cache_index;
@@ -94,19 +92,21 @@ module anvil_en1_tensor_image #(
         wire cache_store = state == FINISH && found && error_hold == 0 &&
             cache_allowed && !lifetime_lost && !cache_clear;
         wire lifetime_revoked = cache_allowed && (!immutable_active || invalidate_active);
+        // BASE_VALIDATE rejects layers outside 0..41 and the global sentinel.
+        wire [21:0] descriptor_key =
+            {layer_hold == 16'hffff ? 6'd63 : layer_hold[5:0], kind_hold};
         genvar descriptor_slot;
         for (descriptor_slot = 0; descriptor_slot < 8;
             descriptor_slot = descriptor_slot + 1) begin : descriptors
-            reg [31:0] key;
-            reg [231:0] payload;
-            assign descriptor_payloads[232*descriptor_slot+:232] = payload;
+            reg [21:0] key;
+            reg [63:0] payload;
+            assign descriptor_payloads[64*descriptor_slot+:64] = payload;
             assign descriptor_hits[descriptor_slot] = descriptor_valid[descriptor_slot] &&
-                key == {layer_hold, kind_hold};
+                key == descriptor_key;
             always @(posedge clk) begin
                 if (rst_n && cache_store && descriptor_cursor == descriptor_slot) begin
-                    key <= {layer_hold, kind_hold};
-                    payload <= {output_base, output_bytes, output_rows,
-                        output_columns, output_stride, output_type};
+                    key <= descriptor_key;
+                    payload <= output_base;
                 end
             end
             always @(posedge clk or negedge rst_n) begin
@@ -138,22 +138,23 @@ module anvil_en1_tensor_image #(
             $bits(word_index) + $bits(error_hold) +
             $bits(entry_index) + $bits(prior_index) + $bits(product_index) +
             $bits(partial_product) + $bits(required_bytes) + $bits(output_base) +
-            $bits(output_bytes) + $bits(output_rows) + $bits(output_columns) +
-            $bits(output_stride) + $bits(output_type) +
+            $bits(output_bytes) +
             $bits(certified) + $bits(reuse_hold) + $bits(cache_allowed) +
             $bits(lifetime_lost) +
-            $bits(descriptor_valid) + $bits(descriptor_cursor) + 8*264;
+            $bits(descriptor_valid) + $bits(descriptor_cursor) + 8*86;
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         wire requested_valid, shape_valid;
         wire [31:0] expected_count, shape_rows, shape_columns;
+        wire [31:0] requested_rows, requested_columns;
+        wire [7:0] requested_type;
         wire [31:0] shape_d0, shape_d1, shape_d2, shape_d3;
         wire [7:0] shape_type, shape_rank;
         anvil_en1_tensor_shape #(.COMPACT(COMPACT)) requested_shape (
             .rst_n(rst_n), .model(model_hold), .precision(precision_hold),
             .image_class(class_hold), .input_audio(audio_hold), .input_items(items_hold),
             .kind(kind_hold), .layer(layer_hold), .valid(requested_valid),
-            .tensor_type(), .rank(), .dim0(), .dim1(), .dim2(), .dim3(),
-            .rows(), .columns(), .entry_count(expected_count)
+            .tensor_type(requested_type), .rank(), .dim0(), .dim1(), .dim2(), .dim3(),
+            .rows(requested_rows), .columns(requested_columns), .entry_count(expected_count)
         );
         anvil_en1_tensor_shape #(.COMPACT(COMPACT)) current_shape (
             .rst_n(rst_n), .model(model_hold), .precision(precision_hold),
@@ -188,12 +189,37 @@ module anvil_en1_tensor_image #(
         // A certified prefix needs only its last key and payload end.
         wire ordered_successor = entry_order_key > prior_entry[31:0] &&
             !prior_end[64] && entry_offset >= prior_end[63:0];
-        wire [63:0] columns_wide = {32'd0, shape_columns};
-        wire [63:0] q4_blocks_exact = (columns_wide + 31) >> 5;
-        wire [63:0] q4_bytes = (q4_blocks_exact << 4) + (q4_blocks_exact << 1);
-        wire [63:0] required_stride = shape_type == 1 ?
-            (q4_bytes + 3) & 64'hfffffffffffffffc :
-            (shape_type == 0 ? ((columns_wide + 1) >> 1) << 2 : columns_wide << 2);
+        function automatic [63:0] tensor_stride(
+            input [7:0] tensor_type,
+            input [31:0] columns
+        );
+            reg [63:0] columns_wide, q4_blocks, q4_bytes;
+            begin
+                columns_wide = {32'd0, columns};
+                q4_blocks = (columns_wide + 31) >> 5;
+                q4_bytes = (q4_blocks << 4) + (q4_blocks << 1);
+                tensor_stride = tensor_type == 1 ?
+                    (q4_bytes + 3) & 64'hfffffffffffffffc :
+                    (tensor_type == 0 ? ((columns_wide + 1) >> 1) << 2 :
+                        columns_wide << 2);
+            end
+        endfunction
+        wire [63:0] required_stride = tensor_stride(shape_type, shape_columns);
+        wire [63:0] requested_stride = tensor_stride(requested_type, requested_columns);
+        wire [31:0] hit_product_ll = requested_rows[15:0] * requested_stride[15:0];
+        wire [31:0] hit_product_lh = requested_rows[15:0] * requested_stride[31:16];
+        wire [31:0] hit_product_hl = requested_rows[31:16] * requested_stride[15:0];
+        wire [31:0] hit_product_hh = requested_rows[31:16] * requested_stride[31:16];
+        wire [63:0] hit_product_low = {32'd0, entry[159:128]} +
+            {16'd0, entry[191:160], 16'd0};
+        wire [63:0] hit_product_high = {16'd0, entry[223:192], 16'd0} +
+            {entry[255:224], 32'd0};
+        wire [63:0] hit_bytes = entry[191:128] + entry[255:192];
+        // Successful payload addresses are nonzero: offsets are >=64 and sums checked.
+        wire [31:0] output_rows = output_base != 0 ? requested_rows : 32'd0;
+        wire [31:0] output_columns = output_base != 0 ? requested_columns : 32'd0;
+        wire [31:0] output_stride = output_base != 0 ? requested_stride[31:0] : 32'd0;
+        wire [7:0] output_type = output_base != 0 ? requested_type : 8'd0;
         wire header_word_bad =
             (word_index == 0 && word_hold !=
                 (class_hold == 3 ? 32'h31494e41 : 32'h31564e41)) ||
@@ -278,10 +304,6 @@ module anvil_en1_tensor_image #(
                 required_bytes <= 0;
                 output_base <= 0;
                 output_bytes <= 0;
-                output_rows <= 0;
-                output_columns <= 0;
-                output_stride <= 0;
-                output_type <= 0;
                 certified <= 0;
                 reuse_hold <= 0;
                 cache_allowed <= 0;
@@ -307,10 +329,6 @@ module anvil_en1_tensor_image #(
                         entry_index <= 0;
                         output_base <= 0;
                         output_bytes <= 0;
-                        output_rows <= 0;
-                        output_columns <= 0;
-                        output_stride <= 0;
-                        output_type <= 0;
                         reuse_hold <= immutable_active && certified && same_image;
                         cache_allowed <= immutable_active;
                         lifetime_lost <= 0;
@@ -321,10 +339,13 @@ module anvil_en1_tensor_image #(
                             error_hold <= 6;
                             state <= PUBLISH;
                         end else if (!requested_valid || base_hold[1:0] != 0 ||
-                            base_header_end[64]) begin
+                            base_header_end[64] || requested_stride[63:32] != 0) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else if (reuse_hold) begin
+                            // Three registered product stages share otherwise dead entry scratch.
+                            entry[255:128] <= {hit_product_hh, hit_product_hl,
+                                hit_product_lh, hit_product_ll};
                             state <= CACHE_SEARCH;
                         end else begin
                             address_hold <= base_hold;
@@ -478,10 +499,6 @@ module anvil_en1_tensor_image #(
                             found <= 1;
                             output_base <= payload_sum[63:0];
                             output_bytes <= entry_bytes;
-                            output_rows <= shape_rows;
-                            output_columns <= shape_columns;
-                            output_stride <= entry[351:320];
-                            output_type <= shape_type;
                         end
                         if (reuse_hold || entry_index == directory_count - 1'b1)
                             state <= FINISH;
@@ -502,7 +519,9 @@ module anvil_en1_tensor_image #(
                     CACHE_SEARCH: begin
                         if (descriptor_hit) begin
                             // Directory parsing and certified-hit staging never overlap.
-                            entry[231:0] <= descriptor_payloads[232*descriptor_index+:232];
+                            entry[63:0] <= descriptor_payloads[64*descriptor_index+:64];
+                            entry[191:128] <= hit_product_low;
+                            entry[255:192] <= hit_product_high;
                             state <= CACHE_CAPTURE;
                         end else begin
                             entry_index <= 0;
@@ -512,8 +531,8 @@ module anvil_en1_tensor_image #(
                         end
                     end
                     CACHE_CAPTURE: begin
-                        {output_base, output_bytes, output_rows, output_columns,
-                            output_stride, output_type} <= entry[231:0];
+                        output_base <= entry[63:0];
+                        output_bytes <= hit_bytes;
                         state <= PUBLISH;
                     end
                     LOOKUP_KEY: begin
@@ -538,10 +557,6 @@ module anvil_en1_tensor_image #(
                                 error_hold <= 7;
                             output_base <= 0;
                             output_bytes <= 0;
-                            output_rows <= 0;
-                            output_columns <= 0;
-                            output_stride <= 0;
-                            output_type <= 0;
                         end
                         state <= RESPONSE;
                     end
