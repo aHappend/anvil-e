@@ -1,7 +1,6 @@
 """Layer-major reference retaining every logical layer state, never replaying."""
 
 import math
-import struct
 from fractions import Fraction
 
 from numerical_reference import decode, encode, sqrt_encode

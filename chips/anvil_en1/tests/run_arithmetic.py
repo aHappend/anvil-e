@@ -192,8 +192,11 @@ def main():
         if marker not in output:
             raise RuntimeError("simulation lacks exact nonzero completion comparison count")
         receipt["status"] = "passed"
-        receipt["comparison_count"] = count
         receipt["summary"] = next(line for line in output.splitlines() if marker in line)
+        fields = dict(item.split("=", 1) for item in receipt["summary"].split()[2:])
+        receipt["observed_counts"] = {key: int(value) for key, value in fields.items()}
+        receipt["comparison_count"] = (int(fields["comparisons"]) if "comparisons" in fields
+                                       else int(fields["meta"]) + int(fields["fetch"]))
         exit_code = 0
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
         receipt["status"] = "failed"

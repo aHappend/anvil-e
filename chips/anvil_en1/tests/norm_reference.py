@@ -2,7 +2,7 @@
 
 from fractions import Fraction
 
-from numerical_reference import XorShift32, arithmetic, decode, encode
+from numerical_reference import XorShift32, arithmetic, encode
 
 
 def expected_norm(source, scale, layer_norm):
