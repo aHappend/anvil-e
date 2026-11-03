@@ -139,7 +139,7 @@ module anvil_en1_replay_workspace #(
             GRANT_TOTAL = 50, GRANT_SEND = 51,
             GRANT_WAIT = 52, MEMO_GRANT_COMMIT = 53,
             FRAME_PUSH_COMMIT = 54, FRAME_VECTOR_COMMIT = 55,
-            GRANT_NATIVE_ADJUST = 56;
+            GRANT_NATIVE_ADJUST = 56, GRANT_MOVE_ADJUST = 57;
         reg [5:0] state, backing_return, vector_reserve_return;
         reg active, invalidate_hold, bank_hold, pending_push, pending_memo;
         reg hit_hold, hit_pulse, eviction_pulse, new_memo;
@@ -277,6 +277,15 @@ module anvil_en1_replay_workspace #(
         wire request_session_valid = active && native_model &&
             request_generation == generation_hold;
         wire private_request = op_hold == 7 && target_hold == 1;
+        wire move_to_memo = op_hold == 3 && target_hold == 2 && request_data == 1;
+        wire move_account_valid = vector_reserved[vector_bit_index] &&
+            vector_occupied[vector_bit_index] &&
+            !pair_progress_valid[vector_bit_index] &&
+            frame_payload_bytes >= request_vector_bytes &&
+            shadow_frame_payload_bytes >= request_shadow_vector_bytes &&
+            (!native_request ||
+                (native_frame_payload_bytes >= request_vector_bytes &&
+                 native_shadow_frame_bytes >= request_shadow_vector_bytes));
         wire private_global_layer;
         anvil_en1_geometry private_geometry (
             .rst_n(rst_n), .model(model_hold), .layer(layer_hold - 8'd1),
@@ -823,7 +832,9 @@ module anvil_en1_replay_workspace #(
                             state <= UPDATE_SETUP;
                         else if (op_hold == 3) begin
                             if (target_hold == 2) begin
-                                if (!vector_present_q) begin
+                                if (!vector_present_q || request_data > 1 ||
+                                    (move_to_memo &&
+                                        (slot_hold != top_slot || !move_account_valid))) begin
                                     error_hold <= 7;
                                     state <= PUBLISH;
                                 end else begin
@@ -1178,6 +1189,22 @@ module anvil_en1_replay_workspace #(
                             (!native_request ? 64'd0 :
                             (grant_kind == 1 ? 64'd128 :
                             (grant_kind == 2 ? {32'd0, request_shadow_vector_bytes} : 64'd0)));
+                        if (move_to_memo && grant_kind == 0)
+                            state <= GRANT_MOVE_ADJUST;
+                        else
+                            state <= GRANT_SEND;
+                    end
+                    GRANT_MOVE_ADJUST: begin
+                        grant_payload_hold <= grant_payload_hold -
+                            {32'd0, request_vector_bytes};
+                        grant_shadow_hold <= grant_shadow_hold -
+                            {32'd0, request_shadow_vector_bytes};
+                        if (native_request) begin
+                            grant_native_hold <= grant_native_hold -
+                                {32'd0, request_vector_bytes};
+                            grant_native_shadow_hold <= grant_native_shadow_hold -
+                                {32'd0, request_shadow_vector_bytes};
+                        end
                         state <= GRANT_SEND;
                     end
                     GRANT_SEND: if (grant_ready)
@@ -1199,25 +1226,46 @@ module anvil_en1_replay_workspace #(
                         end
                     end
                     MEMO_GRANT_COMMIT: begin
-                        pending_memo <= 1;
-                        if (memo_occupied[slot_hold[3:0]]) begin
-                            memo_count <= memo_count - 1'b1;
-                            memo_payload_bytes <= memo_payload_bytes - replaced_memo_bytes;
-                            shadow_memo_payload_bytes <= shadow_memo_payload_bytes -
-                                replaced_shadow_memo_bytes;
-                            if (native_victim) begin
-                                native_memo_payload_bytes <= native_memo_payload_bytes -
-                                    replaced_memo_bytes;
-                                native_shadow_memo_bytes <= native_shadow_memo_bytes -
-                                    replaced_shadow_memo_bytes;
+                        if (move_to_memo && !move_account_valid) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else begin
+                            pending_memo <= 1;
+                            if (move_to_memo) begin
+                                vector_reserved[vector_bit_index] <= 0;
+                                vector_occupied[vector_bit_index] <= 0;
+                                pair_progress_valid[vector_bit_index] <= 0;
+                                pair_next_index[11*vector_bit_index+:11] <= 0;
+                                frame_payload_bytes <= frame_payload_bytes -
+                                    request_vector_bytes;
+                                shadow_frame_payload_bytes <= shadow_frame_payload_bytes -
+                                    request_shadow_vector_bytes;
+                                if (native_request) begin
+                                    native_frame_payload_bytes <= native_frame_payload_bytes -
+                                        request_vector_bytes;
+                                    native_shadow_frame_bytes <= native_shadow_frame_bytes -
+                                        request_shadow_vector_bytes;
+                                end
                             end
-                            eviction_pulse <= new_memo;
+                            if (memo_occupied[slot_hold[3:0]]) begin
+                                memo_count <= memo_count - 1'b1;
+                                memo_payload_bytes <= memo_payload_bytes - replaced_memo_bytes;
+                                shadow_memo_payload_bytes <= shadow_memo_payload_bytes -
+                                    replaced_shadow_memo_bytes;
+                                if (native_victim) begin
+                                    native_memo_payload_bytes <= native_memo_payload_bytes -
+                                        replaced_memo_bytes;
+                                    native_shadow_memo_bytes <= native_shadow_memo_bytes -
+                                        replaced_shadow_memo_bytes;
+                                end
+                                eviction_pulse <= new_memo;
+                            end
+                            memo_occupied[slot_hold[3:0]] <= 0;
+                            if (target_hold == 2)
+                                state <= COPY_READ;
+                            else
+                                state <= STREAM;
                         end
-                        memo_occupied[slot_hold[3:0]] <= 0;
-                        if (target_hold == 2)
-                            state <= COPY_READ;
-                        else
-                            state <= STREAM;
                     end
                     MEMO_BUDGET_SCAN: begin
                         if (budget_visits == 16) begin

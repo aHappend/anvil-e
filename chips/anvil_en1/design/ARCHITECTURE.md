@@ -5,7 +5,99 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: directory state reduction and dead-vector retirement
+## Current saved increment: consuming completed-result memo handover
+
+The scheduler now sets `req_data=1` on its existing internal frame-to-memo
+operation. The workspace preserves `req_data=0` as a nonconsuming copy.
+The new consuming variant requires the fully tagged top frame, committed
+source visibility, its reservation, no partial write, and valid
+actual/native/production-shadow subtraction bounds. Other flags or a
+non-top move reject before memo selection or backing traffic.
+
+Prospective admission uses one additional registered subtraction stage,
+without increasing the state encoding or adding scalar storage. It removes
+the transferring source vector from the already calculated candidate totals.
+Only after admission succeeds does the workspace atomically remove source
+visibility/reservation and establish the pending-memo charge. The unconsumed
+source suffix and written destination prefix remain covered as one full
+vector; the existing copy and backing-response registers remain separately
+charged. All backing reads and writes still really execute and must succeed
+before the memo becomes readable. A failing transfer discards both incomplete
+representations and propagates the actual failure; it cannot expose the old
+frame vector. The scheduler then invalidates. A successful transfer retires
+before frame pop, whose bitmap census no longer includes that result.
+
+This closes the avoidable completed-result double-vector reservation
+milestone: the scheduler no longer needs a second complete 3072/5120-byte
+text, 1536-byte vision or 2048-byte audio vector during handover. Compact
+actual bytes and production-shadow bytes remain distinct. Ordinary copies,
+all numerical work, physical RAM disclosure and public top interfaces are
+unchanged. This is not a reduction of suspended live frames and does not
+establish native/deep-frame or fallback fit.
+
+Read-only declaration inspection reconciled scalar census names, packed
+expressions, read-register aliases, generated readback charges and occupancy
+metadata. No new scalar omission was identified; this is not elaborated
+per-instance or executed liveness evidence. The E2B C=64 conservative text
+declaration envelope remains <=32200 bytes. Remaining work is legal
+native/deep-frame feasibility (including six-slice suspended audio frames),
+whole-hierarchy/partition reconciliation and actual eviction/regeneration/
+transition closure. The reserved static elaboration is still pending.
+
+Saved changes: `rtl/anvil_en1_eval_schedule.sv`,
+`rtl/anvil_en1_replay_workspace.sv`, SPEC and this document.
+Actual tools: glob, view, rg, apply_patch and read-only Bash/Python source
+inspection. No functional simulation, synthesis, elaboration or preparation
+receipt was produced. Original failures, runtime metadata, tests and parent
+sources remain untouched.
+
+## Prior saved increment: completed-layer dead-input retirement
+
+The text, vision and audio replay layer workers now retire dead frame inputs
+through the existing checked workspace release protocol before publishing
+successful completion or starting a successor phase. Text and vision release
+bank 0 after their complete post-worker output has reached bank 1. Audio
+releases the actually retained convolution histories, then releases convolution
+output after feed-forward and feed-forward output after final normalization.
+Its final normalized result remains in bank 0. No result or continuation is
+provided by a release, and no new external transaction is introduced.
+
+Audio reuses its validated history count as a descending release cursor.
+For five histories it releases bank-1 slices 2,1,0 and bank-0 slice 2;
+shorter histories release exactly the populated suffix of that sequence.
+A one-history job has no copied-history slice and skips that loop.
+The convolution result overwrote bank-0 slice 0 only after all historical
+callbacks had retired, so that result is deliberately excluded. Subsequent
+feed-forward/final-norm input releases each occur after the last output pair
+and numerical done response. Text's private PLE live flag also retires when
+its final numerical consumer is done, before release-response stalls.
+
+All three workers hold descriptor fields through release stalls, capture the
+real workspace response, check its error on a separate edge, and do not advance
+after a failed release. They preserve live/partially filled vectors on child
+error or dependency yield. No new retained scalar register or wider state
+encoding is needed. The workspace still invalidates visibility and subtracts
+actual/native/production-shadow vector charges atomically; reuse must obtain
+a fresh grant. This is a live-storage lifetime change, not physical RAM removal.
+
+The retired milestone is completed-layer liveness: a successful layer retains
+only its result vector for the scheduler's memo-copy/pop sequence. Native
+deep-suspension fit is **not** closed: a yielding audio history can still retain
+six live slices. The conservative E2B C=64 text declaration envelope remains
+<=32200 bytes. Remaining work is the finite per-instance/phase reconciliation
+and legal native/deep-frame/fallback fit, including real memo
+eviction/regeneration and mode transitions, followed by the reserved static
+elaboration and immediate independent-Verifier handoff.
+
+Saved changes: `rtl/anvil_en1_replay_audio_layer.sv`,
+`rtl/anvil_en1_replay_vision_layer.sv`,
+`rtl/anvil_en1_replay_text_layer.sv`, SPEC and this document.
+Actual tools: glob, view, rg, apply_patch and read-only Bash/Python source
+inspection. The source inventory still has 94 modules and 52 array declarations;
+no functional simulation, synthesis, elaboration or preparation receipt was
+produced. Tests, parent sources and original failure/runtime records are unchanged.
+
+## Prior saved increment: directory state reduction and dead-vector retirement
 
 The tensor-image reader retains only the header's image length, directory count
 and offset, the current entry's eleven meaningful words, and the prior entry's

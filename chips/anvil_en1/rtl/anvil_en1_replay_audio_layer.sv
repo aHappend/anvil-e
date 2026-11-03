@@ -67,7 +67,8 @@ module anvil_en1_replay_audio_layer #(
         CLAMP_START = 11, CLAMP_WAIT = 12, CLAMP_REGISTER = 13,
         NORM_START = 14, NORM_WAIT = 15, NORM_CHECK = 16,
         PAIR_SEND = 17, PAIR_WAIT = 18, PAIR_REGISTER = 19,
-        PUBLISH = 20, RESPONSE = 21;
+        PUBLISH = 20, RESPONSE = 21, RELEASE_SEND = 22,
+        RELEASE_WAIT = 23, RELEASE_REGISTER = 24;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_SEND = 2,
         S_WAIT = 3, S_REGISTER = 4, S_RESPONSE = 5;
     reg [4:0] state;
@@ -162,6 +163,8 @@ module anvil_en1_replay_audio_layer #(
     );
 
     wire pair_phase = state == PAIR_SEND || state == PAIR_WAIT || state == PAIR_REGISTER;
+    wire release_phase = state == RELEASE_SEND || state == RELEASE_WAIT ||
+        state == RELEASE_REGISTER;
     wire conv_selected = rst_n && (state == CONV_START || state == CONV_WAIT ||
         (pair_phase && phase_hold == 0));
     wire ff_selected = rst_n && (state == FF_START || state == FF_WAIT ||
@@ -333,9 +336,9 @@ module anvil_en1_replay_audio_layer #(
     wire source_send = waiting && source_state == S_SEND;
     wire source_wait = waiting && source_state == S_WAIT;
     assign work_req_valid = (history_selected && history_work_valid) || source_send ||
-        (rst_n && state == PAIR_SEND);
+        (rst_n && (state == PAIR_SEND || state == RELEASE_SEND));
     assign work_rsp_ready = (history_selected && history_work_rsp_ready) || source_wait ||
-        (rst_n && state == PAIR_WAIT);
+        (rst_n && (state == PAIR_WAIT || state == RELEASE_WAIT));
     always @* begin
         work_req_op = 0;
         work_req_domain = 0;
@@ -367,7 +370,16 @@ module anvil_en1_replay_audio_layer #(
                 work_req_layer = layer_hold;
                 work_req_length = 1024;
                 work_req_slot = slot_hold;
-                if (waiting && source_state != S_IDLE) begin
+                if (release_phase) begin
+                    work_req_op = 7;
+                    work_req_target = 2;
+                    if (phase_hold == 0) begin
+                        work_req_bank = history_count_hold != 2;
+                        work_req_scalar_index = history_count_hold == 2 ? 8'd2 :
+                            {5'd0, history_count_hold} - 8'd3;
+                    end else
+                        work_req_bank = phase_hold == 2;
+                end else if (waiting && source_state != S_IDLE) begin
                     work_req_op = 4;
                     work_req_component = source_index_hold[11:0] & 12'hffe;
                     work_req_bank = source_bank_hold;
@@ -803,10 +815,35 @@ module anvil_en1_replay_audio_layer #(
                         state <= PUBLISH;
                     end else if (state == CONV_CHECK) begin
                         received <= 0;
-                        phase_hold <= 1;
-                        state <= FF_START;
+                        if (history_count_hold == 1) begin
+                            phase_hold <= 1;
+                            state <= FF_START;
+                        end else
+                            state <= RELEASE_SEND;
                     end else if (state == FF_CHECK) begin
                         received <= 0;
+                        state <= RELEASE_SEND;
+                    end else
+                        state <= RELEASE_SEND;
+                end
+                RELEASE_SEND: if (work_req_ready)
+                    state <= RELEASE_WAIT;
+                RELEASE_WAIT: if (work_rsp_valid) begin
+                    work_error_hold <= work_rsp_error;
+                    state <= RELEASE_REGISTER;
+                end
+                RELEASE_REGISTER: begin
+                    if (work_error_hold != 0) begin
+                        error_hold <= work_error_hold;
+                        state <= PUBLISH;
+                    end else if (phase_hold == 0) begin
+                        history_count_hold <= history_count_hold - 3'd1;
+                        if (history_count_hold == 2) begin
+                            phase_hold <= 1;
+                            state <= FF_START;
+                        end else
+                            state <= RELEASE_SEND;
+                    end else if (phase_hold == 1) begin
                         phase_hold <= 2;
                         state <= NORM_START;
                     end else

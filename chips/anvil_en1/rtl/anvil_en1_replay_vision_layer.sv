@@ -83,7 +83,8 @@ module anvil_en1_replay_vision_layer #(
         PROJECTION_CHECK = 24, PROJECTION_STORE = 25, PROJECTION_ADVANCE = 26,
         COPY_READ = 27, COPY_CAPTURE = 28, COPY_PACK = 29,
         POST_START = 30, POST_WAIT = 31, POST_CHECK = 32,
-        PUBLISH = 33, RESPONSE = 34;
+        PUBLISH = 33, RESPONSE = 34, RELEASE_SEND = 35,
+        RELEASE_WAIT = 36, RELEASE_REGISTER = 37;
     localparam [2:0] S_IDLE = 0, S_VALIDATE = 1, S_SEND = 2,
         S_WAIT = 3, S_REGISTER = 4, S_RESPONSE = 5;
     localparam [31:0] INPUT_MAGIC = 32'h454e314a;
@@ -424,14 +425,18 @@ module anvil_en1_replay_vision_layer #(
     end
 
     assign start_ready = rst_n && state == IDLE;
-    assign work_req_valid = rst_n && (binding_selected ? binding_work_valid :
+    wire release_selected = state == RELEASE_SEND || state == RELEASE_WAIT ||
+        state == RELEASE_REGISTER;
+    assign work_req_valid = rst_n && (release_selected ? state == RELEASE_SEND :
+        (binding_selected ? binding_work_valid :
         (pair_selected ? state == PAIR_SEND :
          (scalar_selected ? (state == SAVE_SEND || state == RESTORE_SEND) :
-          (source_selected ? source_state == S_SEND : (head_work_selected && head_work_valid)))));
-    assign work_rsp_ready = rst_n && (binding_selected ? binding_work_rsp_ready :
+          (source_selected ? source_state == S_SEND : (head_work_selected && head_work_valid))))));
+    assign work_rsp_ready = rst_n && (release_selected ? state == RELEASE_WAIT :
+        (binding_selected ? binding_work_rsp_ready :
         (pair_selected ? state == PAIR_WAIT :
          (scalar_selected ? (state == SAVE_WAIT || state == RESTORE_WAIT) :
-          (source_selected ? source_state == S_WAIT : (head_work_selected && head_work_rsp_ready)))));
+          (source_selected ? source_state == S_WAIT : (head_work_selected && head_work_rsp_ready))))));
     always @* begin
         work_req_op = 0;
         work_req_domain = 0;
@@ -450,7 +455,10 @@ module anvil_en1_replay_vision_layer #(
             work_req_layer = layer_hold;
             work_req_length = 768;
             work_req_slot = slot_hold;
-            if (binding_selected) begin
+            if (release_selected) begin
+                work_req_op = 7;
+                work_req_target = 2;
+            end else if (binding_selected) begin
                 work_req_op = binding_op;
                 work_req_domain = binding_domain;
                 work_req_target = binding_target;
@@ -774,6 +782,22 @@ module anvil_en1_replay_vision_layer #(
                         else if (receive_bad || received != 768 || branch_ram_fault)
                             error_hold <= 7;
                     end
+                    if (state == POST_CHECK && error_hold == 0 &&
+                        child_error_hold == 0 && !receive_bad &&
+                        received == 768 && !branch_ram_fault)
+                        state <= RELEASE_SEND;
+                    else
+                        state <= PUBLISH;
+                end
+                RELEASE_SEND: if (work_req_ready)
+                    state <= RELEASE_WAIT;
+                RELEASE_WAIT: if (work_rsp_valid) begin
+                    work_error_hold <= work_rsp_error;
+                    state <= RELEASE_REGISTER;
+                end
+                RELEASE_REGISTER: begin
+                    if (work_error_hold != 0)
+                        error_hold <= work_error_hold;
                     state <= PUBLISH;
                 end
                 HEAD_START: if (head_ready)

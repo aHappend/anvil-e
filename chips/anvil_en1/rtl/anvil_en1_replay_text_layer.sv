@@ -122,7 +122,8 @@ module anvil_en1_replay_text_layer #(
         EMBED_REGISTER = 12, POST_START = 13, POST_WAIT = 14,
         PAIR_SEND = 15, PAIR_WAIT = 16, PAIR_REGISTER = 17,
         PUBLISH = 18, RESPONSE = 19, MODALITY_BIND = 20,
-        PRIVATE_GRANT_SEND = 21, PRIVATE_GRANT_WAIT = 22;
+        PRIVATE_GRANT_SEND = 21, PRIVATE_GRANT_WAIT = 22,
+        RELEASE_SEND = 23, RELEASE_WAIT = 24, RELEASE_REGISTER = 25;
     localparam [2:0] SOURCE_IDLE = 0, SOURCE_VALIDATE = 1,
         SOURCE_LOCAL = 2, SOURCE_LOCAL_CAPTURE = 3, SOURCE_SEND = 4,
         SOURCE_WAIT = 5, SOURCE_REGISTER = 6, SOURCE_RESPONSE = 7;
@@ -194,6 +195,8 @@ module anvil_en1_replay_text_layer #(
         (state == PAIR_SEND || state == PAIR_WAIT || state == PAIR_REGISTER);
     wire private_grant_selected = rst_n &&
         (state == PRIVATE_GRANT_SEND || state == PRIVATE_GRANT_WAIT);
+    wire release_selected = rst_n &&
+        (state == RELEASE_SEND || state == RELEASE_WAIT || state == RELEASE_REGISTER);
     wire [15:0] hidden_bytes = {4'd0, length_hold} << 1;
     wire [15:0] shadow_hidden_bytes = model_hold == 1 ? 16'd3072 : 16'd5120;
     wire [15:0] embedding_bytes = hidden_bytes + 16'(2*P);
@@ -457,40 +460,42 @@ module anvil_en1_replay_text_layer #(
     assign modality_token = rst_n ? embed_modality_token : 32'd0;
     assign modality_index = rst_n ? embed_modality_index : 32'd0;
     assign modality_rsp_ready = embedding_selected && !native_feature && embed_modality_rsp_ready;
-    assign work_req_valid = rst_n && (private_grant_selected ? state == PRIVATE_GRANT_SEND :
+    assign work_req_valid = rst_n && (release_selected ? state == RELEASE_SEND :
+        (private_grant_selected ? state == PRIVATE_GRANT_SEND :
         (binding_selected ? binding_work_valid :
         (attention_selected ? attention_work_valid :
          (pair_selected ? state == PAIR_SEND :
             ((post_selected || (embedding_selected && native_feature)) &&
-                source_state == SOURCE_SEND)))));
-    assign work_req_op = !rst_n ? 3'd0 : (private_grant_selected ? 3'd7 :
+                source_state == SOURCE_SEND))))));
+    assign work_req_op = !rst_n ? 3'd0 : (private_grant_selected || release_selected ? 3'd7 :
         (binding_selected ? binding_work_op :
         (attention_selected ? attention_work_op : (pair_selected ? 3'd6 : 3'd4))));
-    assign work_req_domain = !rst_n || private_grant_selected ? 2'd0 :
+    assign work_req_domain = !rst_n || private_grant_selected || release_selected ? 2'd0 :
         (binding_selected ? binding_work_domain :
         (attention_selected ? attention_work_domain :
             (source_feature_hold && !pair_selected ? 2'd3 : 2'd0)));
-    assign work_req_target = !rst_n ? 2'd0 : (private_grant_selected ? 2'd1 :
+    assign work_req_target = !rst_n ? 2'd0 : (release_selected ? 2'd2 :
+        (private_grant_selected ? 2'd1 :
         (binding_selected ? binding_work_target :
         (attention_selected ? attention_work_target : (pair_selected ? 2'd2 :
-            (source_feature_hold ? 2'd1 : 2'd0)))));
+            (source_feature_hold ? 2'd1 : 2'd0))))));
     assign work_req_token = !rst_n ? 32'd0 : (binding_selected ? binding_work_token :
         (attention_selected ? attention_work_token : token_hold));
     assign work_req_layer = !rst_n ? 8'd0 : (binding_selected ? binding_work_layer :
         (attention_selected ? attention_work_layer :
-            (source_feature_hold && !pair_selected && !private_grant_selected ?
+            (source_feature_hold && !pair_selected && !private_grant_selected && !release_selected ?
                 {6'd0, selected_modality} : frame_layer_hold)));
     assign work_req_length = !rst_n ? 12'd0 : (binding_selected ? binding_work_length :
         (attention_selected ? attention_work_length : length_hold));
-    assign work_req_component = !rst_n || private_grant_selected ? 12'd0 :
+    assign work_req_component = !rst_n || private_grant_selected || release_selected ? 12'd0 :
         (binding_selected ? binding_work_component : (attention_selected ?
             attention_work_component : (pair_selected ?
                 output_count[11:0] - 12'd2 : {source_index_hold[11:1], 1'b0})));
     assign work_req_slot = !rst_n ? 6'd0 : (binding_selected ? binding_work_slot :
         (attention_selected ? attention_work_slot :
-            (source_feature_hold && !pair_selected && !private_grant_selected ?
+            (source_feature_hold && !pair_selected && !private_grant_selected && !release_selected ?
                 dependency_slot_hold : slot_hold)));
-    assign work_req_bank = rst_n && !private_grant_selected &&
+    assign work_req_bank = rst_n && !private_grant_selected && !release_selected &&
         (binding_selected ? binding_work_bank :
         (attention_selected ? attention_work_bank : (pair_selected || source_branch_hold)));
     assign work_req_scalar_index = !rst_n ? 8'd0 :
@@ -500,10 +505,11 @@ module anvil_en1_replay_text_layer #(
     assign work_req_data = !rst_n ? 32'd0 : (private_grant_selected ?
         {private_shadow_bytes, private_actual_bytes} : (binding_selected ? binding_work_data :
         (attention_selected ? attention_work_data : (pair_selected ? pair_hold : 32'd0))));
-    assign work_rsp_ready = rst_n && (private_grant_selected ? state == PRIVATE_GRANT_WAIT :
+    assign work_rsp_ready = rst_n && (release_selected ? state == RELEASE_WAIT :
+        (private_grant_selected ? state == PRIVATE_GRANT_WAIT :
         (binding_selected ? binding_work_rsp_ready :
         (attention_selected ? attention_work_rsp_ready :
-            (pair_selected ? state == PAIR_WAIT : source_state == SOURCE_WAIT))));
+            (pair_selected ? state == PAIR_WAIT : source_state == SOURCE_WAIT)))));
     assign cmd_valid = rst_n && (state == TOKEN_SEND ||
         (attention_selected && attention_cmd_valid) ||
         (embedding_selected && embed_cmd_valid) || (post_selected && post_cmd_valid));
@@ -944,8 +950,13 @@ module anvil_en1_replay_text_layer #(
                             else if (output_count != {20'd0, length_hold})
                                 error_hold <= 7;
                         end
+                        ple_allocated <= 0;
                         ple_committed <= 0;
-                        state <= PUBLISH;
+                        if (error_hold == 0 && source_failure_hold == 0 &&
+                            post_error == 0 && output_count == {20'd0, length_hold})
+                            state <= RELEASE_SEND;
+                        else
+                            state <= PUBLISH;
                     end
                 end
                 PAIR_SEND: if (work_req_ready)
@@ -958,6 +969,17 @@ module anvil_en1_replay_text_layer #(
                     if (pair_error_hold != 0)
                         error_hold <= pair_error_hold;
                     state <= POST_WAIT;
+                end
+                RELEASE_SEND: if (work_req_ready)
+                    state <= RELEASE_WAIT;
+                RELEASE_WAIT: if (work_rsp_valid) begin
+                    pair_error_hold <= work_rsp_error;
+                    state <= RELEASE_REGISTER;
+                end
+                RELEASE_REGISTER: begin
+                    if (pair_error_hold != 0)
+                        error_hold <= pair_error_hold;
+                    state <= PUBLISH;
                 end
                 PUBLISH: begin
                     ple_allocated <= 0;

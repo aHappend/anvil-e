@@ -5,7 +5,130 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: compact directory validation and explicit dead-vector release
+### Current increment: consuming completed-result memo transfer
+
+The scheduler's completed-result handover now uses an explicit consuming
+variant of the existing workspace `op=3,target=2` frame-to-memo operation.
+`req_data=0` retains the ordinary nonconsuming copy below. `req_data=1`
+transfers the committed result from the top frame to memo; other values
+reject with error 7 before selecting/replacing a destination or issuing
+backing traffic. The complete source descriptor, current top slot,
+reservation, completed visibility, absent partial-pair progress and
+actual/native/production-shadow subtraction bounds must all validate.
+No numerical worker, tensor format, top-level port or external-memory
+protocol changes.
+
+| Consuming-transfer boundary | Registered ownership and accounting |
+| --- | --- |
+| Source validation | Preserve its existing full-vector reservation and visibility throughout memo selection, eviction retries and prospective admission stalls |
+| Prospective total | After the existing registered grant sums, subtract exactly the source vector from whole-workspace actual/shadow totals and, for native domains only, native actual/shadow totals in a separate `GRANT_MOVE_ADJUST` stage |
+| Accepted grant commit | Recheck source accounting; atomically remove source vector reservation/visibility/progress and its frame subtotal while establishing the full pending-memo charge |
+| Pair read/capture/write | Keep the uncopied source suffix and acknowledged destination prefix as one live vector under that pending charge; consumed source pairs are dead and cannot be read through the frame interface |
+| Scalar temporaries | Existing `backing_result`, `copy_data` and request/response registers remain separately charged by the controller census; no uncounted copy register or vector is added |
+| Last acknowledged pair | Commit destination tag/visibility and move the pending charge to committed memo bytes without changing total live bytes |
+| Copy failure | Retire the actual failing backing response, discard the pending representation, leave both source vector and incomplete memo unreadable, and return the actual error; the scheduler invalidates rather than resuming from discarded data |
+| Scheduler continuation | Pop the consumed frame only after the successful memo response; pop counts its remaining reservation bits and therefore cannot subtract the moved result twice |
+
+This is a destructive logical transfer with real backing reads/writes, not
+an address alias or an early successful result. While a pair is in flight,
+the source suffix and destination prefix are disjoint logical components;
+their complete padded vector size remains reserved. The physical source
+and destination RAM capacities are still disclosed unchanged. Requests
+cannot interleave with the transfer. Failed admission can evict ordinary
+eligible memo entries but never removes source visibility before the
+successful grant commit. Reset/invalidation retain their existing drain
+and generation rules.
+
+Compared with retaining a complete source plus a complete pending
+destination, this removes one dead/transferring-vector overlap from the
+scheduler path: 3072/5120 production text bytes, 1536 vision bytes or
+2048 audio bytes, with the corresponding compact and production-shadow
+charges kept distinct. It does not remove live suspended inputs or claim
+that legal deep replay fits. No register or state-width increase is needed;
+the conservative ordinary-text declaration envelope remains <=32200 bytes
+for E2B C=64.
+
+A read-only scalar declaration scan found no additional unaccounted
+sequential scalar after tracing packed `$bits` census expressions,
+read-register wire aliases, generated RAM readback charges and the
+separate occupancy metadata reports. The apparent `tensor_shape.rank_hold`
+hit is combinational comparison logic, not a sequential assignment.
+This lexical reconciliation is not an elaborated per-instance census,
+memory-liveness execution or proof of native/deep-frame feasibility.
+
+Independent Verifier must distinguish both transfer variants, exercise
+every backing-read/write failure and stall boundary, reject malformed or
+non-top moves without source consumption, verify source unreadability
+after a move, preserve source readability after a nonconsuming copy,
+compare every destination component, and observe actual/native/shadow
+charges through pending/commit/failure/pop and memo eviction/regeneration.
+No functional/synthesis probe or preparation receipt was created.
+The reserved static elaboration remains pending whole-design closure.
+
+### Prior increment: completed-layer frame liveness
+
+The existing checked `op=7,target=2` workspace release is now wired to the
+last-consumer boundaries in all three nonzero-layer replay workers. Numerical
+operations, head order, continuation layout, output-bank selection and private
+admission envelopes are unchanged. Release requests use the current frame's
+complete descriptor, component/data zero, and slice zero except for the packed
+audio history slices below. They do not address or evict a dependency memo.
+
+| Worker / last successful consumer | Dead frame slices released | Surviving result |
+| --- | --- | --- |
+| Text post-attention/MLP/PLE worker | Bank 0, slice 0, entering layer hidden vector | Bank 1, slice 0 |
+| Vision post-attention/MLP worker | Bank 0, slice 0, entering encoder-layer vector | Bank 1, slice 0 |
+| Audio convolution, after its complete output has been acknowledged | All retained historical residual slices, but not the convolution result | Bank 0, slice 0 |
+| Audio feed-forward, after its complete output has been acknowledged | Bank 0, slice 0, convolution result | Bank 1, slice 0 |
+| Audio final normalization, after its complete output has been acknowledged | Bank 1, slice 0, feed-forward result | Bank 0, slice 0 |
+
+For audio, let `D=min(query_token,4)` and let the existing history count be
+`D+1` at convolution completion. For `D=0` there is no history release.
+Otherwise the count is reused as a descending release cursor: count 5/4/3
+selects bank 1 slice 2/1/0, and count 2 selects bank 0 slice 2. Thus only the
+`D` slices actually copied by the history worker are released. Count decrements
+only after each successful registered release response. The final historical
+residual in bank 0 slice 0 has already been consumed and overwritten by the
+convolution output, so that slice must not be released at this boundary.
+
+Each worker retires the numerical child's done and every output pair-write
+response before requesting a release. It then uses send, response-capture and
+registered-error-check states. A stalled request keeps its complete descriptor
+stable; a stalled workspace response prevents further release or successor
+start. A failing release stops advancement and propagates the actual workspace
+error. Successful text/vision completion is not published until release has
+retired. Audio starts its next numerical phase only after its preceding
+releases have retired. Reset follows the existing workspace generation/visibility
+invalidation rules. No error or dependency-yield path releases live or partial
+vectors. The text PLE bank is also marked dead at successful-child retirement
+(or terminal child error), when that child can no longer read it, rather than
+retaining its live charge through the subsequent workspace release handshake.
+
+Consequently each successfully completed layer frame now retains just its
+actual result vector before the scheduler copies it into memo and pops it.
+This removes a dead 3072/5120-byte production text input, a dead 1536-byte vision
+input, and the dead audio histories/interphase input at their actual lifetime
+boundaries. Fresh reuse still obtains the workspace's prospective whole-vector
+grant. None of these removed charges is physical RAM removal or permission to
+omit still-live suspended inputs. Existing state widths and captured error/count
+registers accommodate the release sequencing without additional scalar storage.
+The conservative ordinary-text declaration envelope remains <=32200 bytes at
+E2B C=64; no new reduction to that envelope is claimed.
+
+This closes the completed-layer dead-input lifetime milestone, not native
+deep-suspension feasibility. A yielding audio history can still retain six
+live slices. The minimum-context native-scratch, full fallback partition,
+memo eviction/regeneration and mode-transition obligations remain open.
+Read-only declaration inspection reconfirmed 94 module files (92 with clocked
+processes) and 52 array declarations in 31 files. This is a lexical inventory,
+not per-instance elaboration, allocation execution or a new proof of fit.
+No functional/synthesis harness or preparation receipt was created. Static
+elaboration remains reserved until complete design closure. Independent
+Verifier must cover successful release/regrant, each release-error position,
+request/response stalls and reset, audio `D=0..4`, final-bank preservation,
+and unchanged numerical/reference, allocation and traffic requirements.
+
+### Prior increment: compact directory validation and explicit dead-vector release
 
 The tensor-image ABI and external reader schedule are unchanged. Each directory
 reader still accepts all sixteen header words, all sixteen current-entry words,
@@ -6049,9 +6172,14 @@ corresponding acknowledged destination write. Only one 32-bit copy word is
 retained, in addition to the backing response register; both belong in the
 arithmetic/control ledger. No external vector stream, hidden tensor buffer or
 DDR command is used. Destination visibility commits only after every pair,
-and `rsp_slot` returns the new memo handle. The source remains reserved through
-the entire copy; a subsequent explicit dead-vector release or pop may retire
-it. Backing failure leaves the memo destination unreadable.
+and `rsp_slot` returns the new memo handle. With `req_data=0`, the source remains
+reserved through the entire copy; a subsequent explicit dead-vector release
+or pop may retire it. With `req_data=1`, the checked top-frame consuming
+transfer specified above retains one full vector charge across the disjoint
+source-suffix/destination-prefix representation and makes the old frame
+vector unreadable at grant commit. Other data values reject. Backing failure
+leaves the memo destination unreadable; a consuming transfer also discards
+its incomplete representation rather than restoring a source result.
 
 Target 3 is the acknowledged memo-to-frame copy described in the predecessor
 binding table above. It copies only an occupied, fully matching, smaller-layer

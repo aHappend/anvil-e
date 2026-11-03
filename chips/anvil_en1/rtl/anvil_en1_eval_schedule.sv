@@ -612,7 +612,7 @@ module anvil_en1_eval_schedule #(
                     ws_bank <= result_bank;
                     ws_component <= 0;
                     ws_scalar_index <= 0;
-                    ws_data <= 0;
+                    ws_data <= 1;
                     ws_continuation <= 0;
                     ws_return <= COPY_RESULT;
                     state <= WS_SEND;
