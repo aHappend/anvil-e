@@ -45,6 +45,7 @@ module anvil_en1_replay_workspace #(
     output wire [63:0] controller_bytes,
     output wire grant_valid,
     input wire grant_ready,
+    output wire [4:0] grant_component,
     output wire [63:0] grant_payload_bytes, grant_shadow_bytes,
     output wire [63:0] grant_native_bytes, grant_native_shadow_bytes,
     input wire grant_rsp_valid,
@@ -92,6 +93,7 @@ module anvil_en1_replay_workspace #(
         assign visibility_metadata_bytes = 0;
         assign controller_bytes = 0;
         assign grant_valid = 0;
+        assign grant_component = 0;
         assign grant_payload_bytes = 0;
         assign grant_shadow_bytes = 0;
         assign grant_native_bytes = 0;
@@ -256,6 +258,49 @@ module anvil_en1_replay_workspace #(
             (frame_tag_q[38:37] == 3 ? 7'd18 : {1'b0, frame_tag_q[34:29]} + 7'd1);
         wire request_session_valid = active && native_model &&
             request_generation == generation_hold;
+        wire private_request = op_hold == 7 && target_hold == 1;
+        wire private_global_layer;
+        anvil_en1_geometry private_geometry (
+            .rst_n(rst_n), .model(model_hold), .layer(layer_hold - 8'd1),
+            .is_native(), .layers(), .owners(), .owner(),
+            .is_global(private_global_layer), .hidden(), .intermediate()
+        );
+        wire [15:0] private_shadow_head = private_global_layer ? 16'd1024 : 16'd512;
+        wire [15:0] private_actual_head = COMPACT ?
+            (private_global_layer ? 16'd16 : 16'd8) : private_shadow_head;
+        wire [15:0] private_ple_bytes = COMPACT ? 16'd8 : 16'd512;
+        wire [15:0] private_actual_bytes = scalar_index_hold == 8 ?
+            request_vector_bytes[15:0] + private_actual_head :
+            (scalar_index_hold == 9 ? private_ple_bytes :
+            (scalar_index_hold == 10 ?
+                request_vector_bytes[15:0] + private_ple_bytes :
+                (request_vector_bytes[15:0] << 1) +
+                    request_vector_bytes[15:0] + private_ple_bytes));
+        wire [15:0] private_shadow_bytes = scalar_index_hold == 8 ?
+            production_text_vector_bytes[15:0] + private_shadow_head :
+            (scalar_index_hold == 9 ? 16'd512 :
+            (scalar_index_hold == 10 ?
+                production_text_vector_bytes[15:0] + 16'd512 :
+                (production_text_vector_bytes[15:0] << 1) +
+                    production_text_vector_bytes[15:0] + 16'd512));
+        wire text_private_descriptor_valid = domain_hold == 0 &&
+            (layer_hold != 0 || scalar_index_hold == 10) &&
+            (scalar_index_hold == 8 || scalar_index_hold == 9 ||
+                scalar_index_hold == 10 || scalar_index_hold == 11) &&
+            component_hold == 0 && !bank_hold &&
+            request_data == {private_shadow_bytes, private_actual_bytes};
+        wire [15:0] native_private_bytes = domain_hold == 1 ? 16'd7808 :
+            (domain_hold == 2 ? (layer_hold == 0 ? 16'd512 : 16'd38912) :
+                (layer_hold == 1 ? 16'd6432 : 16'd6144));
+        wire native_private_descriptor_valid =
+            ((domain_hold == 1 && scalar_index_hold == 12) ||
+             (domain_hold == 2 && scalar_index_hold == 13) ||
+             (domain_hold == 3 && layer_hold == 2 && scalar_index_hold == 14) ||
+             (domain_hold == 3 && layer_hold == 1 && scalar_index_hold == 15)) &&
+            component_hold == 0 && !bank_hold &&
+            request_data == {native_private_bytes, native_private_bytes};
+        wire private_descriptor_valid = text_private_descriptor_valid ||
+            native_private_descriptor_valid;
         wire [5:0] top_slot = depth[5:0] - 6'd1;
         wire [5:0] tag_frame_slot = op_hold <= 2 ? top_slot : slot_hold;
         wire [31:0] frame_base =
@@ -429,8 +474,12 @@ module anvil_en1_replay_workspace #(
             64'((METADATA_BITS + 7) >> 3) : 64'd0;
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS + 7) >> 3) : 64'd0;
         assign grant_valid = rst_n && state == GRANT_SEND;
-        assign grant_payload_bytes = rst_n ? grant_payload_hold : 64'd0;
-        assign grant_shadow_bytes = rst_n ? grant_shadow_hold : 64'd0;
+        assign grant_component = !rst_n ? 5'd0 :
+            (grant_kind == 3 ? scalar_index_hold[4:0] : 5'd5);
+        assign grant_payload_bytes = !rst_n ? 64'd0 :
+            (grant_kind == 3 ? {48'd0, request_data[15:0]} : grant_payload_hold);
+        assign grant_shadow_bytes = !rst_n ? 64'd0 :
+            (grant_kind == 3 ? {48'd0, request_data[31:16]} : grant_shadow_hold);
         assign grant_native_bytes = rst_n ? grant_native_hold : 64'd0;
         assign grant_native_shadow_bytes = rst_n ? grant_native_shadow_hold : 64'd0;
         assign grant_rsp_ready = rst_n && state == GRANT_WAIT;
@@ -687,7 +736,10 @@ module anvil_en1_replay_workspace #(
                             state <= PUBLISH;
                         end else if ((op_hold == 6 &&
                             target_hold != 0 && target_hold != 2 && target_hold != 3) ||
-                            (op_hold == 7 && target_hold != 0)) begin
+                            (op_hold == 7 && target_hold > 1)) begin
+                            error_hold <= 5;
+                            state <= PUBLISH;
+                        end else if (private_request && !private_descriptor_valid) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else if ((op_hold == 6 || op_hold == 7) &&
@@ -770,7 +822,12 @@ module anvil_en1_replay_workspace #(
                                 state <= READ_SETUP;
                         end else if (op_hold == 6 && target_hold >= 2)
                             state <= PAIR_SETUP;
-                        else
+                        else if (private_request) begin
+                            grant_kind <= 3;
+                            grant_pin_valid <= memo_pin_valid;
+                            grant_pin_slot <= memo_pin_slot;
+                            state <= GRANT_TERMS;
+                        end else
                             state <= SCALAR_SETUP;
                     end
                     PUSH_SETUP: begin
@@ -1078,6 +1135,8 @@ module anvil_en1_replay_workspace #(
                                 state <= FRAME_PUSH_COMMIT;
                             else if (grant_kind == 2)
                                 state <= FRAME_VECTOR_COMMIT;
+                            else if (grant_kind == 3)
+                                state <= PUBLISH;
                             else
                                 state <= MEMO_GRANT_COMMIT;
                         end else begin

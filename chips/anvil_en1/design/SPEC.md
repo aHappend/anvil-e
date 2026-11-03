@@ -5,6 +5,15 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+Latest saved allocation delta: replay text attention-tile, retained PLE,
+embedding and post private banks, including the layer-0 text-input worker,
+now use the selected-field whole-system admission path documented below.
+Complete bank reservations remain charged through actual child completion;
+denials run real completed-memo eviction/retry. Private native workers,
+ordinary execution, remaining overlays and legal-case feasibility are still
+unfinished. The reserved static elaboration has not run; this is not a ready
+handoff or a verification result.
+
 ## Connected parent-compatible top and session boundary
 
 `rtl/anvil_en1_top.sv` now preserves every named parent parameter and port,
@@ -572,7 +581,8 @@ The connected path is `replay_workspace -> eval_schedule -> replay_execute ->
 replay_binding -> native.workspace_admission`. The new literal
 `anvil_en1_allocation_admission` reuses the existing registered allocation
 ledger, with prospective workspace field 5 and its native subset substituted
-for their current values. It includes every other live/shadow component,
+for their current values for workspace growth; private-bank requests instead
+replace their named existing field as specified below. It includes every other live/shadow component,
 metadata and the top integration reservation unchanged, rather than comparing
 only the memo or frame subtotal. Top supplies the already registered production
 matched-payload baseline; this is a storage denominator, not measured baseline
@@ -592,7 +602,8 @@ No new backing write, stream acceptance or copy read precedes admission.
 | Internal signal | Meaning |
 | --- | --- |
 | `grant_valid/grant_ready` | One accepted prospective-allocation request; the four byte totals remain stable while stalled |
-| `grant_payload_bytes/grant_shadow_bytes[63:0]` | Complete prospective workspace allocation, including scalar slots, frames and memos |
+| `grant_component[4:0]` | Replacement allocation field: 5 for workspace growth, 8/9/10/11 for replay attention-tile/PLE/embedding/post reservations; other fields reject |
+| `grant_payload_bytes/grant_shadow_bytes[63:0]` | Complete prospective actual/shadow allocation for the selected field, not a byte increment |
 | `grant_native_bytes/grant_native_shadow_bytes[63:0]` | Native-domain subsets of those same prospective totals, not additional allocations |
 | `grant_rsp_valid/grant_rsp_ready` | One held decision for the accepted request; no second request before retirement |
 | `grant_allowed` | Held positive decision; zero is a denial, never a successful allocation or permission to spill |
@@ -647,6 +658,76 @@ unspillable workspace. Repeated denial after all evictable memos are gone is
 not a permitted substitute for exact replay. The remaining grant paths must
 be closed before the reserved static elaboration and independent Verifier
 handoff. No functional or synthesis experiment has run for this increment.
+
+### Replay text private-storage admission
+
+Before the replay text worker starts embedding reconstruction, it requests
+workspace operation 7, target 1, using its current frame descriptor, bank 0,
+component 0 and the allocation field in the scalar-index field. Request data
+packs the complete production-shadow byte count in bits 31:16 and the actual
+byte count in bits 15:0. The only legal private encodings are:
+
+| Allocation field | Complete reservation | Compact actual / production shadow |
+| --- | --- | --- |
+| 8 | Serialized attention projection hidden/head tile | `16+2*Dcompact` / `2*H+2*Dproduction` bytes |
+| 9 | Retained reconstructed PLE | 8 / 512 bytes |
+| 10 | Embedding hidden and PLE banks | 24 / `2*H+512` bytes |
+| 11 | POST_ONLY residual, working, branch and PLE banks | 56 / `6*H+512` bytes |
+
+Production actual equals production shadow. Other target-1 encodings reject.
+Field 10 also applies to the layer-0 text-input worker; fields 8/9/11 require
+a nonzero text frame layer. The input worker obtains admission after validating
+its token/modality dependency and before embedding start. It retains the whole
+hidden/PLE bank reservation across feature callbacks, frame streaming, abort
+draining and held child completion, releasing it only on accepted embedding
+done. Feature dependencies are pinned by the same scheduler/workspace path.
+This operation is a private-storage preflight, not a scalar read or a write
+to the frame's continuation/scalar RAM.
+Field 8 uses the existing literal geometry decoder for the logical layer
+`frame_layer-1`, with local/global dimensions 4/8 compact and 256/512
+production. It reserves the whole serialized tile before attention starts,
+including on resumed attention, and remains charged until actual attention
+done/yield acceptance. Query/service pair registers and arithmetic state
+remain in their existing full controller census; they are not hidden in a
+zero tile-payload observation.
+
+The scheduler validates the current worker/frame tag. The workspace validates
+the session, descriptor and owned frame before sending a whole-system
+admission request for the selected replacement field. Workspace field 5 remains at its
+actual live value, including any suspended frames and memos. The native
+workspace subset is likewise unchanged. The ledger therefore charges each
+reservation once in its existing field, without a duplicate workspace
+reservation. PLE and embedding belong to native scratch; attention tile and post belong to the
+text partition. Denial uses the same deterministic completed-memo eviction and
+fresh admission snapshot as frame/vector growth. The current dependency memo
+remains pinned; eviction cannot remove a modality feature still needed for
+embedding. A later miss regenerates the evicted value through real Eval.
+
+| Private-storage boundary | Pre-edge handshake / post-edge action |
+| --- | --- |
+| Reset | No request, response or PLE reservation; existing visibility is invalid |
+| P0 | Worker offers stable operation 7/target 1, allocation field/byte counts and the captured current frame descriptor |
+| P1 onward | Workspace checks session/frame, prepares native subtotals and sends the selected-field request through the unchanged registered admission pipeline |
+| Denial | Evict one eligible completed memo and retry; no requested child start or newly reserved RAM write |
+| Positive decision | Publish a held workspace success response; no PLE data becomes visible |
+| Worker response acceptance | Reserve the selected entire actual/shadow bank set; PLE success requests embedding admission, attention/embedding/post success enters that child's start state |
+| Child stall | Keep the complete bank-set reservation; no unfilled payload is readable |
+| Embedding done acceptance | Release its bank-set reservation, retaining the separate reconstructed PLE copy; then request post admission |
+| Post done acceptance | Release its bank-set reservation after the actual child completion and drained source callbacks |
+| Attention done/yield acceptance | Release the private tile reservation before a dependency descent; suspended frame/checkpoint state remains charged |
+| Publication/error | Clear the retained PLE reservation and visibility after child work has drained, as before |
+
+Attention/embedding/post report the larger of their complete reservation and their
+child's actual live bytes, separately for actual/shadow. Thus later workspace
+growth cannot consume promised bank capacity while a child is filling it,
+and an unexpected child overrun remains visible. Reservation bits are charged
+in worker controller bytes; no additional payload RAM is declared.
+
+This closes the replay text attention-tile/PLE/embedding/post and text-input embedding private-bank paths only.
+Ordinary execution
+and remaining native workers still require their own grant-time closure. The selected-field
+mechanism does not establish legal-case feasibility, physical inference,
+numerical correctness or acceptance.
 
 ### Context-bounded memo grants and exact eviction
 
@@ -4745,7 +4826,8 @@ It is serialized behind accepted transactions and stalled responses. Start
 clears all frame/memo/scalar visibility; invalidation releases live slots.
 The eight request ops are push-frame (0), pop-frame (1), update-continuation
 (2), complete-vector-store (3), vector-pair-read (4), memo-lookup (5),
-scalar-word-write/frame-pair-write (6), and scalar-word-read (7).
+scalar-word-write/frame-pair-write (6), and scalar-word-read/private-bank-preflight
+(7, distinguished by target 0/1).
 Requests capture model, generation, domain, layer, token, vector length,
 frame/slot handle, bank, aligned component, scalar index, data and a 256-bit
 continuation. Domain 0 is text, 1 vision, 2 audio, 3 completed modality features. Text/feature lengths

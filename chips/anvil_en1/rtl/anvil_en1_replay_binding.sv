@@ -115,6 +115,7 @@ module anvil_en1_replay_binding #(
     output wire [63:0] workspace_reserved_bytes, workspace_metadata_bytes,
     output wire grant_valid,
     input wire grant_ready,
+    output wire [4:0] grant_component,
     output wire [63:0] grant_payload_bytes, grant_shadow_bytes,
     output wire [63:0] grant_native_bytes, grant_native_shadow_bytes,
     input wire grant_rsp_valid,
@@ -306,6 +307,7 @@ module anvil_en1_replay_binding #(
         .EXTERNAL_EMBEDDING_RAM(EXTERNAL_EMBEDDING_RAM)
     ) replay (
         .grant_valid(grant_valid), .grant_ready(grant_ready),
+        .grant_component(grant_component),
         .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
         .grant_native_bytes(grant_native_bytes),
         .grant_native_shadow_bytes(grant_native_shadow_bytes),

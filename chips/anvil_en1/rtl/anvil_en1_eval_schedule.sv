@@ -69,6 +69,7 @@ module anvil_en1_eval_schedule #(
     output wire [63:0] backing_reserved_bytes, visibility_metadata_bytes,
     output wire grant_valid,
     input wire grant_ready,
+    output wire [4:0] grant_component,
     output wire [63:0] grant_payload_bytes, grant_shadow_bytes,
     output wire [63:0] grant_native_bytes, grant_native_shadow_bytes,
     input wire grant_rsp_valid,
@@ -196,6 +197,7 @@ module anvil_en1_eval_schedule #(
              (work_req_target == 1 && dependency_work_tag))) ||
         ((work_req_op == 6 || work_req_op == 7) &&
             work_req_target == 0 && current_work_tag && work_req_scalar_index >= 8) ||
+        (work_req_op == 7 && work_req_target == 1 && current_work_tag) ||
         (work_req_op == 6 && work_req_target >= 2 && current_work_tag);
     wire pass_request = rst_n && state == TASK_WAIT && !pass_busy &&
         !task_done_valid && work_req_valid;
@@ -213,6 +215,7 @@ module anvil_en1_eval_schedule #(
     anvil_en1_replay_workspace #(.COMPACT(COMPACT)) workspace (
         .clk(clk), .rst_n(rst_n),
         .grant_valid(grant_valid), .grant_ready(grant_ready),
+        .grant_component(grant_component),
         .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
         .grant_native_bytes(grant_native_bytes),
         .grant_native_shadow_bytes(grant_native_shadow_bytes),

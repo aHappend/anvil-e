@@ -276,6 +276,7 @@ module anvil_en1_native #(
     wire [17:0] backing_addr;
     wire [3:0] backing_error;
     wire grant_valid, grant_ready, grant_rsp_valid, grant_rsp_ready, grant_allowed;
+    wire [4:0] grant_component;
     wire [63:0] grant_payload_bytes, grant_shadow_bytes;
     wire [63:0] grant_native_bytes, grant_native_shadow_bytes;
     wire [63:0] admission_controller_bytes;
@@ -291,6 +292,7 @@ module anvil_en1_native #(
         .shadow_metadata_bytes(shadow_metadata_bytes),
         .integration_bytes(integration_bytes), .matched_payload_bytes(matched_payload_bytes),
         .native_controller_bytes(native_reconstruction_controller_bytes),
+        .candidate_component(grant_component),
         .candidate_bytes(grant_payload_bytes), .candidate_shadow_bytes(grant_shadow_bytes),
         .candidate_native_bytes(grant_native_bytes),
         .candidate_native_shadow_bytes(grant_native_shadow_bytes),
@@ -545,6 +547,7 @@ module anvil_en1_native #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
     ) binding (
         .grant_valid(grant_valid), .grant_ready(grant_ready),
+        .grant_component(grant_component),
         .grant_payload_bytes(grant_payload_bytes), .grant_shadow_bytes(grant_shadow_bytes),
         .grant_native_bytes(grant_native_bytes),
         .grant_native_shadow_bytes(grant_native_shadow_bytes),

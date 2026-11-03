@@ -80,7 +80,7 @@ module anvil_en1_replay_input #(
         EMBED_WAIT = 12, PUBLISH = 13, RESPONSE = 14, ABORT_SEND = 15,
         MODALITY_BIND = 16, EMBED_PREFILL = 17, FEATURE_VALIDATE = 18,
         FEATURE_SEND = 19, FEATURE_WAIT = 20, FEATURE_REGISTER = 21,
-        FEATURE_RESPONSE = 22;
+        FEATURE_RESPONSE = 22, PRIVATE_GRANT_SEND = 23, PRIVATE_GRANT_WAIT = 24;
     localparam [159:0] MODALITY_CONTINUATION = {32'h454e314d, 128'd0};
     localparam integer MAX_H = COMPACT ? 8 : 2560;
     localparam integer P = COMPACT ? 4 : 256;
@@ -103,7 +103,7 @@ module anvil_en1_replay_input #(
     reg [15:0] low_hold;
     reg [31:0] pair_hold;
     reg [3:0] error_hold;
-    reg token_error_hold, embed_active, store_open;
+    reg token_error_hold, embed_active, store_open, embedding_reserved;
 
     initial begin
         if ((COMPACT != 0 && COMPACT != 1) ||
@@ -114,6 +114,9 @@ module anvil_en1_replay_input #(
     wire native_model = model_hold == 1 || model_hold == 2;
     wire [11:0] selected_hidden = COMPACT ? 12'd8 :
         (model_hold == 1 ? 12'd1536 : 12'd2560);
+    wire [15:0] embedding_bytes = ({4'd0, hidden_hold} << 1) + 16'(2*P);
+    wire [15:0] embedding_shadow = (model_hold == 1 ? 16'd3072 : 16'd5120) + 16'd512;
+    wire [63:0] embedding_child_live, embedding_child_shadow;
     wire [64:0] token_address_sum = {1'b0, tokens_base_hold} +
         {31'd0, token_hold, 2'd0};
     wire [64:0] token_address_end = token_address_sum + 65'd3;
@@ -183,8 +186,8 @@ module anvil_en1_replay_input #(
         .result_data(result_data), .result_error(result_error),
         .done_valid(embed_valid),
         .done_ready(rst_n && state == EMBED_WAIT),
-        .done_error(embed_error), .live_payload_bytes(embedding_live_bytes),
-        .production_shadow_bytes(embedding_shadow_bytes),
+        .done_error(embed_error), .live_payload_bytes(embedding_child_live),
+        .production_shadow_bytes(embedding_child_shadow),
         .physical_payload_bytes(embedding_physical_bytes)
     );
 
@@ -195,10 +198,13 @@ module anvil_en1_replay_input #(
     assign modality_token = rst_n ? embed_modality_token : 32'd0;
     assign modality_index = rst_n ? embed_modality_index : 32'd0;
     assign modality_rsp_ready = rst_n && !native_feature && embed_modality_rsp_ready;
-    assign work_req_valid = rst_n && (state == STORE_SEND || state == FEATURE_SEND);
-    assign work_req_op = !rst_n ? 3'd0 : (state == FEATURE_SEND ? 3'd4 : 3'd3);
+    assign work_req_valid = rst_n &&
+        (state == STORE_SEND || state == FEATURE_SEND || state == PRIVATE_GRANT_SEND);
+    assign work_req_op = !rst_n ? 3'd0 :
+        (state == PRIVATE_GRANT_SEND ? 3'd7 : (state == FEATURE_SEND ? 3'd4 : 3'd3));
     assign work_req_domain = rst_n && state == FEATURE_SEND ? 2'd3 : 2'd0;
-    assign work_req_target = rst_n && state == FEATURE_SEND ? 2'd1 : 2'd0;
+    assign work_req_target = rst_n &&
+        (state == FEATURE_SEND || state == PRIVATE_GRANT_SEND) ? 2'd1 : 2'd0;
     assign work_req_token = rst_n ? token_hold : 32'd0;
     assign work_req_layer = !rst_n ? 8'd0 :
         (state == FEATURE_SEND ? {6'd0, selected_modality} : layer_hold);
@@ -208,8 +214,9 @@ module anvil_en1_replay_input #(
     assign work_req_slot = !rst_n ? 6'd0 :
         (state == FEATURE_SEND ? dependency_slot_hold : slot_hold);
     assign work_req_bank = 0;
-    assign work_req_scalar_index = 0;
-    assign work_req_data = 0;
+    assign work_req_scalar_index = rst_n && state == PRIVATE_GRANT_SEND ? 8'd10 : 8'd0;
+    assign work_req_data = rst_n && state == PRIVATE_GRANT_SEND ?
+        {embedding_shadow, embedding_bytes} : 32'd0;
     assign work_write_valid = rst_n &&
         (state == ABORT_SEND || state == WRITE_SEND);
     assign work_write_data = rst_n ? pair_hold : 32'd0;
@@ -217,7 +224,8 @@ module anvil_en1_replay_input #(
     assign work_write_last = rst_n &&
         pair_index + 1'b1 == {21'd0, hidden_hold[11:1]};
     assign work_write_abort = rst_n && state == ABORT_SEND;
-    assign work_rsp_ready = rst_n && (store_open || state == FEATURE_WAIT);
+    assign work_rsp_ready = rst_n &&
+        (store_open || state == FEATURE_WAIT || state == PRIVATE_GRANT_WAIT);
     assign cmd_valid = rst_n &&
         (state == TOKEN_SEND || (embed_active && embed_cmd_valid));
     assign cmd_write = 0;
@@ -248,7 +256,13 @@ module anvil_en1_replay_input #(
         $bits(pair_index) + $bits(hidden_hold) + $bits(layer_hold) + $bits(slot_hold) +
         $bits(tokens_base_hold) + $bits(weights_base_hold) + $bits(token_address_hold) +
         $bits(low_hold) + $bits(pair_hold) + $bits(error_hold) + $bits(token_error_hold) +
-        $bits(embed_active) + $bits(store_open);
+        $bits(embed_active) + $bits(store_open) + $bits(embedding_reserved);
+    assign embedding_live_bytes = !rst_n ? 64'd0 :
+        (embedding_reserved && {48'd0, embedding_bytes} > embedding_child_live ?
+            {48'd0, embedding_bytes} : embedding_child_live);
+    assign embedding_shadow_bytes = !rst_n ? 64'd0 :
+        (embedding_reserved && {48'd0, embedding_shadow} > embedding_child_shadow ?
+            {48'd0, embedding_shadow} : embedding_child_shadow);
     assign controller_state_bytes = !rst_n ? 64'd0 :
         64'((CONTROLLER_BITS + 7) >> 3) + embedding_controller_bytes;
     assign busy = rst_n && state != IDLE;
@@ -291,6 +305,7 @@ module anvil_en1_replay_input #(
             token_error_hold <= 0;
             embed_active <= 0;
             store_open <= 0;
+            embedding_reserved <= 0;
         end else begin
             case (state)
                 IDLE: if (start_valid && start_ready) begin
@@ -386,7 +401,18 @@ module anvil_en1_replay_input #(
                         yield_hold <= 1;
                         state <= PUBLISH;
                     end else
+                        state <= PRIVATE_GRANT_SEND;
+                end
+                PRIVATE_GRANT_SEND: if (work_req_valid && work_req_ready)
+                    state <= PRIVATE_GRANT_WAIT;
+                PRIVATE_GRANT_WAIT: if (work_rsp_valid && work_rsp_ready) begin
+                    if (work_rsp_error != 0) begin
+                        error_hold <= work_rsp_error;
+                        state <= PUBLISH;
+                    end else begin
+                        embedding_reserved <= 1;
                         state <= EMBED_START;
+                    end
                 end
                 EMBED_START: if (embed_ready) begin
                     embed_active <= 1;
@@ -506,6 +532,7 @@ module anvil_en1_replay_input #(
                 STORE_WAIT: begin end
                 EMBED_WAIT: if (embed_valid) begin
                     embed_active <= 0;
+                    embedding_reserved <= 0;
                     if (error_hold == 0 && embed_error != 0)
                         error_hold <= embed_error;
                     state <= PUBLISH;

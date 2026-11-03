@@ -5,7 +5,57 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: ordinary text-workspace partition
+## Current saved increment: replay text private-bank admission
+
+The connected admission channel now names its replacement allocation field.
+Workspace growth retains field 5; replay text attention tile, retained PLE,
+embedding and post banks use existing fields 8..11. All other fields reject.
+`anvil_en1_allocation_admission.sv` substitutes exactly one complete
+actual/shadow field before the existing full-ledger checks. The selector
+travels through `anvil_en1_eval_schedule.sv`, `anvil_en1_replay_execute.sv`,
+`anvil_en1_replay_binding.sv` and `anvil_en1_native.sv`; no public top port
+changes.
+
+`anvil_en1_replay_workspace.sv` adds validated operation 7/target 1 private
+preflight. It checks the complete current frame/session and exact selected-model
+bank sizes, then uses the existing admission/denial/memo-eviction path.
+Only completed unpinned memos may be evicted. Actual/shadow/native subtotals
+are rebuilt after eviction; later misses execute the existing Eval recomputation.
+Private preflight never reads scalar RAM, streams data or reserves duplicate
+workspace payload. The geometry decoder supplies the actual local/global
+projection width, not a second alias-map implementation.
+
+`anvil_en1_replay_text_layer.sv` now admits the full serialized attention
+projection tile before initial or resumed attention, retained PLE before
+reconstruction, full embedding banks before embedding start, and the complete
+POST_ONLY bank set before post start. `anvil_en1_replay_input.sv` also admits
+its layer-0 embedding banks before child start. Requests retain the existing
+dependency-memo pin, including modality features.
+
+Attention/embedding/post reservations persist through child/source/output
+stalls and are released only after accepted child done/yield. Their reported
+actual/shadow bytes are at least the full granted envelope, and never less
+than the child's own live report. Later frame growth therefore cannot reuse
+promised private capacity while it is being filled. The retained PLE copy
+remains separate through post completion. Added reservation/selection state
+is included in existing controller charges; no new payload RAM is declared.
+SPEC records the exact field/byte encodings and acceptance/release cycle table.
+
+Remaining closure milestones: private native encoder/feature workers,
+ordinary execution/owner projection and any arithmetic grants not already
+covered by complete controller reservations; remaining physical overlays
+and legal-case feasibility, including conservative envelope sizes; then the
+reserved static elaboration and independent Verifier handoff. Exhausted
+denial is still explicit error 7 and an implementation failure, not accepted
+bounded fallback. This increment does not establish numerical correctness,
+measured savings, M20K inference, resource fit, timing or acceptance.
+
+Tools used: view, glob, rg and apply_patch only. No command, experiment,
+static check, simulation, synthesis or installation ran; no new preparation
+receipt exists. Parent, tests and runtime-owned files remain untouched.
+Attempt-0003 is preserved without a claimed repair. Not ready.
+
+## Prior saved increment: ordinary text-workspace partition
 
 `rtl/anvil_en1_allocation_ledger.sv` now separately reports actual and
 production-shadow complete text workspace. Two balanced sums exclude only

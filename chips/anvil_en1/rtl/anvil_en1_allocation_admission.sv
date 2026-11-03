@@ -8,6 +8,7 @@ module anvil_en1_allocation_admission (
     input wire [255:0] metadata_bytes, shadow_metadata_bytes,
     input wire [63:0] integration_bytes, matched_payload_bytes,
     input wire [63:0] native_controller_bytes,
+    input wire [4:0] candidate_component,
     input wire [63:0] candidate_bytes, candidate_shadow_bytes,
     input wire [63:0] candidate_native_bytes, candidate_native_shadow_bytes,
     output wire rsp_valid,
@@ -19,13 +20,15 @@ module anvil_en1_allocation_admission (
     reg [1:0] state;
     reg [63:0] baseline_hold;
     reg [68:0] scaled_payload, scaled_shadow, scaled_baseline;
-    reg limit_failure, allowed_hold;
-    // Replace workspace field 5; do not add a second workspace copy.
-    wire [1599:0] prospective_live = {
-        component_live_bytes[1599:384], candidate_bytes, component_live_bytes[319:0]};
-    wire [1599:0] prospective_shadow = {
-        component_shadow_bytes[1599:384], candidate_shadow_bytes,
-        component_shadow_bytes[319:0]};
+    reg limit_failure, allowed_hold, candidate_legal_hold;
+    wire [1599:0] prospective_live, prospective_shadow;
+    genvar component;
+    generate for (component=0; component<25; component=component+1) begin : candidates
+        assign prospective_live[64*component+:64] = candidate_component == component ?
+            candidate_bytes : component_live_bytes[64*component+:64];
+        assign prospective_shadow[64*component+:64] = candidate_component == component ?
+            candidate_shadow_bytes : component_shadow_bytes[64*component+:64];
+    end endgenerate
     wire report_valid, report_fallback, report_overlap;
     wire report_partition_error;
     wire [1:0] report_model;
@@ -40,7 +43,7 @@ module anvil_en1_allocation_admission (
     wire [68:0] baseline_wide = {5'd0, baseline_hold};
     localparam integer CONTROLLER_BITS = $bits(state) + $bits(baseline_hold) +
         $bits(scaled_payload) + $bits(scaled_shadow) + $bits(scaled_baseline) +
-        $bits(limit_failure) + $bits(allowed_hold);
+        $bits(limit_failure) + $bits(allowed_hold) + $bits(candidate_legal_hold);
 
     assign req_ready = rst_n && state == IDLE;
     assign rsp_valid = rst_n && state == RESPONSE;
@@ -79,10 +82,16 @@ module anvil_en1_allocation_admission (
             scaled_baseline <= 0;
             limit_failure <= 0;
             allowed_hold <= 0;
+            candidate_legal_hold <= 0;
         end else begin
             case (state)
                 IDLE: if (req_valid && req_ready) begin
                     baseline_hold <= matched_payload_bytes;
+                    candidate_legal_hold <= candidate_component == 5 ||
+                        candidate_component == 8 || candidate_component == 9 || candidate_component == 10 ||
+                        candidate_component == 11 || candidate_component == 12 ||
+                        candidate_component == 13 || candidate_component == 14 ||
+                        candidate_component == 15;
                     allowed_hold <= 0;
                     state <= WAIT_REPORT;
                 end
@@ -90,7 +99,7 @@ module anvil_en1_allocation_admission (
                     scaled_payload <= (payload_wide << 4) + (payload_wide << 2);
                     scaled_shadow <= (shadow_wide << 4) + (shadow_wide << 2);
                     scaled_baseline <= (baseline_wide << 3) + baseline_wide;
-                    limit_failure <= baseline_hold == 0 ||
+                    limit_failure <= !candidate_legal_hold || baseline_hold == 0 ||
                         (report_model != 1 && report_model != 2) ||
                         report_overlap || report_partition_error ||
                         equivalent_shadow < equivalent ||
