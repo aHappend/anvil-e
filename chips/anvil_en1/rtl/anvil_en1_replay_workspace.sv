@@ -309,7 +309,7 @@ module anvil_en1_replay_workspace #(
             request_data == {private_shadow_bytes, private_actual_bytes};
         wire [15:0] native_private_bytes = domain_hold == 1 ?
             (layer_hold == 0 ? 16'd0 : 16'd7808) :
-            (domain_hold == 2 ? (layer_hold == 0 ? 16'd512 : 16'd38912) :
+            (domain_hold == 2 ? (layer_hold == 0 ? 16'd512 : 16'd16384) :
                 (layer_hold == 1 ? 16'd6432 : 16'd6144));
         wire native_private_descriptor_valid =
             ((domain_hold == 1 && layer_hold <= 16 && scalar_index_hold == 12) ||

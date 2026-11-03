@@ -219,7 +219,10 @@ module anvil_en1_asym_attn_ple #(
         reg [2:0] fp_op;
         reg [3:0] error_hold;
         reg [3:0] output_state, output_error;
-        reg [31:0] output_row, output_accumulator, output_value, output_weight;
+        reg [H_BITS-1:0] output_row;
+        reg [31:0] output_accumulator;
+        wire [31:0] output_value = rotary_data_hold;
+        wire [31:0] output_weight = scalar_hold;
         reg residual_allocated, work_allocated, branch_allocated;
         reg query_allocated, attention_allocated, ple_allocated;
         wire [15:0] residual_q, work_q, branch_q, ple_q;
@@ -243,7 +246,6 @@ module anvil_en1_asym_attn_ple #(
             fp_a, fp_b, value_hold, rotary_data_hold, branch_data_hold,
             residual_data_hold, rotary_first, rotary_second, fp_op, error_hold,
             output_state, output_error, output_row, output_accumulator,
-            output_value, output_weight,
             residual_allocated, work_allocated, branch_allocated,
             query_allocated, attention_allocated, ple_allocated,
             residual_q, work_q, branch_q, ple_q
@@ -961,14 +963,10 @@ module anvil_en1_asym_attn_ple #(
                 output_state <= O_IDLE;
                 output_error <= 0;
                 output_accumulator <= 0;
-                output_value <= 0;
-                output_weight <= 0;
             end else if (state == IDLE || state == PUBLISH) begin
                 output_state <= O_IDLE;
                 output_error <= 0;
                 output_accumulator <= 0;
-                output_value <= 0;
-                output_weight <= 0;
             end else if (state == OUTPUT_PROJECTION_DESCRIPTOR ||
                 state == OUTPUT_ROW_WRITE) begin
                 output_state <= O_IDLE;
@@ -984,7 +982,6 @@ module anvil_en1_asym_attn_ple #(
                             output_error <= weight_error;
                             output_state <= O_DRAIN;
                         end else begin
-                            output_weight <= weight_data;
                             output_state <= O_CONVERT_START;
                         end
                     end
@@ -999,10 +996,8 @@ module anvil_en1_asym_attn_ple #(
                             output_error <= fp_error;
                             output_state <= O_DRAIN;
                         end else if (output_state == O_CONVERT_WAIT) begin
-                            output_value <= fp_data;
                             output_state <= O_MULTIPLY_START;
                         end else if (output_state == O_MULTIPLY_WAIT) begin
-                            output_value <= fp_data;
                             output_state <= O_ADD_START;
                         end else begin
                             output_accumulator <= fp_data;
@@ -1087,6 +1082,14 @@ module anvil_en1_asym_attn_ple #(
                 error_hold <= 0;
                 output_row <= 0;
             end else begin
+                // RoPE has retired and the layer scalar is not loaded until after attention.
+                if (state == ATTENTION_WAIT && output_state == O_WEIGHT_WAIT &&
+                    weight_valid && weight_error == 0)
+                    scalar_hold <= weight_data;
+                if (state == ATTENTION_WAIT &&
+                    (output_state == O_CONVERT_WAIT || output_state == O_MULTIPLY_WAIT) &&
+                    fp_valid && fp_error == 0)
+                    rotary_data_hold <= fp_data;
                 case (state)
                     IDLE: if (start_valid && start_ready) begin
                         model_hold <= model;

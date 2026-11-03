@@ -5,6 +5,109 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+### Current increment: scalar phase aliases and guarded audio phase maximum
+
+The ordinary attention-output projection uses two existing 32-bit registers
+instead of additional operand registers. `rotary_data_hold` holds the converted
+attention component and then its separately rounded product. `scalar_hold`
+holds the fetched O weight. These aliases exist only in `ATTENTION_WAIT`:
+all RoPE writes have retired before attention starts, and the layer scalar
+is fetched only after attention, feed-forward and PLE have completed.
+Conversion/product results and the weight are written by the existing main
+sequential controller on their accepted successful responses. The output
+sequencer owns only its state, error and accumulator; no register has two
+sequential drivers. Errors drain through the existing output path.
+
+The output row register now has `$clog2(MAX_H)` bits (12 production, 3 compact).
+The selected model's validated H bounds it; comparison against the full-width
+hidden length occurs before the last-row increment. External projection
+descriptors and tensor row indices remain 32 bits. No arithmetic precision,
+reduction ordering, vector lifetime or handshake latency changes.
+
+The full/post workers' own external-vector controller counts are respectively
+2021/2005 bits in production, or 253/251 rounded bytes. Compact counts are
+2012/1996 bits, or 252/250 bytes. Compared with the immediately preceding
+source, these save eleven rounded bytes in each of the two connected
+production instances (twelve each in compact). Applying only that proven
+declaration delta to the previous conservative E2B ordinary-global envelope
+gives <=32217/32234/32744 bytes for C=1/3/64, leaving >=551/534/24 bytes.
+This remains a conservative source-derived envelope, not an observed fit.
+
+Native audio's private preflight reservation is now 16384 rather than 38912
+bytes in both the replay dispatcher and workspace descriptor validator.
+The prior number summed serialized children. Suspended workspace vectors,
+their scalar slots, completed memo entries and every controller remain
+separately charged; none is released or reclassified by this change.
+
+| Private audio phase | Conservative live-bank bound | Release before successor |
+| --- | --- | --- |
+| Replay heads, including normalized cache and pre-attention | 10240 bytes | Child `PUBLISH` clears cache/private allocation flags before its held done response is accepted |
+| Post-attention residual, including its pre-attention child | 16384 bytes | The same release-before-response rule precedes the parent's post-check/next phase |
+| Light convolution/GLU | 6144 bytes | Child publication releases banks before the parent starts feed-forward |
+| Feed-forward | 6144 bytes | Child publication releases banks before final normalization |
+
+`replay_audio_residual` observes the **sum**, not a selected-child mux.
+It rejects heads/post coexistence or either child exceeding its listed bound
+with the existing sticky error 7. `replay_audio_layer` additionally checks
+history/convolution/feed-forward pairwise exclusion and their individual
+bounds through its registered allocation/RAM-fault path. The dispatcher
+still reports `max(granted envelope, observed complete child sum)` and
+latches an overrun. Thus the prospective allocator reserves the maximum
+while actual overlap cannot disappear from the observation ledger.
+Physical RAM reports are unchanged: this reduces a live reservation, not
+the number of instantiated memory bits. No new state register or spill
+path is introduced.
+
+At E2B's smallest padded context the native-scratch ceiling is 86016 bytes.
+The preceding 36485-byte native-controller census and the new 16384-byte
+private envelope leave at most 33147 bytes for all other native state.
+That remainder is **not** an approved stack allowance: retained features,
+PLE/embedding, native frame vectors/scalars and memo entries all consume it.
+Deep native dependencies, whole-fallback partition feasibility and actual
+eviction/regeneration/transition execution still need closure.
+
+#### Declaration-name and RAM-read alias reconciliation
+
+A repeated read-only scan of all 94 RTL files finds 3013 internal scalar
+declaration occurrences and the unchanged 52 array declarations, excluding
+function locals and ANSI ports. The same 39 occurrences without a direct
+census-name reference resolve as follows; a generated occurrence is not
+assumed to be a single physical instance.
+
+| Declaration exception | Existing charge or non-storage classification |
+| --- | --- |
+| Ledger's two generated `value` declarations | `registered_nodes()*NODE_BITS`, including shared/zero-node elimination and output-register multiplicity |
+| Full/post worker bank `read_q` | Four 16-bit read aliases in the local census, removed when external-vector backing is selected; private output-bank read register adds 16 only in full mode |
+| Embedding bank `read_q` | `input_q/ple_q`, removed in external-vector mode |
+| Audio feed-forward's three and light-convolution's two local read registers | Explicit conditional 48/32-bit terms; absent in external-vector mode |
+| Audio GLU `read_q` | Conditional local `bank_q` charge |
+| Final-head `payload_q` | `normalized_q` charge; external-payload mode conservatively retains that constant-width term |
+| Frontier/ring/cache `occupied` masks | Their separate visibility/resident metadata expressions |
+| Frontier executor private hidden `read_q` | `hidden_q`; in integrated external-hidden mode this charges the native parent's `ordinary_hidden_q` instead |
+| Native parent's four phase-bank `read_q` registers | The 64-bit phase-bank readback term in native own state, once across all clients |
+| Owner-tile `input_ram_q` | `input_q`; streaming-source mode conservatively retains the constant-width term |
+| Replay dispatcher's two embedding-bank `read_q` registers | Conditional 32-bit dispatcher term; absent with external embedding backing |
+| Replay dispatcher's three native-bank `read_q` registers | `native_vector_rdata` in `NATIVE_VECTOR_BITS`, once, not once per consuming child |
+| Replay audio layer local vector `read_q` | Conditional 48-bit own-state term; absent when connected to dispatcher backing |
+| Replay vision layer projected `read_q` | Conditional `projected_q` charge; external branch backing is charged at the dispatcher |
+| Vision post-layer branch `read_q` | Conditional 16-bit local branch-read term |
+| Replay attention `scalar_write_data` | Combinational write mux, not stored state |
+| Fourteen tensor-shape temporaries | Combinational shape/format decoder, not stored state |
+
+The scan finds no repeated direct `$bits` scalar-name term in a local
+census. The registered-output scan's remaining public `reg` declarations
+are combinational request/checkpoint muxes, not additional retained state.
+This closes the listed declaration-name exceptions; it does not certify
+every literal/generate child-report multiplicity or all array liveness.
+Whole-hierarchy per-instance reconciliation remains necessary.
+
+Changed RTL: `asym_attn_ple`, `replay_execute`, `replay_workspace`,
+`replay_audio_layer` and `replay_audio_residual`. Source inspection used
+view, rg and read-only Bash/Python; edits used apply_patch. No static
+elaboration, simulation, synthesis, diagnostic harness or preparation
+receipt was produced. The reserved static elaboration remains unused.
+Independent verification and hardware acceptance remain pending.
+
 ### Current increment: streamed attention projection and shared ledger stages
 
 The ordinary full-text worker now retains the H-element BF16 attention-output
@@ -121,13 +224,25 @@ unaccounted register/copy or denied legal request must be repaired. The previous
 over-budget envelopes below are retained as historical design diagnostics,
 not silently replaced by a passing claim.
 
+A finite lexical pass over all 94 native RTL files inventories 3015 internal
+scalar declaration occurrences and 52 internal array declarations, excluding
+function-local temporaries and ANSI port declarations. Thirty-nine scalar
+occurrences lack a direct `$bits` name reference: two generated ledger `value`
+declarations, aliased synchronous RAM read registers, the three storage
+visibility masks, the combinational replay scalar-write mux, and the fourteen
+combinational tensor-shape temporaries. Alias/generated multiplicities and
+conditional omission still require per-instance byte reconciliation; the
+lexical counts are not elaborated instance counts or a completed census.
+The source inspection also confirms that the resident cache's full descriptor
+checks gate its synchronous payload read, not only its eventual response.
+
 Only source reads, edits and read-only Bash/Python declaration/count inspection
 were performed for this increment. No functional or synthesis harness,
 simulation, static elaboration, preparation probe or receipt was produced.
 The reserved static elaboration remains pending complete design closure,
 then independent Verifier handoff.
 
-### Exact metadata keys and storage declaration audit
+### Prior exact metadata keys and storage declaration audit
 
 The frontier, local ring and bounded replay workspace now store only independent
 tag information. This is lossless key factoring, not cache-value compression:
@@ -279,7 +394,7 @@ regeneration feasibility remain design work. The single reserved static
 elaboration remains pending until that closure; no functional or synthesis
 preparation harness is authorized for Designer.
 
-### Checked-width allocation arithmetic and ordinary phase envelope
+### Prior checked-width allocation arithmetic and ordinary phase envelope
 
 The allocation ledger keeps its eight coherent metrics and six registered
 edges. Each reduction node now stores a 32-bit byte count and a sticky

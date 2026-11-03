@@ -5,6 +5,47 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
+## Current saved increment: guarded audio phase maximum and scalar reuse
+
+Native audio private admission now reserves 16384 bytes rather than the
+38912-byte sum of mutually exclusive heads/post-attention/convolution/
+feed-forward phases. Both the dispatcher and workspace validate the same
+envelope. Connected nested monitors retain the actual child sums, check
+phase exclusion and bounds, and latch allocation error 7 on a violation.
+Every suspended frame, memo entry, controller and retained feature is still
+charged separately. No physical RAM report or numerical operation changes.
+The release boundary is child publication before its held response is
+accepted; successors start only after that acceptance and parent check.
+
+The streamed ordinary O projection now reuses the already-retired RoPE
+result register for its converted component/product, and the not-yet-loaded
+layer-scalar register for its fetched weight. Successful result writes remain
+in the existing main sequential controller. A model-bounded 12-bit production
+row register replaces the 32-bit private row counter; external indices remain
+32 bits. The two connected full/post workers save eleven rounded controller
+bytes each in production, giving a conservative E2B C=64 ordinary-global
+upper envelope of 32744 bytes (24 bytes of margin). This is not a measured fit.
+
+SPEC now reconciles all 39 lexical declaration-name exceptions with generated
+ledger counts, conditional RAM-read aliases, visibility metadata and
+combinational non-storage temporaries. The updated lexical inventory is
+3013 scalar occurrences and 52 arrays across 94 files. It does not replace
+literal/generate per-instance reconciliation, independent liveness observation
+or FPGA RAM inference. At minimum context, E2B native scratch leaves only
+33147 bytes after the prior native-controller census and the revised private
+audio envelope, before other native state. Deep-frame/memo feasibility remains
+an explicit unresolved design milestone, not permission to deny legal work.
+
+Saved RTL changes are in `asym_attn_ple`, `replay_execute`,
+`replay_workspace`, `replay_audio_layer` and `replay_audio_residual`, plus
+SPEC and this document. Tools used were view, rg, apply_patch and read-only
+Bash/Python source inspection. No static elaboration, simulation, synthesis,
+preparation harness or receipt ran. Tests, parent sources and runtime state
+were not edited. Remaining: complete per-instance accounting and legal
+native/deep-frame/fallback partition feasibility, including actual
+eviction/regeneration and mode transitions; repair any overruns, use the
+reserved static elaboration, then hand off to independent Verifier.
+
 ## Current saved increment: row-streamed attention and exact ledger sharing
 
 The ordinary full-text engine no longer retains the concatenated eight-head
@@ -64,6 +105,10 @@ not a completed allocation run; C=64 has only two bytes of conservative margin.
 The whole-hierarchy declaration audit, genuine native/fallback legal-case
 partition feasibility, eviction/regeneration and transition liveness still
 need closure. Any omitted state or denied legal workload remains a failure.
+The finite 94-file lexical inventory records 3015 internal scalar declaration
+occurrences and 52 arrays; SPEC identifies the 39 direct-census-reference
+exceptions. Port state, aliases and generate multiplicities still need
+per-instance reconciliation, so this is not a completed byte census.
 
 Changed `asym_attn_ple`, `frontier_execute`, `allocation_ledger`,
 `allocation_admission`, `kv_shared_cache` and the two design documents.

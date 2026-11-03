@@ -303,6 +303,9 @@ module anvil_en1_replay_audio_residual #(
     assign weight_read_bytes = heads_weight_bytes + (post_weight_event ? 32'd4 : 32'd0);
     assign vector_live_bytes = !rst_n ? 64'd0 : heads_live + post_live;
     assign vector_physical_bytes = !rst_n ? 64'd0 : heads_physical + post_physical;
+    wire allocation_phase_fault = rst_n &&
+        ((|heads_live && |post_live) ||
+            heads_live > 64'd10240 || post_live > 64'd16384);
     assign post_nested_controller_bytes = !rst_n ? 64'd0 :
         pre_control + unused_head_control + projection_control + projection_clamp_control +
         norm_control + clamp_control;
@@ -555,6 +558,8 @@ module anvil_en1_replay_audio_residual #(
                     state <= PUBLISH;
                 end
             endcase
+            if (state != RESPONSE && allocation_phase_fault && error_hold == 0)
+                error_hold <= 7;
         end
     end
 endmodule
