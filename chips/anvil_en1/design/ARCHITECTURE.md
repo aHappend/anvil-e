@@ -5,7 +5,36 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: demand-first initial audio tap
+## Current increment: committed audio accumulator slice replacement
+
+The connected fold/workspace trace exposed a descriptor mismatch:
+`audio_history_fold` replaces committed FP32 accumulator words using
+`op=6,target=3`, but the workspace allowed a nonzero audio slice only for
+`target=2` initialization. On a later nonfinal tap, channel 512 therefore
+reached the valid second slice and was rejected before its backing write.
+This is a source-derived diagnosis, not an executed failing test.
+
+`replay_workspace` now accepts replacement on the same legal native-audio
+slices 0..2. Exact frame tags, reserved/present consistency and the
+existing committed-destination check still apply. Other domains and slice
+indices >=3 remain rejected. No allocation, numerical reduction,
+publication, counter or physical-storage rule changes. SPEC records the
+edge conditions and independent integration cases, including the
+511/512 boundary and failure/stall behavior.
+
+This retires the **nonzero-slice replacement descriptor mismatch**, not
+the unresolved storage bound. Demand-first descent and consuming final
+output remain saved. Later-tap yields still retain up to four slices;
+whole-system native/fallback fit and the updated connected controller
+census remain required before the reserved static elaboration and
+independent Verifier handoff.
+
+Saved `rtl/anvil_en1_replay_workspace.sv` and both design documents.
+Only view/rg/glob/apply_patch were used; no experiment, elaboration,
+simulation, synthesis, preparation harness or receipt was produced.
+Tests, parent sources, original failures and runtime metadata are unchanged.
+
+## Prior increment: demand-first initial audio tap
 
 `replay_audio_history` now evaluates the oldest nonpadding residual before
 starting any convolution accumulation. `audio_history_fold`'s new

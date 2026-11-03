@@ -344,7 +344,7 @@ module anvil_en1_replay_workspace #(
         wire slice_valid = scalar_index_hold == 0 ||
             (domain_hold == 2 && scalar_index_hold < 3 &&
                 ((op_hold == 4 && target_hold == 0) ||
-                 (op_hold == 6 && target_hold == 2) ||
+                 (op_hold == 6 && (target_hold == 2 || target_hold == 3)) ||
                  (op_hold == 7 && target_hold >= 2)));
         wire release_descriptor_valid = component_hold == 0 && request_data == 0;
         wire history_move_descriptor_valid = domain_hold == 2 &&

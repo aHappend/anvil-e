@@ -5,7 +5,47 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: demand-first initial audio tap
+### Current increment: committed audio accumulator slice replacement
+
+The workspace now admits `op=6,target=3` for native-audio slice indices
+1 and 2, alongside the existing ordered initialization operation
+`op=6,target=2`. This repairs a connected descriptor mismatch introduced
+by the tap-streamed history implementation. The fold writes 1024 FP32
+accumulators as two 2048-byte slices; each later nonfinal tap replaces
+the committed words, rather than starting a new vector stream. Previously
+the common slice validator rejected that replacement as error 5 on
+channel 512, the first word of slice 1. This is a source-derived defect;
+no functional failure receipt or executed repair result is claimed.
+
+| Workspace boundary | Required behavior after repair |
+| --- | --- |
+| Audio slice 1/2, `op=6,target=2` | Retain ordered first-pair allocation, partial-stream accounting and last-pair publication |
+| Audio slice 1/2, `op=6,target=3` | Admit the slice descriptor, then require the exact occupied frame tag and an already committed destination |
+| Replacement of an absent or partial slice | Retain error 7; never allocate, publish or initialize it implicitly |
+| Other domains, nonzero slice index | Retain descriptor rejection |
+| Audio slice index >=3 | Retain descriptor rejection |
+| Replacement stalls or backing error | Retain registered request stability, backing-response retirement and the existing reservation |
+
+The correction changes only descriptor eligibility. The selected slice
+address, tag check, reserved/present consistency check, `PAIR_SETUP`
+committed-destination guard and synchronous backing access remain
+unchanged. Replacement does not change any vector occupancy, allocation
+counter, physical reservation, memo policy or numerical boundary.
+Slice 2 is admitted consistently with the existing three-slice audio
+frame interface; the current fold uses only slices 0 and 1.
+
+Independent verification must execute a successful initial fold, at least
+one later nonfinal fold, and the consuming final fold through the real
+workspace. Cover channels 511,512,513,1023, both precisions, exact FP32
+word comparison, absent/partial/stale destinations, nonaudio and out-of-range
+slice rejection, stalls and failed backing responses. A leaf-only fold
+test with an unconstrained workspace responder cannot detect this defect.
+
+No experiment, elaboration, simulation or synthesis was run for this
+repair. Whole-system native/fallback capacity is still unclosed; the
+reserved static elaboration remains pending complete design closure.
+
+### Prior increment: demand-first initial audio tap
 
 The connected history schedule now starts with the oldest **nonpadding**
 residual, at distance `min(query_token,4)`, before allocating convolution
@@ -3705,8 +3745,11 @@ scratch. No seventh vector or hidden-state archive is allocated.
 Workspace vector operations select slice using req_scalar_index[1:0],
 with all upper bits zero. Slice 0 retains existing behavior. Nonzero
 slices are legal only for domain 2, frame vector reads (op 4/target 0)
-and ordered frame pair writes (op 6/target 2); memo/scalar/copy ABI is
-unchanged. Each slice has independent visibility and ordered pair progress.
+and ordered frame pair writes (op 6/target 2), with the later extensions
+for committed pair replacement (op 6/target 3) and frame release/move
+(op 7/targets 2/3). Each extension retains its operation-specific
+validation; memo/scalar/copy ABI is unchanged. Each slice has independent
+visibility and ordered pair progress.
 Validation first registers the selected slice index. TAG_READ synchronously
 registers that slice's visibility, pair-progress flag and next component;
 TAG_CHECK and PAIR_SETUP consume those registered observations, not a

@@ -100,6 +100,7 @@ module anvil_en1_audio_lightconv #(
     wire [63:0] conv_addr, conv_controller;
     wire [3:0] conv_error;
     wire conv_weight_event, conv_projection_event;
+    generate if (PRECOMPUTED_DEPTHWISE == 0) begin : computed_depthwise
     anvil_en1_audio_depthwise_row convolution (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && PRECOMPUTED_DEPTHWISE == 0 && state == CONV_START),
@@ -126,6 +127,27 @@ module anvil_en1_audio_lightconv #(
         .projection_event(conv_projection_event), .projection_bytes(conv_projection_bytes),
         .source_read_event(), .source_read_bytes(), .controller_bytes(conv_controller)
     );
+    end else begin : supplied_depthwise
+        assign conv_ready = 0;
+        assign conv_valid = 0;
+        assign conv_cmd_valid = 0;
+        assign conv_result_ready = 0;
+        assign dependency_valid = 0;
+        assign dependency_rsp_ready = 0;
+        assign dependency_req_model = 0;
+        assign dependency_req_layer = 0;
+        assign dependency_req_generation = 0;
+        assign dependency_req_token = 0;
+        assign dependency_req_channel = 0;
+        assign conv_data = 0;
+        assign conv_weight_bytes = 0;
+        assign conv_projection_bytes = 0;
+        assign conv_addr = 0;
+        assign conv_controller = 0;
+        assign conv_error = 0;
+        assign conv_weight_event = 0;
+        assign conv_projection_event = 0;
+    end endgenerate
     wire glu_ready, glu_valid, glu_cmd_valid, glu_result_ready;
     wire glu_source_valid, glu_source_rsp_ready, glu_weight_event, glu_projection_event;
     wire [1:0] glu_source_model;
@@ -138,6 +160,7 @@ module anvil_en1_audio_lightconv #(
     wire glu_ram_write, glu_ram_read;
     wire [31:0] glu_ram_waddr, glu_ram_raddr;
     wire [15:0] glu_ram_wdata;
+    generate if (PRECOMPUTED_DEPTHWISE == 0) begin : computed_gated_input
     anvil_en1_audio_glu_component #(
         .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
     ) gated_input (
@@ -169,6 +192,37 @@ module anvil_en1_audio_lightconv #(
         .projection_controller_bytes(glu_projection_controller),
         .clamp_controller_bytes(glu_clamp_controller)
     );
+    end else begin : supplied_gated_input
+        assign glu_ready = 0;
+        assign glu_valid = 0;
+        assign glu_cmd_valid = 0;
+        assign glu_result_ready = 0;
+        assign glu_source_valid = 0;
+        assign glu_source_rsp_ready = 0;
+        assign glu_weight_event = 0;
+        assign glu_projection_event = 0;
+        assign glu_source_model = 0;
+        assign glu_source_layer = 0;
+        assign glu_source_generation = 0;
+        assign glu_source_token = 0;
+        assign glu_source_index = 0;
+        assign glu_data = 0;
+        assign glu_weight_bytes = 0;
+        assign glu_projection_bytes = 0;
+        assign glu_addr = 0;
+        assign glu_live = 0;
+        assign glu_physical = 0;
+        assign glu_controller = 0;
+        assign glu_norm_controller = 0;
+        assign glu_projection_controller = 0;
+        assign glu_clamp_controller = 0;
+        assign glu_error = 0;
+        assign glu_ram_write = 0;
+        assign glu_ram_read = 0;
+        assign glu_ram_waddr = 0;
+        assign glu_ram_raddr = 0;
+        assign glu_ram_wdata = 0;
+    end endgenerate
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     wire norm_ready, norm_valid, norm_cmd_valid, norm_result_ready;
     wire norm_source_valid, norm_source_rsp_ready, norm_output_valid, norm_output_last;
