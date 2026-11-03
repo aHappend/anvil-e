@@ -7,7 +7,6 @@ Decode, native modality and integrated liveness coverage are not supplied here.
 
 import argparse
 import hashlib
-import itertools
 import json
 import math
 import re
@@ -82,6 +81,8 @@ def main():
                         help="Verilator optimization level; C++ remains -O3")
     parser.add_argument("--text-specialization", action="store_true",
                         help="structural wrapper ties only unused text-job inputs to zero")
+    parser.add_argument("--compact-code", action="store_true",
+                        help="retain shared C++ module bodies instead of aggressive inlining")
     parser.add_argument("--max-cycles", type=int, default=2000000000)
     args = parser.parse_args()
     models = selected_values(parser, args.models, (1, 2), "--models")
@@ -147,6 +148,8 @@ def main():
         exp.run("compile", [
             "verilator", "--cc", "--exe", "--build",
             "-O" + args.compiler_optimization, "-Wno-fatal",
+            *(["--inline-mult", "0", "--expand-limit", "32",
+               "--output-split-cfuncs", "5000"] if args.compact_code else []),
             "--top-module", top, "--Mdir", str(obj),
             "-j", "2", "-CFLAGS", "-O3",
             *(wrapper_args if args.text_specialization else
