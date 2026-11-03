@@ -1,4 +1,5 @@
 module anvil_en1_audio_layer (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -94,6 +95,8 @@ module anvil_en1_audio_layer (
     wire [63:0] attention_projection_control, attention_projection_clamp_control;
     wire [63:0] attention_norm_control, attention_clamp_control;
     anvil_en1_audio_attention_residual attention_residual (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == ATTENTION_START ||
             (state == CONV_WAIT && source_state == REBUILD_START))),
@@ -148,6 +151,8 @@ module anvil_en1_audio_layer (
     wire conv_projection_event;
     wire [31:0] conv_projection_bytes;
     anvil_en1_audio_lightconv light_convolution (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == CONV_START), .start_ready(conv_ready),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold),
@@ -191,6 +196,8 @@ module anvil_en1_audio_layer (
     wire [63:0] ff_down_control, ff_down_clamp_control;
     wire [63:0] ff_inner_control, ff_inner_clamp_control;
     anvil_en1_audio_feedforward feed_forward2 (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FF_START), .start_ready(ff_ready),
         .model(model_hold), .precision(precision_hold), .mode(2'd2),
@@ -248,6 +255,8 @@ module anvil_en1_audio_layer (
         !receive_bad && norm_beat_good && error_hold == 0 && first_source_error == 0;
     wire norm_accept = rst_n && state == NORM_WAIT && (norm_emit ? output_ready : 1'b1);
     anvil_en1_native_norm final_norm (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),

@@ -5,7 +5,78 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current handoff: workspace declarations and directory traversal repair
+## Current handoff: job-scoped descriptor reuse and slot-local bookkeeping
+
+The repeated-validation failure is retained at
+`evidence/preparation/top-repaired-completion-20261103T045853Z-895deeba/receipt.json`.
+Its real simulation duration is approximately 2400 seconds despite the shorter
+exception text; its last public heartbeat has 1,079,199 directory reads, 2064
+payload reads and zero logits. This is not a numerical mismatch.
+
+`rtl/anvil_en1_tensor_image.sv` now optionally retains a complete-image
+certificate and eight round-robin descriptor entries. A complete first
+validation is still mandatory. A certified hit returns metadata only; a
+certified miss scans keys and validates the entire selected entry, inheriting
+the previous whole-directory duplicate/overlap proof only while immutable.
+Arbitrary directory ordering and all malformed-image and read-error checks
+remain. Optional wire inputs require an explicit one to activate a lifetime
+control; omission preserves full validation on every standalone mutable-image
+lookup without introducing pull-net drivers.
+
+The other reader-ancestry RTL changes forward these two controls through the
+native text, owner, replay, image and audio paths. `anvil_en1_top` retains its
+external ABI and invalidates on every job acceptance; `anvil_en1_native`
+additionally invalidates on its own start. Frontier/binding/owner session
+controls invalidate descendants as well. A changed image/configuration key,
+reset, loss of immutable mode, explicit invalidation or directory error clears
+reuse. Native external memory remains read-only; active original inputs and
+weights are immutable as already required. Mutating a same-address image
+requires a drained lifetime and invalidation/new job. Revocation during work
+cannot publish a new stale successful descriptor; already offered stalled
+responses remain stable until retired. SPEC freezes the cycle table.
+
+The reader's complete retained state rises from 201 to 496 rounded bytes,
+including all lookaside payloads and the registered read. Existing summed
+controller reports charge every connected instance in both live/shadow and
+physical reporting, regardless of occupancy. Static production elaboration
+contains 49 readers (three frontier, 46 replay-binding), an additional 14,455
+rounded bytes; a literal traversal incorrectly counts mutually exclusive
+generate alternatives as well. Final source-matched reporting remains an
+independent verification task. There is no
+uncounted directory archive or numerical-result cache.
+
+`rtl/anvil_en1_replay_workspace.sv` replaces wide variable-select metadata
+writes with statically indexed slot-local updates: 64 scalar visibility banks
+of 34 bits, and six vector cells per slot, each with three flags and an 11-bit
+pair index. The former packed buses are read-only views. The original reset,
+session validation, push/pop, continuation, reservation, pair completion,
+failed-write, release and allocation-transfer edges are preserved. No payload,
+frame, memo or controller capacity is reduced, and the 9664-bit visibility
+metadata census is unchanged. This targets the synthesis-expanding updates
+seen at the end of
+`evidence/preparation/synthesis-native-production-20261103T045127Z-a32dd679/receipt.json`;
+it does not establish a synthesis speedup or physical RAM mapping.
+
+All retained receipts, tests, immutable parent sources and runtime state remain
+unchanged. The parent-expansion timeout at
+`evidence/preparation/synthesis-workspace-declarations-20261103T044320Z-9fc6ab27/receipt.json`
+is not concealed by a parent edit or smaller native geometry. Independent
+Verifier must run fresh bounded directory/workspace checks and measured top
+progress first, then completion and affected synthesis without increasing the
+failed budgets. `tests/verify.py`, full six-suite closure and native hardware
+gates remain independent work; this is a design repair handoff, not acceptance.
+
+The single static check is retained at
+`evidence/preparation/static-image-lifetime-workspace-20261103T055106Z-0c0909f9/receipt.json`.
+Icarus exited zero and emitted a hierarchy dump in 15.65 seconds, but the
+wrapper failed on 262 lifetime-input coercion warnings. The saved repair
+replaces propagated `tri0` ports with wire inputs and explicit-one
+qualification; no second compile, functional simulation or synthesis ran.
+The failed receipt predates that wire-only repair and is not a final-source
+pass. Independent Verifier must re-elaborate before bounded directory/workspace
+and top-progress execution. No old receipt or timeout was changed.
+
+## Historical handoff: workspace declarations and directory traversal repair
 
 `rtl/anvil_en1_replay_workspace.sv` relocates five existing typed wires
 before their first use, repairing the next whole-top width-resolution failure

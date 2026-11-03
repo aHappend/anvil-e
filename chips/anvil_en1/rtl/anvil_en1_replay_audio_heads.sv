@@ -3,6 +3,7 @@ module anvil_en1_replay_audio_heads #(
     parameter integer DEFER_QUERY_BINDING = 0,
     parameter integer FINAL_FEEDFORWARD = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -201,6 +202,8 @@ module anvil_en1_replay_audio_heads #(
         head_output_index == output_count - head_begin &&
         head_output_last == (output_count + 11'd1 == head_end);
     anvil_en1_replay_audio_attention attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && (state == HEAD_START || state == FINAL_RAW_START)),
         .start_ready(head_ready), .raw_only(raw_binding),

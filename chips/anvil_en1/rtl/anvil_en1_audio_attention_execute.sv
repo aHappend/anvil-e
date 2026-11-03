@@ -1,6 +1,7 @@
 module anvil_en1_audio_attention_execute #(
     parameter integer REPLAY = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -130,6 +131,8 @@ module anvil_en1_audio_attention_execute #(
     wire [3:0] mask_error;
     wire mask_selected = run && (service_state == MASK_START || service_state == MASK_WAIT);
     anvil_en1_audio_input original_mask (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(run && service_state == MASK_START), .start_ready(mask_ready),
         .model(model_hold), .kind(2'd1), .generation(generation_hold),
@@ -153,6 +156,8 @@ module anvil_en1_audio_attention_execute #(
     wire [3:0] tile_error;
     wire tile_selected = run && (service_state == TILE_START || service_state == TILE_WAIT);
     anvil_en1_audio_qkv_tile tile (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(run && service_state == TILE_START), .start_ready(tile_ready),
         .model(model_hold), .precision(precision_hold), .selector(selector_hold),

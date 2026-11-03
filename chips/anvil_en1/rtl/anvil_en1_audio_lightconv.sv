@@ -3,6 +3,7 @@ module anvil_en1_audio_lightconv #(
     parameter integer PRECOMPUTED_DEPTHWISE = 0,
     parameter integer RAW_SOURCE_CALLBACK = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -105,6 +106,8 @@ module anvil_en1_audio_lightconv #(
     wire conv_weight_event, conv_projection_event;
     generate if (PRECOMPUTED_DEPTHWISE == 0) begin : computed_depthwise
     anvil_en1_audio_depthwise_row convolution (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && PRECOMPUTED_DEPTHWISE == 0 && state == CONV_START),
         .start_ready(conv_ready),
@@ -167,6 +170,8 @@ module anvil_en1_audio_lightconv #(
     anvil_en1_audio_glu_component #(
         .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
     ) gated_input (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && dependency_state == D_START), .start_ready(glu_ready),
         .model(dependency_model), .precision(precision_hold), .layer(dependency_layer),
@@ -234,6 +239,8 @@ module anvil_en1_audio_lightconv #(
     wire [63:0] norm_addr, norm_controller;
     wire [3:0] norm_error;
     anvil_en1_native_norm norm (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -263,6 +270,8 @@ module anvil_en1_audio_lightconv #(
     wire [63:0] projection_addr, projection_controller, projection_clamp_controller;
     wire [3:0] projection_error;
     anvil_en1_clipped_projection projection (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),

@@ -1,4 +1,5 @@
 module anvil_en1_audio_subsample (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -66,6 +67,8 @@ module anvil_en1_audio_subsample (
     wire lookup_selected = rst_n && (state == IMAGE_START || state == IMAGE_WAIT);
     wire [63:0] primitive_directory_bytes, primitive_projection_bytes;
     anvil_en1_tensor_image directory (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(lookup_ready),
@@ -128,6 +131,8 @@ module anvil_en1_audio_subsample (
     wire lower_selected = rst_n &&
         (dependency_state == D_START || dependency_state == D_WAIT);
     anvil_en1_audio_subsample_execute stage_one (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && source_state == S_START), .start_ready(upper_ready),
         .model(model_hold), .precision(precision_hold), .stage(1'b1),
@@ -172,6 +177,8 @@ module anvil_en1_audio_subsample (
     wire [63:0] lower_controller, lower_input_controller, lower_point_controller;
     wire [63:0] lower_conv_controller, lower_div_controller, lower_norm_controller;
     anvil_en1_audio_subsample_execute stage_zero (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && dependency_state == D_START), .start_ready(lower_ready),
         .model(model_hold), .precision(precision_hold), .stage(1'b0),

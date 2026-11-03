@@ -2,6 +2,7 @@ module anvil_en1_replay_audio_residual #(
     parameter integer COMPACT = 0,
     parameter integer PACKED_FRAME = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -117,6 +118,8 @@ module anvil_en1_replay_audio_residual #(
         .COMPACT(COMPACT), .DEFER_QUERY_BINDING(PACKED_FRAME),
         .FINAL_FEEDFORWARD(PACKED_FRAME)
     ) heads (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == HEADS_START), .start_ready(heads_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),
@@ -183,6 +186,8 @@ module anvil_en1_replay_audio_residual #(
     anvil_en1_audio_attention_residual #(
         .FRAME_HEADS(1), .PRECOMPUTED_RAW(PACKED_FRAME)
     ) post_attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POST_START), .start_ready(post_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),

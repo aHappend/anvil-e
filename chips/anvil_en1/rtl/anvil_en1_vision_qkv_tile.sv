@@ -1,4 +1,5 @@
 module anvil_en1_vision_qkv_tile (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -82,6 +83,8 @@ module anvil_en1_vision_qkv_tile (
     wire [63:0] primitive_directory_bytes, primitive_norm_bytes;
     wire [63:0] primitive_weight_bytes, primitive_rotary_bytes;
     anvil_en1_tensor_image directory (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
@@ -109,6 +112,8 @@ module anvil_en1_vision_qkv_tile (
     wire projection_selected = rst_n &&
         (state == PROJECTION_START || state == PROJECTION_WAIT);
     anvil_en1_clipped_projection projection (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd1),

@@ -1,4 +1,5 @@
 module anvil_en1_audio_subsample_execute (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -79,6 +80,8 @@ module anvil_en1_audio_subsample_execute (
     wire point_mask_ready = rst_n && state == POINT_WAIT && callback_state == C_IDLE;
     wire callback_rsp = rst_n && state == POINT_WAIT && callback_state == C_RESPONSE;
     anvil_en1_audio_subsample_point point (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POINT_START), .start_ready(point_ready),
         .model(model_hold), .precision(precision_hold), .stage(stage_hold),
@@ -123,6 +126,8 @@ module anvil_en1_audio_subsample_execute (
     wire [31:0] input_data;
     wire [3:0] input_error;
     anvil_en1_audio_input original_input (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && callback_state == C_INPUT_START), .start_ready(input_ready),
         .model(model_hold), .kind(callback_mask ? 2'd1 : 2'd0),

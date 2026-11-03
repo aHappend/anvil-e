@@ -1,6 +1,7 @@
 module anvil_en1_native_norm #(
     parameter integer EXTERNAL_FP = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -96,6 +97,8 @@ module anvil_en1_native_norm #(
             $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
     end
     anvil_en1_tensor_image directory (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),

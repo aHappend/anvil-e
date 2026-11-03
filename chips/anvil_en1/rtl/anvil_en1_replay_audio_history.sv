@@ -1,6 +1,7 @@
 module anvil_en1_replay_audio_history #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -141,6 +142,8 @@ module anvil_en1_replay_audio_history #(
     wire [31:0] child_source_bytes, child_weight_bytes, child_projection_bytes;
     wire [63:0] child_live, child_physical;
     anvil_en1_replay_audio_residual #(.COMPACT(COMPACT), .PACKED_FRAME(1)) residual (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == CHILD_START), .start_ready(child_ready),
         .model(model_hold), .precision(precision_hold), .mode(child_mode),
@@ -202,6 +205,8 @@ module anvil_en1_replay_audio_history #(
     anvil_en1_audio_history_fold #(
         .FUSE_LEADING_PADDING(1), .SINGLE_CHANNEL(1)
     ) fold (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FOLD_START), .start_ready(fold_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),

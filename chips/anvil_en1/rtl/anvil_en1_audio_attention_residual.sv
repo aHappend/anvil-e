@@ -2,6 +2,7 @@ module anvil_en1_audio_attention_residual #(
     parameter integer FRAME_HEADS = 0,
     parameter integer PRECOMPUTED_RAW = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -113,6 +114,8 @@ module anvil_en1_audio_attention_residual #(
         token_hold : source_token_hold;
     generate if (FRAME_HEADS == 0) begin : standalone_pre_attention
     anvil_en1_audio_pre_attention pre_attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .raw_only(1'b0),
         .start_valid(rst_n && (state == PRE_START ||
@@ -149,6 +152,8 @@ module anvil_en1_audio_attention_residual #(
     );
     end else if (!PRECOMPUTED_RAW) begin : frame_raw_feedforward
         anvil_en1_audio_feedforward #(.RAW_SOURCE_CALLBACK(1)) feedforward (
+            .image_immutable(image_immutable === 1'b1),
+            .image_invalidate((image_invalidate === 1'b1)),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PRE_START), .start_ready(pre_ready),
             .model(model_hold), .precision(precision_hold), .mode(2'd1),
@@ -237,6 +242,8 @@ module anvil_en1_audio_attention_residual #(
     wire [31:0] head_projection_bytes;
     generate if (FRAME_HEADS == 0) begin : standalone_attention
     anvil_en1_audio_attention_execute attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && !FRAME_HEADS && state == HEAD_START), .start_ready(head_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),
@@ -314,6 +321,8 @@ module anvil_en1_audio_attention_residual #(
     wire [63:0] projection_addr;
     wire [3:0] projection_error;
     anvil_en1_clipped_projection post_projection (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -354,6 +363,8 @@ module anvil_en1_audio_attention_residual #(
     wire [15:0] norm_output_data;
     wire [63:0] norm_addr;
     anvil_en1_native_norm norm (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),

@@ -1,6 +1,7 @@
 module anvil_en1_audio_feature #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -70,6 +71,8 @@ module anvil_en1_audio_feature #(
     wire [63:0] native_addr;
     wire [3:0] native_error;
     anvil_en1_audio_output native_output (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NATIVE_START), .start_ready(native_ready),
         .model(model_hold), .precision(precision_hold),
@@ -103,6 +106,8 @@ module anvil_en1_audio_feature #(
     wire [63:0] modality_addr, modality_live, modality_physical;
     wire [3:0] modality_error;
     anvil_en1_modality_projection #(.COMPACT(COMPACT)) modality (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MODALITY_START), .start_ready(modality_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),

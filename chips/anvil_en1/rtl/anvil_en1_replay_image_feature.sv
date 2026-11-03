@@ -1,6 +1,7 @@
 module anvil_en1_replay_image_feature #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n, cancel,
     input wire start_valid,
     output wire start_ready,
@@ -102,6 +103,8 @@ module anvil_en1_replay_image_feature #(
     wire [63:0] map_addr, map_control, map_nested;
     wire [3:0] map_error;
     anvil_en1_native_token_map #(.COMPACT(COMPACT)) mapping (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(map_selected && state == MAP_START), .start_ready(map_ready),
         .model(model_hold), .modality(modality_hold), .kind(2'd1),
@@ -141,6 +144,8 @@ module anvil_en1_replay_image_feature #(
         child_output_last == (received + 1'b1 == {20'd0, hidden_hold});
     wire output_accepting = rst_n && !cancel && state == CHILD_WAIT && !child_source_valid;
     anvil_en1_vision_soft_token #(.COMPACT(COMPACT)) feature (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(child_rst_n),
         .start_valid(child_selected && state == CHILD_START), .start_ready(child_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),

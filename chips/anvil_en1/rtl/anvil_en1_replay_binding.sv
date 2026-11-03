@@ -3,6 +3,7 @@ module anvil_en1_replay_binding #(
     parameter integer EXTERNAL_VECTOR_RAM = 0,
     parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire control_valid,
     output wire control_ready,
@@ -281,6 +282,8 @@ module anvil_en1_replay_binding #(
         owner_controller_bytes + replay_controller_bytes + memory_controller_bytes;
 
     anvil_en1_owner_replay #(.COMPACT(COMPACT)) owner_replay (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1) || (control_valid && control_ready)),
         .clk(clk), .rst_n(rst_n),
         .control_valid(rst_n && control_state == CONTROL_SEND),
         .control_ready(owner_control_ready), .control_invalidate(invalidate_hold),
@@ -348,6 +351,8 @@ module anvil_en1_replay_binding #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
         .EXTERNAL_EMBEDDING_RAM(EXTERNAL_EMBEDDING_RAM)
     ) replay (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1) || (control_valid && control_ready)),
         .grant_valid(replay_grant_valid), .grant_ready(replay_grant_ready),
         .grant_component(replay_grant_component),
         .grant_payload_bytes(replay_grant_bytes), .grant_shadow_bytes(replay_grant_shadow),

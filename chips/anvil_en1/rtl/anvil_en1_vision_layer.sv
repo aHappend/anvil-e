@@ -1,4 +1,5 @@
 module anvil_en1_vision_layer (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -71,6 +72,8 @@ module anvil_en1_vision_layer (
     wire raw_selected = rst_n && state == POST_WAIT &&
         branch_state == BRANCH_IDLE && !post_source_branch;
     anvil_en1_vision_post_layer post (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POST_START), .start_ready(post_ready),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold),
@@ -109,6 +112,8 @@ module anvil_en1_vision_layer (
     wire row_cmd_valid, row_result_ready;
     wire [63:0] row_addr, tile_live, tile_physical;
     anvil_en1_vision_attention_row attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POST_WAIT && branch_state == ROW_START),
         .start_ready(row_ready),

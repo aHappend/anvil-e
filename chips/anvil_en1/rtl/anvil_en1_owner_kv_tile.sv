@@ -3,6 +3,7 @@ module anvil_en1_owner_kv_tile #(
     parameter integer ALLOW_QUERY = 0,
     parameter integer EXTERNAL_INPUT_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -173,6 +174,8 @@ module anvil_en1_owner_kv_tile #(
         wire lookup_cmd_valid, lookup_result_ready;
         wire [63:0] lookup_cmd_addr;
         anvil_en1_tensor_image #(.COMPACT(COMPACT)) tensor_lookup (
+            .image_immutable(image_immutable === 1'b1),
+            .image_invalidate((image_invalidate === 1'b1)),
             .controller_bytes(lookup_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),

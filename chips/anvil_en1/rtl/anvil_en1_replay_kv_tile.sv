@@ -2,6 +2,7 @@ module anvil_en1_replay_kv_tile #(
     parameter integer COMPACT = 0,
     parameter integer ALLOW_QUERY = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -123,6 +124,8 @@ module anvil_en1_replay_kv_tile #(
     wire run = rst_n && state == TILE_RUN;
 
     anvil_en1_owner_kv_tile #(.COMPACT(COMPACT), .ALLOW_QUERY(ALLOW_QUERY)) owner_tile (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(owner_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == TILE_START), .start_ready(tile_ready),

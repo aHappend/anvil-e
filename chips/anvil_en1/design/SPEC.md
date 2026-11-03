@@ -5,7 +5,146 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current repair: workspace widths and bounded directory validation
+### Current repair: immutable-job tensor reuse and narrow workspace updates
+
+The retained completion failure is
+`evidence/preparation/top-repaired-completion-20261103T045853Z-895deeba/receipt.json`.
+Its simulation command ran for approximately 2400 seconds, not the 29.98 seconds
+in the wrapper exception. Its child exit is unrecorded. The final heartbeat
+reports 15,564,800 cycles, 1,079,199 directory reads, 2064 payload reads and no
+logits. This is incomplete execution, not a numerical mismatch. The previous
+ordered-prefix repair reduced work within one lookup but did not amortize
+certification across lookups.
+
+`anvil_en1_tensor_image` now has two optional wire inputs:
+`image_immutable` and `image_invalidate`. Only an explicit logic one activates
+either control; an omitted input is inactive. This preserves standalone
+mutable-image behavior: every lookup reads and validates the whole directory,
+including the existing arbitrary-order all-prior duplicate/overlap scan.
+Opting into reuse requires an immutable header, directory and payload until
+the lifetime is drained and invalidated. Neither input authorizes mutation
+while a response or memory transaction is outstanding.
+
+The connected native path opts in only under the existing immutable-job input
+contract. The top broadcasts invalidation on **every** accepted job, including
+parent and rejected jobs. Native start acceptance invalidates again, so a
+standalone native invocation has the same lifetime boundary. Session-control
+acceptance at frontier, replay binding and owner replay also invalidates their
+reader descendants. Lifetime controls are forwarded through the text, owner,
+replay, vision and audio hierarchies, not just the first text projection.
+Native memory arbitration remains read-only. There is no native write or
+permitted host mutation of an active job's image; to update an image at the
+same address, drain the job and submit a new one. Standalone mutable engines
+need no new controls and retain their original validation behavior.
+
+A reader retains one certificate keyed by its already registered image base,
+model, precision, image class, audio selector and input-item count. A change to
+any key field invalidates the certificate and every descriptor before reuse.
+Reset, explicit invalidation, dropping immutable mode, and a directory error
+also invalidate them. No generation-counter wrap can resurrect a certificate.
+The first lookup in a lifetime still validates **all** header and directory
+words before returning a descriptor, even if the requested entry was first.
+All shape/type/stride/length/reserved-word/address/memory checks and the ordered
+proof plus exhaustive unordered fallback are retained. Only successful complete
+validation certifies the image.
+
+The bounded lookaside has eight fully associative round-robin entries. Each
+entry holds a 32-bit tensor key and a 232-bit descriptor: absolute base, bytes,
+rows, columns, stride and type. Hits return those certified metadata only, never
+tensor data or numerical answers. A miss in a certified image scans one key word
+per entry, then rereads and validates all 16 words of the matching entry.
+Unchanged immutable directory contents inherit their already completed global
+duplicate/overlap certification. Arbitrary ordering remains legal. With a
+matching entry at zero-based index `j`, this path reads `j+17` words; a lookaside
+hit reads none. These are source-derived work bounds, not measured speedups.
+Replacement changes no image or tensor contents.
+
+| Boundary (handshakes sampled pre-edge) | Post-edge behavior |
+| --- | --- |
+| Active reset | Clear certificate/validity and existing public outputs; unreset descriptor payloads are inaccessible |
+| Invalidation while idle | Clear all reuse state; `start_ready=0` for that cycle, with invalidation priority |
+| Lookup accepted E0 | Capture descriptor and image key; select reuse only for a matching, certified immutable lifetime |
+| E1 | Validate the requested tensor identity, model/precision and base alignment/overflow before cache search or memory access |
+| Certified hit E2 / E3 | Register selected descriptor payload / copy into output registers |
+| Hit E4 / E5 | Publish response after E4; earliest acceptance E5, never on the creating edge |
+| Certified miss | Registered key scan followed by complete matching-entry validation; ordinary memory response stages are unchanged |
+| No certificate | Complete original header/directory validation before any successful descriptor response |
+| Lifetime revoked during work | Clear retained metadata immediately, retire any accepted read, and publish error 7 with zero descriptor instead of stale success; an existing memory/format error retains priority |
+| Revocation with an already stalled done response | Invalidate retained metadata without changing that response's stable payload; drain it before mutation or another lifetime |
+| New job, changed image/configuration, or permitted between-job mutation | Force full certification again, even if the numeric base address is unchanged |
+
+Each reader now charges **3965 bits / 496 rounded bytes**, versus the historical
+1606 bits / 201 bytes. Added storage is 2112 descriptor bits, 232 read-register
+bits, eight validity bits, a three-bit replacement cursor and four lifetime
+bits: 2359 bits, or 295 additional rounded bytes per connected reader. The
+charge includes invalid entries and unused payload registers, not just hits.
+All parents retain their existing summed controller reports; the extra storage
+therefore enters both the live/shadow ledger and physical-reservation report
+through the connected controller terms. The single static production
+elaboration contains 49 readers: three frontier and 46 replay-binding, adding
+14,455 rounded bytes. A literal source traversal overcounts mutually exclusive
+generate alternatives (62 readers); it is not the physical census. The
+subsequent wire-only control repair does not change module multiplicity or
+retained storage, but final source-matched reporting remains for Verifier.
+There is no descriptor RAM hidden outside those terms.
+
+The second retained failure is
+`evidence/preparation/synthesis-native-production-20261103T045127Z-a32dd679/receipt.json`:
+Yosys timed out at 2400 seconds with child exit -9 while emitting 4224-bit
+variable-select workspace updates among 1133 decoder outputs. This localizes
+the repair, not a proved dominant cost or a Quartus resource/timing failure.
+`anvil_en1_replay_workspace` now drives the existing packed metadata buses from
+64 statically indexed slot banks. Each bank owns its 34-bit scalar visibility
+word and six vector cells; a vector cell owns three flags and one 11-bit
+next-pair index. There are no variable-select writes to the former 4224-bit
+progress container or 384-bit vector containers. Scalar writes select only
+within one 34-bit bank. Registered read timing and packed read views remain.
+
+| Workspace boundary | Visibility update on the original edge |
+| --- | --- |
+| Reset or accepted valid session control | Clear every slot; invalid session control does not clear an existing session |
+| Granted frame push / completed pop | Clear only that frame's six vector cells and 34 scalar bits |
+| Continuation update / eighth successful write | Clear / set only the frame's low eight scalar validity bits |
+| Granted vector reservation | Set only the selected cell's reservation; allocation arithmetic and grant acceptance are unchanged |
+| Stream/pair-write start | Hide the selected incomplete vector and clear old progress, retaining its allocation |
+| Nonfinal / final successful pair | Record the next pair / expose the completed vector and clear progress |
+| Scalar write start / completion | Clear / set the selected scalar's visibility bit |
+| Frame-to-memo or history move | Transfer the same reservation at the original commit edge; no duplicate live allocation |
+| Release or failed backing write | Preserve original release accounting; failed writes hide incomplete data without granting visibility |
+
+This changes register organization, not capacities, frame depth, eviction,
+allocation grants, release arithmetic or the byte census. Workspace visibility
+metadata remains `80*25+64+3*384+4224+16+32+64*34 = 9664` bits (1208 bytes);
+the new enables are combinational and introduce no retained state. No parent
+RTL or native production geometry is changed. Preserve also
+`evidence/preparation/synthesis-workspace-declarations-20261103T044320Z-9fc6ab27/receipt.json`,
+whose timeout ended in immutable-parent matvec expansion.
+
+Independent Verifier must first rebuild bounded source-matched directory and
+workspace checks, including lifetime changes at the same address, malformed
+trailing/unordered entries, nonadjacent duplicates/overlaps, descriptor eviction,
+stalls/reset/error retirement, vector pair visibility and allocation moves.
+Then measure top progress before another completion run and recheck affected
+synthesis under the existing budgets. All six mandatory suites and native
+timing-lint, actual Quartus mapping/STA and board gates remain required.
+No new functional, synthesis, timing or acceptance result is claimed here.
+
+The reserved static elaboration ran once, with exact expanded argv, source
+hashes, tool version and raw logs retained at
+`evidence/preparation/static-image-lifetime-workspace-20261103T055106Z-0c0909f9/receipt.json`.
+`iverilog -g2012 -t null -s anvil_en1_top -N <fresh-output>/elaboration.txt`
+followed by all sorted native and immutable-parent RTL exited zero in 15.65
+seconds and produced its hierarchy dump. The wrapper deliberately marked the
+receipt **failed**, because stderr contained 262 input-to-inout coercion
+warnings, all on the added pull-net lifetime controls. No simulation ran.
+The repair replaces those `tri0` ports with unidirectional wire inputs and
+explicit-one qualification at forwarding/reader boundaries, preserving
+inactive omitted controls without propagating pull-net drivers. That later
+source repair is not covered by the retained hashes or a second compilation.
+The one-check allowance is exhausted; Verifier must re-elaborate the saved
+sources before behavioral execution. The failed receipt is unchanged.
+
+### Historical repair: workspace widths and bounded directory validation
 
 The retained whole-top failure at `replay_workspace.sv:288` is in
 `evidence/preparation/synthesis-declaration-repair-20261103T043019Z-8fceeaee/receipt.json`.

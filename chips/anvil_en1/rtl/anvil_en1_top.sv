@@ -306,6 +306,7 @@ module anvil_en1_top #(
         .failed(allocation_failed), .controller_bytes(guard_controller_bytes)
     );
     anvil_en1_native #(.COMPACT(COMPACT), .RESIDENT_ENTRIES(RESIDENT_ENTRIES)) native (
+        .image_invalidate(job_valid && job_ready),
         .clk(clk), .rst_n(rst_n),
         .integration_bytes(integration_bytes),
         .matched_payload_bytes({32'd0, production_baseline_payload}),

@@ -2,6 +2,7 @@ module anvil_en1_clipped_projection #(
     parameter integer COMPACT = 0,
     parameter integer EXTERNAL_FP = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -94,6 +95,8 @@ module anvil_en1_clipped_projection #(
     wire image_selected = rst_n && (state == IMAGE_START || state == IMAGE_WAIT);
     wire [63:0] primitive_directory_bytes, primitive_projection_bytes;
     anvil_en1_tensor_image #(.COMPACT(COMPACT)) directory (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(image_ready),

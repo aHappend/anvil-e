@@ -1,4 +1,5 @@
 module anvil_en1_replay_audio_attention (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -171,6 +172,8 @@ module anvil_en1_replay_audio_attention (
             pre_output_index == raw_received &&
             pre_output_last == (raw_received == 1023));
     anvil_en1_audio_pre_attention #(.RAW_SOURCE_CALLBACK(1)) pre_attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == INPUT_START), .start_ready(pre_ready),
         .raw_only(raw_only_hold),
@@ -207,6 +210,8 @@ module anvil_en1_replay_audio_attention (
         .inner_clamp_controller_bytes(pre_inner_clamp_control)
     );
     anvil_en1_audio_attention_execute #(.REPLAY(1)) executor (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ENGINE_START), .start_ready(engine_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),

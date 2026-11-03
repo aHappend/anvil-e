@@ -1,4 +1,5 @@
 module anvil_en1_replay_audio_input (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -62,6 +63,8 @@ module anvil_en1_replay_audio_input (
     wire [63:0] child_addr, child_control, child_nested_control;
     wire [3:0] child_error;
     anvil_en1_audio_subsample immutable_input (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == CHILD_START), .start_ready(child_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),

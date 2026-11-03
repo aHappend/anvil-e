@@ -1,6 +1,7 @@
 module anvil_en1_vision_feature #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -75,6 +76,8 @@ module anvil_en1_vision_feature #(
     wire [3:0] pool_error;
     wire pool_selected = rst_n && (state == POOL_START || state == POOL_WAIT);
     anvil_en1_vision_pool pool (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POOL_START), .start_ready(pool_ready),
         .model(model_hold), .generation(generation_hold), .patches(patches_hold),
@@ -112,6 +115,8 @@ module anvil_en1_vision_feature #(
     wire projection_selected = rst_n &&
         (state == PROJECTION_START || state == PROJECTION_WAIT);
     anvil_en1_modality_projection #(.COMPACT(COMPACT)) projection (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd1),

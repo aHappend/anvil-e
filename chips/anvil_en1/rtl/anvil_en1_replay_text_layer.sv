@@ -3,6 +3,7 @@ module anvil_en1_replay_text_layer #(
     parameter integer EXTERNAL_VECTOR_RAM = 0,
     parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -277,6 +278,8 @@ module anvil_en1_replay_text_layer #(
     wire [31:0] attention_source_bytes;
     wire [63:0] attention_cmd_addr;
     anvil_en1_replay_attention_projection #(.COMPACT(COMPACT)) attention_branch (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
         .start_valid(rst_n && state == ATTENTION_START), .start_ready(attention_ready),
@@ -352,6 +355,8 @@ module anvil_en1_replay_text_layer #(
     anvil_en1_embedding_ple #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_EMBEDDING_RAM)
     ) layer_embedding (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .vector_ram_write(embedding_ram_write), .vector_ram_read(embedding_ram_read),
         .vector_ram_waddr(embedding_ram_waddr), .vector_ram_raddr(embedding_ram_raddr),
         .vector_ram_wdata(embedding_ram_wdata), .vector_ram_rdata(embedding_ram_rdata),
@@ -403,6 +408,8 @@ module anvil_en1_replay_text_layer #(
     anvil_en1_asym_attn_ple #(
         .COMPACT(COMPACT), .POST_ONLY(1), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM)
     ) post_attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .vector_ram_write(vector_ram_write), .vector_ram_read(vector_ram_read),
         .vector_ram_waddr(vector_ram_waddr), .vector_ram_raddr(vector_ram_raddr),
         .vector_ram_wdata(vector_ram_wdata), .vector_ram_rdata(vector_ram_rdata),

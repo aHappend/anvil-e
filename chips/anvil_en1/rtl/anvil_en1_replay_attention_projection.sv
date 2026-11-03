@@ -1,6 +1,7 @@
 module anvil_en1_replay_attention_projection #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -162,6 +163,8 @@ module anvil_en1_replay_attention_projection #(
     wire [31:0] lookup_rows, lookup_columns, lookup_stride;
     wire [3:0] lookup_error;
     anvil_en1_tensor_image #(.COMPACT(COMPACT)) matrix_lookup (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(lookup_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
@@ -235,6 +238,8 @@ module anvil_en1_replay_attention_projection #(
     wire head_done_ready = rst_n &&
         (state == HEAD_RUN || state == DRAIN_HEAD) && !executor_output_valid;
     anvil_en1_replay_attention_execute #(.COMPACT(COMPACT), .PAUSABLE(1)) executor (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .attention_activity(attention_activity),
         .start_valid(rst_n && state == HEAD_START), .start_ready(executor_ready),

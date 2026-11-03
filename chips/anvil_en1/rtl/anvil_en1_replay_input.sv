@@ -2,6 +2,7 @@ module anvil_en1_replay_input #(
     parameter integer COMPACT = 0,
     parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -155,6 +156,8 @@ module anvil_en1_replay_input #(
     anvil_en1_embedding_ple #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_EMBEDDING_RAM)
     ) reconstruct (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .vector_ram_write(embedding_ram_write), .vector_ram_read(embedding_ram_read),
         .vector_ram_waddr(embedding_ram_waddr), .vector_ram_raddr(embedding_ram_raddr),
         .vector_ram_wdata(embedding_ram_wdata), .vector_ram_rdata(embedding_ram_rdata),

@@ -2,6 +2,7 @@ module anvil_en1_replay_attention_execute #(
     parameter integer COMPACT = 0,
     parameter integer PAUSABLE = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -282,6 +283,8 @@ module anvil_en1_replay_attention_execute #(
     wire tile_work_bank;
     wire [3:0] tile_error;
     anvil_en1_replay_kv_tile #(.COMPACT(COMPACT), .ALLOW_QUERY(1)) tile (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(run && (service_state == QUERY_START || service_state == FETCH_START)),
         .start_ready(tile_ready), .model(model_hold), .precision(precision_hold),

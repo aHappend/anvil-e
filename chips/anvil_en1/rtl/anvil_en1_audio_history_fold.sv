@@ -2,6 +2,7 @@ module anvil_en1_audio_history_fold #(
     parameter integer FUSE_LEADING_PADDING = 0,
     parameter integer SINGLE_CHANNEL = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -92,6 +93,8 @@ module anvil_en1_audio_history_fold #(
     wire [7:0] image_type;
     wire [3:0] image_error;
     anvil_en1_tensor_image directory (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == IMAGE_START), .start_ready(image_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -136,6 +139,8 @@ module anvil_en1_audio_history_fold #(
     wire [3:0] glu_error;
     wire glu_projection_event;
     anvil_en1_audio_glu_component gated_input (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == GLU_START), .start_ready(glu_ready),
         .model(model_hold), .precision(precision_hold), .layer(layer_hold - 8'd1),

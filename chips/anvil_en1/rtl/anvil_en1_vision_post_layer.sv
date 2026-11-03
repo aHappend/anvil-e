@@ -1,6 +1,7 @@
 module anvil_en1_vision_post_layer #(
     parameter integer EXTERNAL_BRANCH_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -95,6 +96,8 @@ module anvil_en1_vision_post_layer #(
     wire [63:0] norm_addr;
     wire [3:0] norm_error;
     anvil_en1_native_norm #(.EXTERNAL_FP(1)) normalization (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd1),
@@ -130,6 +133,8 @@ module anvil_en1_vision_post_layer #(
     wire [63:0] mlp_addr;
     wire [3:0] mlp_error;
     anvil_en1_native_mlp_row #(.EXTERNAL_FP(1), .IMAGE_CLASS(1)) mlp (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MLP_START), .start_ready(mlp_ready),
         .model(model_hold), .precision(precision_hold), .mode(2'd0),

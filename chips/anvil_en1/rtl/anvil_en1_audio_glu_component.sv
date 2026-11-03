@@ -1,6 +1,7 @@
 module anvil_en1_audio_glu_component #(
     parameter integer EXTERNAL_VECTOR_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -72,6 +73,8 @@ module anvil_en1_audio_glu_component #(
     wire [63:0] norm_addr;
     wire [3:0] norm_error;
     anvil_en1_native_norm norm (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -102,6 +105,8 @@ module anvil_en1_audio_glu_component #(
     wire [31:0] projection_row = second_half ?
         {21'd0, 1'b1, channel_hold[9:0]} : channel_hold;
     anvil_en1_clipped_projection projection (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),

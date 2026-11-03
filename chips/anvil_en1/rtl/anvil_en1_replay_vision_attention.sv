@@ -1,4 +1,5 @@
 module anvil_en1_replay_vision_attention (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -108,6 +109,8 @@ module anvil_en1_replay_vision_attention (
     wire [511:0] engine_checkpoint;
     wire [3:0] engine_error;
     anvil_en1_vision_attention_execute #(.REPLAY(1)) executor (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ENGINE_START), .start_ready(engine_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),

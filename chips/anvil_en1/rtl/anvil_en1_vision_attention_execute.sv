@@ -1,6 +1,7 @@
 module anvil_en1_vision_attention_execute #(
     parameter integer REPLAY = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -92,6 +93,8 @@ module anvil_en1_vision_attention_execute #(
     wire lookup_selected = rst_n && (state == LOOKUP_START || state == LOOKUP_WAIT);
     wire [63:0] primitive_directory_bytes;
     anvil_en1_tensor_image directory (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
@@ -154,6 +157,8 @@ module anvil_en1_vision_attention_execute #(
     wire tile_selected = run &&
         (service_state == S_TILE_START || service_state == S_TILE_WAIT);
     anvil_en1_vision_qkv_tile tile (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(run && service_state == S_TILE_START), .start_ready(tile_ready),
         .model(model_hold), .precision(precision_hold), .selector(selector_hold),

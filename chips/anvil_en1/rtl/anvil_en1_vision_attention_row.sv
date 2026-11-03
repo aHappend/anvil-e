@@ -1,4 +1,5 @@
 module anvil_en1_vision_attention_row (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -64,6 +65,8 @@ module anvil_en1_vision_attention_row (
     wire [63:0] row_addr;
     wire [3:0] row_error;
     anvil_en1_clipped_projection output_projection (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ROW_START), .start_ready(row_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd1),
@@ -92,6 +95,8 @@ module anvil_en1_vision_attention_row (
     wire [63:0] head_addr;
     wire [3:0] head_error;
     anvil_en1_vision_attention_execute executor (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ROW_WAIT && src_state == HEAD_START),
         .start_ready(head_ready),

@@ -24,7 +24,9 @@ module anvil_en1_tensor_image #(
     output wire [31:0] done_rows, done_columns, done_stride,
     output wire [7:0] done_type,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes
+    output wire [63:0] controller_bytes,
+    input wire image_immutable,
+    input wire image_invalidate
 );
     localparam integer LEGAL = COMPACT == 0 || COMPACT == 1;
     generate if (!LEGAL) begin : invalid_parameters
@@ -51,7 +53,8 @@ module anvil_en1_tensor_image #(
             ENTRY_PRODUCTS = 9, PRODUCT_CAPTURE = 10, PRODUCT_ACCUMULATE = 11,
             ENTRY_VALIDATE = 12, PAIR_START = 13, PAIR_ADVANCE = 14,
             PAIR_VALIDATE = 15, ENTRY_FINISH = 16, FINISH = 17,
-            PUBLISH = 18, RESPONSE = 19;
+            PUBLISH = 18, RESPONSE = 19, CACHE_SEARCH = 20,
+            CACHE_CAPTURE = 21, LOOKUP_KEY = 22;
         reg [4:0] state, return_state;
         reg [1:0] model_hold, precision_hold, class_hold;
         reg audio_hold;
@@ -72,6 +75,63 @@ module anvil_en1_tensor_image #(
         reg [63:0] output_base, output_bytes;
         reg [31:0] output_rows, output_columns, output_stride;
         reg [7:0] output_type;
+        reg certified, reuse_hold, cache_allowed, lifetime_lost;
+        reg [7:0] descriptor_valid;
+        reg [2:0] descriptor_cursor;
+        reg [231:0] descriptor_q;
+        wire [7:0] descriptor_hits;
+        wire [1855:0] descriptor_payloads;
+        reg descriptor_hit;
+        reg [2:0] descriptor_index;
+        integer cache_index;
+        wire immutable_active = image_immutable === 1'b1;
+        wire invalidate_active = image_invalidate === 1'b1;
+        wire same_image = model == model_hold && precision == precision_hold &&
+            image_class == class_hold && input_audio == audio_hold &&
+            input_items == items_hold && image_base == base_hold;
+        wire cache_clear = !immutable_active || invalidate_active ||
+            (state == IDLE && start_valid && start_ready && !same_image) ||
+            (state == PUBLISH && error_hold != 0);
+        wire cache_store = state == FINISH && found && error_hold == 0 &&
+            cache_allowed && !lifetime_lost && !cache_clear;
+        wire lifetime_revoked = cache_allowed && (!immutable_active || invalidate_active);
+        genvar descriptor_slot;
+        for (descriptor_slot = 0; descriptor_slot < 8;
+            descriptor_slot = descriptor_slot + 1) begin : descriptors
+            reg [31:0] key;
+            reg [231:0] payload;
+            assign descriptor_payloads[232*descriptor_slot+:232] = payload;
+            assign descriptor_hits[descriptor_slot] = descriptor_valid[descriptor_slot] &&
+                key == {layer_hold, kind_hold};
+            always @(posedge clk) begin
+                if (rst_n && cache_store && descriptor_cursor == descriptor_slot) begin
+                    key <= {layer_hold, kind_hold};
+                    payload <= {output_base, output_bytes, output_rows,
+                        output_columns, output_stride, output_type};
+                end
+            end
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n)
+                    descriptor_valid[descriptor_slot] <= 0;
+                else if (cache_clear)
+                    descriptor_valid[descriptor_slot] <= 0;
+                else if (cache_store && descriptor_cursor == descriptor_slot)
+                    descriptor_valid[descriptor_slot] <= 1;
+            end
+        end
+        always @* begin
+            descriptor_hit = 0;
+            descriptor_index = 0;
+            for (cache_index = 7; cache_index >= 0; cache_index = cache_index - 1)
+                if (descriptor_hits[cache_index]) begin
+                    descriptor_hit = 1;
+                    descriptor_index = 3'(cache_index);
+                end
+        end
+        always @(posedge clk) begin
+            if (rst_n && state == CACHE_SEARCH && descriptor_hit)
+                descriptor_q <= descriptor_payloads[232*descriptor_index+:232];
+        end
         wire [31:0] CONTROLLER_BITS = $bits(state) + $bits(return_state) +
             $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
             $bits(audio_hold) + $bits(items_hold) + $bits(kind_hold) +
@@ -84,7 +144,11 @@ module anvil_en1_tensor_image #(
             $bits(entry_index) + $bits(prior_index) + $bits(product_index) +
             $bits(partial_product) + $bits(required_bytes) + $bits(output_base) +
             $bits(output_bytes) + $bits(output_rows) + $bits(output_columns) +
-            $bits(output_stride) + $bits(output_type);
+            $bits(output_stride) + $bits(output_type) +
+            $bits(certified) + $bits(reuse_hold) + $bits(cache_allowed) +
+            $bits(lifetime_lost) +
+            $bits(descriptor_valid) + $bits(descriptor_cursor) +
+            $bits(descriptor_q) + 8*264;
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
         wire requested_valid, shape_valid;
         wire [31:0] expected_count, shape_rows, shape_columns;
@@ -173,7 +237,7 @@ module anvil_en1_tensor_image #(
                 {16'd0, partial_product, 16'd0});
         wire [63:0] product_total = required_bytes + product_term;
 
-        assign start_ready = rst_n && state == IDLE;
+        assign start_ready = rst_n && state == IDLE && !invalidate_active;
         assign cmd_valid = rst_n && state == MEMORY_START;
         assign cmd_write = 0;
         assign cmd_addr = rst_n ? address_hold : 64'd0;
@@ -224,6 +288,11 @@ module anvil_en1_tensor_image #(
                 output_columns <= 0;
                 output_stride <= 0;
                 output_type <= 0;
+                certified <= 0;
+                reuse_hold <= 0;
+                cache_allowed <= 0;
+                lifetime_lost <= 0;
+                descriptor_cursor <= 0;
             end else begin
                 case (state)
                     IDLE: if (start_valid && start_ready) begin
@@ -248,6 +317,9 @@ module anvil_en1_tensor_image #(
                         output_columns <= 0;
                         output_stride <= 0;
                         output_type <= 0;
+                        reuse_hold <= immutable_active && certified && same_image;
+                        cache_allowed <= immutable_active;
+                        lifetime_lost <= 0;
                         state <= BASE_VALIDATE;
                     end
                     BASE_VALIDATE: begin
@@ -258,6 +330,8 @@ module anvil_en1_tensor_image #(
                             base_header_end[64]) begin
                             error_hold <= 5;
                             state <= PUBLISH;
+                        end else if (reuse_hold) begin
+                            state <= CACHE_SEARCH;
                         end else begin
                             address_hold <= base_hold;
                             return_state <= HEADER_ADVANCE;
@@ -354,7 +428,7 @@ module anvil_en1_tensor_image #(
                             state <= PUBLISH;
                         end else begin
                             prior_index <= 0;
-                            if (entry_index == 0)
+                            if (reuse_hold || entry_index == 0)
                                 state <= ENTRY_FINISH;
                             else if (ordered_prefix && ordered_successor)
                                 state <= ENTRY_FINISH;
@@ -415,7 +489,7 @@ module anvil_en1_tensor_image #(
                             output_stride <= entry[351:320];
                             output_type <= shape_type;
                         end
-                        if (entry_index == directory_count - 1'b1)
+                        if (reuse_hold || entry_index == directory_count - 1'b1)
                             state <= FINISH;
                         else begin
                             entry_index <= entry_index + 1'b1;
@@ -425,10 +499,47 @@ module anvil_en1_tensor_image #(
                     FINISH: begin
                         if (!found)
                             error_hold <= 5;
+                        else if (cache_allowed && !lifetime_lost) begin
+                            certified <= 1;
+                            descriptor_cursor <= descriptor_cursor + 1'b1;
+                        end
                         state <= PUBLISH;
                     end
+                    CACHE_SEARCH: begin
+                        if (descriptor_hit)
+                            state <= CACHE_CAPTURE;
+                        else begin
+                            entry_index <= 0;
+                            address_hold <= directory_base;
+                            return_state <= LOOKUP_KEY;
+                            state <= MEMORY_START;
+                        end
+                    end
+                    CACHE_CAPTURE: begin
+                        {output_base, output_bytes, output_rows, output_columns,
+                            output_stride, output_type} <= descriptor_q;
+                        state <= PUBLISH;
+                    end
+                    LOOKUP_KEY: begin
+                        if (word_hold == {layer_hold, kind_hold}) begin
+                            address_hold <= entry_address[63:0];
+                            word_index <= 0;
+                            entry_word_error <= 0;
+                            return_state <= ENTRY_ADVANCE;
+                            state <= MEMORY_START;
+                        end else if (entry_index == directory_count - 1'b1) begin
+                            error_hold <= 5;
+                            state <= PUBLISH;
+                        end else begin
+                            entry_index <= entry_index + 1'b1;
+                            address_hold <= address_hold + 64;
+                            state <= MEMORY_START;
+                        end
+                    end
                     PUBLISH: begin
-                        if (error_hold != 0) begin
+                        if (error_hold != 0 || lifetime_lost || lifetime_revoked) begin
+                            if (error_hold == 0)
+                                error_hold <= 7;
                             output_base <= 0;
                             output_bytes <= 0;
                             output_rows <= 0;
@@ -445,6 +556,14 @@ module anvil_en1_tensor_image #(
                         state <= PUBLISH;
                     end
                 endcase
+                if (cache_clear) begin
+                    certified <= 0;
+                    descriptor_cursor <= 0;
+                end
+                if (!immutable_active || invalidate_active)
+                    cache_allowed <= 0;
+                if (lifetime_revoked && state != IDLE && state != RESPONSE)
+                    lifetime_lost <= 1;
             end
         end
     end endgenerate

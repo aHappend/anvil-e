@@ -3,6 +3,7 @@ module anvil_en1_replay_execute #(
     parameter integer EXTERNAL_VECTOR_RAM = 0,
     parameter integer EXTERNAL_EMBEDDING_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -386,6 +387,8 @@ module anvil_en1_replay_execute #(
     anvil_en1_replay_input #(
         .COMPACT(COMPACT), .EXTERNAL_EMBEDDING_RAM(1)
     ) original_input (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .embedding_ram_write(input_embedding_write), .embedding_ram_read(input_embedding_read),
         .embedding_ram_waddr(input_embedding_waddr), .embedding_ram_raddr(input_embedding_raddr),
         .embedding_ram_wdata(input_embedding_wdata), .embedding_ram_rdata(embedding_rdata),
@@ -459,6 +462,8 @@ module anvil_en1_replay_execute #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
         .EXTERNAL_EMBEDDING_RAM(1)
     ) text_layer (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .embedding_ram_write(text_embedding_write), .embedding_ram_read(text_embedding_read),
         .embedding_ram_waddr(text_embedding_waddr), .embedding_ram_raddr(text_embedding_raddr),
         .embedding_ram_wdata(text_embedding_wdata), .embedding_ram_rdata(embedding_rdata),
@@ -556,6 +561,8 @@ module anvil_en1_replay_execute #(
     anvil_en1_replay_vision_layer #(
         .COMPACT(COMPACT), .EXTERNAL_BRANCH_RAM(1)
     ) vision_layer (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(vision_start), .start_ready(vision_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),
@@ -636,6 +643,8 @@ module anvil_en1_replay_execute #(
     wire audio_zero_input_event, audio_zero_projection_event;
     wire [31:0] audio_zero_input_bytes, audio_zero_projection_bytes;
     anvil_en1_replay_audio_input audio_input (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(audio_selected && state == WORKER_START), .start_ready(audio_zero_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),
@@ -690,6 +699,8 @@ module anvil_en1_replay_execute #(
     anvil_en1_replay_audio_layer #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1)
     ) audio_layer (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(audio_layer_start),
         .start_ready(audio_layer_ready),
@@ -854,6 +865,8 @@ module anvil_en1_replay_execute #(
     wire [31:0] feature_projection_bytes, feature_source_bytes, feature_input_bytes;
     wire [63:0] feature_cmd_addr, feature_child_live;
     anvil_en1_replay_audio_feature #(.COMPACT(COMPACT)) audio_feature (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(feature_selected && state == WORKER_START), .start_ready(feature_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold), .modality(modality_hold),
@@ -912,6 +925,8 @@ module anvil_en1_replay_execute #(
     wire [31:0] image_feature_projection_bytes, image_feature_source_bytes, image_feature_input_bytes;
     wire [63:0] image_feature_cmd_addr, image_feature_child_live;
     anvil_en1_replay_image_feature #(.COMPACT(COMPACT)) image_feature (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .cancel((start_valid && start_ready) || (done_valid && done_ready)),
         .start_valid(image_feature_selected && state == WORKER_START),

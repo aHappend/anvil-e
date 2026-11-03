@@ -2,6 +2,7 @@ module anvil_en1_audio_feedforward #(
     parameter integer EXTERNAL_VECTOR_RAM = 0,
     parameter integer RAW_SOURCE_CALLBACK = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -102,6 +103,8 @@ module anvil_en1_audio_feedforward #(
     wire [15:0] pre_kind = mode_hold == 1 ? 16'h2100 : 16'h2111;
     wire [15:0] post_kind = mode_hold == 1 ? 16'h2103 : 16'h2114;
     anvil_en1_native_norm #(.EXTERNAL_FP(1)) norm (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
@@ -140,6 +143,8 @@ module anvil_en1_audio_feedforward #(
     wire [63:0] mlp_addr;
     wire [3:0] mlp_error;
     anvil_en1_native_mlp_row #(.EXTERNAL_FP(1), .IMAGE_CLASS(2)) mlp (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MLP_START), .start_ready(mlp_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),

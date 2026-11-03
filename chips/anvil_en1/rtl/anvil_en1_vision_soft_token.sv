@@ -1,6 +1,7 @@
 module anvil_en1_vision_soft_token #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -71,6 +72,8 @@ module anvil_en1_vision_soft_token #(
     wire map_input_event;
     wire map_selected = rst_n && (state == MAP_START || state == MAP_WAIT);
     anvil_en1_vision_bins mapping (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MAP_START), .start_ready(map_ready),
         .model(model_hold), .generation(generation_hold), .patches(patches_hold),
@@ -98,6 +101,8 @@ module anvil_en1_vision_soft_token #(
     wire feature_input_event;
     wire feature_selected = rst_n && (state == FEATURE_START || state == FEATURE_WAIT);
     anvil_en1_vision_feature #(.COMPACT(COMPACT)) feature (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FEATURE_START), .start_ready(feature_ready),
         .model(model_hold), .precision(precision_hold),

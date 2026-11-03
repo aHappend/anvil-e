@@ -1,6 +1,7 @@
 module anvil_en1_owner_replay #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire control_valid,
     output wire control_ready,
@@ -231,6 +232,8 @@ module anvil_en1_owner_replay #(
             normalized_count < hidden_hold && tile_store_index == normalized_count;
         wire [3:0] tile_error;
         anvil_en1_owner_kv_tile #(.COMPACT(COMPACT), .EXTERNAL_INPUT_RAM(1)) owner_tile (
+            .image_immutable(image_immutable === 1'b1),
+            .image_invalidate((image_invalidate === 1'b1) || (control_valid && control_ready)),
             .controller_bytes(tile_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == TILE_START), .start_ready(tile_ready),

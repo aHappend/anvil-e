@@ -2,6 +2,7 @@ module anvil_en1_replay_vision_layer #(
     parameter integer COMPACT = 0,
     parameter integer EXTERNAL_BRANCH_RAM = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -171,6 +172,8 @@ module anvil_en1_replay_vision_layer #(
     wire [63:0] patch_addr;
     wire [3:0] patch_error;
     anvil_en1_vision_patch original_patch (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PATCH_START), .start_ready(patch_ready),
         .model(model_hold), .precision(precision_hold), .image_base(image_hold),
@@ -216,6 +219,8 @@ module anvil_en1_replay_vision_layer #(
         (need_patch == query_hold || (dependency_tag && need_patch == dependency_token_hold) ?
             2'd0 : 2'd1);
     anvil_en1_replay_vision_attention attention (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == HEAD_START), .start_ready(head_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),
@@ -273,6 +278,8 @@ module anvil_en1_replay_vision_layer #(
     wire [63:0] projection_addr;
     wire [3:0] projection_error;
     anvil_en1_clipped_projection output_projection (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd1),
@@ -307,6 +314,8 @@ module anvil_en1_replay_vision_layer #(
     wire [31:0] post_branch_waddr, post_branch_raddr;
     wire [15:0] post_branch_wdata;
     anvil_en1_vision_post_layer #(.EXTERNAL_BRANCH_RAM(1)) post (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == POST_START && error_hold == 0), .start_ready(post_ready),
         .model(model_hold), .precision(precision_hold), .layer(logical_layer),

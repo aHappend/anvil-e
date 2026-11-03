@@ -1,4 +1,5 @@
 module anvil_en1_audio_qkv_tile (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -72,6 +73,8 @@ module anvil_en1_audio_qkv_tile (
     wire [63:0] primitive_directory_bytes, primitive_projection_bytes;
     wire [63:0] primitive_weight_bytes, primitive_fp_bytes;
     anvil_en1_tensor_image directory (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOOKUP_START), .start_ready(lookup_ready),
@@ -97,6 +100,8 @@ module anvil_en1_audio_qkv_tile (
     wire [15:0] clipped_kind = selector_hold == 0 ? 16'h2105 :
         (selector_hold == 1 ? 16'h2106 : 16'h2107);
     anvil_en1_clipped_projection clipped (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == ROW_START && selector_hold != 3),
         .start_ready(clipped_ready),

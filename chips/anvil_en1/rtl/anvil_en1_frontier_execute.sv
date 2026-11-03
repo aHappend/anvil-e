@@ -5,6 +5,7 @@ module anvil_en1_frontier_execute #(
     parameter integer EXTERNAL_HIDDEN_RAM = 0,
     parameter integer SHARED_PLE = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire control_valid,
     output wire control_ready,
@@ -538,6 +539,8 @@ module anvil_en1_frontier_execute #(
     anvil_en1_embedding_ple #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_EMBEDDING_RAM)
     ) embedding (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1) || (control_valid && control_ready)),
         .vector_ram_write(embedding_ram_write), .vector_ram_read(embedding_ram_read),
         .vector_ram_waddr(embedding_ram_waddr), .vector_ram_raddr(embedding_ram_raddr),
         .vector_ram_wdata(embedding_ram_wdata), .vector_ram_rdata(embedding_ram_rdata),
@@ -604,6 +607,8 @@ module anvil_en1_frontier_execute #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(EXTERNAL_VECTOR_RAM),
         .SHARED_RESIDUAL(EXTERNAL_HIDDEN_RAM), .SHARED_PLE(SHARED_PLE)
     ) text_layer (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1) || (control_valid && control_ready)),
         .vector_ram_write(layer_vector_write), .vector_ram_read(layer_vector_read),
         .vector_ram_waddr(layer_vector_waddr), .vector_ram_raddr(layer_vector_raddr),
         .vector_ram_wdata(layer_vector_wdata), .vector_ram_rdata(layer_vector_rdata),
@@ -698,6 +703,8 @@ module anvil_en1_frontier_execute #(
         .physical_payload_bytes(anchor_physical_bytes)
     );
     anvil_en1_final_logits #(.COMPACT(COMPACT), .EXTERNAL_PAYLOAD_RAM(1)) logits (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1) || (control_valid && control_ready)),
         .controller_bytes(logits_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == LOGITS_START), .start_ready(logits_ready),

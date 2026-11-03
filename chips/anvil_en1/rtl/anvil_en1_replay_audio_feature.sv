@@ -1,6 +1,7 @@
 module anvil_en1_replay_audio_feature #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -93,6 +94,8 @@ module anvil_en1_replay_audio_feature #(
     wire [63:0] map_addr, map_control, map_nested_control;
     wire [3:0] map_error;
     anvil_en1_native_token_map #(.COMPACT(COMPACT)) mapping (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MAP_START), .start_ready(map_ready),
         .model(model_hold), .modality(modality_hold), .kind(2'd2),
@@ -125,6 +128,8 @@ module anvil_en1_replay_audio_feature #(
         child_output_index == received &&
         child_output_last == (received + 1'b1 == {20'd0, hidden_hold});
     anvil_en1_audio_feature #(.COMPACT(COMPACT)) feature (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == CHILD_START), .start_ready(child_ready),
         .model(model_hold), .precision(precision_hold),

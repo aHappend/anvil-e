@@ -2,6 +2,7 @@ module anvil_en1_native #(
     parameter integer COMPACT = 0,
     parameter integer RESIDENT_ENTRIES = 3
 ) (
+    input wire image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -511,6 +512,8 @@ module anvil_en1_native #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1),
         .EXTERNAL_HIDDEN_RAM(1), .SHARED_PLE(1)
     ) frontier (
+        .image_immutable(1'b1),
+        .image_invalidate((image_invalidate === 1'b1) || (start_valid && start_ready)),
         .grant_valid(frontier_grant_valid), .grant_ready(frontier_grant_ready),
         .grant_component(frontier_grant_component),
         .grant_payload_bytes(frontier_grant_bytes),
@@ -628,6 +631,8 @@ module anvil_en1_native #(
     anvil_en1_replay_binding #(
         .COMPACT(COMPACT), .EXTERNAL_VECTOR_RAM(1), .EXTERNAL_EMBEDDING_RAM(1)
     ) binding (
+        .image_immutable(1'b1),
+        .image_invalidate((image_invalidate === 1'b1) || (start_valid && start_ready)),
         .grant_valid(binding_grant_valid), .grant_ready(binding_grant_ready),
         .grant_component(binding_grant_component),
         .grant_payload_bytes(binding_grant_bytes), .grant_shadow_bytes(binding_grant_shadow),

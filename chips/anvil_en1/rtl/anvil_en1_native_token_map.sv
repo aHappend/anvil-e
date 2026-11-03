@@ -1,6 +1,7 @@
 module anvil_en1_native_token_map #(
     parameter integer COMPACT = 0
 ) (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -56,6 +57,8 @@ module anvil_en1_native_token_map #(
     wire [31:0] mask_data;
     wire [3:0] mask_error;
     anvil_en1_audio_input immutable_mask (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MASK_START), .start_ready(mask_ready),
         .model(model_hold), .kind(2'd1), .generation(generation_hold),

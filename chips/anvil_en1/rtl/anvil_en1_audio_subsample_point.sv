@@ -1,4 +1,5 @@
 module anvil_en1_audio_subsample_point (
+    input wire image_immutable, image_invalidate,
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -86,6 +87,8 @@ module anvil_en1_audio_subsample_point (
     wire [31:0] conv_mask_bytes;
     wire conv_selected = rst_n && (state == CONV_START || state == CONV_WAIT);
     anvil_en1_audio_conv_row convolution (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == CONV_START), .start_ready(conv_ready),
         .model(model_hold), .precision(precision_hold), .stage(stage_hold),
@@ -125,6 +128,8 @@ module anvil_en1_audio_subsample_point (
     wire [3:0] norm_error;
     wire norm_selected = rst_n && (state == NORM_START || state == NORM_WAIT);
     anvil_en1_native_norm channel_norm (
+        .image_immutable(image_immutable === 1'b1),
+        .image_invalidate((image_invalidate === 1'b1)),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
         .model(model_hold), .precision(precision_hold), .image_class(2'd2),
