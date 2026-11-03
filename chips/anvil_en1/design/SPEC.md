@@ -5,14 +5,213 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-Current saved increment: [active audio residual source lifetimes](#current-increment-active-audio-residual-source-lifetimes).
-The connected positive-layer audio private envelope is now 4096 bytes.
-The preceding source-derived native-controller report remains 33243 bytes;
-this increment adds no scalar registers in the connected external-RAM path.
-Whole-system liveness/capacity is still unclosed, and the reserved static
+Current saved increment: [native MLP class specialization and controller reconciliation](#current-increment-native-mlp-class-specialization-and-controller-reconciliation).
+The connected native MLPs omit the other modality's unreachable activation
+subtree. The complete declared native-controller report is reconciled below.
+Whole-system liveness/capacity remains unclosed; the reserved static
 elaboration has not run.
 
-### Current increment: active audio residual source lifetimes
+### Current increment: native MLP class specialization and controller reconciliation
+
+Freeze `native_mlp_row.IMAGE_CLASS`: 0 retains the original mixed native
+worker, 1 permits only vision mode 0, and 2 permits only audio modes 1/2.
+Other parameter values receive an explicit parameter diagnostic. A job
+whose mode conflicts with the specialization returns error 6 during
+descriptor validation, before source or weight accesses. Production
+`vision_post_layer` selects 1; `audio_feedforward` selects 2 for both FF1
+and FF2. Model, precision, tensor IDs, clipping and BF16 boundaries are
+unchanged.
+
+The audio specialization elaborates away the unused GeGLU subtree, not
+its required SiLU. Vision elaborates away the separate audio SiLU subtree,
+not the GELU inside its real GeGLU. Each absent branch drives its command
+and arithmetic-valid/readiness/accounting outputs to zero; it supplies no
+manufactured completion. Both original numerical paths remain in the
+default mixed specialization.
+
+| Pre-edge boundary | Registered action / ownership |
+| --- | --- |
+| Accepted start | Capture mode, model, precision and the existing descriptor |
+| Descriptor validation | Reject class/mode mismatch before either projection starts |
+| Audio gate projection completes | Execute the original SiLU and BF16 narrowing; no up projection or GeGLU start |
+| Vision gate projection completes | Execute the original up projection and GeGLU; no separate SiLU start |
+| Arithmetic response / output stall | Preserve the existing registered capture, consumer ownership and held completion |
+| Error / reset | Retain existing error draining, reset validity and zero-output behavior |
+
+Reconcile the preceding shared-FF1 increment using the literal declared
+report expressions, with production geometry and connected external-RAM/
+external-FP settings:
+
+| Removed supplied-raw post term | Bytes |
+| --- | ---: |
+| Callback FF1 own controller including its private FP primitive | 133 |
+| FF1 native norm including directory, external-FP norm, conversion, div/sqrt and scale reader | 552 |
+| FF1 output clamp | 10 |
+| MLP row including its original GeGLU and SiLU descendants | 350 |
+| Down projection / clamp | 514 / 10 |
+| Inner projection / clamp | 514 / 10 |
+| Complete absent FF1 subtree | 2193 |
+| Absent raw RAM read register in post controller | 2 |
+
+The three captured mode bits added in that increment do not cross their
+local rounded-byte boundaries: preprocessor 353->354 bits remains 45
+bytes, replay-attention 1765->1766 remains 221 bytes, and replay-heads
+962->963 remains 121 bytes. Thus the previous 33243-byte report becomes
+`33243-2193-2 = 31048`, before the current class specialization.
+
+External-FP activation reports 51 local bytes, 28 exponential-controller
+bytes and 63 div/sqrt bytes, or 142 bytes. External-FP GeGLU adds 23 local
+bytes around that activation, or 165 bytes. Two connected audio MLPs omit
+165 bytes each; the vision MLP omits 142 bytes. Their wrapper register
+widths are unchanged. The resulting nonoverlapping native report is:
+
+| Term in `native_reconstruction_controller_bytes` | Bytes |
+| --- | ---: |
+| Original-input reconstruction and embedding descendants | 1082 |
+| Vision replay and reported descendants | 6357 |
+| Audio input wrapper | 48 |
+| Audio layer wrapper | 119 |
+| Audio input/layer nested controllers | 18515 |
+| Audio feature wrapper / nested controllers | 101 / 2057 |
+| Image feature wrapper / nested controllers | 121 / 2169 |
+| Native vector ownership/read state | 7 |
+| Complete declared report | 30576 |
+
+This is source-expression accounting, not elaboration, declaration
+coverage, observed liveness, synthesis or FPGA resource measurement.
+Physical RAM extents and suspended frame allocations are unchanged.
+Unused physical controller capacity is not advertised as removed SRAM.
+The source-reading arithmetic helper initially failed to resolve widths
+and multiline sums; only the subsequently resolved literal sums and
+manually traced child-report additions support the table. No HDL probe,
+functional/synthesis harness or preparation receipt was produced.
+
+Capacity remains unresolved. Even the incomplete comparison
+`30576+4096+12*(4096+136) = 85456` leaves only 560 bytes of minimum-context
+E2B's 86016-byte native allowance, before protected dependency memo,
+active final-binding extra slice and outer native continuation charges.
+It is not a fit certificate. At most twelve positive audio layers is a
+depth bound, not permission to assume six live frames. A complete bound
+must distinguish the twelve-suspended/layer-zero case from positive-layer
+execution, include the final-binding peak and source memo, and reconcile
+all native/text/fallback partitions and physical reservations. Do not
+change the ledger's limits or accept error 7 for legal work.
+
+Independent verification must cover all three settings, explicit illegal
+parameters and class/mode mismatch before accesses; both audio modes,
+both precisions and unchanged vision/audio numerical results; reset,
+stalls, source/weight errors, exact surviving tensor traffic and summed
+controller/vector/shadow allocations. Class specialization is not
+verification or timing acceptance.
+
+### Prior increment: shared final audio FF1 reconstruction
+
+The packed history residual needs the first feed-forward result twice:
+normalized for Q/K/V reconstruction, and unnormalized for its
+post-attention residual. Previously these paths instantiated separate
+FF1 engines. Reuse the existing numerical-head preprocessor after all
+eight attention heads have committed, instead of retaining a second
+FF1 arithmetic/controller subtree.
+
+`audio_pre_attention.raw_only` is captured at start. Zero preserves the
+raw-then-normalized output protocol. One streams the same actual FF1
+BF16 outputs, validates all 1024 indices/last bits, then completes without
+the subsequent clamp-copy/attention-input normalization passes. It is
+not a normalization bypass for Q/K/V: their reconstruction always uses
+zero. The omitted operations were never part of the unnormalized FF1
+residual in the replaced frame-backed post engine.
+
+`replay_audio_attention.raw_only` is likewise registered. Its raw-only
+job invokes that existing preprocessor at the requested query token,
+forwards each accepted raw output with backpressure, then checks the
+real child completion. It neither starts the numerical attention engine
+nor reports a checkpoint yield. Raw-only plus numerical resume rejects
+with error 7. The default numerical path and its checkpoint format remain.
+
+`replay_audio_heads.FINAL_FEEDFORWARD` defaults to zero and requires
+`DEFER_QUERY_BINDING=1` when enabled. The packed history residual enables
+it. Final binding first requires the real pinned memo for the current
+query input. If another token is pinned, yield the existing fully tagged
+`0x454e3150` continuation before starting any FF1 work or allocating raw
+output. Resumption repeats the full model/generation/layer/slot/token
+checks. Once the query memo is available, run raw-only FF1 reconstruction
+and write its 1024 real BF16 components to bank 0/slice 0 in ascending
+aligned pairs. Partial-head outputs in bank 0/slice 1 and partial
+depthwise outputs in bank 1/slice 0 remain live and charged. No private
+copy of the query input is made. The scheduler's existing single-memo
+pin remains asserted throughout this worker; no dependency switch or
+recursive yield occurs during raw-only FF1.
+
+`audio_attention_residual.PRECOMPUTED_RAW`, default zero, requires
+`FRAME_HEADS=1`. At one, elaborate away the duplicate FF1 subtree, its
+private working/branch RAM and the post engine's raw residual RAM.
+After descriptor validation, compute the original attention output
+projection/clamp/norm. For each normalized output, read the matching
+real FF1 residual through the existing kind-0 source callback before the
+unchanged FP32 residual add and BF16 narrow. Source kind 1 still reads
+the actual attention heads. A failed residual callback is registered,
+stops further raw requests and drains the already running normalization
+before failure completion; it does not leave a child outstanding.
+
+The packed residual wrapper permits kind-0 reads only at its current
+output cursor, including cursors 1..1023. Head reads remain legal only
+before output begins. Both raw components are consumed before their
+aligned output pair overwrites bank 0/slice 0; the next component cannot
+be requested until that pair's write response retires. The nonpacked
+default retains its original eager source restriction.
+
+| Pre-edge boundary | Registered action / lifetime |
+| --- | --- |
+| Numerical preprocessing start, `raw_only=0` | Original FF1 raw, clamp-copy and normalized streams |
+| Final binding with wrong/missing query memo | Yield tagged dependency; no FF1/raw-output allocation |
+| Final binding with valid query memo | Capture raw-only descriptor; retain the pin until worker completion |
+| Raw-only output stalled | Child output/index/data/last remain held; neither wrapper advances its received count |
+| Raw-only pair write | Store bank 0/slice 0; await the real workspace response before further output |
+| Raw-only completion | Require exactly 1024 outputs, no unmatched half, no yield and successful child completion |
+| Supplied-raw post start | No FF1 or local raw bank; reserve only the 2048-byte projection working vector |
+| Post residual component | Request kind 0 at the exact output cursor; register source response before FP add |
+| Post residual error | Drain normalization, retain failure, emit no successful completion |
+| Reset / invalidation / stalled channels | Existing validity, generation cancellation, registered retirement and stable-payload rules |
+
+The source-defined connected residual omits **6144 bytes of payload RAM**:
+4096 bytes of callback FF1 working/branch RAM and 2048 bytes of raw
+residual RAM. The numerical-head preprocessor's physical RAM is unchanged;
+its reuse adds no vector RAM. The packed post private ceiling is now
+2048 bytes, enforced by its parent range guard. Other active phases still
+require up to 4096 bytes, so neither the dispatcher reservation nor its
+workspace validation is reduced.
+
+The complete 33243-byte native-controller sum above the prior increment
+is now historical, not the current census. The new sum removes all eight
+reported FF1 terms (`ff_control`, `ff_norm_control`, `ff_clamp_control`,
+`mlp_control`, `down_control`, `down_clamp_control`, `inner_control`,
+`inner_clamp_control`) from the supplied-raw post branch and its 16-bit
+raw RAM read register. It adds captured `raw_only` bits in the preprocessor
+and replay wrapper, plus `raw_binding` in the heads wrapper, each included
+in the existing byte-rounded local census. Recompute the nonoverlapping
+connected report before asserting a new numeric bound. Do not retain
+the old 88123-byte comparison as a current measurement or infer closure
+by subtracting physical RAM from the live ledger.
+
+The twelve-positive-layer suspended-vector ceiling remains 4096 bytes
+per frame plus 136 scalar bytes. This increment retires the **duplicate
+post FF1 controller/backing** obligation, not the entire native capacity
+proof. Reachable suspended frames, at most one protected dependency memo,
+evictable memo entries, retained feature/outer consumers, controller
+partitions and the fallback working limit still require reconciliation.
+No legal-work capacity error or reduced acceptance threshold is authorized.
+
+Independent verification must cover raw-only and normalized operation,
+both final-binding settings and precisions, exact equivalence to the
+independently scheduled FF1/post residual reference, final-binding misses
+and restored tags, all pair boundaries and indices 511/512/513/1023,
+stalls, reset and input/weight/source errors. Observe actual memo pin
+lifetime, raw writes, read-before-overwrite, normalization drain and
+summed live/shadow/physical allocations. No HDL execution or preparation
+receipt exists for this increment; no functional or synthesis result is
+claimed.
+
+### Prior increment: active audio residual source lifetimes
 
 `audio_lightconv.RAW_SOURCE_CALLBACK`, default zero, permits the caller
 to retain the raw residual instead of copying it into the lightconv.

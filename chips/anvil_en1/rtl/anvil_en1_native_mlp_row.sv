@@ -1,5 +1,6 @@
 module anvil_en1_native_mlp_row #(
-    parameter integer EXTERNAL_FP = 0
+    parameter integer EXTERNAL_FP = 0,
+    parameter integer IMAGE_CLASS = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -72,17 +73,21 @@ module anvil_en1_native_mlp_row #(
     initial begin
         if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
             $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
+        if (IMAGE_CLASS < 0 || IMAGE_CLASS > 2)
+            $fatal(1, "PARAMETER ERROR: IMAGE_CLASS must be 0, 1 or 2");
     end
 
-    wire [1:0] image_class = mode_hold == 0 ? 2'd1 : 2'd2;
-    wire [15:0] gate_kind = mode_hold == 0 ? 16'h1109 :
+    wire vision_mode = IMAGE_CLASS == 1 || (IMAGE_CLASS == 0 && mode_hold == 0);
+    wire [1:0] image_class = vision_mode ? 2'd1 : 2'd2;
+    wire [15:0] gate_kind = vision_mode ? 16'h1109 :
         (mode_hold == 1 ? 16'h2101 : 16'h2112);
-    wire [15:0] down_kind = mode_hold == 0 ? 16'h110b :
+    wire [15:0] down_kind = vision_mode ? 16'h110b :
         (mode_hold == 1 ? 16'h2102 : 16'h2113);
-    wire inner_up = source_state == S_UP_START || source_state == S_UP_WAIT;
+    wire inner_up = vision_mode &&
+        (source_state == S_UP_START || source_state == S_UP_WAIT);
     wire [15:0] inner_kind = inner_up ? 16'h110a : gate_kind;
-    wire [31:0] hidden_length = mode_hold == 0 ? 32'd768 : 32'd1024;
-    wire [31:0] intermediate_length = mode_hold == 0 ? 32'd3072 : 32'd4096;
+    wire [31:0] hidden_length = vision_mode ? 32'd768 : 32'd1024;
+    wire [31:0] intermediate_length = vision_mode ? 32'd3072 : 32'd4096;
 
     wire down_ready, down_valid, down_cmd_valid, down_result_ready;
     wire down_source_valid, down_source_rsp_ready;
@@ -172,6 +177,7 @@ module anvil_en1_native_mlp_row #(
     wire [31:0] geglu_data, activation_data;
     wire [3:0] geglu_error, activation_error;
     wire [63:0] primitive_geglu_bytes, primitive_activation_bytes, primitive_fp_bytes;
+    generate if (IMAGE_CLASS != 2) begin : vision_activation
     anvil_en1_geglu_pair #(.EXTERNAL_FP(1)) geglu (
         .controller_bytes(primitive_geglu_bytes),
         .clk(clk), .rst_n(rst_n),
@@ -189,6 +195,19 @@ module anvil_en1_native_mlp_row #(
         .arithmetic_result_ready(child_arithmetic_result_ready[FP_GEGLU]),
         .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
+    end else begin : absent_vision_activation
+        assign geglu_ready = 0;
+        assign geglu_valid = 0;
+        assign geglu_data = 0;
+        assign geglu_error = 0;
+        assign primitive_geglu_bytes = 0;
+        assign child_arithmetic_valid[FP_GEGLU] = 0;
+        assign child_arithmetic_operation[3*FP_GEGLU+:3] = 0;
+        assign child_arithmetic_a[32*FP_GEGLU+:32] = 0;
+        assign child_arithmetic_b[32*FP_GEGLU+:32] = 0;
+        assign child_arithmetic_result_ready[FP_GEGLU] = 0;
+    end
+    if (IMAGE_CLASS != 1) begin : audio_activation
     anvil_en1_activation #(.EXTERNAL_FP(1)) activation (
         .controller_bytes(primitive_activation_bytes),
         .clk(clk), .rst_n(rst_n),
@@ -206,6 +225,18 @@ module anvil_en1_native_mlp_row #(
         .arithmetic_result_ready(child_arithmetic_result_ready[FP_ACTIVATION]),
         .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
+    end else begin : absent_audio_activation
+        assign activation_ready = 0;
+        assign activation_valid = 0;
+        assign activation_data = 0;
+        assign activation_error = 0;
+        assign primitive_activation_bytes = 0;
+        assign child_arithmetic_valid[FP_ACTIVATION] = 0;
+        assign child_arithmetic_operation[3*FP_ACTIVATION+:3] = 0;
+        assign child_arithmetic_a[32*FP_ACTIVATION+:32] = 0;
+        assign child_arithmetic_b[32*FP_ACTIVATION+:32] = 0;
+        assign child_arithmetic_result_ready[FP_ACTIVATION] = 0;
+    end endgenerate
     wire fp_start_valid = rst_n && (fp_owner == FP_LOCAL ?
         (state == DOWN_WAIT && source_state == S_NARROW_START) :
         child_arithmetic_valid[fp_owner[1:0]]);
@@ -310,7 +341,7 @@ module anvil_en1_native_mlp_row #(
                         source_state <= S_REGISTER;
                     end else begin
                         gate_hold <= inner_data[15:0];
-                        if (mode_hold == 0)
+                        if (vision_mode)
                             source_state <= S_UP_START;
                         else
                             source_state <= S_ACTIVATION_START;
@@ -404,10 +435,12 @@ module anvil_en1_native_mlp_row #(
                 end
                 VALIDATE: begin
                     if ((model_hold != 1 && model_hold != 2) ||
-                        precision_hold > 1 || mode_hold > 2) begin
+                        precision_hold > 1 || mode_hold > 2 ||
+                        (IMAGE_CLASS == 1 && mode_hold != 0) ||
+                        (IMAGE_CLASS == 2 && mode_hold == 0)) begin
                         error_hold <= 6;
                         state <= PUBLISH;
-                    end else if (layer_hold >= (mode_hold == 0 ? 8'd16 : 8'd12) ||
+                    end else if (layer_hold >= (vision_mode ? 8'd16 : 8'd12) ||
                         token_hold > 131071 || row_hold >= hidden_length ||
                         weights_hold[1:0] != 0) begin
                         error_hold <= 5;

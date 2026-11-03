@@ -5,7 +5,109 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: active audio residual source lifetimes
+## Current increment: native MLP specialization and controller reconciliation
+
+The connected native MLP row has a default-preserving `IMAGE_CLASS`
+specialization: mixed (0), vision (1), or audio (2). Vision post-attention
+selects 1; both audio feed-forward modes select 2. Validation rejects a
+class/mode mismatch before external accesses. Vision retains its actual
+GELU GeGLU but omits the separate audio SiLU subtree. Audio retains SiLU
+but omits the unused vision GeGLU subtree. Absent branches issue neither
+arithmetic requests nor fabricated completions. No payload array,
+materialization boundary, legal production job or numerical operation
+is removed.
+
+The preceding shared-final-FF1 change removes 2193 declared controller
+bytes from the supplied-raw post subtree and two bytes from its raw RAM
+read register. Its three added mode bits do not change their individually
+rounded byte counts. Therefore its reconciled native report is 31048,
+not the older 33243. The current specialization additionally removes
+165 bytes from each of the two connected audio MLP reports and 142 bytes
+from the vision MLP report: **30576 bytes** in the full nonoverlapping
+native-reconstruction report. SPEC enumerates every term, primitive
+subtree and rounding boundary. This is declared source-expression
+accounting, not an elaborated register census or measured allocation.
+Physical payload RAM and the suspended-vector ceilings are unchanged.
+
+Whole-system capacity is still **not closed**. The incomplete comparison
+`30576+4096+12*(4096+136)=85456` leaves only 560 bytes of minimum-context
+E2B's native allowance; it omits protected memo, active final-binding
+extra slice and outer native continuations. Neither this arithmetic nor
+the twelve-layer depth bound establishes reachable fit. Next reconcile
+the layer-zero versus active-positive cases, final-binding and memo
+lifetimes, outer consumers and ordinary/fallback/physical partitions.
+Further genuine sharing/rematerialization is necessary unless the full
+reachable-case proof fits without denying legal work.
+
+Saved three RTL files (`native_mlp_row`, `audio_feedforward`,
+`vision_post_layer`) and both design documents. Used view, rg, glob,
+apply_patch and read-only Python source-expression arithmetic. Initial
+arithmetic helper parsing failures supplied no bound; corrected literal
+sums and traced report connections support the table. No HDL execution,
+functional/synthesis harness, preparation receipt or reserved static
+elaboration. Tests, parent sources, runtime metadata and retained failures
+remain untouched. Independent verification must cover mixed/specialized
+workers, both audio modes and precisions, vision, class rejection before
+accesses, reset/stalls/errors and exact controller/traffic/allocation
+accounting. This is a partial design increment, not a ready handoff.
+
+## Prior increment: shared final audio FF1 reconstruction
+
+The packed history residual now uses the numerical-head preprocessor's
+existing real FF1 datapath for its final unnormalized residual, rather
+than instantiating a second FF1 inside post-attention. New registered
+`raw_only` inputs in `audio_pre_attention` and `replay_audio_attention`
+stream the actual FF1 outputs with backpressure and successful child
+completion, omitting only the subsequent attention-input clamp-copy and
+normalization passes. Q/K/V reconstruction retains those original passes.
+
+The default-off `FINAL_FEEDFORWARD` specialization in `replay_audio_heads`
+requires deferred binding and is enabled only by the packed residual.
+After heads complete it demands the real pinned query memo, yielding
+the existing fully tagged final-binding continuation on a miss before
+starting FF1. Raw-only FF1 then writes bank 0/slice 0 in ascending pairs;
+no private query copy or host-supplied result is used. It cannot change
+dependencies mid-job. Existing partial heads, depthwise output, scalar
+checkpoints and the protected memo remain charged.
+
+The default-off `PRECOMPUTED_RAW` post-attention specialization removes
+the second FF1 subtree and its private working/branch RAM at elaboration.
+It also omits its raw residual RAM: after output projection/norm it reads
+the actual frame-backed FF1 component through the existing kind-0 source
+channel, registers it, then executes the unchanged FP32 add/BF16 narrow.
+Only the exact current output cursor may be read. Both components are
+consumed before their aligned output pair overwrites the original values.
+Head reads remain restricted to the pre-output phase. A failed raw source
+response drains the active normalization before error completion.
+
+Source-defined connected payload RAM falls by 6144 bytes: the absent 4096-byte
+callback FF1 working/branch store plus the absent 2048-byte raw store.
+No numerical-head RAM, dispatcher shared bank or workspace frame is
+claimed as removed. Packed post private live payload is now limited to
+2048 bytes; the overall positive-audio private reservation stays 4096
+because other phases still need it. Existing default standalone paths
+and the 136-byte scalar slots are retained.
+These are source-defined storage extents, not measured M20K/resource
+reductions or synthesis results.
+
+The prior 33243-byte native controller census is superseded, not a current
+measurement. Its update removes the duplicate FF1's eight reported
+controller terms and raw read register, while adding the three new mode
+bits to their byte-rounded local reports. SPEC enumerates the exact
+terms and cycle/lifetime obligations. A new complete connected numeric
+census and the reachable whole-system bound are still pending. In
+particular, the 4096-byte suspended-vector ceiling per positive audio
+frame is unchanged; memo/outer lifetimes and both models' native/fallback
+partitions still need closure.
+
+Saved `audio_pre_attention`, `replay_audio_attention`, `replay_audio_heads`,
+`audio_attention_residual`, `replay_audio_residual` and both design
+documents using view/rg/glob/apply_patch. No HDL execution, simulation,
+synthesis or preparation receipt. Tests, immutable parent sources, runtime
+metadata and retained failures remain untouched. Design is not ready;
+the reserved static elaboration remains for the completed design handoff.
+
+## Prior increment: active audio residual source lifetimes
 
 The replay layer now obtains lightconv's residual through a default-off
 `RAW_SOURCE_CALLBACK` specialization, rather than copying the raw frame

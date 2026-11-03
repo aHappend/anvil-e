@@ -139,7 +139,7 @@ module anvil_en1_audio_feedforward #(
     wire [7:0] mlp_layer;
     wire [63:0] mlp_addr;
     wire [3:0] mlp_error;
-    anvil_en1_native_mlp_row #(.EXTERNAL_FP(1)) mlp (
+    anvil_en1_native_mlp_row #(.EXTERNAL_FP(1), .IMAGE_CLASS(2)) mlp (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == MLP_START), .start_ready(mlp_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),
