@@ -32,8 +32,12 @@ def main():
     parser.add_argument("--seed", type=int, choices=(17, 43, 89), default=17)
     parser.add_argument("--capacity", type=int, choices=(1, 3, 64), default=3)
     parser.add_argument("--fallback", action="store_true")
+    parser.add_argument("--max-cycles", type=int, default=2000000000,
+                        help="bounded diagnostic cycle limit; incomplete jobs still fail")
     parser.add_argument("--repair-of")
     args = parser.parse_args()
+    if args.max_cycles <= 0:
+        parser.error("--max-cycles must be positive")
     prefix = Path(args.out)
     if prefix.is_absolute() or ".." in prefix.parts:
         parser.error("--out must be a project-relative prefix")
@@ -76,10 +80,25 @@ def main():
         try:
             with (ROOT / command["stdout"]).open("w") as stdout, (
                     ROOT / command["stderr"]).open("w") as stderr:
-                result = subprocess.run(argv, cwd=ROOT, stdout=stdout, stderr=stderr,
-                                        timeout=min(timeout, max(1, deadline-time.monotonic())),
-                                        check=False)
-            command["exit_code"] = result.returncode
+                effective = min(timeout, max(1, deadline-time.monotonic()))
+                command["timeout_s"] = effective
+                with subprocess.Popen(argv, cwd=ROOT, stdout=stdout, stderr=stderr) as child:
+                    started = time.monotonic()
+                    while True:
+                        try:
+                            code = child.wait(timeout=min(30, max(
+                                0.001, effective - (time.monotonic() - started))))
+                            break
+                        except subprocess.TimeoutExpired:
+                            if time.monotonic() - started >= effective:
+                                child.kill()
+                                child.wait()
+                                command["exit_code"] = child.returncode
+                                raise
+                            print(f"PROGRESS phase={label} "
+                                  f"elapsed_s={int(time.monotonic()-started)} "
+                                  f"receipt={relative}/receipt.json", flush=True)
+            command["exit_code"] = code
             command["timed_out"] = False
         except subprocess.TimeoutExpired:
             command["exit_code"] = None
@@ -88,8 +107,8 @@ def main():
         finally:
             command["ended_at"] = stamp()
             save()
-        if result.returncode != 0:
-            raise RuntimeError(f"{label} exited {result.returncode}: {command['stderr']}")
+        if code != 0:
+            raise RuntimeError(f"{label} exited {code}: {command['stderr']}")
         return (ROOT / command["stdout"]).read_text()
 
     code = 1
@@ -129,7 +148,8 @@ def main():
         run("compile", command, 1800)
         output = run("simulation", [str(obj / "Vanvil_en1_top"),
                                    str(relative / "image.bin"), str(args.model),
-                                   str(args.precision), str(args.seed), "2000000000"], 2400)
+                                   str(args.precision), str(args.seed),
+                                   str(args.max_cycles)], 2400)
         observed = []
         for line in output.splitlines():
             if line.startswith("LOGIT "):
