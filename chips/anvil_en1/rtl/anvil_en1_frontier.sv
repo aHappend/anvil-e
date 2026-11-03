@@ -96,12 +96,12 @@ module anvil_en1_frontier #(
         reg bound_hold, backing_write_hold;
         reg [17:0] backing_address_hold;
         reg [31:0] backing_generation_hold, backing_data_hold;
-        reg [7:0] layer_q;
+        reg [4:0] layer_q;
         reg [31:0] payload_q;
         (* ramstyle = "M20K", nomem2reg *)
         reg [31:0] payload [0:WORD_COUNT-1];
         (* ramstyle = "MLAB", nomem2reg *)
-        reg [7:0] layer_tags [0:MAX_TOKENS-1];
+        reg [4:0] layer_tags [0:MAX_TOKENS-1];
         localparam integer CONTROLLER_BITS = $bits(state) + $bits(op_hold) +
             $bits(control_model_hold) + $bits(model_hold) +
             $bits(control_generation_hold) + $bits(control_tokens_hold) +
@@ -151,7 +151,8 @@ module anvil_en1_frontier #(
         assign padded_tokens = rst_n ? padded_hold : 32'd0;
         assign live_bytes = rst_n ? {32'd0, allocation_hold} : 64'd0;
         assign physical_payload_bytes = rst_n ? 64'(WORD_COUNT * 4) : 64'd0;
-        assign token_metadata_bytes = rst_n ? 64'(MAX_TOKENS + (MAX_TOKENS >> 3)) : 64'd0;
+        assign token_metadata_bytes = rst_n ?
+            64'((MAX_TOKENS * 6 + 7) >> 3) : 64'd0;
         assign write_start_ready = rst_n && state == IDLE && !control_valid;
         assign write_ready = rst_n && state == WRITING;
         assign write_done_valid = rst_n && state == WRITE_RESPONSE;
@@ -181,7 +182,7 @@ module anvil_en1_frontier #(
             if (rst_n && state == TAG_READ && request_in_range)
                 layer_q <= layer_tags[token_hold];
             if (rst_n && state == WRITE_COMMIT)
-                layer_tags[token_hold] <= layer_hold;
+                layer_tags[token_hold] <= layer_hold[4:0];
         end
 
         always @(posedge clk or negedge rst_n) begin
@@ -353,7 +354,7 @@ module anvil_en1_frontier #(
                             if (frozen || layer_hold >= owners_hold ||
                                 (!token_valid_hold && layer_hold != 0) ||
                                 (token_valid_hold && {1'b0, layer_hold} !=
-                                {1'b0, layer_q} + 9'd1)) begin
+                                {4'd0, layer_q} + 9'd1)) begin
                                 error_hold <= 7;
                                 state <= WRITE_PUBLISH;
                             end else begin
@@ -364,7 +365,7 @@ module anvil_en1_frontier #(
                         end else if (component_hold >= hidden_hold || component_hold[0]) begin
                             error_hold <= 5;
                             state <= READ_RESPONSE;
-                        end else if (!token_valid_hold || layer_hold != layer_q) begin
+                        end else if (!token_valid_hold || layer_hold != {3'd0, layer_q}) begin
                             error_hold <= 7;
                             state <= READ_RESPONSE;
                         end else begin

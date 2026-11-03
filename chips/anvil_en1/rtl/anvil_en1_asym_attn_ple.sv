@@ -152,9 +152,7 @@ module anvil_en1_asym_attn_ple #(
         localparam integer MAX_D = COMPACT ? 8 : 512;
         localparam integer Q = COMPACT ? 2 : 8;
         localparam integer P = COMPACT ? 4 : 256;
-        localparam integer MAX_A = Q * MAX_D;
         localparam integer H_BITS = $clog2(MAX_H);
-        localparam integer A_BITS = $clog2(MAX_A);
         localparam integer P_BITS = $clog2(P);
         localparam [5:0] IDLE = 0, VALIDATE = 1, LOAD_START = 2,
             LOAD_WAIT = 3, LOAD_CHECK = 4, LOAD_WRITE = 5,
@@ -178,7 +176,8 @@ module anvil_en1_asym_attn_ple #(
             SCALAR_READ = 46, SCALAR_CAPTURE = 47,
             SCALAR_MULTIPLY = 48, SCALAR_WRITE = 49,
             OUTPUT_READ = 50, OUTPUT_CAPTURE = 51, OUTPUT_WAIT = 52,
-            FP_START = 53, FP_WAIT = 54, PUBLISH = 55, RESPONSE = 56;
+            FP_START = 53, FP_WAIT = 54, PUBLISH = 55, RESPONSE = 56,
+            OUTPUT_ROW_NARROW = 57, OUTPUT_ROW_WRITE = 58;
         localparam [2:0] N_INPUT = 0, N_QUERY = 1, N_POST_ATTENTION = 2,
             N_PRE_FF = 3, N_POST_FF = 4, N_POST_PLE = 5;
         localparam [2:0] B_RESIDUAL = 0, B_WORK = 1, B_BRANCH = 2,
@@ -188,6 +187,10 @@ module anvil_en1_asym_attn_ple #(
             C_QUERY = 3, C_UP = 4;
         localparam [2:0] W_IDLE = 0, W_START = 1, W_WAIT = 2,
             W_PUBLISH = 3, W_RESPONSE = 4;
+        localparam [3:0] O_IDLE = 0, O_WEIGHT_START = 1, O_WEIGHT_WAIT = 2,
+            O_CONVERT_START = 3, O_CONVERT_WAIT = 4,
+            O_MULTIPLY_START = 5, O_MULTIPLY_WAIT = 6,
+            O_ADD_START = 7, O_ADD_WAIT = 8, O_ACK = 9, O_DRAIN = 10;
         localparam [1:0] M_LOOKUP = 0, M_PROJECTION = 1,
             M_GATED = 2, M_WEIGHT = 3;
         reg [5:0] state, lookup_return, fp_return, narrow_return;
@@ -216,6 +219,8 @@ module anvil_en1_asym_attn_ple #(
         reg [15:0] branch_data_hold, residual_data_hold, rotary_first, rotary_second;
         reg [2:0] fp_op;
         reg [3:0] error_hold;
+        reg [3:0] output_state, output_error;
+        reg [31:0] output_row, output_accumulator, output_value, output_weight;
         reg residual_allocated, work_allocated, branch_allocated;
         reg query_allocated, attention_allocated, ple_allocated;
         wire [15:0] residual_q, work_q, branch_q, ple_q;
@@ -238,6 +243,8 @@ module anvil_en1_asym_attn_ple #(
             down_rows_hold, down_columns_hold, down_stride_hold, scalar_hold,
             fp_a, fp_b, value_hold, rotary_data_hold, branch_data_hold,
             residual_data_hold, rotary_first, rotary_second, fp_op, error_hold,
+            output_state, output_error, output_row, output_accumulator,
+            output_value, output_weight,
             residual_allocated, work_allocated, branch_allocated,
             query_allocated, attention_allocated, ple_allocated,
             residual_q, work_q, branch_q, ple_q
@@ -247,21 +254,41 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] attention_controller_bytes, gated_controller_bytes;
         wire [63:0] weight_controller_bytes, fp_controller_bytes;
         localparam [2:0] FP_NORM = 0, FP_PROJECTION = 1, FP_ROTARY = 2,
-            FP_ATTENTION = 3, FP_GATED = 4, FP_WEIGHT = 5, FP_LOCAL = 6;
-        wire [5:0] arithmetic_valid, arithmetic_result_ready;
-        wire [17:0] arithmetic_operation;
-        wire [191:0] arithmetic_a, arithmetic_b;
+            FP_ATTENTION = 3, FP_GATED = 4, FP_WEIGHT = 5,
+            FP_OUTPUT = 6, FP_LOCAL = 7;
+        wire [6:0] arithmetic_valid, arithmetic_result_ready;
+        wire [20:0] arithmetic_operation;
+        wire [223:0] arithmetic_a, arithmetic_b;
         wire fp_ready, fp_valid;
         wire [31:0] fp_data;
         wire [3:0] fp_error;
         wire weight_phase = scale_state == W_START || scale_state == W_WAIT ||
-            state == SCALAR_START || state == SCALAR_WAIT;
+            state == SCALAR_START || state == SCALAR_WAIT ||
+            output_state == O_WEIGHT_START || output_state == O_WEIGHT_WAIT;
+        wire output_arithmetic = output_state >= O_CONVERT_START &&
+            output_state <= O_ADD_WAIT;
         wire [2:0] fp_owner = weight_phase ? FP_WEIGHT :
+            (output_arithmetic ? FP_OUTPUT :
             (state == NORM_START || state == NORM_WAIT ? FP_NORM :
             (state == PROJECTION_START || state == PROJECTION_WAIT ? FP_PROJECTION :
             (state == ROTARY_START || state == ROTARY_WAIT ? FP_ROTARY :
             (state == ATTENTION_START || state == ATTENTION_WAIT ? FP_ATTENTION :
-            (state == GATED_START || state == GATED_WAIT ? FP_GATED : FP_LOCAL)))));
+            (state == GATED_START || state == GATED_WAIT ? FP_GATED : FP_LOCAL))))));
+        assign arithmetic_valid[FP_OUTPUT] = rst_n && (
+            output_state == O_CONVERT_START || output_state == O_MULTIPLY_START ||
+            output_state == O_ADD_START);
+        assign arithmetic_operation[3*FP_OUTPUT+:3] =
+            output_state == O_CONVERT_START ? 3'd2 :
+            (output_state == O_MULTIPLY_START ? 3'd1 : 3'd0);
+        assign arithmetic_a[32*FP_OUTPUT+:32] =
+            output_state == O_CONVERT_START ? {16'd0, attention_component_data} :
+            (output_state == O_MULTIPLY_START ? output_value : output_accumulator);
+        assign arithmetic_b[32*FP_OUTPUT+:32] =
+            output_state == O_MULTIPLY_START ? output_weight :
+            (output_state == O_ADD_START ? output_value : 32'd0);
+        assign arithmetic_result_ready[FP_OUTPUT] = rst_n && (
+            output_state == O_CONVERT_WAIT || output_state == O_MULTIPLY_WAIT ||
+            output_state == O_ADD_WAIT);
         assign controller_bytes = !rst_n ? 64'd0 :
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             norm_controller_bytes + projection_controller_bytes + rotary_controller_bytes +
@@ -503,7 +530,8 @@ module anvil_en1_asym_attn_ple #(
             .fetch_rsp_valid(fetch_rsp_valid), .fetch_rsp_ready(fetch_rsp_ready),
             .fetch_rsp_data(fetch_rsp_data), .fetch_rsp_error(fetch_rsp_error),
             .component_valid(attention_component_valid),
-            .component_ready(rst_n && state == ATTENTION_WAIT),
+            .component_ready(rst_n && state == ATTENTION_WAIT &&
+                (output_state == O_ACK || output_state == O_DRAIN)),
             .component_index(attention_component_index),
             .component_data(attention_component_data),
             .component_last(attention_component_last),
@@ -573,13 +601,21 @@ module anvil_en1_asym_attn_ple #(
         anvil_en1_weight_read #(.EXTERNAL_FP(1)) weight_reader (
             .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
-            .start_valid(rst_n && (scale_state == W_START || state == SCALAR_START)),
-            .start_ready(weight_ready), .precision(2'd0),
-            .tensor_base(scale_base), .tensor_bytes(scale_bytes),
-            .tensor_rows(32'd1), .tensor_columns(scale_columns),
-            .row_stride(scale_stride), .row_index(32'd0),
-            .column_index(state == SCALAR_START || state == SCALAR_WAIT ?
-                32'd0 : scale_index_hold),
+            .start_valid(rst_n && (scale_state == W_START || state == SCALAR_START ||
+                output_state == O_WEIGHT_START)),
+            .start_ready(weight_ready),
+            .precision(output_state == O_WEIGHT_START || output_state == O_WEIGHT_WAIT ?
+                precision_hold : 2'd0),
+            .tensor_base(state == ATTENTION_WAIT ? gate_base_hold : scale_base),
+            .tensor_bytes(state == ATTENTION_WAIT ? gate_bytes_hold : scale_bytes),
+            .tensor_rows(state == ATTENTION_WAIT ? gate_rows_hold : 32'd1),
+            .tensor_columns(state == ATTENTION_WAIT ? gate_columns_hold : scale_columns),
+            .row_stride(state == ATTENTION_WAIT ? gate_stride_hold : scale_stride),
+            .row_index(state == ATTENTION_WAIT ? output_row : 32'd0),
+            .column_index(state == ATTENTION_WAIT ?
+                head_offset + {22'd0, attention_component_index} :
+                (state == SCALAR_START || state == SCALAR_WAIT ?
+                    32'd0 : scale_index_hold)),
             .cmd_valid(weight_cmd_valid),
             .cmd_ready(rst_n && memory_owner == M_WEIGHT && cmd_ready),
             .cmd_write(), .cmd_addr(weight_cmd_addr), .cmd_wdata(),
@@ -587,7 +623,8 @@ module anvil_en1_asym_attn_ple #(
             .result_ready(weight_result_ready), .result_data(result_data),
             .result_error(result_error),
             .done_valid(weight_valid),
-            .done_ready(rst_n && (scale_state == W_WAIT || state == SCALAR_WAIT)),
+            .done_ready(rst_n && (scale_state == W_WAIT || state == SCALAR_WAIT ||
+                output_state == O_WEIGHT_WAIT)),
             .done_data(weight_data), .done_error(weight_error),
             .arithmetic_valid(arithmetic_valid[FP_WEIGHT]),
             .arithmetic_ready(fp_owner == FP_WEIGHT && fp_ready),
@@ -616,8 +653,6 @@ module anvil_en1_asym_attn_ple #(
         wire [31:0] head_offset = COMPACT ?
             ({28'd0, head} << (global_hold ? 3 : 2)) :
             ({28'd0, head} << (global_hold ? 9 : 8));
-        wire [31:0] attention_write_index =
-            head_offset + {22'd0, attention_component_index};
         wire [31:0] rotary_second_index = pair_index + (dimension_hold >> 1);
         wire norm_write = rst_n && state == NORM_WAIT && normalized_valid;
         wire residual_read = rst_n && ((src_state == S_READ && src_bank == B_RESIDUAL) ||
@@ -690,14 +725,14 @@ module anvil_en1_asym_attn_ple #(
             assign attention_q = 16'd0;
         end else begin : full_attention_payload
             (* ramstyle = "M20K", nomem2reg *)
-            reg [15:0] payload [0:MAX_A-1];
+            reg [15:0] payload [0:MAX_H-1];
             reg [15:0] read_q;
             assign attention_q = read_q;
             always @(posedge clk) begin
-                if (rst_n && state == ATTENTION_WAIT && attention_component_valid)
-                    payload[attention_write_index[A_BITS-1:0]] <= attention_component_data;
+                if (rst_n && state == OUTPUT_ROW_WRITE)
+                    payload[output_row[H_BITS-1:0]] <= value_hold[15:0];
                 if (rst_n && src_state == S_READ && src_bank == B_ATTENTION)
-                    read_q <= payload[src_index_hold[A_BITS-1:0]];
+                    read_q <= payload[src_index_hold[H_BITS-1:0]];
             end
         end
 
@@ -711,7 +746,7 @@ module anvil_en1_asym_attn_ple #(
                 (query_allocated ? {32'd0, dimension_hold} << 1 : 64'd0)) +
             (ple_allocated && !SHARED_PLE ? 64'(2*P) : 64'd0);
         wire [63:0] live_attention = attention_allocated ?
-            {32'd0, dimension_hold} << (COMPACT ? 2 : 4) : 64'd0;
+            {32'd0, hidden_hold} << 1 : 64'd0;
         assign live_payload_bytes = rst_n ?
             (live_residual_work + live_branch_ple) + live_attention : 64'd0;
         wire [63:0] shadow_hidden = model_hold == 1 ? 64'd3072 : 64'd5120;
@@ -725,10 +760,10 @@ module anvil_en1_asym_attn_ple #(
             (ple_allocated && !SHARED_PLE ? 64'd512 : 64'd0);
         assign production_shadow_bytes = rst_n ?
             (shadow_residual_work + shadow_branch_ple) +
-                (attention_allocated ? shadow_head << 3 : 64'd0) : 64'd0;
+                (attention_allocated ? shadow_hidden : 64'd0) : 64'd0;
         assign physical_payload_bytes = rst_n ?
             64'(2*((EXTERNAL_VECTOR_RAM ? 0 : 3*MAX_H+P) +
-                (POST_ONLY ? 0 : MAX_A))) : 64'd0;
+                (POST_ONLY ? 0 : MAX_H))) : 64'd0;
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin
@@ -758,18 +793,19 @@ module anvil_en1_asym_attn_ple #(
                     work_allocated <= 1;
                 if (state == QUERY_DESCRIPTOR)
                     query_allocated <= 1;
-                if (state == ATTENTION_START && attention_ready)
+                if (state == OUTPUT_PROJECTION_DESCRIPTOR)
                     attention_allocated <= 1;
                 if (state == ATTENTION_WAIT && attention_valid) begin
                     query_allocated <= 0;
-                    if (head + 1'b1 == Q)
+                    if (head + 1'b1 == Q && output_row + 1'b1 == hidden_hold)
                         work_allocated <= 0;
                 end
+                if (state == NORM_SETUP && norm_phase == N_POST_ATTENTION)
+                    branch_allocated <= 1;
                 if ((state == PROJECTION_START && projection_ready && !projection_query) ||
                     (state == GATED_START && gated_ready))
                     branch_allocated <= 1;
-                if (state == PROJECTION_WRITE && !projection_query &&
-                    index + 1'b1 == hidden_hold)
+                if (state == NORM_WAIT && norm_valid && norm_phase == N_POST_ATTENTION)
                     attention_allocated <= 0;
                 if (state == RESIDUAL_WRITE && index + 1'b1 == hidden_hold)
                     branch_allocated <= 0;
@@ -814,7 +850,6 @@ module anvil_en1_asym_attn_ple #(
             dimension_hold << ((COMPACT || model_hold == 1) ? 2 : 3);
 
         wire [31:0] src_limit = src_bank == B_QUERY ? dimension_hold :
-            src_bank == B_ATTENTION ? dimension_hold * Q :
             src_bank == B_PLE ? 32'(P) : hidden_hold;
         wire src_allocated = src_bank == B_RESIDUAL ? residual_allocated :
             src_bank == B_WORK ? work_allocated :
@@ -928,6 +963,69 @@ module anvil_en1_asym_attn_ple #(
 
         always @(posedge clk or negedge rst_n) begin
             if (!rst_n) begin
+                output_state <= O_IDLE;
+                output_error <= 0;
+                output_accumulator <= 0;
+                output_value <= 0;
+                output_weight <= 0;
+            end else if (state == IDLE || state == PUBLISH) begin
+                output_state <= O_IDLE;
+                output_error <= 0;
+                output_accumulator <= 0;
+                output_value <= 0;
+                output_weight <= 0;
+            end else if (state == OUTPUT_PROJECTION_DESCRIPTOR ||
+                state == OUTPUT_ROW_WRITE) begin
+                output_state <= O_IDLE;
+                output_accumulator <= 0;
+            end else begin
+                case (output_state)
+                    O_IDLE: if (state == ATTENTION_WAIT && attention_component_valid)
+                        output_state <= O_WEIGHT_START;
+                    O_WEIGHT_START: if (weight_ready)
+                        output_state <= O_WEIGHT_WAIT;
+                    O_WEIGHT_WAIT: if (weight_valid) begin
+                        if (weight_error != 0) begin
+                            output_error <= weight_error;
+                            output_state <= O_DRAIN;
+                        end else begin
+                            output_weight <= weight_data;
+                            output_state <= O_CONVERT_START;
+                        end
+                    end
+                    O_CONVERT_START: if (fp_ready)
+                        output_state <= O_CONVERT_WAIT;
+                    O_MULTIPLY_START: if (fp_ready)
+                        output_state <= O_MULTIPLY_WAIT;
+                    O_ADD_START: if (fp_ready)
+                        output_state <= O_ADD_WAIT;
+                    O_CONVERT_WAIT, O_MULTIPLY_WAIT, O_ADD_WAIT: if (fp_valid) begin
+                        if (fp_error != 0) begin
+                            output_error <= fp_error;
+                            output_state <= O_DRAIN;
+                        end else if (output_state == O_CONVERT_WAIT) begin
+                            output_value <= fp_data;
+                            output_state <= O_MULTIPLY_START;
+                        end else if (output_state == O_MULTIPLY_WAIT) begin
+                            output_value <= fp_data;
+                            output_state <= O_ADD_START;
+                        end else begin
+                            output_accumulator <= fp_data;
+                            output_state <= O_ACK;
+                        end
+                    end
+                    O_ACK: if (state == ATTENTION_WAIT && attention_component_valid)
+                        output_state <= O_IDLE;
+                    O_DRAIN: begin end
+                    default: begin
+                        output_error <= 7;
+                        output_state <= O_DRAIN;
+                    end
+                endcase
+            end
+        end
+        always @(posedge clk or negedge rst_n) begin
+            if (!rst_n) begin
                 state <= IDLE;
                 lookup_return <= 0;
                 fp_return <= 0;
@@ -993,6 +1091,7 @@ module anvil_en1_asym_attn_ple #(
                 rotary_second <= 0;
                 fp_op <= 0;
                 error_hold <= 0;
+                output_row <= 0;
             end else begin
                 case (state)
                     IDLE: if (start_valid && start_ready) begin
@@ -1005,6 +1104,7 @@ module anvil_en1_asym_attn_ple #(
                         load_branch <= 0;
                         index <= 0;
                         head <= 0;
+                        output_row <= 0;
                         gated_ple <= 0;
                         error_hold <= 0;
                         output_hold <= 0;
@@ -1082,7 +1182,11 @@ module anvil_en1_asym_attn_ple #(
                                 norm_bank <= B_QUERY;
                                 norm_destination <= B_QUERY;
                             end
-                            N_POST_ATTENTION: lookup_kind <= 16'h0107;
+                            N_POST_ATTENTION: begin
+                                lookup_kind <= 16'h0107;
+                                if (!POST_ONLY)
+                                    norm_bank <= B_ATTENTION;
+                            end
                             N_PRE_FF: begin
                                 lookup_kind <= 16'h0108;
                                 norm_bank <= B_RESIDUAL;
@@ -1131,7 +1235,7 @@ module anvil_en1_asym_attn_ple #(
                         end else begin
                             index <= 0;
                             case (norm_phase)
-                                N_INPUT: state <= QUERY_LOOKUP;
+                                N_INPUT: state <= OUTPUT_PROJECTION_LOOKUP;
                                 N_QUERY: begin
                                     pair_index <= 0;
                                     state <= ROTARY_FIRST_READ;
@@ -1229,11 +1333,11 @@ module anvil_en1_asym_attn_ple #(
                     ATTENTION_START: if (attention_ready)
                         state <= ATTENTION_WAIT;
                     ATTENTION_WAIT: if (attention_valid) begin
-                        if (attention_error != 0) begin
-                            error_hold <= attention_error;
+                        if (attention_error != 0 || output_error != 0) begin
+                            error_hold <= output_error != 0 ? output_error : attention_error;
                             state <= PUBLISH;
                         end else if (head + 1'b1 == Q)
-                            state <= OUTPUT_PROJECTION_LOOKUP;
+                            state <= OUTPUT_ROW_NARROW;
                         else begin
                             head <= head + 1'b1;
                             state <= QUERY_LOOKUP;
@@ -1246,11 +1350,29 @@ module anvil_en1_asym_attn_ple #(
                         state <= LOOKUP_START;
                     end
                     OUTPUT_PROJECTION_DESCRIPTOR: begin
-                        projection_query <= 0;
-                        projection_row <= 0;
-                        index <= 0;
-                        memory_owner <= M_PROJECTION;
-                        state <= PROJECTION_START;
+                        gate_base_hold <= descriptor_base;
+                        gate_bytes_hold <= descriptor_bytes;
+                        gate_rows_hold <= descriptor_rows;
+                        gate_columns_hold <= descriptor_columns;
+                        gate_stride_hold <= descriptor_stride;
+                        state <= QUERY_LOOKUP;
+                    end
+                    OUTPUT_ROW_NARROW: begin
+                        fp_op <= 3;
+                        fp_a <= output_accumulator;
+                        fp_b <= 0;
+                        fp_return <= OUTPUT_ROW_WRITE;
+                        state <= FP_START;
+                    end
+                    OUTPUT_ROW_WRITE: begin
+                        head <= 0;
+                        if (output_row + 1'b1 == hidden_hold) begin
+                            norm_phase <= N_POST_ATTENTION;
+                            state <= NORM_SETUP;
+                        end else begin
+                            output_row <= output_row + 1'b1;
+                            state <= QUERY_LOOKUP;
+                        end
                     end
                     RESIDUAL_READ: state <= RESIDUAL_CAPTURE;
                     RESIDUAL_CAPTURE: begin

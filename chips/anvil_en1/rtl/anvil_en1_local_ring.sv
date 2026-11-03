@@ -61,6 +61,7 @@ module anvil_en1_local_ring #(
     end else begin : ring
         localparam integer WINDOW = COMPACT ? 4 : 512;
         localparam integer SLOT_BITS = $clog2(WINDOW);
+        localparam integer TAG_BITS = 17 - SLOT_BITS;
         localparam integer LANES = COMPACT ? 2 : 4;
         localparam integer PAIRS = COMPACT ? 2 : 128;
         localparam integer WORD_COUNT = WINDOW * LANES * PAIRS;
@@ -85,11 +86,12 @@ module anvil_en1_local_ring #(
         reg [3:0] error_hold;
         reg [WINDOW*LANES-1:0] occupied;
         reg [LANES-1:0] lane_valid_hold;
-        reg [31:0] tag_q, payload_q, read_hold;
+        reg [TAG_BITS-1:0] tag_q;
+        reg [31:0] payload_q, read_hold;
         (* ramstyle = "M20K", nomem2reg *)
         reg [31:0] payload [0:WORD_COUNT-1];
         (* ramstyle = "MLAB", nomem2reg *)
-        reg [31:0] token_tags [0:WINDOW-1];
+        reg [TAG_BITS-1:0] token_tags [0:WINDOW-1];
         localparam integer CONTROLLER_BITS = $bits(state) +
             $bits(control_invalidate_hold) + $bits(active) + $bits(is_write) +
             $bits(selector_hold) + $bits(hit_hold) + $bits(control_model_hold) +
@@ -129,7 +131,8 @@ module anvil_en1_local_ring #(
         wire [31:0] write_address = write_base + {24'd0, pair_index};
         wire payload_write = rst_n && state == WRITING &&
             write_valid && write_ready && beat_flags_valid;
-        wire slot_retag = !(|lane_valid_hold) || tag_q != token_hold;
+        wire slot_retag = !(|lane_valid_hold) ||
+            tag_q != token_hold[16:SLOT_BITS];
 
         assign control_ready = rst_n && state == IDLE;
         assign control_rsp_valid = rst_n && state == CONTROL_RESPONSE;
@@ -137,7 +140,8 @@ module anvil_en1_local_ring #(
         assign live_bytes = rst_n ? {32'd0, allocation_hold} : 64'd0;
         assign physical_payload_bytes = rst_n ? 64'(WORD_COUNT * 4) : 64'd0;
         assign token_metadata_bytes = rst_n ?
-            64'(WINDOW * 4 + ((WINDOW * LANES + 7) >> 3)) : 64'd0;
+            64'((WINDOW * TAG_BITS + 7) >> 3) +
+                64'((WINDOW * LANES + 7) >> 3) : 64'd0;
         assign write_start_ready = rst_n && state == IDLE && !control_valid;
         assign write_ready = rst_n && state == WRITING;
         assign write_done_valid = rst_n && state == WRITE_RESPONSE;
@@ -156,7 +160,7 @@ module anvil_en1_local_ring #(
             if (tag_read_enable)
                 tag_q <= token_tags[slot];
             if (rst_n && state == WRITE_CLEAR && slot_retag)
-                token_tags[slot] <= token_hold;
+                token_tags[slot] <= token_hold[16:SLOT_BITS];
         end
 
         always @(posedge clk or negedge rst_n) begin
@@ -292,7 +296,8 @@ module anvil_en1_local_ring #(
                         end else if (is_write) begin
                             write_base <= selected_base;
                             state <= WRITE_CLEAR;
-                        end else if (!lane_valid_hold[lane] || tag_q != token_hold)
+                        end else if (!lane_valid_hold[lane] ||
+                            tag_q != token_hold[16:SLOT_BITS])
                             state <= READ_RESPONSE;
                         else begin
                             word_address <= selected_base | {23'd0, component_hold[9:1]};

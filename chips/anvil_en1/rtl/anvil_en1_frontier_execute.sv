@@ -328,7 +328,7 @@ module anvil_en1_frontier_execute #(
         (selected_global ? 64'd1024 : 64'd512);
     wire [63:0] shadow_head_bytes = selected_global ? 64'd1024 : 64'd512;
     wire [63:0] layer_attention_bytes = (hidden_bytes << 1) +
-        64'(2*P) + head_bytes + (head_bytes << (COMPACT ? 1 : 3));
+        hidden_bytes + 64'(2*P) + head_bytes;
     wire [63:0] layer_feedforward_bytes = (hidden_bytes << 1) +
         hidden_bytes + 64'(2*P);
     wire [63:0] layer_phase_bytes = layer_attention_bytes > layer_feedforward_bytes ?
@@ -337,7 +337,7 @@ module anvil_en1_frontier_execute #(
         (EXTERNAL_HIDDEN_RAM ? hidden_bytes : 64'd0) -
         (SHARED_PLE ? 64'(2*P) : 64'd0);
     wire [63:0] layer_attention_shadow = (shadow_hidden_bytes << 1) +
-        64'd512 + shadow_head_bytes + (shadow_head_bytes << 3);
+        shadow_hidden_bytes + 64'd512 + shadow_head_bytes;
     wire [63:0] layer_feedforward_shadow = (shadow_hidden_bytes << 1) +
         shadow_hidden_bytes + 64'd512;
     wire [63:0] layer_phase_shadow = layer_attention_shadow > layer_feedforward_shadow ?

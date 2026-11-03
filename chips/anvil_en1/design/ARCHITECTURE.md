@@ -5,7 +5,57 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: connected census and retained PLE backing
+## Current saved increment: exact metadata keys and scoped declaration audit
+
+Frontier layer tags now hold five bits, sufficient for every admitted owner
+input layer. The full public eight-bit layer is still validated before a
+write and compared against the zero-extended tag on reads. The local ring
+stores only the legal token's quotient above its slot bits: eight bits for
+the production 512-token ring, fifteen for compact window 4. Model,
+generation, owner, token-range, per-lane visibility and retag checks remain
+connected. No KV payload or precision changes.
+
+The bounded workspace stores 25-bit domain/layer/token frame and memo keys.
+The complete 73-bit request/response descriptors remain. All stored entries
+have already passed full-width session, token, layer and exact-length
+validation, so their model/generation/length are reconstructed from the
+registered session and domain geometry. Narrow synchronous key-read
+registers preserve the existing read/response schedule. Successful rebind
+or invalidate clears visibility before accepting another request; stale
+payload/key contents are never initialized into readable entries.
+
+Pair-progress storage now holds eleven-bit pair indices; the expected
+twelve-bit even component is reconstructed without arithmetic.
+All six-vector frame slices, individual vector slices and error/reset/
+completion paths use the new strides. Full component validation remains.
+
+A read-only scalar-declaration audit of these three modules found no scalar
+declaration omitted from their controller/metadata expressions and no
+duplicated controller term. Production controller counts are 577/419/2103
+bits and metadata counts are 6144/6144/9536 bits for frontier/ring/workspace.
+SPEC records their rounded bytes and separately charged RAM arrays.
+Both production-shadow metadata consumers in native admission and top
+observation now use 768/768 frontier/ring bytes, while actual compact
+counts remain 384/8. This does not substitute compact storage for production
+shadow allocation.
+
+The connected fixed-text count decreases by 2463 bytes, including 2448
+metadata bytes and fifteen rounded controller bytes. At C=3, field 24 is
+4893, field 22 is 43753 with unchanged native subset 36485, and total
+metadata is 2755. Fixed non-native text terms are 18758. The conservative
+global coexistence envelope decreases from 41189 to 38726 bytes, still
+5958 above the E2B ceiling. This retires the three scoped metadata declaration
+audits, not whole-system fit, native scratch/deep-frame feasibility or
+fallback eviction/regeneration closure. Further genuine backing/scheduling
+reductions remain necessary; error-7 denial is not accepted legal execution.
+
+Tools used were view, rg, glob, apply_patch and read-only Bash/Python source
+inspection. No static elaboration, simulation, synthesis, preparation probe
+or receipt was produced. The reserved static elaboration remains pending
+complete design closure and independent Verifier handoff is not yet ready.
+Tests, immutable parent sources and runtime-owned records remain untouched.
+
+## Prior saved increment: connected census and retained PLE backing
 
 The connected native full-text path now uses the executor's retained PLE
 backing instead of copying it into the replay/embedding text-phase PLE bank.

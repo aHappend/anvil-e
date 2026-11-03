@@ -5,7 +5,80 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Retained PLE backing and connected controller census
+### Exact metadata keys and storage declaration audit
+
+The frontier, local ring and bounded replay workspace now store only independent
+tag information. This is lossless key factoring, not cache-value compression:
+all BF16 payloads, generation checks, numerical operations and public descriptor
+widths remain unchanged. No legal input is truncated before its existing
+full-width validation.
+
+| Storage | Stored key and reconstruction | Visibility / boundary |
+| --- | --- | --- |
+| Frontier | Five-bit layer tag per token, plus the existing occupied bit | The write check requires layer `< owners`, at most 23; reads compare the complete eight-bit request to the zero-extended stored tag, and advancement uses a nine-bit sum |
+| Local ring | Token bits `[16:SLOT_BITS]`; the addressed slot already supplies the low `SLOT_BITS` bits | Production window 512 stores eight tag bits per slot; compact window 4 stores fifteen. Full token `<=131071`, model, owner and generation checks remain before tag use |
+| Replay frame and memo | Twenty-five-bit `{domain[1:0],layer[5:0],token[16:0]}` | Validated layers are at most 42. Every stored descriptor has the session's model/generation and the fixed domain/model vector length; those fields are reconstructed from the registered session |
+| Replay pair progress | Eleven-bit next pair index rather than a twelve-bit even component | The public component is still twelve bits and checked even/in-range before mutation. Reconstruct the expected component as `{pair_index,1'b0}` |
+
+Replay continues to capture the complete 73-bit public request and response
+tags. Its existing full-width session, length, layer and token checks precede
+every tag write. Pop returns the expanded frame tag. The frame/memo RAM read
+registers now hold the narrow key; expansion is combinational after the same
+synchronous read edge, so neither the RAM read nor public response gains or
+loses a cycle. Domain length reconstruction is shared with descriptor
+validation. Successful bind/invalidate clears frame, vector, scalar and memo
+visibility before another request, and reset invalidates that same state;
+neither operation initializes payload or tag RAM. Therefore old-session keys
+cannot become hits merely because their reconstruction uses the new session.
+Invalid bind attempts retain the old session and its generation checks.
+
+The ring still clears all lane visibility on a token retag and commits only
+the successfully completed lane. A token separated by one window has the same
+slot but a different stored quotient. Invalid high token bits are rejected,
+not aliased. The frontier still commits a tag only after the complete hidden
+vector. Replay pair-progress slice strides are eleven bits per vector and
+66 bits per six-vector frame, including push/pop, copy, restart, completion
+and backing-error cleanup.
+
+Read-only declaration inspection of these three changed modules gives the
+following production counts. Every scalar `reg` declaration in each module
+is present exactly once in its controller expression or metadata expression;
+the listed payload/tag arrays are charged separately. This scoped audit is
+not yet a declaration audit of every connected module.
+
+| Module | Controller bits / rounded bytes | Metadata bits / rounded bytes | Separate array bits |
+| --- | --- | --- | --- |
+| Frontier | 577 / 73 | 6144 / 768 | Payload 32571392; layer tags 5120, already within metadata |
+| Local ring | 419 / 53 | 6144 / 768 | Payload 8388608; token tags 4096, already within metadata |
+| Replay workspace | 2103 / 263 | 9536 / 1192 | Frame keys 1600 and memo keys 400, already within metadata; backing payload remains charged by its existing allocator |
+
+Compact frontier metadata is 384 bytes and compact ring metadata is 8 bytes.
+Both native prospective admission and top-level observation retain production
+shadow metadata of 768/768 bytes for frontier/ring, instead of reusing the
+smaller compact declarations. Replay metadata has the same declaration size
+in both geometries. Physical byte reports change only for the tag/register
+storage actually narrowed; no payload RAM removal is claimed.
+
+Relative to the preceding connected census, metadata decreases by
+384+1536+528=2448 bytes. The ring controller decreases by three rounded bytes
+and the workspace controller by twelve; the frontier controller remains
+73 rounded bytes. Consequently executor field 24 is 4893 bytes, complete
+replay is 42370, binding subtree field 22 is 43753, and its native subset
+remains 36485. Other preceding terms are unchanged. Metadata at C=3 totals
+2755 bytes, fixed non-native text terms total 18758, and the same conservative
+global coexistence envelope is now 38726 rather than 41189 bytes.
+It still exceeds E2B's mandatory 32768-byte ceiling by 5958 bytes.
+These are source-derived counts, not a successful allocation or hardware
+result. Further connected overlays/scheduling reductions, whole-hierarchy
+declaration coverage and native/fallback legal-case partition feasibility
+including eviction/regeneration remain unfinished. No required workload may
+be denied to make a budget appear satisfied.
+
+No RTL elaboration, simulation, synthesis or preparation probe was run for
+this increment. The one reserved static elaboration remains pending design
+closure, followed immediately by independent verification.
+
+### Prior retained PLE backing and connected controller census
 
 `anvil_en1_frontier_execute.SHARED_PLE` and
 `anvil_en1_asym_attn_ple.SHARED_PLE` are default-off, legal 0/1 parameters.
@@ -496,7 +569,7 @@ compact text builds. Modality projection stores its fixed-width encoder input,
 not a hidden-sized output bank, so these staging reservations do not scale
 with text hidden width. All arithmetic/controller registers retain their
 declared widths; compact traversal bounds do not remove them from the shadow.
-The frontier/ring metadata shadow reserves 1152/2304 bytes respectively,
+The frontier/ring metadata shadow reserves 768/768 bytes respectively,
 matching their production declarations. Workspace and resident metadata use
 the same declaration widths in either geometry.
 

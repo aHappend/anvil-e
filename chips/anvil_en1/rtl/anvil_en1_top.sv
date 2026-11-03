@@ -216,7 +216,7 @@ module anvil_en1_top #(
     wire [1599:0] production_shadow_bytes;
     wire [255:0] metadata_bytes;
     wire [255:0] production_shadow_metadata_bytes = !rst_n ? 256'd0 :
-        {metadata_bytes[255:128], 64'd2304, 64'd1152};
+        {metadata_bytes[255:128], 64'd768, 64'd768};
     wire [63:0] shadow_bytes, reserved_bytes;
     wire [63:0] native_workspace_bytes, native_workspace_shadow_bytes;
     wire [63:0] native_reconstruction_controller_bytes;
