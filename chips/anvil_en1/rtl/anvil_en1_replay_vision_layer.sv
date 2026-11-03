@@ -381,7 +381,9 @@ module anvil_en1_replay_vision_layer #(
          (post_branch_access && !post_selected) ||
          (post_branch_write && post_branch_waddr >= 768) ||
          (post_branch_read && post_branch_raddr >= 768) ||
-         (projected_allocated && |post_live));
+         (projected_allocated && (|tile_live || |post_live)) ||
+         (|tile_live && |post_live) ||
+         tile_live > 64'd1664 || post_live > 64'd4608);
     wire shared_branch_write = state == PROJECTION_STORE || post_branch_write;
     wire shared_branch_read = state == COPY_READ || post_branch_read;
     wire [31:0] shared_branch_waddr = state == PROJECTION_STORE ?

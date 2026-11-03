@@ -308,7 +308,7 @@ module anvil_en1_replay_workspace #(
             component_hold == 0 && !bank_hold &&
             request_data == {private_shadow_bytes, private_actual_bytes};
         wire [15:0] native_private_bytes = domain_hold == 1 ?
-            (layer_hold == 0 ? 16'd0 : 16'd7808) :
+            (layer_hold == 0 ? 16'd0 : 16'd4608) :
             (domain_hold == 2 ? (layer_hold == 0 ? 16'd512 : 16'd16384) :
                 (layer_hold == 1 ? 16'd6432 : 16'd6144));
         wire native_private_descriptor_valid =
@@ -325,13 +325,16 @@ module anvil_en1_replay_workspace #(
         wire [31:0] frame_base =
             ({26'd0, slot_hold} << 11) + ({26'd0, slot_hold} << 10);
         wire vector_operation = op_hold == 3 || op_hold == 4 ||
-            (op_hold == 6 && target_hold >= 2);
+            (op_hold == 6 && target_hold >= 2) ||
+            (op_hold == 7 && target_hold == 2);
         wire [1:0] vector_slice = domain_hold == 2 && vector_operation ?
             scalar_index_hold[1:0] : 2'd0;
         wire slice_valid = scalar_index_hold == 0 ||
             (domain_hold == 2 && scalar_index_hold < 3 &&
                 ((op_hold == 4 && target_hold == 0) ||
-                 (op_hold == 6 && target_hold == 2)));
+                 (op_hold == 6 && target_hold == 2) ||
+                 (op_hold == 7 && target_hold == 2)));
+        wire release_descriptor_valid = component_hold == 0 && request_data == 0;
         wire [31:0] vector_base = frame_base +
             (bank_hold ? 32'(BANK_WORDS) : 32'd0) +
             ({30'd0, vector_slice} << 9);
@@ -757,7 +760,11 @@ module anvil_en1_replay_workspace #(
                             state <= PUBLISH;
                         end else if ((op_hold == 6 &&
                             target_hold != 0 && target_hold != 2 && target_hold != 3) ||
-                            (op_hold == 7 && target_hold > 1)) begin
+                            (op_hold == 7 && target_hold > 2)) begin
+                            error_hold <= 5;
+                            state <= PUBLISH;
+                        end else if (op_hold == 7 && target_hold == 2 &&
+                            !release_descriptor_valid) begin
                             error_hold <= 5;
                             state <= PUBLISH;
                         end else if (private_request && !private_descriptor_valid) begin
@@ -843,6 +850,31 @@ module anvil_en1_replay_workspace #(
                                 state <= READ_SETUP;
                         end else if (op_hold == 6 && target_hold >= 2)
                             state <= PAIR_SETUP;
+                        else if (op_hold == 7 && target_hold == 2) begin
+                            if (!vector_reserved_q || !vector_present_q || pair_active_q ||
+                                frame_payload_bytes < request_vector_bytes ||
+                                shadow_frame_payload_bytes < request_shadow_vector_bytes ||
+                                (native_request &&
+                                    (native_frame_payload_bytes < request_vector_bytes ||
+                                     native_shadow_frame_bytes < request_shadow_vector_bytes))) begin
+                                error_hold <= 7;
+                            end else begin
+                                vector_reserved[vector_bit_index] <= 0;
+                                vector_occupied[vector_bit_index] <= 0;
+                                pair_progress_valid[vector_bit_index] <= 0;
+                                pair_next_index[11*vector_bit_index+:11] <= 0;
+                                frame_payload_bytes <= frame_payload_bytes - request_vector_bytes;
+                                shadow_frame_payload_bytes <= shadow_frame_payload_bytes -
+                                    request_shadow_vector_bytes;
+                                if (native_request) begin
+                                    native_frame_payload_bytes <= native_frame_payload_bytes -
+                                        request_vector_bytes;
+                                    native_shadow_frame_bytes <= native_shadow_frame_bytes -
+                                        request_shadow_vector_bytes;
+                                end
+                            end
+                            state <= PUBLISH;
+                        end
                         else if (private_request) begin
                             grant_kind <= 3;
                             grant_pin_valid <= memo_pin_valid;

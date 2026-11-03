@@ -5,6 +5,53 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
+## Current saved increment: directory state reduction and dead-vector retirement
+
+The tensor-image reader retains only the header's image length, directory count
+and offset, the current entry's eleven meaningful words, and the prior entry's
+identity/offset/length. Two sticky flags validate every discarded constant or
+reserved header/current-entry word at its original final validation boundary.
+All external reads, full-directory/overlap checks and memory-error priority
+remain. Its complete local census falls from 269 to 201 bytes. A literal
+hierarchy traversal finds 56 connected directory readers, saving 3808 controller
+bytes: 3264 native-reconstruction bytes and 544 non-native text bytes.
+SPEC records the nonoverlapping per-instance subtrees. The corresponding
+conservative E2B C=64 ordinary-text bound is now <=32200 bytes, not a measured fit.
+
+Vision private preflight now reserves 4608 bytes instead of the serialized
+7808-byte sum. The existing sticky RAM-fault monitor observes real child
+allocations, rejects tile/O/post overlap and enforces the phase bounds.
+Workspace validation and dispatcher admission agree. Physical storage,
+suspended frame state and controller accounting are not removed.
+
+The workspace now supports registered release of one complete dead frame
+vector. It validates the full frame tag and visibility, checks actual/native/
+shadow underflow, then clears visibility and subtracts the matching reservation
+atomically. Reuse requires a fresh prospective grant; no RAM initialization or
+external spill supplies a value. The scheduler permits release only for its
+current frame. Packed audio history uses this operation to retire attention
+after a residual consumes it, and to retire a copied residual before starting
+the next historical token. Failed/yielded children retain their live vectors.
+Two added history-controller bits do not change its 114-byte rounded census.
+
+This retires the directory representation audit, vision private-phase envelope,
+and explicit audio dead-vector release milestones. It does **not** close native
+deep-frame feasibility: a suspended audio frame can still need six slices.
+Minimum-context E2B scratch has 36411 bytes left after native controllers and
+the audio envelope, before all other native state; vision leaves 48187 bytes.
+Whole-hierarchy accounting, legal suspension/memo capacity, fallback partition
+fit and mode-transition liveness remain unfinished. Continue with those exact
+bounds and genuine scheduling/backing reductions, not an error return for legal
+work. Then use the reserved static elaboration and hand off to independent
+Verifier.
+
+Saved six RTL files (`tensor_image`, `replay_vision_layer`, `replay_execute`,
+`replay_workspace`, `eval_schedule`, `replay_audio_history`) and the two design
+documents. Actual tools: view, rg, glob, apply_patch and read-only Bash/Python
+source inspection. No elaboration, functional/synthesis probe or preparation
+receipt exists for this increment. Original failures, tests, immutable parent
+sources and runtime-owned records remain untouched.
+
 ## Current saved increment: guarded audio phase maximum and scalar reuse
 
 Native audio private admission now reserves 16384 bytes rather than the

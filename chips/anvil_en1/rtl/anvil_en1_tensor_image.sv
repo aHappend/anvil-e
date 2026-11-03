@@ -58,10 +58,11 @@ module anvil_en1_tensor_image #(
         reg [31:0] items_hold;
         reg [15:0] kind_hold, layer_hold;
         reg [63:0] base_hold, directory_base, address_hold;
-        reg [511:0] header, entry;
-        reg [191:0] prior_entry;
+        reg [159:0] header;
+        reg [351:0] entry;
+        reg [159:0] prior_entry;
         reg [31:0] word_hold;
-        reg memory_error_hold, found;
+        reg memory_error_hold, found, header_word_error, entry_word_error;
         reg [3:0] word_index, error_hold;
         reg [31:0] entry_index, prior_index;
         reg [31:0] ep00, ep01, ep10, ep11;
@@ -75,7 +76,8 @@ module anvil_en1_tensor_image #(
             $bits(layer_hold) + $bits(base_hold) + $bits(directory_base) +
             $bits(address_hold) + $bits(header) + $bits(entry) +
             $bits(prior_entry) + $bits(word_hold) + $bits(memory_error_hold) +
-            $bits(found) + $bits(word_index) + $bits(error_hold) +
+            $bits(found) + $bits(header_word_error) + $bits(entry_word_error) +
+            $bits(word_index) + $bits(error_hold) +
             $bits(entry_index) + $bits(prior_index) + $bits(ep00) + $bits(ep01) +
             $bits(ep10) + $bits(ep11) + $bits(extent_partial_a) +
             $bits(extent_partial_b) + $bits(required_bytes) + $bits(output_base) +
@@ -102,9 +104,9 @@ module anvil_en1_tensor_image #(
             .rows(shape_rows), .columns(shape_columns), .entry_count()
         );
 
-        wire [63:0] image_bytes = header[191:128];
-        wire [63:0] directory_offset = header[319:256];
-        wire [31:0] directory_count = header[223:192];
+        wire [63:0] image_bytes = header[63:0];
+        wire [63:0] directory_offset = header[159:96];
+        wire [31:0] directory_count = header[95:64];
         wire [64:0] base_header_end = {1'b0, base_hold} + 65'd64;
         wire [64:0] image_end = {1'b0, base_hold} + {1'b0, image_bytes};
         wire [64:0] directory_end =
@@ -120,31 +122,35 @@ module anvil_en1_tensor_image #(
         wire [64:0] prior_address =
             {1'b0, directory_base} + {27'd0, prior_index, 6'd0};
         wire [64:0] prior_end =
-            {1'b0, prior_entry[127:64]} + {1'b0, prior_entry[191:128]};
+            {1'b0, prior_entry[95:32]} + {1'b0, prior_entry[159:96]};
         wire [63:0] columns_wide = {32'd0, shape_columns};
         wire [63:0] q4_blocks_exact = (columns_wide + 31) >> 5;
         wire [63:0] q4_bytes = (q4_blocks_exact << 4) + (q4_blocks_exact << 1);
         wire [63:0] required_stride = shape_type == 1 ?
             (q4_bytes + 3) & 64'hfffffffffffffffc :
             (shape_type == 0 ? ((columns_wide + 1) >> 1) << 2 : columns_wide << 2);
-        wire header_bad = header[31:0] !=
-            (class_hold == 3 ? 32'h31494e41 : 32'h31564e41) ||
-            header[63:32] != 32'h00010000 ||
-            header[95:64] != {30'd0, model_hold} ||
-            header[127:96] != (class_hold == 3 ? 32'd0 : {30'd0, precision_hold}) ||
-            image_bytes < 64 || image_end[64] ||
+        wire header_word_bad =
+            (word_index == 0 && word_hold !=
+                (class_hold == 3 ? 32'h31494e41 : 32'h31564e41)) ||
+            (word_index == 1 && word_hold != 32'h00010000) ||
+            (word_index == 2 && word_hold != {30'd0, model_hold}) ||
+            (word_index == 3 && word_hold !=
+                (class_hold == 3 ? 32'd0 : {30'd0, precision_hold})) ||
+            (word_index == 7 && word_hold != 32'd64) ||
+            (word_index >= 10 && word_hold != 0);
+        wire header_bad = header_word_error || image_bytes < 64 || image_end[64] ||
             directory_count != expected_count ||
-            header[255:224] != 64 || directory_offset < 64 ||
+            directory_offset < 64 ||
             directory_offset[1:0] != 0 || directory_end[64] ||
             directory_end[63:0] > image_bytes ||
-            directory_sum[64] || header[511:320] != 0;
+            directory_sum[64];
         wire entry_bad = !shape_valid || entry[39:32] != shape_type ||
             entry[47:40] != shape_rank || entry[63:48] != 0 ||
             entry[223:192] != shape_d0 || entry[255:224] != shape_d1 ||
             entry[287:256] != shape_d2 || entry[319:288] != shape_d3 ||
             required_stride[63:32] != 0 || required_stride == 0 ||
             entry[351:320] != required_stride[31:0] ||
-            entry[511:352] != 0 || entry_offset < 64 || entry_offset[1:0] != 0 ||
+            entry_word_error || entry_offset < 64 || entry_offset[1:0] != 0 ||
             entry_bytes != required_bytes || entry_end[64] ||
             entry_end[63:0] > image_bytes || payload_sum[64] ||
             (entry_offset < directory_end[63:0] &&
@@ -152,7 +158,7 @@ module anvil_en1_tensor_image #(
         wire prior_bad = entry[31:0] == prior_entry[31:0] ||
             prior_end[64] ||
             (entry_offset < prior_end[63:0] &&
-                prior_entry[127:64] < entry_end[63:0]);
+                prior_entry[95:32] < entry_end[63:0]);
 
         assign start_ready = rst_n && state == IDLE;
         assign cmd_valid = rst_n && state == MEMORY_START;
@@ -189,6 +195,8 @@ module anvil_en1_tensor_image #(
                 word_hold <= 0;
                 memory_error_hold <= 0;
                 found <= 0;
+                header_word_error <= 0;
+                entry_word_error <= 0;
                 word_index <= 0;
                 error_hold <= 0;
                 entry_index <= 0;
@@ -218,6 +226,8 @@ module anvil_en1_tensor_image #(
                         layer_hold <= tensor_layer;
                         base_hold <= image_base;
                         found <= 0;
+                        header_word_error <= 0;
+                        entry_word_error <= 0;
                         word_index <= 0;
                         error_hold <= 0;
                         entry_index <= 0;
@@ -258,7 +268,15 @@ module anvil_en1_tensor_image #(
                             state <= return_state;
                     end
                     HEADER_ADVANCE: begin
-                        header[32*word_index+:32] <= word_hold;
+                        header_word_error <= header_word_error || header_word_bad;
+                        case (word_index)
+                            4: header[31:0] <= word_hold;
+                            5: header[63:32] <= word_hold;
+                            6: header[95:64] <= word_hold;
+                            8: header[127:96] <= word_hold;
+                            9: header[159:128] <= word_hold;
+                            default: begin end
+                        endcase
                         if (word_index == 15)
                             state <= HEADER_VALIDATE;
                         else begin
@@ -283,12 +301,16 @@ module anvil_en1_tensor_image #(
                         end else begin
                             address_hold <= entry_address[63:0];
                             word_index <= 0;
+                            entry_word_error <= 0;
                             return_state <= ENTRY_ADVANCE;
                             state <= MEMORY_START;
                         end
                     end
                     ENTRY_ADVANCE: begin
-                        entry[32*word_index+:32] <= word_hold;
+                        if (word_index < 11)
+                            entry[32*word_index+:32] <= word_hold;
+                        else if (word_hold != 0)
+                            entry_word_error <= 1;
                         if (word_index == 15)
                             state <= ENTRY_PRODUCTS;
                         else begin
@@ -337,7 +359,14 @@ module anvil_en1_tensor_image #(
                         end
                     end
                     PAIR_ADVANCE: begin
-                        prior_entry[32*word_index+:32] <= word_hold;
+                        case (word_index)
+                            0: prior_entry[31:0] <= word_hold;
+                            2: prior_entry[63:32] <= word_hold;
+                            3: prior_entry[95:64] <= word_hold;
+                            4: prior_entry[127:96] <= word_hold;
+                            5: prior_entry[159:128] <= word_hold;
+                            default: begin end
+                        endcase
                         if (word_index == 5)
                             state <= PAIR_VALIDATE;
                         else begin

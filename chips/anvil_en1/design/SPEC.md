@@ -5,6 +5,118 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+### Current increment: compact directory validation and explicit dead-vector release
+
+The tensor-image ABI and external reader schedule are unchanged. Each directory
+reader still accepts all sixteen header words, all sixteen current-entry words,
+and six words per prior-entry comparison. Memory-error retirement, full-directory
+validation, duplicate/overlap detection and response holding remain unchanged.
+Only the retained representation of those words changes:
+
+| Reader state | Retained bits | Validation of discarded words |
+| --- | --- | --- |
+| Header | Image bytes 64, directory count 32, directory offset 64 | Sticky `header_word_error` checks magic, version, model, precision, 64-byte entry size and all six reserved words as each registered word retires |
+| Current entry | First eleven words, 352 bits | Sticky `entry_word_error` checks all five reserved words |
+| Prior entry | Identity 32, offset 64, length 64 | The reread format word was not used by the prior-pair comparison; the original full entry validation remains mandatory |
+
+Both sticky flags reset for a new job; the entry flag additionally resets at
+each `ENTRY_START`. They are checked at the original final validation states,
+not as early exits. Thus a later accepted failing memory response retains its
+original error priority. All retained fields are overwritten by the complete
+corresponding read before validation; reset contents cannot certify an entry.
+No payload, tensor directory or numerical result is supplied by initialization.
+
+The directory's complete local census decreases from 2147 to 1605 bits,
+269 to 201 rounded bytes: 542 removed bits and 68 removed bytes per instance.
+A read-only literal-instance traversal found 56 directory readers below the
+native top. This subtree contains no generated directory replication.
+
+| Nonoverlapping instance subtree | Directory readers | Connected controller reduction, bytes |
+| --- | --- | --- |
+| Ordinary frontier executor | 3 | 204 |
+| Owner replay, inside binding | 1 | 68 |
+| Replay original input | 1 | 68 |
+| Replay text worker | 4 | 272 |
+| Replay vision worker | 8 | 544 |
+| Replay original audio input | 7 | 476 |
+| Replay audio layer | 25 | 1700 |
+| Replay audio feature | 3 | 204 |
+| Replay image feature | 4 | 272 |
+| Total | 56 | 3808 |
+
+The replay dispatcher contains 52 of these instances; binding contains 53.
+The native-reconstruction subset contains 48 and therefore decreases by
+3264 bytes, from the preceding 36485-byte census to 33221 bytes.
+The remaining eight instances decrease the non-native text partition by
+544 bytes. Applied to the preceding conservative E2B ordinary-global bounds,
+this gives <=31673/31690/32200 bytes for C=1/3/64, respectively.
+These are connected source-derived deltas, not observed legal-case fits.
+The local directory declaration audit found no omitted or duplicate scalar
+census term. A separate literal connection scan found 266 child declarations
+across the 94 module types. Its 32 unconnected controller-detail outputs all
+belong to `replay_binding.replay`: the binding consumes that child's complete
+`reported_controller_bytes` and native subset instead. Detail outputs and
+the selected-worker alias must not be added again to that aggregate.
+This scoped reconciliation does not close every other module's accounting.
+
+Vision private admission now uses a guarded 4608-byte maximum, replacing
+the 7808-byte sum of its serialized 1664-byte QKV tile, 1536-byte O output
+and 4608-byte post-attention phases. `replay_vision_layer` observes their
+actual sum, rejects pairwise coexistence and checks the tile/post bounds
+through its existing sticky branch-RAM fault. Tile results retire before
+head completion; only then can O storage become allocated. `POST_START`
+releases O storage on accepted post start, before post's validation allocates
+its banks. The dispatcher and workspace agree on the new descriptor value.
+Physical RAM, suspended frame vectors, memo and controllers remain separately
+charged.
+
+#### Frame-vector release operation
+
+The internal workspace/scheduler interface adds `op=7,target=2` to release one
+complete, dead frame-vector slice. Model, generation, domain, layer, token,
+length and slot must match the current live frame. `bank` selects the frame
+bank; scalar index selects slice 0, or audio slice 0..2. Component and data
+must both be zero. Other targets retain their previous meanings.
+
+| Release boundary | Behavior |
+| --- | --- |
+| Descriptor check | Reject malformed fields with error 5 before any backing access |
+| Registered tag/visibility check | Require a reserved, completely committed slice with no partial pair; reject stale, missing or underflowing state with error 7 |
+| Commit | Atomically clear reservation, visibility and pair progress and subtract the actual/shadow vector bytes from frame totals and the matching native subset |
+| Response | Use the existing registered publication/held-response path; no backing read/write or external transaction |
+| Later reuse | A new write must obtain the existing prospective vector grant before its first backing write; stale RAM contents remain unreadable |
+| Pop/invalidation | Count only the remaining reservations; never subtract a released slice twice |
+
+`replay_audio_history` now releases packed bank-0 slice 1 after successful
+residual completion: its complete attention vector is dead once that residual
+has consumed it. For each nonfinal historical token, it copies the residual
+to its retained history slice and waits for the final successful copy response
+before releasing bank-0 slice 0. Only an accepted successful release response
+permits the next residual job. The final residual stays in slice 0 for the
+light-convolution consumer. Yield and error paths do not release live or
+partially filled vectors. The history controller adds two declared bits
+(state width and release selector) but remains 114 rounded bytes.
+
+This removes dead vector reservations at actual lifetime boundaries; it does
+not reduce the worst-case six-slice suspended audio frame ceiling. Original
+predecessors, partial attention and accumulated histories may still coexist
+on a dependency yield. With the new native controller census, minimum-context
+E2B scratch leaves 36411 bytes after the audio private envelope, or 48187 after
+the vision private envelope, before retained features, native frame vectors,
+scalar continuations and memo. No legal deep-frame fit is inferred from those
+remainders. The unresolved milestone is a finite legal suspension/liveness
+analysis and, where needed, further genuine streaming/rematerialization rather
+than rejecting a legal request with error 7.
+
+Saved changes: `tensor_image`, `replay_vision_layer`, `replay_execute`,
+`replay_workspace`, `eval_schedule` and `replay_audio_history`, plus the design
+documents. Tools used: view, rg, glob, apply_patch and read-only Bash/Python
+source inspection. No static elaboration, simulation, synthesis, preparation
+harness or receipt ran. The reserved static elaboration remains unused until
+design closure. Independent Verifier must exercise discarded header/entry
+word corruption, memory-error priority, release/regrant, stale/read-after-release,
+partial/error paths and the unchanged complete allocation/traffic obligations.
+
 ### Current increment: scalar phase aliases and guarded audio phase maximum
 
 The ordinary attention-output projection uses two existing 32-bit registers
@@ -1434,9 +1546,9 @@ compact text builds, so actual and production-shadow envelopes are equal.
 | Field | Worker / legal frame | Complete private-bank envelope, bytes |
 | --- | --- | --- |
 | 12 | Vision domain 1, frame layer 0 | 0: patch reconstruction streams scalar arithmetic, with no private vector bank |
-| 12 | Vision domain 1, frame layers 1..16 | 7808: projected branch 1536, input/head tile 1664, post raw/branch/MLP 4608 |
+| 12 | Vision domain 1, frame layers 1..16 | 4608: guarded phase maximum of projected branch 1536, input/head tile 1664 and post raw/branch/MLP 4608 |
 | 13 | Audio domain 2, frame layer 0 | 512: both 256-byte subsample point banks |
-| 13 | Audio domain 2, frame layers 1..12 | 38912: replay-head cache/pre-attention 10240, post-attention outer/pre-attention upper bound 16384, convolution/GLU 6144, feed-forward 6144 |
+| 13 | Audio domain 2, frame layers 1..12 | 16384: guarded phase maximum of replay-head cache/pre-attention 10240, post-attention outer/pre-attention upper bound 16384, convolution/GLU 6144 and feed-forward 6144 |
 | 14 | Reconstructed-feature domain 3, frame layer 2 | 6144: projected audio 3072 and modality-input 3072 |
 | 15 | Reconstructed-feature domain 3, frame layer 1 | 6432: complete declared mask-bank envelope 3360, pooled vision 1536 and modality-input 1536 |
 
@@ -4143,8 +4255,9 @@ acceptance.
 
 Operation 6 retains scalar-write target 0. Its new target 2 assembles a current
 frame vector one aligned BF16 pair per acknowledged request; target 3 patches
-one pair of an already committed current frame vector. Operation 7 remains
-scalar-read target 0. The scheduler permits both pair operations only with its
+one pair of an already committed current frame vector. Operation 7 has
+scalar-read target 0, private-admission target 1 and complete dead-vector
+release target 2 as specified above. The scheduler permits both pair operations only with its
 exact current frame tag, never a dependency memo or another frame. Components
 are even and smaller than the descriptor's full H length; data is the
 little-endian BF16 pair in `req_data`. Other targets reject before backing access.
@@ -5901,6 +6014,7 @@ silently clamp geometry or evict an in-progress frame.
 | Memo calculation | Subtract replaced bytes, add new bytes, then compare in three separate cycles |
 | Push reservation | Complete scalar slot is visible before its first continuation backing write; vectors are initially unreserved |
 | Vector reservation | Complete selected frame vector and its production shadow are charged before any stream/copy/pair backing access, including partial/error tensors |
+| Explicit vector release | Operation 7/target 2 validates the current frame and committed slice, atomically removes its visibility/reservation and actual/native/shadow bytes, then publishes the response without backing traffic |
 | Memo reservation | Complete pending replacement is visible before its first backing write |
 | Pop release | Register the reservation-mask count, then actual/shadow bytes, then check subtotal consistency before reading continuations and releasing the frame |
 | Backing range | cmd valid is suppressed for addresses outside the current declared partition; publish error 7 without an access |
@@ -5935,8 +6049,9 @@ corresponding acknowledged destination write. Only one 32-bit copy word is
 retained, in addition to the backing response register; both belong in the
 arithmetic/control ledger. No external vector stream, hidden tensor buffer or
 DDR command is used. Destination visibility commits only after every pair,
-and `rsp_slot` returns the new memo handle. The source frame is released only
-by a subsequent pop. Backing failure leaves the memo destination unreadable.
+and `rsp_slot` returns the new memo handle. The source remains reserved through
+the entire copy; a subsequent explicit dead-vector release or pop may retire
+it. Backing failure leaves the memo destination unreadable.
 
 Target 3 is the acknowledged memo-to-frame copy described in the predecessor
 binding table above. It copies only an occupied, fully matching, smaller-layer

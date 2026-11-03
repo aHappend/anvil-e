@@ -198,6 +198,7 @@ module anvil_en1_eval_schedule #(
         ((work_req_op == 6 || work_req_op == 7) &&
             work_req_target == 0 && current_work_tag && work_req_scalar_index >= 8) ||
         (work_req_op == 7 && work_req_target == 1 && current_work_tag) ||
+        (work_req_op == 7 && work_req_target == 2 && current_work_tag) ||
         (work_req_op == 6 && work_req_target >= 2 && current_work_tag);
     wire pass_request = rst_n && state == TASK_WAIT && !pass_busy &&
         !task_done_valid && work_req_valid;
