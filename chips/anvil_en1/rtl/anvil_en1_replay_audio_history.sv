@@ -61,10 +61,13 @@ module anvil_en1_replay_audio_history #(
         CHILD_WAIT = 3, CHILD_CHECK = 4, FOLD_START = 5, FOLD_WAIT = 6,
         FOLD_CHECK = 7, ADVANCE = 8, PUBLISH = 9, RESPONSE = 10,
         RELEASE_SEND = 11, RELEASE_WAIT = 12, RELEASE_REGISTER = 13,
-        TAP_SETUP = 14;
+        TAP_SETUP = 14, SNAPSHOT_SEND = 15, SNAPSHOT_WAIT = 16,
+        SNAPSHOT_REGISTER = 17, RESTORE_CHECK = 18, OUTPUT_SEND = 19,
+        OUTPUT_WAIT = 20, OUTPUT_REGISTER = 21;
     localparam [31:0] HISTORY_MAGIC = 32'h454e314c;
     localparam [31:0] INPUT_MAGIC = 32'h454e3148;
     localparam [31:0] HEAD_MAGIC = 32'h454e3141;
+    localparam [31:0] FINAL_BIND_MAGIC = 32'h454e3150;
     reg [4:0] state;
     reg [1:0] model_hold, precision_hold, mode_hold, child_mode;
     reg [1:0] dependency_domain_hold, yielded_domain;
@@ -79,6 +82,10 @@ module anvil_en1_replay_audio_history #(
     reg dependency_valid_hold, child_yield_hold, child_bank_hold, yield_hold;
     reg [1:0] release_kind;
     reg [3:0] error_hold, child_error_hold, work_error_hold;
+    reg [9:0] channel_hold;
+    reg [15:0] low_hold;
+    reg [31:0] accumulator_hold, fold_data_hold, output_pair, snapshot_data;
+    reg snapshot_restore, snapshot_word;
 
     initial begin
         if (COMPACT != 0 && COMPACT != 1)
@@ -101,7 +108,9 @@ module anvil_en1_replay_audio_history #(
         continuation_hold[95:64] == query_hold &&
         continuation_hold[37:35] <= last_distance;
     wire head_continuation_tag = common_continuation_tag &&
-        continuation_hold[159:128] == HEAD_MAGIC &&
+        (continuation_hold[159:128] == HEAD_MAGIC ||
+            (continuation_hold[159:128] == FINAL_BIND_MAGIC &&
+                continuation_hold[37:35] == 0)) &&
         continuation_hold[95:64] <= query_hold &&
         query_hold - continuation_hold[95:64] <= {29'd0, last_distance};
     wire [31:0] resumed_distance = query_hold - continuation_hold[95:64];
@@ -189,7 +198,10 @@ module anvil_en1_replay_audio_history #(
     wire fold_bank;
     wire [63:0] fold_addr, fold_live, fold_physical, fold_control, fold_nested;
     wire [3:0] fold_error;
-    anvil_en1_audio_history_fold #(.FUSE_LEADING_PADDING(1)) fold (
+    wire [31:0] fold_data;
+    anvil_en1_audio_history_fold #(
+        .FUSE_LEADING_PADDING(1), .SINGLE_CHANNEL(1)
+    ) fold (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FOLD_START), .start_ready(fold_ready),
         .model(model_hold), .precision(precision_hold), .generation(generation_hold),
@@ -197,6 +209,7 @@ module anvil_en1_replay_audio_history #(
         .source_token(historical_token),
         .frame_layer(layer_hold), .frame_slot(slot_hold),
         .kernel(3'd4 - distance_hold), .padding(1'b0),
+        .channel(channel_hold), .prior_accumulator(accumulator_hold),
         .audio_weights_base(weights_hold),
         .work_req_valid(fold_work_valid), .work_req_ready(fold_selected && work_req_ready),
         .work_req_op(fold_op), .work_req_domain(fold_domain), .work_req_target(fold_target),
@@ -212,7 +225,8 @@ module anvil_en1_replay_audio_history #(
         .result_valid(fold_selected && result_valid), .result_ready(fold_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(fold_valid), .done_ready(rst_n && state == FOLD_WAIT),
-        .done_error(fold_error), .source_read_event(fold_source_event),
+        .done_error(fold_error), .done_data(fold_data),
+        .source_read_event(fold_source_event),
         .source_read_bytes(fold_source_bytes), .projection_event(fold_projection_event),
         .projection_bytes(fold_projection_bytes),
         .glu_replay_event(glu_replay_event), .glu_replay_bytes(glu_replay_bytes),
@@ -225,9 +239,13 @@ module anvil_en1_replay_audio_history #(
         (child_op == 6 && child_target >= 2) ||
         (child_op == 3 && (child_target == 0 || child_target == 3));
     assign work_req_valid = (child_selected && child_work_valid) ||
-        (fold_selected && fold_work_valid) || (rst_n && state == RELEASE_SEND);
+        (fold_selected && fold_work_valid) ||
+        (rst_n && (state == RELEASE_SEND || state == SNAPSHOT_SEND ||
+            state == OUTPUT_SEND));
     assign work_rsp_ready = (child_selected && child_work_rsp_ready) ||
-        (fold_selected && fold_work_rsp_ready) || (rst_n && state == RELEASE_WAIT);
+        (fold_selected && fold_work_rsp_ready) ||
+        (rst_n && (state == RELEASE_WAIT || state == SNAPSHOT_WAIT ||
+            state == OUTPUT_WAIT));
     always @* begin
         work_req_op = 0;
         work_req_domain = 0;
@@ -271,7 +289,20 @@ module anvil_en1_replay_audio_history #(
                 work_req_layer = layer_hold;
                 work_req_length = 1024;
                 work_req_slot = slot_hold;
-                if (state == RELEASE_SEND || state == RELEASE_WAIT ||
+                if (state == SNAPSHOT_SEND || state == SNAPSHOT_WAIT ||
+                    state == SNAPSHOT_REGISTER || state == RESTORE_CHECK) begin
+                    work_req_op = snapshot_restore ? 7 : 6;
+                    work_req_scalar_index = snapshot_word ? 8'd33 : 8'd32;
+                    work_req_data = snapshot_word ? accumulator_hold :
+                        {6'd0, low_hold, channel_hold};
+                end else if (state == OUTPUT_SEND || state == OUTPUT_WAIT ||
+                    state == OUTPUT_REGISTER) begin
+                    work_req_op = 6;
+                    work_req_target = 2;
+                    work_req_bank = 1;
+                    work_req_component = {2'd0, channel_hold} - 12'd1;
+                    work_req_data = output_pair;
+                end else if (state == RELEASE_SEND || state == RELEASE_WAIT ||
                     state == RELEASE_REGISTER) begin
                     work_req_op = 7;
                     work_req_target = 2;
@@ -327,7 +358,10 @@ module anvil_en1_replay_audio_history #(
         $bits(child_continuation) + $bits(yielded_continuation) +
         $bits(dependency_valid_hold) + $bits(child_yield_hold) + $bits(child_bank_hold) +
         $bits(yield_hold) + $bits(error_hold) +
-        $bits(child_error_hold) + $bits(work_error_hold) + $bits(release_kind);
+        $bits(child_error_hold) + $bits(work_error_hold) + $bits(release_kind) +
+        $bits(channel_hold) + $bits(low_hold) + $bits(accumulator_hold) +
+        $bits(fold_data_hold) + $bits(output_pair) + $bits(snapshot_data) +
+        $bits(snapshot_restore) + $bits(snapshot_word);
     assign controller_bytes = rst_n ? (CONTROLLER_BITS + 7) >> 3 : 64'd0;
 
     always @(posedge clk or negedge rst_n) begin
@@ -365,6 +399,14 @@ module anvil_en1_replay_audio_history #(
             child_error_hold <= 0;
             work_error_hold <= 0;
             release_kind <= 0;
+            channel_hold <= 0;
+            low_hold <= 0;
+            accumulator_hold <= 0;
+            fold_data_hold <= 0;
+            output_pair <= 0;
+            snapshot_data <= 0;
+            snapshot_restore <= 0;
+            snapshot_word <= 0;
         end else begin
             case (state)
                 IDLE: if (start_valid && start_ready) begin
@@ -400,6 +442,14 @@ module anvil_en1_replay_audio_history #(
                     yielded_token <= 0;
                     yielded_length <= 0;
                     yielded_continuation <= 0;
+                    channel_hold <= 0;
+                    low_hold <= 0;
+                    accumulator_hold <= 0;
+                    fold_data_hold <= 0;
+                    output_pair <= 0;
+                    snapshot_data <= 0;
+                    snapshot_restore <= 0;
+                    snapshot_word <= 0;
                     state <= VALIDATE;
                 end
                 VALIDATE: begin
@@ -431,9 +481,11 @@ module anvil_en1_replay_audio_history #(
                                 child_continuation <= continuation_hold;
                             end
                         end
-                        if (mode_hold == 1)
-                            state <= CHILD_START;
-                        else
+                        if (mode_hold == 1) begin
+                            snapshot_restore <= 1;
+                            snapshot_word <= 0;
+                            state <= SNAPSHOT_SEND;
+                        end else
                             state <= TAP_SETUP;
                     end
                 end
@@ -455,6 +507,8 @@ module anvil_en1_replay_audio_history #(
                         error_hold <= child_error_hold;
                         state <= PUBLISH;
                     end else if (child_yield_hold) begin
+                        snapshot_restore <= 0;
+                        snapshot_word <= 0;
                         if (yielded_domain != 2 || yielded_layer != logical_layer ||
                             yielded_token >= tokens_hold || yielded_length != 1024)
                             error_hold <= 7;
@@ -465,7 +519,11 @@ module anvil_en1_replay_audio_history #(
                                 yielded_continuation <= input_yield_descriptor;
                                 yield_hold <= 1;
                             end
-                        end else if (yielded_continuation[159:128] != HEAD_MAGIC ||
+                        end else if ((yielded_continuation[159:128] != HEAD_MAGIC &&
+                                yielded_continuation[159:128] != FINAL_BIND_MAGIC) ||
+                            (yielded_continuation[159:128] == FINAL_BIND_MAGIC &&
+                                (yielded_continuation[37:35] != 0 ||
+                                    yielded_token != historical_token)) ||
                             yielded_continuation[127:96] != generation_hold ||
                             yielded_continuation[95:64] != historical_token ||
                             yielded_continuation[63:56] != layer_hold ||
@@ -477,7 +535,7 @@ module anvil_en1_replay_audio_history #(
                             error_hold <= 7;
                         else
                             yield_hold <= 1;
-                        state <= PUBLISH;
+                        state <= SNAPSHOT_SEND;
                     end else if (child_bank_hold) begin
                         error_hold <= 7;
                         state <= PUBLISH;
@@ -501,18 +559,27 @@ module anvil_en1_replay_audio_history #(
                     state <= FOLD_WAIT;
                 FOLD_WAIT: if (fold_valid) begin
                     work_error_hold <= fold_error;
+                    fold_data_hold <= fold_data;
                     state <= FOLD_CHECK;
                 end
                 FOLD_CHECK: begin
                     if (work_error_hold != 0) begin
                         error_hold <= work_error_hold;
                         state <= PUBLISH;
-                    end else if (query_hold == 0) begin
-                        state <= PUBLISH;
                     end else if (distance_hold == 0) begin
-                        release_kind <= 2;
-                        state <= RELEASE_SEND;
+                        if (fold_data_hold[31:16] != 0) begin
+                            error_hold <= 7;
+                            state <= PUBLISH;
+                        end else if (!channel_hold[0]) begin
+                            low_hold <= fold_data_hold[15:0];
+                            release_kind <= 1;
+                            state <= RELEASE_SEND;
+                        end else begin
+                            output_pair <= {fold_data_hold[15:0], low_hold};
+                            state <= OUTPUT_SEND;
+                        end
                     end else begin
+                        accumulator_hold <= fold_data_hold;
                         release_kind <= 1;
                         state <= RELEASE_SEND;
                     end
@@ -535,10 +602,74 @@ module anvil_en1_replay_audio_history #(
                         state <= PUBLISH;
                 end
                 ADVANCE: begin
-                    distance_hold <= distance_hold - 3'd1;
+                    if (distance_hold == 0) begin
+                        channel_hold <= channel_hold + 1'b1;
+                        distance_hold <= last_distance;
+                        accumulator_hold <= 0;
+                    end else
+                        distance_hold <= distance_hold - 3'd1;
                     child_mode <= 0;
                     child_continuation <= 0;
                     state <= TAP_SETUP;
+                end
+                OUTPUT_SEND: if (work_req_ready)
+                    state <= OUTPUT_WAIT;
+                OUTPUT_WAIT: if (work_rsp_valid) begin
+                    work_error_hold <= work_rsp_error;
+                    state <= OUTPUT_REGISTER;
+                end
+                OUTPUT_REGISTER: begin
+                    if (work_error_hold != 0) begin
+                        error_hold <= work_error_hold;
+                        state <= PUBLISH;
+                    end else begin
+                        low_hold <= 0;
+                        if (channel_hold == 1023)
+                            state <= PUBLISH;
+                        else begin
+                            release_kind <= 1;
+                            state <= RELEASE_SEND;
+                        end
+                    end
+                end
+                SNAPSHOT_SEND: if (work_req_ready)
+                    state <= SNAPSHOT_WAIT;
+                SNAPSHOT_WAIT: if (work_rsp_valid) begin
+                    snapshot_data <= work_rsp_data;
+                    work_error_hold <= work_rsp_error;
+                    state <= SNAPSHOT_REGISTER;
+                end
+                SNAPSHOT_REGISTER: begin
+                    if (work_error_hold != 0 ||
+                        (snapshot_restore && !snapshot_word && snapshot_data[31:26] != 0)) begin
+                        error_hold <= work_error_hold != 0 ? work_error_hold : 4'd7;
+                        yield_hold <= 0;
+                        state <= PUBLISH;
+                    end else begin
+                        if (snapshot_restore) begin
+                            if (snapshot_word)
+                                accumulator_hold <= snapshot_data;
+                            else begin
+                                channel_hold <= snapshot_data[9:0];
+                                low_hold <= snapshot_data[25:10];
+                            end
+                        end
+                        if (!snapshot_word) begin
+                            snapshot_word <= 1;
+                            state <= SNAPSHOT_SEND;
+                        end else if (snapshot_restore)
+                            state <= RESTORE_CHECK;
+                        else
+                            state <= PUBLISH;
+                    end
+                end
+                RESTORE_CHECK: begin
+                    if ((!channel_hold[0] && low_hold != 0) ||
+                        (distance_hold == last_distance && accumulator_hold != 0)) begin
+                        error_hold <= 7;
+                        state <= PUBLISH;
+                    end else
+                        state <= CHILD_START;
                 end
                 PUBLISH: state <= RESPONSE;
                 RESPONSE: if (done_ready)

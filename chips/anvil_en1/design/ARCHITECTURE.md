@@ -5,7 +5,99 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: committed audio accumulator slice replacement
+## Current increment: deferred audio-query binding
+
+Packed-history residuals now select `DEFER_QUERY_BINDING=1` in
+`replay_audio_heads`; default zero preserves standalone eager binding.
+Attention reads query inputs through the same pinned-memo dependency
+path as historical inputs, instead of keeping a second, copied raw
+query vector in each suspended frame. A query miss saves the existing
+numerical checkpoint and genuinely evaluates its lower encoder layer.
+Normalized-source reconstruction, head arithmetic and output pair
+materialization remain unchanged.
+
+Only after all eight heads are committed does the existing binder copy
+the raw query for post-attention residual execution. If its last memo
+dependency names another token, it yields the actual query without
+allocating raw storage. The new, fully tagged internal continuation
+`0x454e3150` resumes only that final copy, preserving completed heads
+and convolution accumulators. History validates and forwards this
+marker alongside the existing head continuation. No head result,
+source input or completion is fabricated; real rematerialization may
+increase work and weight/input reads.
+
+This retires **raw-query retention across packed-head suspension**:
+the initial-descent suspended-vector ceiling falls from 4096 to 2048
+bytes and the later-tap suspended ceiling from 8192 to 6144 bytes.
+The four-slice active final-binding/post-residual phase remains charged,
+as do memo slots, partial-head/scalar checkpoints, all accumulators and
+every outer consumer. No register or RAM was added, so the preceding
+33995-byte declared native controller report is unchanged.
+
+Six suspended frames plus scalar slots now require a conservative
+37632 bytes, not 49920, against the same 45877-byte remainder. This
+does not establish that six is the reachable maximum or close storage:
+twelve suspended positive layers can still retain 73728 vector bytes
+before other state. Further genuine scheduling/backing changes or a
+complete reachable liveness argument, and native/fallback/physical
+partition reconciliation, are still required before the reserved static
+elaboration and independent Verifier handoff.
+
+Saved `rtl/anvil_en1_replay_audio_heads.sv`,
+`rtl/anvil_en1_replay_audio_residual.sv`,
+`rtl/anvil_en1_replay_audio_history.sv` and both design documents.
+Used source view/rg/glob and apply_patch only; no HDL check, experiment,
+simulation, synthesis, preparation harness or receipt. Tests, parent
+sources, original failures and runtime metadata remain unchanged.
+
+## Prior increment: supplied-depthwise specialization and current native census
+
+The tap-streamed replay path already obtains its actual depthwise vector
+from `audio_history_fold`. `audio_lightconv` now elaborates its original
+depthwise-row and GLU children only in default
+`PRECOMPUTED_DEPTHWISE=0`. In the connected supplied-depthwise
+configuration those children are physically absent and their interfaces
+and reports are explicitly zero, not success-shaped replies. The real
+workspace callback, normalization, SiLU, clipped projection, residual and
+all wrapper state/accounting remain unchanged. The shared dispatcher RAM
+is still fully disclosed; other workers still use its third bank.
+
+Read-only evaluation of connected native-controller report expressions
+gives **33995 bytes**, replacing the stale 33221-byte figure. SPEC records
+the complete nonoverlapping ten-term sum and production parameter
+assumptions. In particular, audio input/layer nested reports contribute
+21792 bytes; the new fold's 94 local + 1995 nested bytes remain charged.
+With external vector RAM, lightconv's own report stays 355 bytes and its
+nested report changes from 3278 to 1222 bytes. Removing the absent
+subtrees saves 2056 declared bytes relative to this increment's unpruned
+36051-byte native report. This is source accounting, not an elaborated
+declaration audit, observed allocation or synthesis measurement.
+
+The corresponding minimum-context E2B remainder is now
+`86016-33995-6144 = 45877` bytes for every suspended native frame,
+scalar slot, memo and retained feature. Six four-slice audio frames and
+their scalar slots alone have a conservative 49920-byte ceiling.
+This does not prove that simultaneous occupancy is reachable, nor that
+five frames establish legal-workload fit. Mixed-token suspension,
+outer consumers and the complete native/fallback partitions remain
+unclosed. No memo-hit assumption, active-worker-only ledger or legal-work
+capacity error is introduced.
+
+This retires **unreachable supplied-depthwise child retention** and the
+stale native report sum, not storage feasibility. Next: close reachable
+mixed-token liveness or make a further genuine storage change, reconcile
+all actual/shadow/physical partitions and transitions, then use the
+reserved static elaboration and hand off to independent Verifier.
+
+Saved `rtl/anvil_en1_audio_lightconv.sv` and both design documents.
+Used view/rg/glob/apply_patch and read-only Python source inspection through
+bash. Preliminary census helpers had unresolved parsing and yielded no
+accepted count; the completed calculation follows actual child reports.
+No experiment, elaboration, simulation, synthesis, preparation harness or
+receipt was produced. Tests, immutable parent sources, original failures
+and runtime metadata remain unchanged.
+
+## Prior increment: committed audio accumulator slice replacement
 
 The connected fold/workspace trace exposed a descriptor mismatch:
 `audio_history_fold` replaces committed FP32 accumulator words using

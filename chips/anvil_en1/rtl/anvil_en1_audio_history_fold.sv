@@ -1,5 +1,6 @@
 module anvil_en1_audio_history_fold #(
-    parameter integer FUSE_LEADING_PADDING = 0
+    parameter integer FUSE_LEADING_PADDING = 0,
+    parameter integer SINGLE_CHANNEL = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -10,6 +11,8 @@ module anvil_en1_audio_history_fold #(
     input wire [5:0] frame_slot,
     input wire [2:0] kernel,
     input wire padding,
+    input wire [9:0] channel,
+    input wire [31:0] prior_accumulator,
     input wire [63:0] audio_weights_base,
     output wire work_req_valid,
     input wire work_req_ready,
@@ -38,6 +41,7 @@ module anvil_en1_audio_history_fold #(
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
+    output wire [31:0] done_data,
     output wire source_read_event, projection_event, glu_replay_event,
     output wire [31:0] source_read_bytes, projection_bytes, glu_replay_bytes,
     output wire [63:0] vector_live_bytes, vector_physical_bytes,
@@ -72,6 +76,8 @@ module anvil_en1_audio_history_fold #(
     initial begin
         if (FUSE_LEADING_PADDING != 0 && FUSE_LEADING_PADDING != 1)
             $fatal(1, "PARAMETER ERROR: FUSE_LEADING_PADDING must be 0 or 1");
+        if (SINGLE_CHANNEL != 0 && SINGLE_CHANNEL != 1)
+            $fatal(1, "PARAMETER ERROR: SINGLE_CHANNEL must be 0 or 1");
     end
     wire [2:0] first_kernel = frame_token < 4 ?
         3'd4 - frame_token[2:0] : 3'd0;
@@ -172,9 +178,9 @@ module anvil_en1_audio_history_fold #(
     );
     wire source_send = rst_n && state == GLU_WAIT && source_state == S_SEND;
     wire source_wait = rst_n && state == GLU_WAIT && source_state == S_WAIT;
-    wire accumulator_request = (state == ACC_READ_SEND && !initialize_accumulator) ||
-        state == ACC_WRITE_SEND;
-    wire output_request = state == OUTPUT_SEND;
+    wire accumulator_request = !SINGLE_CHANNEL &&
+        ((state == ACC_READ_SEND && !initialize_accumulator) || state == ACC_WRITE_SEND);
+    wire output_request = !SINGLE_CHANNEL && state == OUTPUT_SEND;
     assign work_req_valid = source_send || (rst_n && (accumulator_request || output_request));
     assign work_rsp_ready = source_wait || (rst_n &&
         (state == ACC_READ_WAIT || state == ACC_WRITE_WAIT || state == OUTPUT_WAIT));
@@ -208,6 +214,7 @@ module anvil_en1_audio_history_fold #(
     assign start_ready = rst_n && state == IDLE;
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
+    assign done_data = done_valid && error_hold == 0 ? fp_value : 32'd0;
     assign source_read_event = rst_n && state == GLU_WAIT &&
         source_state == S_IDLE && glu_source_valid;
     assign source_read_bytes = source_read_event ? 32'd2 : 32'd0;
@@ -344,8 +351,8 @@ module anvil_en1_audio_history_fold #(
                     requested_padding_hold <= padding;
                     fused_hold <= fuse_start;
                     weights_hold <= audio_weights_base;
-                    channel_hold <= 0;
-                    accumulator_hold <= 0;
+                    channel_hold <= SINGLE_CHANNEL ? {22'd0, channel} : 32'd0;
+                    accumulator_hold <= SINGLE_CHANNEL ? prior_accumulator : 32'd0;
                     low_hold <= 0;
                     error_hold <= 0;
                     work_error_hold <= 0;
@@ -431,7 +438,7 @@ module anvil_en1_audio_history_fold #(
                     if (kernel_hold == 0) begin
                         accumulator_hold <= 0;
                         state <= ADD;
-                    end else if (fused_hold) begin
+                    end else if (fused_hold || SINGLE_CHANNEL) begin
                         state <= ADD;
                     end else if (work_req_ready)
                         state <= ACC_READ_WAIT;
@@ -463,6 +470,8 @@ module anvil_en1_audio_history_fold #(
                         state <= WEIGHT_START;
                     end else if (kernel_hold == 4)
                         state <= NARROW;
+                    else if (SINGLE_CHANNEL)
+                        state <= PUBLISH;
                     else
                         state <= ACC_WRITE_SEND;
                 end
@@ -487,7 +496,9 @@ module anvil_en1_audio_history_fold #(
                     state <= FP_START;
                 end
                 PACK: begin
-                    if (!channel_hold[0]) begin
+                    if (SINGLE_CHANNEL)
+                        state <= PUBLISH;
+                    else if (!channel_hold[0]) begin
                         low_hold <= fp_value[15:0];
                         state <= ADVANCE;
                     end else begin

@@ -5,7 +5,226 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current increment: committed audio accumulator slice replacement
+### Current increment contract: channel-serial audio history
+
+The connected history worker will evaluate depthwise channels in ascending
+order, visiting each channel's five taps in ascending kernel order. It
+reconstructs the real full residual for each nonpadding tap, then computes
+only that channel's GLU and depthwise product. Multiply/add rounding,
+leading-padding operations and final BF16 narrowing remain unchanged.
+Recomputation increases weight/input work; it is not avoided computation.
+
+The fold's default vector mode remains available. Its `SINGLE_CHANNEL=1`
+configuration captures `channel` and `prior_accumulator` at start and
+returns the actual FP32 partial sum, or final narrowed BF16 in low bits,
+through `done_data`. It never issues accumulator or output workspace
+transactions in this configuration. The history worker owns output packing.
+
+| Pre-edge boundary | Registered consequence |
+| --- | --- |
+| Fresh history task | Channel zero, zero scalar accumulator, empty low-half register; evaluate oldest nonpadding tap first |
+| Nonfinal fold completes | Capture real FP32 sum, release consumed residual and advance to next tap |
+| Final fold completes, even channel | Capture BF16 low half; do not publish an incomplete pair |
+| Final fold completes, odd channel | Commit the complete aligned BF16 pair in depthwise bank 1/slice 0, waiting for its actual response |
+| Next channel | Release dead residual, reset tap index/accumulator, reconstruct that channel's tap sources |
+| Final channel completes | Keep the final query residual for lightconv; publish only after the final output-pair response |
+| Child dependency yield | Save channel/low-half and FP32 accumulator in frame scalar words 32/33 before publishing the yield |
+| Resumed history task | Restore and validate both extra words before restarting the suspended child; numerical checkpoint words 8..29 and head wrapper words 30/31 are not overwritten |
+| Reset/error/backpressure | Preserve cancellation, response retirement, stable descriptors and existing tag checks; never substitute a partial or software-produced answer |
+
+Scalar backing becomes 34 words (136 bytes) per frame, including all
+reserved words in live/shadow/grant accounting. Production/compact backing
+reservations grow by 512 bytes, not an uncounted side RAM. The eliminated
+two FP32 accumulator slices are replaced by at most one partially filled
+depthwise output slice. Suspended packed-history vectors therefore have
+a 4096-byte ceiling (head + output), rather than 6144. Active final
+binding/post-attention and every private/controller/memo/outer allocation
+remain charged. This is a connected storage reduction, not whole-system
+capacity acceptance; all reachable native/fallback and physical partitions
+still need reconciliation before the reserved static check.
+
+### Current increment: memo-backed audio queries and deferred residual binding
+
+The connected packed-history residual selects
+`replay_audio_heads.DEFER_QUERY_BINDING=1`. Default zero preserves the
+standalone eager-binding behavior. Deferred mode does not copy an entering
+1024-component audio vector into bank 0 before attention. Query, key and
+value source needs all use the existing exact predecessor dependency
+interface and its pinned memo slot. A query token is no longer treated as
+an unconditional frame hit. A matching dependency permits the actual
+pre-attention reconstruction; a missing dependency checkpoints and yields
+to the lower encoder layer, including for the query itself.
+
+The attention engine's normalized-source cache, numerical checkpoint,
+head ordering, reductions and materialization boundaries are unchanged.
+Every completed head pair still commits to bank 0/slice 1 after the
+history wrapper's existing packed-frame mapping. A suspended attention
+consumer retains that partial head vector and its scalar checkpoint,
+but no separate entering/raw vector. Matching query reads use memo
+`target=1`, never an unfilled frame bank. The normal memo allocation,
+pinning, eviction and traffic accounting remain in force; this is not
+an uncounted source vector or a software-produced answer.
+
+After all eight heads and their pair responses complete, the same
+predecessor-binding engine copies the query input into bank 0/slice 0
+for post-attention residual execution. A currently held historical-token
+dependency is not supplied as though it matched this query. Instead,
+the binder yields a query dependency without reserving the raw slice.
+The new internal 160-bit continuation has magic `0x454e3150`, followed
+by the existing generation, historical query, frame layer/slot,
+model/precision and logical layer fields; bits 37:0 are zero. The history
+wrapper validates the tag, token range, zero head field and requested
+dependency identity, and resumes this final binding rather than replaying
+or overwriting the completed head vector.
+
+| Pre-edge boundary | Registered consequence / ownership |
+| --- | --- |
+| Deferred fresh task, including mode 2 | Start head zero without a frame-input copy; any supplied predecessor stays a separately counted, pinned memo entry |
+| Query or historical source need, matching dependency absent | Save the real numerical checkpoint and yield the exact lower-layer token; no raw slice allocation |
+| Matching source read | Read the registered memo response with the same tag/range/error checks used for other predecessor tokens |
+| Head pair write accepted | Retain the existing ordered pair protocol and partial-head reservation |
+| Head seven completes, all 1024 outputs committed | Start final query binding; no further attention operation can yield from this phase |
+| Final binding misses | Keep all heads and convolution accumulators; yield with `0x454e3150`, without allocating the missing input |
+| Final-binding continuation resumes | Validate the complete descriptor and perform only the real predecessor copy; do not restore an unrelated head checkpoint or reinitialize head output |
+| Copy response completes successfully | Publish head completion, then run unchanged post-attention residual using the now-complete raw and head vectors |
+| Copy/source error or backpressure | Retire the existing registered response/error path; preserve reservations and stable payloads |
+| Reset / generation invalidation | Retain the existing cancellation/visibility rules; no old continuation authorizes a new-session word |
+
+This removes **2048 bytes per suspended packed-audio head consumer**.
+Before the first fold, a suspension retains at most its head slice,
+2048 bytes instead of 4096. During later taps it retains at most that
+slice plus two FP32 accumulator slices, 6144 instead of 8192 bytes.
+Final binding/post-attention can still have four slices while active,
+but cannot start a recursive dependency after the raw copy begins.
+The final-fold consuming overlay and release protocol are unchanged.
+No new register or RAM is declared: the existing five-bit head-wrapper
+state accommodates two final-binding states, and the marker is assembled
+from existing registered fields. Thus the preceding declared-controller
+report remains 33995 bytes; physical frame-bank reservation is unchanged.
+
+The minimum-context E2B remainder after that report and the conservative
+6144-byte active private envelope is still 45877 bytes. Six suspended
+three-slice frames plus scalar slots now need
+`6*(6144+128) = 37632` bytes, rather than 49920, before memo/outer state.
+This is **not** a proof that six is the reachable maximum or that the
+whole system fits. Twelve suspended positive-layer frames alone have a
+73728-byte vector ceiling, and an active positive-layer frame may add
+2048 bytes relative to its suspension. Complete native/fallback fit,
+outer consumers, memo/scalar/controller reconciliation, production
+shadows and physical partitions remain unresolved. No legal-work
+capacity error or weakened allowance is authorized.
+
+Independent verification must cover both parameter settings, both
+precisions, query misses before the first head, alternating query/history
+memo dependencies, head checkpoints after partial pair output, final
+binding with matching and nonmatching last dependencies, eviction before
+final binding, all tag corruption cases, reset/stalls/errors, and exact
+source/head/residual values. Observe the actual workspace reservations
+and memo pins; a mode bit or leaf responder is not storage evidence.
+
+Saved three RTL files (`replay_audio_heads`, `replay_audio_residual`,
+`replay_audio_history`) and both design documents. Only source
+view/rg/glob and apply_patch were used. No HDL execution, simulation,
+synthesis, preparation harness or receipt was produced. The reserved
+static elaboration remains pending complete design closure. Tests,
+immutable parent sources, original failures and runtime metadata remain
+unchanged.
+
+### Prior increment: supplied-depthwise specialization and native controller census
+
+The connected replay lightconv selects `PRECOMPUTED_DEPTHWISE=1`: its
+depthwise input is already produced by `audio_history_fold` in the
+workspace. The lightconv's original depthwise-row and GLU subtrees could
+never receive a start in this configuration, but remained instantiated
+and charged by their controller reports. They are now elaboration-time
+branches, present only for `PRECOMPUTED_DEPTHWISE=0`. The supplied-depthwise
+branch has no such arithmetic, tensor readers or GLU payload RAM. Its
+absent child command, source, result, event, vector-RAM and accounting
+outputs are explicitly zero; it does not fabricate a completed operation.
+The wrapper's existing scalar registers and complete local census remain.
+
+| Configuration / boundary | Preserved behavior |
+| --- | --- |
+| Default `PRECOMPUTED_DEPTHWISE=0` | Instantiate the original depthwise row and GLU; retain their source/weight operations, arithmetic and accounting |
+| Connected `PRECOMPUTED_DEPTHWISE=1` | Read actual RTL-computed depthwise components through source indices 1024..2047; never start the absent children |
+| Supplied source response | Keep existing descriptor validation, registered response/error capture and BF16 materialization |
+| Norm, SiLU, clipped projection and raw residual | Keep the existing connected operators and operation order in both configurations |
+| External vector RAM, supplied mode | Third (GLU) port is zero; raw/working ports are unchanged |
+| Reset or stalled response | Preserve the wrapper's reset, response retirement, stable payload and error rules |
+| Physical reporting | Remove only physically absent child RAM; retain the shared dispatcher bank's full reservation for its other users |
+
+A read-only source-expression calculation now resolves the connected
+**native-reconstruction report**, rather than continuing to use the old
+33221-byte figure. It propagates production `COMPACT=0`, external embedding
+and connected worker vector-RAM settings; evaluates `$bits`, local
+constants and byte rounding; and follows each named child report once.
+Shared/external primitive arithmetic contributes zero only where the
+corresponding arithmetic unit is physically absent. The native subset is
+the same for E2B and E4B because these controllers use their declared
+maximum geometry; it does not depend on resident capacity C.
+
+| Nonoverlapping term in `native_reconstruction_controller_bytes` | Bytes |
+| --- | ---: |
+| Original-input reconstruction, including embedding descendants | 1082 |
+| Vision replay controllers and all reported descendants | 6499 |
+| Audio input wrapper | 48 |
+| Audio layer wrapper | 119 |
+| Audio input/layer nested controllers | 21792 |
+| Audio feature wrapper | 101 |
+| Audio feature nested controllers | 2057 |
+| Image feature wrapper | 121 |
+| Image feature nested controllers | 2169 |
+| Native vector ownership/read state, 52 bits rounded once | 7 |
+| Complete native-reconstruction report | 33995 |
+
+Within the lightconv with external vector RAM, the unchanged local census
+is 614 bits. Its full own-controller report, including activation and
+primitive FP arithmetic, is 355 bytes. The computed-depthwise nested
+report is 3278 bytes; the supplied-depthwise nested report is 1222 bytes.
+The absent subtrees therefore remove 2056 bytes from the connected native
+controller report, from 36051 to 33995 bytes on these sources. The real
+new history fold remains fully charged: 750 local bits, 94 local bytes
+plus 1995 nested bytes. It is not replaced by the absent lightconv child.
+
+These are evaluated **declared report expressions**, not an elaborated
+register census, declaration-coverage proof, allocation observation,
+synthesis result or hardware measurement. Preliminary source-reading
+helpers did not resolve the module-header/instance boundary; those
+unresolved calculations are not included as numerical results. No HDL
+compiler or simulator was invoked, and the reserved static check remains
+unused.
+
+For minimum-context E2B, the current native allowance still leaves only
+`86016-33995-6144 = 45877` bytes after this controller sum and the existing
+active-audio private envelope. That remainder must cover **all** native
+frames, continuations/scalars, memo entries and retained features, not
+just the selected worker. Six four-slice frames plus their 128-byte scalar
+slots would require `6*(8192+128) = 49920` bytes even before outer
+consumers. This is a conservative comparison, not a claim that six such
+frames were observed or proved simultaneously reachable. The full
+twelve-positive-layer ceiling remains 98304 vector bytes; demand-first
+initial descent and token-zero specialization do not justify substituting
+their smaller phase bound for later-tap mixed-token suspension.
+
+This retires the **unreachable supplied-depthwise child retention** and
+updates the complete connected native-controller report. It does not
+close legal-workload native capacity, reconcile the remaining text/
+fallback controller and physical partitions, or authorize error 7 for a
+legal capacity request. Establish a tighter reachable liveness bound or
+implement genuine further streaming/rematerialization, then reconcile
+actual/shadow allocations and transitions before static elaboration and
+independent Verifier handoff. Independent checks must cover both leaf
+configurations, real supplied source data, both precisions, source/weight
+errors, stalls, reset, controller-report sums and absence of child commands
+and third-port accesses in supplied mode.
+
+Saved `rtl/anvil_en1_audio_lightconv.sv` and both design documents.
+Tools used: view, rg, glob, apply_patch and read-only Python source
+inspection via bash. No functional/synthesis harness, HDL execution,
+experiment or preparation receipt was produced. Tests, parent sources,
+original failure records and runtime metadata remain unchanged.
+
+### Prior increment: committed audio accumulator slice replacement
 
 The workspace now admits `op=6,target=3` for native-audio slice indices
 1 and 2, alongside the existing ordered initialization operation

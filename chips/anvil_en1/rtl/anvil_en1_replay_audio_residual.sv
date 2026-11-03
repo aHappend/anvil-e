@@ -113,7 +113,9 @@ module anvil_en1_replay_audio_residual #(
     wire heads_source_event, heads_weight_event;
     wire [31:0] heads_input_bytes, heads_projection_bytes, heads_intermediate_bytes;
     wire [31:0] heads_source_bytes, heads_weight_bytes;
-    anvil_en1_replay_audio_heads #(.COMPACT(COMPACT)) heads (
+    anvil_en1_replay_audio_heads #(
+        .COMPACT(COMPACT), .DEFER_QUERY_BINDING(PACKED_FRAME)
+    ) heads (
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == HEADS_START), .start_ready(heads_ready),
         .model(model_hold), .precision(precision_hold), .mode(mode_hold),
