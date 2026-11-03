@@ -39,6 +39,8 @@ def main():
     parser.add_argument("--repair-of")
     parser.add_argument("--diagnose-origin", action="store_true",
                         help="append observers to disposable RTL copies; not acceptance")
+    parser.add_argument("--split-schedule", action="store_true",
+                        help="split independent array elements in the compiled scheduler")
     args = parser.parse_args()
     if args.max_cycles <= 0:
         parser.error("--max-cycles must be positive")
@@ -162,6 +164,8 @@ def main():
                    "--top-module", "anvil_en1_top", "--Mdir", str(obj),
                    "-j", "2", "-CFLAGS", "-O3"]
         command += [f"-G{key}={value}" for key, value in parameters.items()]
+        if args.split_schedule:
+            command += ["tests/simulation_schedule.vlt"]
         command += [*sources, str(ROOT / "tests/top_smoke.cpp")]
         run("compile", command, 1800)
         output = run("simulation", [str(obj / "Vanvil_en1_top"),
