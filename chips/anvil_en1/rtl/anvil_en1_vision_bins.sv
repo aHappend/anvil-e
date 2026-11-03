@@ -53,7 +53,7 @@ module anvil_en1_vision_bins (
     reg [31:0] enum_bin, valid_count, selected_bin;
     reg selected;
     reg [3:0] error_hold;
-    (* ramstyle = "M20K", nomem2reg *) reg [31:0] bins [0:455];
+    (* ramstyle = "M20K", nomem2reg *) reg [31:0] bin_payload [0:455];
 
     wire image_ready, image_valid, image_cmd_valid, image_result_ready;
     wire [63:0] image_addr, image_data_base, image_data_bytes;
@@ -100,11 +100,11 @@ module anvil_en1_vision_bins (
     wire [31:0] set_mask = 32'h00000001 << mask_bit;
     always @(posedge clk) begin
         if (rst_n && state == CLEAR)
-            bins[clear_word] <= 0;
+            bin_payload[clear_word] <= 0;
         else if (rst_n && state == MASK_WRITE)
-            bins[mask_word] <= mask_write_data;
+            bin_payload[mask_word] <= mask_write_data;
         if (rst_n && (state == MASK_READ || state == ENUM_READ))
-            mask_q <= bins[mask_word];
+            mask_q <= bin_payload[mask_word];
     end
     assign start_ready = rst_n && state == IDLE;
     assign cmd_valid = rst_n && (image_selected ? image_cmd_valid :

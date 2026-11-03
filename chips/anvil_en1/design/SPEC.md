@@ -5,6 +5,181 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
+### Current static diagnostic and repair
+
+The reserved static command ran once with Icarus 12.0:
+`iverilog -g2012 -t null -s anvil_en1_top -N <fresh-output>/elaboration.txt`
+followed by every `rtl/*.sv` and immutable parent `rtl/*.sv` source, in
+sorted order. Its exact expanded argv, source SHA256 inventory, timestamps,
+120-second limit and raw streams are retained at
+`evidence/preparation/static-elaboration-20261103T032650Z/receipt.json`.
+No functional simulation or synthesis ran.
+
+This diagnostic **failed to establish elaboration**. The first error is
+`rtl/anvil_en1_attention_head.sv:725: syntax error`, at `endgenerate`.
+The legal `attention` generate branch lacked its closing `end` after the
+sequential process. The parser then treated following module bodies as
+part of that scope, producing cascading duplicate-declaration/module-item
+errors. The repair adds only that missing scope closure; no arithmetic,
+register, allocation expression, state encoding or protocol changes.
+The original raw stderr and receipt are unmodified. In particular the
+recorded compiler exit code is zero despite its emitted syntax errors,
+and no elaboration dump was produced: neither that exit code nor the
+wrapper's completion is a passing result.
+
+The continuation ran one fresh bounded static command with the same
+source selectors and top, retaining its exact argv, hashes, tool version,
+raw streams and repair link at
+`evidence/preparation/static-repair-20261103T032829Z/receipt.json`.
+It exited 210 in 0.415 seconds without an elaboration dump. Its first
+diagnostic is `rtl/anvil_en1_frontier.sv:425: syntax error`, followed by
+cascading cross-module declarations. This is another failed static
+diagnostic, not functional execution or a passing compilation.
+
+Source inspection found the same missing legal-generate-branch closure
+in both `anvil_en1_frontier` and `anvil_en1_local_ring`. Both now have the
+missing `end` between their sequential process and `endgenerate`.
+Separately, `anvil_en1_vision_bins` declared a RAM named `bins`, a reserved
+SystemVerilog coverage keyword. That RAM and its three accesses are now
+named `bin_payload`. These repairs change no storage dimensions, controller
+bits, arithmetic, read/write enables or handshake timing. The previous
+attention-head closure repair remains intact.
+
+The three latest repairs have not been rerun through an HDL tool. A read-only delimiter
+scan finds matched begin/end, case/endcase, generate/endgenerate and
+module/function/task delimiters in all 95 RTL files; this is not HDL
+parsing, binding or elaboration. The two retained receipts and their raw
+logs remain unchanged. The original receipt still hashes to
+`908b15cc6ade4a0b23c771e7fdeb2cc78940f6c561ab99d039a2c5bb8858a249`.
+No simulation, synthesis, test/parent source edit or runtime-state change
+was performed. Further HDL diagnosis belongs to an authorized fresh
+static run or independent Verifier, never an overwritten receipt.
+
+### Scoped physical declaration reconciliation after the parse repair
+
+The following source-level paths start below `anvil_en1_top`. They are
+literal connected instances, not resolved-hierarchy or inferred-M20K
+measurements. Byte-round each metadata array separately.
+
+| Instance / declaration | Production bytes | COMPACT=1 bytes | Accounting surface |
+| --- | ---: | ---: | --- |
+| `native.frontier.frontier.frontier.payload` | 4071936 | 836096 | `physical_payload_bytes`; includes ordinary frontier and phase-remapped replay backing, not two copies |
+| Same instance, `layer_tags` | 640 | 320 | `token_metadata_bytes` |
+| Same instance, `occupied` | 128 | 64 | Remainder of `token_metadata_bytes`; excluded from `controller_bytes` |
+| `native.frontier.ring.ring.payload` | 1048576 | 64 | `physical_payload_bytes`; both models share the production maximum reservation |
+| Same instance, `token_tags` | 512 | 8 | First separately rounded term of `token_metadata_bytes` |
+| Same instance, `occupied` | 256 | 1 | Second separately rounded term of `token_metadata_bytes`; excluded from `controller_bytes` |
+| `native.binding.replay.image_feature.feature.mapping.bin_payload` | 1824 | 1824 | `mask_physical_bytes`; native vision stays uncompacted |
+
+Thus the scoped payload subtotal is 5122336/837984 bytes and its frontier/
+ring metadata subtotal is 1536/393 bytes for production/compact. These
+are reserved physical declarations, not simultaneously live payload.
+Each RAM's registered read data is included in its existing controller
+expression, not charged again as RAM depth. The frontier physical depth
+is `1017984/209024` 32-bit words. Its production backing range ends at
+word `786432+231552-1=1017983`, exactly the last declared word; compact
+ends at `2048+206976-1=209023`. Fallback remaps that backing to zero only
+after ordinary invalidation; the physical declaration does not shrink.
+The ring is `512*4*128` production words or `4*2*2` compact words.
+The vision bitmap remains 456 words; renaming its identifier removes no
+storage and changes no controller report.
+
+This retires the declaration-size/report correspondence for these seven
+source declarations only. Per-instance whole-hierarchy declaration and
+physical-backing reconciliation remains incomplete because no resolved
+hierarchy was obtained. The source-level liveness analysis below is not
+invalidated by the scope/name repairs, but is still not measured evidence.
+
+### Current closure: reachable replay storage, including small contexts
+
+The full-depth `61*12288` frame estimate below is a partition bound, not a
+reachable simultaneous-payload estimate. In particular it must not be used
+to reject a small-context forced fallback. The connected scheduler and text
+worker give the following tighter bound without assuming a memo hit:
+
+1. A text frame awaiting its initial predecessor has not filled either
+   vector bank. `replay_text_layer.BIND_WAIT` yields the predecessor before
+   the attention private grant. Such a frame still owns its complete
+   136-byte scalar slot.
+2. After that binding, a text frame can retain its two H-wide banks while
+   yielding an owner-input request or a native-feature request. An
+   owner-input request descends to an actual nonshared owner, not to the
+   shared consumer's logical layer. All subsequent vector-retaining text
+   ancestors on that dependency chain have strictly decreasing owner
+   layers. There can therefore be at most one upper shared consumer, O
+   nonshared positive-layer frames, and the layer-zero input frame. Use
+   the conservative bound `2*(O+2)*H_bytes` for their combined vectors:
+   O is 15/24 and H_bytes is 3072/5120 for E2B/E4B. This even charges two
+   vectors to layer zero. It does not erase the empty ancestors' scalars.
+3. Native dependencies cannot reenter text. Once a text frame yields a
+   feature, the native subtree has exactly one feature ancestor and a
+   strictly decreasing vision/audio layer chain. The four encoder cuts
+   recorded below include its native controllers, suspended and active
+   native vectors, all scalar slots, private worker storage, pooled
+   image state and the protected predecessor. Their largest necessary
+   subtotal is 85229 bytes, below 86016. Unpinned memo entries are treated
+   separately, not assumed absent from a live observation.
+4. Outside encoder descent, a deliberately overlapping feature/embedding
+   envelope is `26085 + 2*5120 + 5120 + 6432 + 5632 + 512 + 5120 +
+   3*136 = 59549` bytes. Its terms are native controllers, both feature
+   frame banks, an outer feature destination, the largest feature worker,
+   one H/PLE embedding workspace, the separately retained PLE, one
+   protected H-wide memo and three scalar slots. Some terms are mutually
+   exclusive in RTL; keeping them all only enlarges the bound. This
+   covers the original-input embedding and resumed higher-layer PLE
+   phases as well as native feature output. During encoder descent the
+   empty outer feature destination is absent by the first-output grant
+   rule, not by an accounting exemption.
+
+The following source-derived fallback envelope intentionally double-counts
+some mutually exclusive storage to give a simple uniform bound. Unlike a
+necessary-working-set cut, it includes **all sixteen** resident memo vectors,
+even though the native subtotal already includes its protected memo. It is
+valid for actual and production-shadow allocations; native widths remain
+uncompacted and all compact text vectors are no larger than their shadows.
+
+| Nonoverlapping allocation class before conservative enlargement | Uniform bound |
+| --- | --- |
+| Non-native controllers, visibility metadata and integration | 15862 bytes |
+| Native controllers, native frames/scalars, active native worker and protected native source | 86016 bytes |
+| All text/native scalar slots, counted again conservatively | `61*136 = 8296` bytes |
+| All memo payloads, including native memos again conservatively | `16*H_bytes` |
+| Text frame vector banks, including partially written/reserved banks | `2*(O+2)*H_bytes` |
+| Active text private work, including separately retained PLE | `3*H_bytes+1024` |
+| Outer frontier/owner source, head tile and retained PLE envelope | `2*H_bytes+2048` |
+| All resident KV words at C=64 | 256 bytes |
+
+This gives 282462 bytes for E2B and 487262 for E4B. Their respective
+minimum padded matched baselines are 688128 and 1605632 bytes, so
+`20*282462 < 9*688128` and `20*487262 < 9*1605632`. The baseline formulas
+are nondecreasing for every legal context and these envelope numerators do
+not grow with token count. Thus small-context forced fallback does not need
+the first-production-fallback baseline to meet the strict ratio. The linear
+single-token scheduler remains implemented and reduces work; this bound
+does not depend on replacing the real multi-token evaluator with that path.
+Both envelopes are also below the complete 1 MiB fallback ceiling.
+
+This total bound is distinct from the 64 KiB fallback working partition:
+frame/scalar/memo payloads belong to field 5, while the connected working
+envelope remains 58587 bytes. It is also distinct from ordinary M: ordinary
+execution invokes this scheduler only for native feature reconstruction;
+it has no suspended text replay stack or surviving text memo. Its necessary
+native cuts are at most 85229/59549 bytes, below the minimum E2B allowance
+86016, and the grant FSM can evict unpinned entries before retrying. The
+ordinary non-native text bounds remain 30710/38902 bytes. This is a finite
+source-level feasibility argument, not permission to accept error 7 for a
+legal job, nor an observed allocation or resource/timing result. Verifier
+must observe every actual/shadow grant, eviction, transition and peak,
+including empty scalar-only ancestors and the real two-token and 17-token
+fallback cases.
+
+Read-only Python integer arithmetic recomputed the four encoder cuts and
+the E2B/E4B bounds from these expressions. It executed no HDL, wrote no
+evidence, and did not calculate expected DUT numerical outputs. Physical
+declaration/backing reconciliation and a successful independently executed
+or newly authorized static elaboration remain outstanding; the reserved
+attempt and its failure are recorded above.
+
 ### Current increment: replay-result lifetime and connected partition census
 
 The frontier fallback result and fallback owner-source result now follow the

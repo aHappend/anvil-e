@@ -5,6 +5,103 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
+## Current diagnostic: static parse failure and saved scope repair
+
+The one reserved fast static elaboration ran with Icarus 12.0. Its
+unchanged receipt is
+`evidence/preparation/static-elaboration-20261103T032650Z/receipt.json`;
+argv/source hashes, raw stdout/stderr and tool identity are retained there.
+It did not produce an elaborated hierarchy. The first syntax error points
+at the attention head's `endgenerate`: the legal generate branch was missing
+the `end` after its sequential process. Following module definitions then
+generated cascading scope/declaration errors.
+
+The attention-head missing `end` repair remains saved. One fresh bounded
+static continuation is retained at
+`evidence/preparation/static-repair-20261103T032829Z/receipt.json`,
+linked to the original failure. It exited 210 in 0.415 seconds and
+produced no elaboration dump. Its first error is now the frontier's
+`endgenerate`, not the repaired attention head. The original compiler's
+zero exit despite syntax diagnostics remains a failure, not a static pass.
+Both receipts and all raw logs are preserved unchanged.
+
+Source inspection found two more missing legal-generate-branch closures:
+`rtl/anvil_en1_frontier.sv` and `rtl/anvil_en1_local_ring.sv` now close
+their legal branches after the sequential processes. In
+`rtl/anvil_en1_vision_bins.sv`, the bitmap identifier `bins` is a reserved
+SystemVerilog keyword; it and its three accesses are now `bin_payload`.
+No datapath, RAM extent, state, report expression or protocol changes.
+The three latest repairs have not been elaborated. A read-only source
+delimiter scan finds balanced paired delimiters in all 95 RTL files,
+which does not establish legal HDL or resolved connections.
+
+SPEC adds scoped physical declaration/report reconciliation for the
+frontier payload/tags/occupancy, local ring payload/tags/occupancy and
+vision bitmap. Their payload reservation subtotal is 5122336 production
+bytes and 837984 compact bytes; frontier/ring metadata is 1536/393 bytes.
+Both ordinary backing ranges end exactly at their frontier array's last
+declared word. Native bitmap storage is unchanged at 1824 bytes. These
+are source-derived physical reservations, not live peaks, synthesized RAM
+use or a whole-hierarchy declaration census.
+
+Only view/glob/rg, apply_patch, read-only Python source/integer inspection
+and the single Icarus static command ran in this continuation. No
+functional simulation or synthesis ran; tests, immutable parent sources
+and runtime metadata were not edited.
+
+Remaining: obtain an authorized fresh static diagnostic or independent
+Verifier diagnostic on the saved repairs, resolve any remaining binding
+errors, and finish whole-hierarchy per-instance declaration/backing
+reconciliation. Neither failed receipt is acceptance evidence. The
+reserved attempt and fresh continuation diagnostic are consumed; older
+statements that the reserved check is unused are historical.
+This is not a ready design handoff.
+
+## Current closure: finite small-context replay liveness
+
+The scheduler's decreasing rank bounds scalar slots, but not every text
+ancestor owns two full vectors. `replay_frame_input` yields an absent
+predecessor before issuing any frame-copy request. After a successful
+binding, historical attention requests descend to the actual nonshared
+owner's input. A vector-retaining chain can contain one upper shared
+consumer, at most 15/24 nonshared layers and the text input frame.
+Conservatively charging two H-wide vectors to every one of these frames
+gives `2*(owners+2)*H_bytes`; empty initial-predecessor ancestors retain
+their full scalar charge. Native dependencies cannot reenter text.
+
+SPEC records a uniform fallback envelope covering those text banks, all
+61 scalar slots, all sixteen memo payloads, native suspended/active state,
+private arithmetic, outer consumers, resident words, metadata and every
+connected controller report. It deliberately counts native scalars and
+the protected native memo twice rather than relying on an eviction to
+remove a live reference. Totals are 282462/487262 bytes for E2B/E4B,
+below 45% of even the minimum padded baselines, 688128/1605632 bytes.
+They are context-independent upper bounds while the baselines increase.
+The single-token linear path stays implemented but is not used as a
+substitute for a two-/17-token replay execution in this argument.
+
+Native feature/embedding phases outside encoder descent have a conservative
+59549-byte necessary envelope, including an outer destination, both feature
+frame banks, embedding/PLE storage, protected source and all native
+controllers. Encoder descent remains bounded by the 85229-byte cut.
+Ordinary feature evaluation has no suspended text replay stack and releases
+its memo on scheduler completion. Both necessary native envelopes fit the
+minimum 86016-byte E2B M allowance after unpinned eviction. Ordinary text
+workspace and the separate fallback working partition retain their
+30710/38902-byte and 58587-byte envelopes, respectively.
+
+These are source-derived feasibility bounds, not measured peaks,
+successful grants, numerical execution, physical RAM inference or timing.
+No live/shadow report, grant threshold, RTL schedule, required check or
+acceptance condition changes in this increment. The independent Verifier
+must exercise real misses and evictions and observe all those allocations.
+Read-only Python recomputed the integer bounds; it ran no HDL. The later
+reserved static attempt and its failed parse are recorded above. The
+remaining design closure is successful static elaboration and per-instance
+declaration/physical-backing reconciliation before Verifier handoff.
+Older unfinished-state assessments below are retained chronologically and
+are superseded only for this small-context liveness obligation.
+
 ## Current increment: replay-result lifetime and partition reconciliation
 
 Both fallback result consumers now delay their full empty destination until

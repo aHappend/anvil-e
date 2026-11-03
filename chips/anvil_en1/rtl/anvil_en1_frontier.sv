@@ -422,5 +422,6 @@ module anvil_en1_frontier #(
                 endcase
             end
         end
+    end
     endgenerate
 endmodule

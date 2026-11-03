@@ -722,5 +722,6 @@ module anvil_en1_attention_head #(
                 endcase
             end
         end
+    end
     endgenerate
 endmodule

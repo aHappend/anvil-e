@@ -347,5 +347,6 @@ module anvil_en1_local_ring #(
                 endcase
             end
         end
+    end
     endgenerate
 endmodule
