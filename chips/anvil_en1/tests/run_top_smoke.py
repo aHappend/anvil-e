@@ -16,6 +16,7 @@ from numerical_reference import decode
 from text_fixture import make_text_image
 from text_reference import logits
 from simulation_config import COMPACT_PARENT
+from origin_diagnostics import instrument
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,8 @@ def main():
     parser.add_argument("--max-cycles", type=int, default=2000000000,
                         help="bounded diagnostic cycle limit; incomplete jobs still fail")
     parser.add_argument("--repair-of")
+    parser.add_argument("--diagnose-origin", action="store_true",
+                        help="append observers to disposable RTL copies; not acceptance")
     args = parser.parse_args()
     if args.max_cycles <= 0:
         parser.error("--max-cycles must be positive")
@@ -132,6 +135,24 @@ def main():
         save()
         sources = [str(path.relative_to(ROOT)) for path in inputs
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
+        if args.diagnose_origin:
+            diagnostic_sources = out / "diagnostic-sources"
+            diagnostic_sources.mkdir()
+            bindings = {}
+            for index, name in enumerate(sources):
+                source = ROOT / name
+                if source.parent != ROOT / "rtl":
+                    continue
+                target = diagnostic_sources / source.name
+                binding = instrument(source, target)
+                if binding:
+                    if not binding["functional_text_unchanged"]:
+                        raise RuntimeError("diagnostic copy changed functional text")
+                    sources[index] = str(target.relative_to(ROOT))
+                    bindings[name] = binding
+            receipt["diagnostic_source_bindings"] = bindings
+            receipt["scope"] = "Error attribution only; not engineering acceptance"
+            save()
         obj = relative / "compile-obj"
         # Native geometry remains all 35/42 layers; these parameters affect only model 0.
         parameters = {"COMPACT": 1, "RESIDENT_ENTRIES": args.capacity,
