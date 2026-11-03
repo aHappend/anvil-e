@@ -38,6 +38,14 @@ def main():
             "12-edge bounded sum proof after two reset edges; constant public "
             "inputs, no report-valid or integrated allocation coverage")
         exp.save()
+        def literal(name, value):
+            width = (1600 if name.startswith("component_") else
+                     256 if name.endswith("metadata_bytes") else
+                     2 if name == "observation_model" else
+                     1 if name in ("observation_valid", "observation_check_valid",
+                                   "observation_fallback", "report_partition_error") else 64)
+            return f"{width}'h{value:x}"
+
         script = exp.out / "proof.ys"
         script.write_text(
             "read_verilog -sv rtl/anvil_en1_allocation_ledger.sv\n"
@@ -46,9 +54,11 @@ def main():
             "flatten\nasync2sync\ndffunmap\nopt_clean\n"
             "sat -verify -seq 12 -set-def-inputs -set rst_n 1 "
             "-set-at 1 rst_n 0 -set-at 2 rst_n 0 " +
-            " ".join(f"-set {name} {value}" for name, value in settings.items()) +
+            " ".join(f"-set {name} {literal(name, value)}"
+                     for name, value in settings.items()) +
             " -prove-skip 8 " +
-            " ".join(f"-prove {name} {value}" for name, value in expected.items()) +
+            " ".join(f"-prove {name} {literal(name, value)}"
+                     for name, value in expected.items()) +
             "\n")
         output = exp.run("proof", ["yosys", "-Q", "-T", "-s",
                                   str(script.relative_to(ROOT))], 2400)
