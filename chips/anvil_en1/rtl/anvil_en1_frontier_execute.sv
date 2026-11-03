@@ -790,7 +790,8 @@ module anvil_en1_frontier_execute #(
         (feature_eval ? {6'd0, token_modality} : layer_hold);
     assign eval_tokens_base = rst_n ? tokens_base_hold : 64'd0;
     assign eval_weights_base = rst_n ? weights_base_hold : 64'd0;
-    assign eval_output_ready = rst_n && (state == EVAL_WAIT || state == FEATURE_WAIT);
+    assign eval_output_ready = rst_n &&
+        (state == EVAL_WAIT || (state == FEATURE_WAIT && feature_reserved));
     assign eval_done_ready = rst_n && (state == EVAL_WAIT || state == FEATURE_WAIT);
     assign cmd_valid = rst_n && (memory_owner == M_TOKEN ? state == TOKEN_SEND :
         (memory_owner == M_EMBED ? embed_cmd_valid :
@@ -906,7 +907,7 @@ module anvil_en1_frontier_execute #(
     end endgenerate
 
     wire feature_write = rst_n && state == FEATURE_WAIT &&
-        eval_output_valid && feature_beat_ok;
+        eval_output_valid && eval_output_ready && feature_beat_ok;
     wire retained_ple_write = rst_n && state == EMBED_WAIT &&
         embed_ple_valid && ple_beat_ok && p_allocated && !feature_allocated;
     wire feature_read = rst_n && feature_state == FEATURE_READ;
@@ -1467,17 +1468,15 @@ module anvil_en1_frontier_execute #(
                             feature_count <= 0;
                             feature_bad <= 0;
                             feature_complete <= 0;
-                            allocation_component <= 3;
-                            allocation_return <= FEATURE_START;
+                            state <= FEATURE_START;
                         end else begin
                             allocation_component <= 2;
                             allocation_return <= EMBED_PRIVATE_GRANT;
+                            state <= ALLOCATION_SEND;
                         end
-                        state <= ALLOCATION_SEND;
                     end
                 end
                 FEATURE_START: if (eval_start_ready) begin
-                    feature_allocated <= 1;
                     feature_committed <= 0;
                     feature_generation <= generation_hold;
                     feature_token <= token_hold;
@@ -1485,7 +1484,12 @@ module anvil_en1_frontier_execute #(
                     state <= FEATURE_WAIT;
                 end
                 FEATURE_WAIT: begin
-                    if (eval_output_valid && eval_output_ready) begin
+                    if (eval_output_valid && !feature_reserved) begin
+                        allocation_component <= 3;
+                        allocation_return <= FEATURE_WAIT;
+                        state <= ALLOCATION_SEND;
+                    end else if (eval_output_valid && eval_output_ready) begin
+                        feature_allocated <= 1;
                         if (!feature_beat_ok)
                             feature_bad <= 1;
                         else begin

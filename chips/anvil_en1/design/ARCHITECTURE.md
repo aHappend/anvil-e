@@ -5,7 +5,74 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current increment: native MLP specialization and controller reconciliation
+## Current increment: bounded readers and demand-granted feature output
+
+Native normalization now reads its schema-fixed BF16 scales directly with a
+registered address/read/response FSM. It validates the complete vector extent
+from the real tensor directory before starting normalization, rejects an
+out-of-range scale index before memory, selects the aligned little-endian lane,
+and preserves the former canonical-NaN conversion. Signed zero, subnormals and
+infinities retain their bits. This applies to BF16 and Q4 matrix modes because
+both retain BF16 normalization scales. Normalization arithmetic and reduction
+order are unchanged; its unused matrix/Q4 reader and scale FP arbitration are
+gone, not replaced with a computed answer.
+
+Both general weight and tensor-image readers now use one registered 16x16
+partial product and a separate registered 64-bit accumulate step for exact
+unsigned row/stride calculations. Four partials produce each 32x32 product;
+the general weight reader serializes row offset and total extent. Existing
+dimension/range/overflow checks and actual BF16/Q4 reads remain. This exchanges
+setup cycles for bounded controller state, not numerical accuracy or traffic.
+
+SPEC reconciles per-instance byte rounding and connected multiplicities:
+10 native norms save 175 bytes each (including removal of their old scale
+reader), 41 remaining directories save 28 each, and 27 remaining general
+weight readers save 59 each. The complete reported native-reconstruction
+controller becomes **26085 bytes**, superseding 30576. No changed report is a
+measured allocation, elaborated declaration-coverage result or synthesized
+resource claim.
+
+Tracing the outer lifetime exposed a separate real obstruction: the ordinary
+frontier preallocated its full model-width feature destination before invoking
+the recursive encoders. Even after the controller reduction, the conservative
+vision set plus that E2B destination required `85229+3072=88301` bytes, above
+the minimum 86016-byte native allowance. The executor now starts native feature
+evaluation without that reservation. When its first real output appears, keep
+the output stalled, perform the existing component-3 grant, then accept/write
+the first beat only after grant success. The original complete vector and
+embedding-consumption release still apply. Physical destination RAM remains;
+there is no hidden staging register/vector or speculative write. Errors before
+output do not allocate a destination.
+
+SPEC now enumerates finite post-eviction necessary encoder sets, including
+136-byte scalar slots, the one protected source memo, active audio final binding
+and the outer image pool vector: 85197/81749 bytes for positive/layer-zero audio
+and 85229/82293 for positive/patch-input vision. These are conservative
+source-derived necessary sets after unpinned memo eviction, not executed peaks.
+The maximum leaves 787 bytes at minimum-context E2B; minimum E4B's allowance is
+200704 bytes. No additional frame-count assumption is introduced: audio allows
+twelve positive layers plus input; vision allows sixteen plus input. The outer
+feature destination's later grant follows root completion/pop, when its retired
+6144/6432-byte private reservation exceeds either model's new destination.
+
+This retires the previous coarse encoder-depth and premature outer-destination
+obstruction, not whole-system storage acceptance. The ordinary text, remaining
+embedding/feature and fallback partitions, complete declaration coverage and
+physical backing still require joint reconciliation. Existing grant thresholds,
+all acceptance obligations and independent allocation/traffic observations are
+unchanged. No legal-work capacity error is authorized.
+
+Saved four RTL files (`native_norm`, `weight_read`, `tensor_image`,
+`frontier_execute`) and both design documents. Used view/rg/glob/apply_patch and
+read-only Python source accounting; a mismatched patch hunk was repaired after
+rereading the exact setup code. No HDL execution, preparation receipt,
+functional/synthesis harness or reserved static elaboration. Tests, parent
+sources, runtime metadata and retained failures remain untouched. Independent
+Verifier must exercise exact scale encodings/errors, all partial-product stages,
+first-output backpressure/grant ordering, final binding, memo/pool lifetimes and
+the unchanged numerical results. Design is not yet a ready handoff.
+
+## Prior increment: native MLP specialization and controller reconciliation
 
 The connected native MLP row has a default-preserving `IMAGE_CLASS`
 specialization: mixed (0), vision (1), or audio (2). Vision post-attention

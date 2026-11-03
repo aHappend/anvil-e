@@ -5,13 +5,163 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-Current saved increment: [native MLP class specialization and controller reconciliation](#current-increment-native-mlp-class-specialization-and-controller-reconciliation).
-The connected native MLPs omit the other modality's unreachable activation
-subtree. The complete declared native-controller report is reconciled below.
-Whole-system liveness/capacity remains unclosed; the reserved static
-elaboration has not run.
+### Current increment: bounded readers and demand-granted feature output
 
-### Current increment: native MLP class specialization and controller reconciliation
+Native normalization reads its schema-fixed BF16 scale vector
+with a dedicated registered word-read FSM, not the general matrix/Q4 reader.
+This specialization applies in both weight precisions: native normalization
+scales remain BF16 in the tensor-image ABI.
+
+| Scale boundary | Frozen behavior |
+| --- | --- |
+| Directory completion | Require one BF16 row of exactly the accepted vector length, aligned base, stride and byte length equal to twice that length, and no 64-bit end-address overflow |
+| Scale request acceptance | Register the full 32-bit component index; clear the preceding scale/error |
+| Address stage | Reject an index outside the validated vector before issuing memory; otherwise register `base + 4*(index >> 1)` with overflow checking |
+| Word request stall | Hold the registered aligned address and read-valid until acceptance |
+| Word response acceptance | Register the selected little-endian BF16 lane and error; canonicalize every BF16 NaN to `0x7fc0`, preserving other bits including signed zero/subnormals/infinities |
+| Following edge | Register response availability; do not consume a newly created response on its creation edge |
+| Error | Return error 2 for an accepted failed read or 5 for invalid addressing, and let the existing normalization drain/complete path retire it |
+| Reset | Existing asynchronous validity reset and zero public outputs; no scale result survives reset |
+
+No scale response comes from the Q4 decoder or an FP operation. The
+normalization's own arithmetic, reduction order, epsilon and materialization
+boundaries remain unchanged. The source-derived size reconciliation and
+whole-system liveness analysis below are not replaced by this local change.
+
+The tensor-image and general weight readers also serialize their exact
+unsigned row/stride extent products. A registered 16x16 partial product is
+followed by a separate registered 64-bit accumulation. Tensor-image traversal
+uses four partial products for `rows*stride`. General weight traversal uses
+four for `row*stride`, then four for `rows*stride`, retaining both completed
+64-bit results until descriptor validation. These are address calculations,
+not FP reductions. No descriptor validation, overflow/range test, byte
+transfer or BF16/Q4 decoding boundary is omitted.
+
+| Product stage | Registered action |
+| --- | --- |
+| Setup | Clear completed product(s), set partial index zero |
+| Capture | Multiply the selected 16-bit halves into the one 32-bit product register |
+| Accumulate | Add its exact zero-extended, 0/16/32-bit-shifted value into the selected 64-bit result |
+| Nonfinal partial | Increment the bounded index and return to capture |
+| Final partial | Advance to the existing descriptor validation on the following edge |
+| Reset | Clear index, partial product and completed products with the existing controller reset |
+
+The ordinary frontier executor's native-feature destination is demand-granted.
+Starting a feature evaluation does not reserve its model-width destination.
+`FEATURE_WAIT` keeps `eval_output_ready=0` until the existing component-3
+grant succeeds. On the first real `eval_output_valid`, it requests that grant,
+holding the producer's output stalled through the existing allocation FSM.
+Only after the registered successful grant may the first output handshake,
+RAM write or received-count update occur. All subsequent feature beats retain
+the same reservation until the existing embedding-consumption release.
+An error before the first output needs no destination allocation. A grant
+failure follows the existing error path, never a successful feature result.
+Reset, error retirement and stalled-payload stability remain unchanged.
+No new output bank, hidden buffer or controller register is introduced;
+physical feature RAM is still disclosed at its full original extent.
+
+The three changed reader declarations reconcile as follows. Byte rounding
+is per instance before summing child reports; the FP primitive is external
+in the removed normalization scale reader.
+
+| Local report | Previous bits / bytes | Current bits / bytes | Reduction |
+| --- | ---: | ---: | ---: |
+| General weight reader, excluding separately reported FP | 1335 / 167 | 858 / 108 | 59 bytes |
+| Tensor-image reader | 1605 / 201 | 1383 / 173 | 28 bytes |
+| Native norm own controller | 389 / 49 | 325 / 41 | 8 bytes |
+| Native norm's removed BF16-only use of general weight reader | 1335 / 167 | absent | 167 bytes |
+
+Thus a native norm saves 175 bytes apart from the separately counted
+28-byte directory reduction. Literal connected-reader traversal, excluding
+the absent packed-post FF1 and supplied-depthwise subtrees, gives:
+
+| Native report subtree | Native norm instances | Remaining directory instances | Remaining general weight readers | New reported bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Original-input reconstruction | 0 | 1 | 2 | 936 |
+| Vision replay | 1 | 8 | 7 | 5545 |
+| Audio input/layer nested controllers | 9 | 25 | 14 | 15414 |
+| Audio feature nested controllers | 0 | 3 | 3 | 1796 |
+| Image feature nested controllers | 0 | 4 | 1 | 1998 |
+| Unchanged audio-input/audio-layer/audio-feature/image-feature wrappers and native read/ownership state | 0 | 0 | 0 | 396 |
+| Total | 10 | 41 | 27 | 26085 |
+
+The previous 30576-byte report is superseded by
+`30576 - 10*175 - 41*28 - 27*59 = 26085` bytes. The frontier executor
+uses the same registers and report after demand-grant scheduling.
+These are source-expression counts, not HDL elaboration, declaration-
+coverage certification, measured allocations or synthesized resource use.
+
+The following finite encoder cuts include active final binding, the protected
+memo and an outer feature continuation. They bound the necessary working set
+**after evicting unpinned memo entries**, not the peak including whatever
+evictable entries still fit. The existing grant/eviction FSM must still be
+observed independently. Every frame, including a frame with no vector yet,
+is charged its full 136-byte scalar slot.
+
+| Encoder cut | Conservative necessary native bytes |
+| --- | ---: |
+| Positive audio layer: 11 suspended frames at `4096+136`, active frame at `6144+136`, 4096 private bytes, one 2048-byte source memo and one 136-byte feature continuation, plus controllers | 85197 |
+| Audio layer zero: 12 suspended frames at `4096+136`, active `2048+136`, 512 private bytes, one 2048-byte memo and one 136-byte feature continuation, plus controllers | 81749 |
+| Positive vision layer: 15 suspended frames at `3072+136`, active `3072+136`, 4608 private bytes, one 1536-byte memo, one 136-byte feature continuation and its retained 1536-byte pooled vector, plus controllers | 85229 |
+| Vision patch input: 16 suspended frames at `3072+136`, active `1536+136`, one 1536-byte memo, one 136-byte feature continuation and its retained 1536-byte pooled vector, plus controllers | 82293 |
+
+Audio suspension retains at most the partial head slice and partial folded
+output slice; the additional raw FF1 slice is allocated only after its
+final predecessor binding succeeds, when that worker can no longer yield.
+Its full active slice is charged in the first cut, not silently omitted.
+Lower-layer chains cannot raise the number of positive layers above twelve:
+their successor stops below the suspended consumer's layer. The corresponding
+vision depth is sixteen. Vision pool source misses retain the partial pooled
+vector, but modality projection has not started yet; its output vector is
+not simultaneously allocated. Audio feature mapping yields before starting
+its native output/projection child, so it retains no such vector.
+
+Only the currently dispatched worker can pin a predecessor; a yielding task
+clears that pin before descending. Existing frame-to-memo consuming transfers
+charge their source suffix, destination prefix and separately reported pair
+registers without discarding live data. The ordinary frontier's output-feature
+bank is now unreserved throughout these cuts. Before this scheduling repair,
+its E2B 3072-byte destination made even the revised vision cut
+`85229+3072=88301`, above the 86016-byte minimum native allowance. It is
+removed from that cut by the actual first-output grant, not by relabeling it.
+At the later outer grant, the feature root has finished and popped: its
+6144-byte audio or 6432-byte image private reservation has retired, exceeding
+the newly needed 3072/5120-byte destination in either model. No encoder
+descent or new memo allocation occurs between root completion and that grant.
+Physical backing remains reserved and separately disclosed.
+
+The minimum native allowances are 86016 bytes (E2B) and 200704 bytes (E4B);
+they are nondecreasing with padded context. The largest listed necessary
+encoder set leaves 787 bytes at E2B's minimum. This retires the previous
+coarse encoder-depth/outer-destination obstruction, not whole-product
+storage acceptance. Whole-system ordinary text grants, fallback partitions,
+remaining feature/embedding phases, declaration coverage and physical backing
+still need a complete joint reconciliation. In particular these cuts cannot
+certify a legal global grant if another partition fails. Do not lower any
+ledger threshold or accept an allocation error for legal work.
+
+Independent verification must cover both external/internal-FP norm settings;
+all legal native norm kinds/lengths and both precisions; BF16 signed zeros,
+subnormals, infinities and all NaN classes; adjacent low/high word lanes and
+the last vector component; scale/address/read errors, stalls and reset.
+Exercise all eight/four partial-product positions, high halves, carry
+propagation, malformed extents and overflowing descriptors without offending
+accesses. For outer features, require no destination allocation or RAM write
+while encoders descend, a held real first output through the grant, exactly
+one grant before its first acceptance, and the unchanged complete output and
+embedding-release protocol. Observe actual pinned memo lifetimes, retained
+pool vectors, final-binding slices and native production shadows.
+
+Saved four RTL files (`native_norm`, `weight_read`, `tensor_image`,
+`frontier_execute`) and both design documents. Used view/rg/glob/apply_patch
+and read-only Python source-count/arithmetic inspection. One patch initially
+failed to match the weight reader's additional setup assignments; the exact
+source was reread and those assignments preserved in the applied repair.
+No HDL execution, simulation/synthesis harness, preparation receipt or reserved
+static elaboration. Tests, parent sources, runtime metadata and retained failures
+remain untouched. This is a partial design increment, not a ready handoff.
+
+### Prior increment: native MLP class specialization and controller reconciliation
 
 Freeze `native_mlp_row.IMAGE_CLASS`: 0 retains the original mixed native
 worker, 1 permits only vision mode 0, and 2 permits only audio modes 1/2.

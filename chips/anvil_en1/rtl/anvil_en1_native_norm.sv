@@ -45,14 +45,14 @@ module anvil_en1_native_norm #(
     localparam [3:0] IDLE = 0, VALIDATE = 1, LOOKUP_START = 2,
         LOOKUP_WAIT = 3, NORM_START = 4, NORM_WAIT = 5,
         PUBLISH = 6, RESPONSE = 7;
-    localparam [2:0] SCALE_IDLE = 0, SCALE_START = 1, SCALE_WAIT = 2,
-        SCALE_REGISTER = 3, SCALE_RESPONSE = 4;
+    localparam [2:0] SCALE_IDLE = 0, SCALE_ADDRESS = 1, SCALE_SEND = 2,
+        SCALE_WAIT = 3, SCALE_REGISTER = 4, SCALE_RESPONSE = 5;
     reg [3:0] state;
     reg [2:0] scale_state;
     reg [1:0] model_hold, precision_hold, class_hold;
     reg [15:0] kind_hold, layer_hold;
-    reg [31:0] length_hold, columns_hold, stride_hold, index_hold;
-    reg [63:0] weights_hold, base_hold, bytes_hold;
+    reg [31:0] length_hold, index_hold;
+    reg [63:0] weights_hold, base_hold, scale_address_hold;
     reg [15:0] scale_hold;
     reg [3:0] error_hold, scale_error_hold;
     wire vision_norm = class_hold == 1 && layer_hold < 16 &&
@@ -76,17 +76,21 @@ module anvil_en1_native_norm #(
     wire [31:0] lookup_rows, lookup_columns, lookup_stride;
     wire [7:0] lookup_type;
     wire [3:0] lookup_error;
-    wire [63:0] primitive_directory_bytes, primitive_norm_bytes, primitive_weight_bytes;
+    wire [63:0] primitive_directory_bytes, primitive_norm_bytes;
     wire [63:0] primitive_fp_bytes;
     wire fp_ready, fp_valid;
     wire [31:0] fp_data;
     wire [3:0] fp_error;
-    wire scale_phase = scale_state == SCALE_START || scale_state == SCALE_WAIT;
     wire norm_arithmetic_valid, norm_arithmetic_result_ready;
-    wire weight_arithmetic_valid, weight_arithmetic_result_ready;
-    wire [2:0] norm_arithmetic_operation, weight_arithmetic_operation;
+    wire [2:0] norm_arithmetic_operation;
     wire [31:0] norm_arithmetic_a, norm_arithmetic_b;
-    wire [31:0] weight_arithmetic_a, weight_arithmetic_b;
+    wire [63:0] scale_vector_bytes = {31'd0, length_hold, 1'b0};
+    wire [64:0] lookup_end = {1'b0, lookup_base} + {1'b0, lookup_bytes};
+    wire [64:0] scale_address_sum =
+        {1'b0, base_hold} + {32'd0, index_hold[31:1], 2'd0};
+    wire [15:0] scale_word = index_hold[0] ? result_data[31:16] : result_data[15:0];
+    wire [15:0] canonical_scale =
+        scale_word[14:7] == 8'hff && scale_word[6:0] != 0 ? 16'h7fc0 : scale_word;
     initial begin
         if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
             $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
@@ -134,46 +138,18 @@ module anvil_en1_native_norm #(
         .done_ready(rst_n && state == NORM_WAIT && scale_state == SCALE_IDLE),
         .done_error(norm_error),
         .arithmetic_valid(norm_arithmetic_valid),
-        .arithmetic_ready(norm_selected && !scale_phase && fp_ready),
+        .arithmetic_ready(norm_selected && fp_ready),
         .arithmetic_operation(norm_arithmetic_operation),
         .arithmetic_a(norm_arithmetic_a), .arithmetic_b(norm_arithmetic_b),
-        .arithmetic_result_valid(norm_selected && !scale_phase && fp_valid),
+        .arithmetic_result_valid(norm_selected && fp_valid),
         .arithmetic_result_ready(norm_arithmetic_result_ready),
         .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    wire weight_ready, weight_valid, weight_cmd_valid, weight_result_ready;
-    wire [63:0] weight_addr;
-    wire [31:0] weight_data;
-    wire [3:0] weight_error;
-    anvil_en1_weight_read #(.EXTERNAL_FP(1)) scales (
-        .controller_bytes(primitive_weight_bytes),
-        .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && scale_state == SCALE_START), .start_ready(weight_ready),
-        .precision(2'd0), .tensor_base(base_hold), .tensor_bytes(bytes_hold),
-        .tensor_rows(32'd1), .tensor_columns(columns_hold), .row_stride(stride_hold),
-        .row_index(32'd0), .column_index(index_hold),
-        .cmd_valid(weight_cmd_valid), .cmd_ready(norm_selected && cmd_ready),
-        .cmd_write(), .cmd_addr(weight_addr), .cmd_wdata(),
-        .result_valid(norm_selected && result_valid), .result_ready(weight_result_ready),
-        .result_data(result_data), .result_error(result_error),
-        .done_valid(weight_valid), .done_ready(rst_n && scale_state == SCALE_WAIT),
-        .done_data(weight_data), .done_error(weight_error),
-        .arithmetic_valid(weight_arithmetic_valid),
-        .arithmetic_ready(scale_phase && fp_ready),
-        .arithmetic_operation(weight_arithmetic_operation),
-        .arithmetic_a(weight_arithmetic_a), .arithmetic_b(weight_arithmetic_b),
-        .arithmetic_result_valid(scale_phase && fp_valid),
-        .arithmetic_result_ready(weight_arithmetic_result_ready),
-        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
-    );
-    wire fp_start_valid = rst_n && norm_selected &&
-        (scale_phase ? weight_arithmetic_valid : norm_arithmetic_valid);
-    wire fp_done_ready = rst_n && norm_selected &&
-        (scale_phase ? weight_arithmetic_result_ready : norm_arithmetic_result_ready);
-    wire [2:0] fp_operation = scale_phase ?
-        weight_arithmetic_operation : norm_arithmetic_operation;
-    wire [31:0] fp_operand_a = scale_phase ? weight_arithmetic_a : norm_arithmetic_a;
-    wire [31:0] fp_operand_b = scale_phase ? weight_arithmetic_b : norm_arithmetic_b;
+    wire fp_start_valid = rst_n && norm_selected && norm_arithmetic_valid;
+    wire fp_done_ready = rst_n && norm_selected && norm_arithmetic_result_ready;
+    wire [2:0] fp_operation = norm_arithmetic_operation;
+    wire [31:0] fp_operand_a = norm_arithmetic_a;
+    wire [31:0] fp_operand_b = norm_arithmetic_b;
     assign arithmetic_valid = EXTERNAL_FP == 1 && fp_start_valid;
     assign arithmetic_operation = rst_n && EXTERNAL_FP == 1 ? fp_operation : 3'd0;
     assign arithmetic_a = rst_n && EXTERNAL_FP == 1 ? fp_operand_a : 32'd0;
@@ -200,29 +176,29 @@ module anvil_en1_native_norm #(
     assign source_index = rst_n ? norm_source_index : 32'd0;
     assign source_rsp_ready = norm_selected && norm_source_rsp_ready;
     assign cmd_valid = lookup_selected ? lookup_cmd_valid :
-        (norm_selected && weight_cmd_valid);
+        (norm_selected && scale_state == SCALE_SEND);
     assign cmd_write = 0;
     assign cmd_addr = !rst_n ? 64'd0 : (lookup_selected ? lookup_addr :
-        (norm_selected ? weight_addr : 64'd0));
+        (norm_selected ? scale_address_hold : 64'd0));
     assign cmd_wdata = 0;
     assign result_ready = lookup_selected ? lookup_result_ready :
-        (norm_selected && weight_result_ready);
+        (norm_selected && scale_state == SCALE_WAIT);
     assign done_valid = rst_n && state == RESPONSE;
     assign done_error = rst_n ? error_hold : 4'd0;
     localparam integer CONTROLLER_BITS = $bits(state) + $bits(scale_state) +
         $bits(model_hold) + $bits(precision_hold) + $bits(class_hold) +
         $bits(kind_hold) + $bits(layer_hold) + $bits(length_hold) +
-        $bits(columns_hold) + $bits(stride_hold) + $bits(index_hold) +
-        $bits(weights_hold) + $bits(base_hold) + $bits(bytes_hold) +
+        $bits(index_hold) + $bits(weights_hold) + $bits(base_hold) +
+        $bits(scale_address_hold) +
         $bits(scale_hold) + $bits(error_hold) + $bits(scale_error_hold);
     assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
-        primitive_directory_bytes + primitive_norm_bytes + primitive_weight_bytes +
-        primitive_fp_bytes;
+        primitive_directory_bytes + primitive_norm_bytes + primitive_fp_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             scale_state <= SCALE_IDLE;
             index_hold <= 0;
+            scale_address_hold <= 0;
             scale_hold <= 0;
             scale_error_hold <= 0;
         end else begin
@@ -231,13 +207,22 @@ module anvil_en1_native_norm #(
                     index_hold <= norm_scale_index;
                     scale_hold <= 0;
                     scale_error_hold <= 0;
-                    scale_state <= SCALE_START;
+                    scale_state <= SCALE_ADDRESS;
                 end
-                SCALE_START: if (weight_ready)
+                SCALE_ADDRESS: begin
+                    if (index_hold >= length_hold || scale_address_sum[64]) begin
+                        scale_error_hold <= 5;
+                        scale_state <= SCALE_REGISTER;
+                    end else begin
+                        scale_address_hold <= scale_address_sum[63:0];
+                        scale_state <= SCALE_SEND;
+                    end
+                end
+                SCALE_SEND: if (cmd_valid && cmd_ready)
                     scale_state <= SCALE_WAIT;
-                SCALE_WAIT: if (weight_valid) begin
-                    scale_hold <= weight_error == 0 ? weight_data[31:16] : 16'd0;
-                    scale_error_hold <= weight_error;
+                SCALE_WAIT: if (result_valid && result_ready) begin
+                    scale_hold <= result_error ? 16'd0 : canonical_scale;
+                    scale_error_hold <= result_error ? 4'd2 : 4'd0;
                     scale_state <= SCALE_REGISTER;
                 end
                 SCALE_REGISTER: scale_state <= SCALE_RESPONSE;
@@ -260,11 +245,8 @@ module anvil_en1_native_norm #(
             kind_hold <= 0;
             layer_hold <= 0;
             length_hold <= 0;
-            columns_hold <= 0;
-            stride_hold <= 0;
             weights_hold <= 0;
             base_hold <= 0;
-            bytes_hold <= 0;
             error_hold <= 0;
         end else begin
             case (state)
@@ -297,23 +279,22 @@ module anvil_en1_native_norm #(
                         error_hold <= lookup_error;
                         state <= PUBLISH;
                     end else if (lookup_rows != 1 || lookup_columns != length_hold ||
-                        lookup_type != 0) begin
+                        lookup_type != 0 || lookup_base[1:0] != 0 ||
+                        lookup_bytes != scale_vector_bytes ||
+                        {32'd0, lookup_stride} != scale_vector_bytes || lookup_end[64]) begin
                         error_hold <= 5;
                         state <= PUBLISH;
                     end else begin
                         base_hold <= lookup_base;
-                        bytes_hold <= lookup_bytes;
-                        columns_hold <= lookup_columns;
-                        stride_hold <= lookup_stride;
                         state <= NORM_START;
                     end
                 end
                 NORM_START: if (norm_ready)
                     state <= NORM_WAIT;
                 NORM_WAIT: begin
-                    if (scale_state == SCALE_WAIT && weight_valid &&
-                        weight_error != 0 && error_hold == 0)
-                        error_hold <= weight_error;
+                    if (scale_state == SCALE_REGISTER &&
+                        scale_error_hold != 0 && error_hold == 0)
+                        error_hold <= scale_error_hold;
                     if (norm_valid && scale_state == SCALE_IDLE) begin
                         if (error_hold == 0)
                             error_hold <= norm_error;

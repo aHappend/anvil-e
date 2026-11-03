@@ -48,7 +48,7 @@ module anvil_en1_tensor_image #(
         localparam [4:0] IDLE = 0, BASE_VALIDATE = 1, MEMORY_START = 2,
             MEMORY_WAIT = 3, MEMORY_REGISTER = 4, HEADER_ADVANCE = 5,
             HEADER_VALIDATE = 6, ENTRY_START = 7, ENTRY_ADVANCE = 8,
-            ENTRY_PRODUCTS = 9, ENTRY_REDUCE = 10, ENTRY_SUM = 11,
+            ENTRY_PRODUCTS = 9, PRODUCT_CAPTURE = 10, PRODUCT_ACCUMULATE = 11,
             ENTRY_VALIDATE = 12, PAIR_START = 13, PAIR_ADVANCE = 14,
             PAIR_VALIDATE = 15, ENTRY_FINISH = 16, FINISH = 17,
             PUBLISH = 18, RESPONSE = 19;
@@ -65,8 +65,9 @@ module anvil_en1_tensor_image #(
         reg memory_error_hold, found, header_word_error, entry_word_error;
         reg [3:0] word_index, error_hold;
         reg [31:0] entry_index, prior_index;
-        reg [31:0] ep00, ep01, ep10, ep11;
-        reg [63:0] extent_partial_a, extent_partial_b, required_bytes;
+        reg [1:0] product_index;
+        reg [31:0] partial_product;
+        reg [63:0] required_bytes;
         reg [63:0] output_base, output_bytes;
         reg [31:0] output_rows, output_columns, output_stride;
         reg [7:0] output_type;
@@ -78,9 +79,8 @@ module anvil_en1_tensor_image #(
             $bits(prior_entry) + $bits(word_hold) + $bits(memory_error_hold) +
             $bits(found) + $bits(header_word_error) + $bits(entry_word_error) +
             $bits(word_index) + $bits(error_hold) +
-            $bits(entry_index) + $bits(prior_index) + $bits(ep00) + $bits(ep01) +
-            $bits(ep10) + $bits(ep11) + $bits(extent_partial_a) +
-            $bits(extent_partial_b) + $bits(required_bytes) + $bits(output_base) +
+            $bits(entry_index) + $bits(prior_index) + $bits(product_index) +
+            $bits(partial_product) + $bits(required_bytes) + $bits(output_base) +
             $bits(output_bytes) + $bits(output_rows) + $bits(output_columns) +
             $bits(output_stride) + $bits(output_type);
         assign controller_bytes = rst_n ? 64'((CONTROLLER_BITS+7) >> 3) : 64'd0;
@@ -159,6 +159,12 @@ module anvil_en1_tensor_image #(
             prior_end[64] ||
             (entry_offset < prior_end[63:0] &&
                 prior_entry[95:32] < entry_end[63:0]);
+        wire [15:0] product_a = product_index[1] ? shape_rows[31:16] : shape_rows[15:0];
+        wire [15:0] product_b = product_index[0] ? entry[351:336] : entry[335:320];
+        wire [63:0] product_term = product_index == 0 ? {32'd0, partial_product} :
+            (product_index == 3 ? {partial_product, 32'd0} :
+                {16'd0, partial_product, 16'd0});
+        wire [63:0] product_total = required_bytes + product_term;
 
         assign start_ready = rst_n && state == IDLE;
         assign cmd_valid = rst_n && state == MEMORY_START;
@@ -201,12 +207,8 @@ module anvil_en1_tensor_image #(
                 error_hold <= 0;
                 entry_index <= 0;
                 prior_index <= 0;
-                ep00 <= 0;
-                ep01 <= 0;
-                ep10 <= 0;
-                ep11 <= 0;
-                extent_partial_a <= 0;
-                extent_partial_b <= 0;
+                product_index <= 0;
+                partial_product <= 0;
                 required_bytes <= 0;
                 output_base <= 0;
                 output_bytes <= 0;
@@ -320,20 +322,22 @@ module anvil_en1_tensor_image #(
                         end
                     end
                     ENTRY_PRODUCTS: begin
-                        ep00 <= shape_rows[15:0] * entry[335:320];
-                        ep01 <= shape_rows[15:0] * entry[351:336];
-                        ep10 <= shape_rows[31:16] * entry[335:320];
-                        ep11 <= shape_rows[31:16] * entry[351:336];
-                        state <= ENTRY_REDUCE;
+                        product_index <= 0;
+                        required_bytes <= 0;
+                        state <= PRODUCT_CAPTURE;
                     end
-                    ENTRY_REDUCE: begin
-                        extent_partial_a <= {32'd0, ep00} + {16'd0, ep01, 16'd0};
-                        extent_partial_b <= {16'd0, ep10, 16'd0} + {ep11, 32'd0};
-                        state <= ENTRY_SUM;
+                    PRODUCT_CAPTURE: begin
+                        partial_product <= product_a * product_b;
+                        state <= PRODUCT_ACCUMULATE;
                     end
-                    ENTRY_SUM: begin
-                        required_bytes <= extent_partial_a + extent_partial_b;
-                        state <= ENTRY_VALIDATE;
+                    PRODUCT_ACCUMULATE: begin
+                        required_bytes <= product_total;
+                        if (product_index == 3)
+                            state <= ENTRY_VALIDATE;
+                        else begin
+                            product_index <= product_index + 1'b1;
+                            state <= PRODUCT_CAPTURE;
+                        end
                     end
                     ENTRY_VALIDATE: begin
                         if (entry_bad) begin

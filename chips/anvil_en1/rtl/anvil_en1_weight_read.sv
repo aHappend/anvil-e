@@ -31,8 +31,8 @@ module anvil_en1_weight_read #(
     input wire [31:0] arithmetic_result_data,
     input wire [3:0] arithmetic_result_error
 );
-    localparam [4:0] IDLE = 0, EXTENT_PRODUCTS = 1, EXTENT_REDUCE = 2,
-        EXTENT_SUM = 3, VALIDATE = 4, ROW_ADDRESS = 5,
+    localparam [4:0] IDLE = 0, EXTENT_PRODUCTS = 1, PRODUCT_CAPTURE = 2,
+        PRODUCT_ACCUMULATE = 3, VALIDATE = 4, ROW_ADDRESS = 5,
         ELEMENT_ADDRESS = 6, READ_START = 7, READ_WAIT = 8,
         READ_REGISTER = 9, DECODE = 10, FP_START = 11, FP_WAIT = 12,
         Q4_NIBBLE_ADDRESS = 13, Q4_MULTIPLY = 14,
@@ -42,8 +42,8 @@ module anvil_en1_weight_read #(
     reg [63:0] base_hold, bytes_hold, row_base, address_hold;
     reg [31:0] rows_hold, columns_hold, stride_hold, row_hold, column_hold;
     reg [31:0] expected_stride, column_offset, nibble_offset;
-    reg [31:0] rp00, rp01, rp10, rp11, ep00, ep01, ep10, ep11;
-    reg [63:0] row_partial_a, row_partial_b, extent_partial_a, extent_partial_b;
+    reg [2:0] product_index;
+    reg [31:0] partial_product;
     reg [63:0] row_offset, required_bytes;
     reg [31:0] word_hold, scale_hold, output_hold, fp_a, fp_b;
     reg [2:0] fp_op;
@@ -55,10 +55,8 @@ module anvil_en1_weight_read #(
         $bits(row_base) + $bits(address_hold) + $bits(rows_hold) +
         $bits(columns_hold) + $bits(stride_hold) + $bits(row_hold) +
         $bits(column_hold) + $bits(expected_stride) + $bits(column_offset) +
-        $bits(nibble_offset) + $bits(rp00) + $bits(rp01) + $bits(rp10) +
-        $bits(rp11) + $bits(ep00) + $bits(ep01) + $bits(ep10) + $bits(ep11) +
-        $bits(row_partial_a) + $bits(row_partial_b) + $bits(extent_partial_a) +
-        $bits(extent_partial_b) + $bits(row_offset) + $bits(required_bytes) +
+        $bits(nibble_offset) + $bits(product_index) + $bits(partial_product) +
+        $bits(row_offset) + $bits(required_bytes) +
         $bits(word_hold) + $bits(scale_hold) + $bits(output_hold) +
         $bits(fp_a) + $bits(fp_b) + $bits(fp_op) + $bits(error_hold) +
         $bits(memory_error_hold) + $bits(reading_nibble) + $bits(lane_hold);
@@ -111,6 +109,14 @@ module anvil_en1_weight_read #(
     wire [7:0] nibble_byte = word_hold >> {lane_hold, 3'd0};
     wire [3:0] nibble = column_hold[4] ? nibble_byte[7:4] : nibble_byte[3:0];
     wire [31:0] nibble_value = nibble_float(nibble);
+    wire [31:0] product_rows = product_index[2] ? rows_hold : row_hold;
+    wire [15:0] product_a = product_index[1] ? product_rows[31:16] : product_rows[15:0];
+    wire [15:0] product_b = product_index[0] ? stride_hold[31:16] : stride_hold[15:0];
+    wire [63:0] product_term = product_index[1:0] == 0 ? {32'd0, partial_product} :
+        (product_index[1:0] == 3 ? {partial_product, 32'd0} :
+            {16'd0, partial_product, 16'd0});
+    wire [63:0] product_total =
+        (product_index[2] ? required_bytes : row_offset) + product_term;
 
     wire fp_start_valid = rst_n && state == FP_START;
     wire fp_done_ready = rst_n && state == FP_WAIT;
@@ -165,18 +171,8 @@ module anvil_en1_weight_read #(
             expected_stride <= 0;
             column_offset <= 0;
             nibble_offset <= 0;
-            rp00 <= 0;
-            rp01 <= 0;
-            rp10 <= 0;
-            rp11 <= 0;
-            ep00 <= 0;
-            ep01 <= 0;
-            ep10 <= 0;
-            ep11 <= 0;
-            row_partial_a <= 0;
-            row_partial_b <= 0;
-            extent_partial_a <= 0;
-            extent_partial_b <= 0;
+            product_index <= 0;
+            partial_product <= 0;
             row_offset <= 0;
             required_bytes <= 0;
             word_hold <= 0;
@@ -205,31 +201,30 @@ module anvil_en1_weight_read #(
                     state <= EXTENT_PRODUCTS;
                 end
                 EXTENT_PRODUCTS: begin
-                    rp00 <= row_hold[15:0] * stride_hold[15:0];
-                    rp01 <= row_hold[15:0] * stride_hold[31:16];
-                    rp10 <= row_hold[31:16] * stride_hold[15:0];
-                    rp11 <= row_hold[31:16] * stride_hold[31:16];
-                    ep00 <= rows_hold[15:0] * stride_hold[15:0];
-                    ep01 <= rows_hold[15:0] * stride_hold[31:16];
-                    ep10 <= rows_hold[31:16] * stride_hold[15:0];
-                    ep11 <= rows_hold[31:16] * stride_hold[31:16];
+                    product_index <= 0;
+                    row_offset <= 0;
+                    required_bytes <= 0;
                     expected_stride <= stride_expected;
                     column_offset <= precision_hold == 0 ?
                         ((column_hold >> 1) << 2) : block_offset;
                     nibble_offset <= block_offset + 2 + {28'd0, column_hold[3:0]};
-                    state <= EXTENT_REDUCE;
+                    state <= PRODUCT_CAPTURE;
                 end
-                EXTENT_REDUCE: begin
-                    row_partial_a <= {32'd0, rp00} + {16'd0, rp01, 16'd0};
-                    row_partial_b <= {16'd0, rp10, 16'd0} + {rp11, 32'd0};
-                    extent_partial_a <= {32'd0, ep00} + {16'd0, ep01, 16'd0};
-                    extent_partial_b <= {16'd0, ep10, 16'd0} + {ep11, 32'd0};
-                    state <= EXTENT_SUM;
+                PRODUCT_CAPTURE: begin
+                    partial_product <= product_a * product_b;
+                    state <= PRODUCT_ACCUMULATE;
                 end
-                EXTENT_SUM: begin
-                    row_offset <= row_partial_a + row_partial_b;
-                    required_bytes <= extent_partial_a + extent_partial_b;
-                    state <= VALIDATE;
+                PRODUCT_ACCUMULATE: begin
+                    if (product_index[2])
+                        required_bytes <= product_total;
+                    else
+                        row_offset <= product_total;
+                    if (product_index == 7)
+                        state <= VALIDATE;
+                    else begin
+                        product_index <= product_index + 1'b1;
+                        state <= PRODUCT_CAPTURE;
+                    end
                 end
                 VALIDATE: begin
                     if (precision_hold > 1) begin
