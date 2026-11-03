@@ -95,14 +95,14 @@ def main():
                                 child.kill()
                                 child.wait()
                                 command["exit_code"] = child.returncode
-                                raise
+                                raise subprocess.TimeoutExpired(argv, effective) from None
                             print(f"PROGRESS phase={label} "
                                   f"elapsed_s={int(time.monotonic()-started)} "
                                   f"receipt={relative}/receipt.json", flush=True)
             command["exit_code"] = code
             command["timed_out"] = False
         except subprocess.TimeoutExpired:
-            command["exit_code"] = None
+            command.setdefault("exit_code", None)
             command["timed_out"] = True
             raise
         finally:
