@@ -137,11 +137,11 @@ MONITORS = {
 }
 
 
-def instrument(source, destination):
+def instrument(source, destination, public_only=False):
     """Append diagnostic observers without replacing any functional RTL."""
     original = source.read_text()
     name = source.stem
-    monitor = MONITORS.get(name, "")
+    monitor = "" if public_only else MONITORS.get(name, "")
     # Only public completion ports, not guessed internal aliases, qualify.
     ports = original.split(");", 1)[0]
     if all(re.search(r"\b" + port + r"\b", ports)
@@ -153,6 +153,17 @@ def instrument(source, destination):
         diagnostic_completion_seen <= 1;
         $display("ORIGIN cycle=%0d path=%m event=done_error error=%0d",
             diagnostic_cycle, done_error);
+    end
+"""
+    if public_only and all(re.search(r"\b" + port + r"\b", ports)
+                          for port in ("clk", "rst_n", "rsp_valid", "rsp_ready", "rsp_error")):
+        monitor += r"""
+    reg diagnostic_response_seen = 0;
+    always @(posedge clk) if (rst_n && rsp_valid && rsp_ready &&
+                             rsp_error != 0 && !diagnostic_response_seen) begin
+        diagnostic_response_seen <= 1;
+        $display("ORIGIN cycle=%0d path=%m event=rsp_error error=%0d",
+            diagnostic_cycle, rsp_error);
     end
 """
     if not monitor:

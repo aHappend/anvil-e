@@ -12,6 +12,7 @@ from experiment import Experiment, ROOT, source_inputs
 from text_cases import digest
 from text_fixture import make_text_image
 from text_reference import logits
+from origin_diagnostics import instrument
 
 
 def compare(output, expected, global_required):
@@ -49,11 +50,24 @@ def main():
     parser.add_argument("--models", default="1,2")
     parser.add_argument("--precisions", default="0,1")
     parser.add_argument("--local-only", action="store_true")
+    parser.add_argument("--diagnose-origin", action="store_true",
+                        help="public completion/error monitors in disposable source copies")
+    parser.add_argument("--diagnostic-layers",
+                        help="diagnostic-only bounded layer roots, e.g. 0,1,2")
     parser.add_argument("--max-cycles", type=int, default=2000000000)
     args = parser.parse_args()
     from text_cases import selected_values
     models = selected_values(parser, args.models, (1, 2), "--models")
     precisions = selected_values(parser, args.precisions, (0, 1), "--precisions")
+    diagnostic_layers = None
+    if args.diagnostic_layers:
+        if not args.diagnose_origin:
+            parser.error("--diagnostic-layers requires --diagnose-origin")
+        diagnostic_layers = selected_values(
+            parser, args.diagnostic_layers, tuple(range(43)), "--diagnostic-layers")
+        if any(layer > (35 if model == 1 else 42)
+               for layer in diagnostic_layers for model in models):
+            parser.error("diagnostic layer outside selected production map")
     if args.max_cycles <= 0:
         parser.error("--max-cycles must be positive")
     exp = Experiment(args.out, "verifier-replay-history", source_inputs(), args.repair_of)
@@ -72,7 +86,8 @@ def main():
                 image, tensors = make_text_image(model, precision, seed)
                 path = images / f"m{model}-p{precision}-s{seed}.bin"
                 path.write_bytes(image)
-                for layer in ((2,) if args.local_only else (2, 5 if model == 1 else 6)):
+                for layer in (diagnostic_layers if diagnostic_layers is not None else
+                              (2,) if args.local_only else (2, 5 if model == 1 else 6)):
                     reference = logits(tensors, model, seed, 2, stop_layer=layer)
                     expected = reference["layer_states_bf16"][layer][1]
                     name = f"m{model}-p{precision}-s{seed}-eval{layer}-t1"
@@ -94,6 +109,22 @@ def main():
         obj = exp.relative / "compile-obj"
         sources = [str(path.relative_to(ROOT)) for path in source_inputs()
                    if path.suffix == ".sv" and path.parent == ROOT / "rtl"]
+        if args.diagnose_origin:
+            copies = exp.out / "diagnostic-sources"
+            copies.mkdir()
+            bindings = {}
+            for index, name in enumerate(sources):
+                source = ROOT / name
+                destination = copies / source.name
+                binding = instrument(source, destination, public_only=True)
+                if binding:
+                    if not binding["functional_text_unchanged"]:
+                        raise RuntimeError("public completion monitor changed functional text")
+                    sources[index] = str(destination.relative_to(ROOT))
+                    bindings[name] = binding
+            exp.receipt.update(diagnostic_source_bindings=bindings,
+                               scope="Public-pin diagnostic completion/error attribution only.")
+            exp.save()
         exp.run("compile", [
             "verilator", "--cc", "--exe", "--build", "-O3", "-Wno-fatal",
             "--top-module", "anvil_en1_replay_execute", "-GCOMPACT=1",
@@ -104,6 +135,13 @@ def main():
             output = exp.run(name, [str(obj / "Vanvil_en1_replay_execute"),
                 str(image.relative_to(ROOT)), str(model), str(precision), str(seed),
                 str(layer), str(args.max_cycles)], 2400)
+            if args.diagnose_origin:
+                exp.receipt.setdefault("diagnostic_completed_roots", []).append({
+                    "model": model, "precision": precision, "seed": seed, "layer": layer,
+                    "output": str(exp.relative / (name + ".stdout.txt")),
+                })
+                exp.save()
+                continue
             counts = compare(output, expected, layer != 2)
             exp.receipt["observations"].append({
                 "kind": "eval-2-1-history" if layer == 2 else "eval-global-history",

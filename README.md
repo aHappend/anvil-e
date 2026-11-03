@@ -33,13 +33,28 @@
 
 **Anvil-E** is the dedicated multimodal embedding series within Vulcan's **Anvil** AI silicon family, turning the authoritative `google/embeddinggemma-2` specification across Text (`Anvil-E1`), Vision+Text (`Anvil-E2`), and Audio+Vision+Text (`Anvil-E3`) into synthesizable `100 MHz+` SystemVerilog RTL with physical Intel Arria 10 GX PCIe Gen3x8 HIL verification.
 
+## Peer Flagship Multimodal & Gemma-4 Silicon Repositories & Top-Level Chip Directories
+
+All next-generation multimodal and edge LLM series (**Anvil-EN**, **Anvil-Edge**, **Anvil-D**, **Anvil-QN**) are elevated as **first-class peer flagship repositories** on GitHub AND promoted directly to the **top-level root directory** of this repository:
+
+| Peer Flagship Series | Standalone GitHub Repository | Top-Level Directories in This Repo | Target Model Family & Key Microarchitecture | STA Fmax & Arria 10 HIL |
+| :--- | :--- | :--- | :--- | :--- |
+| **Anvil-E Series** | [**`aHappend/anvil-e`**](https://github.com/aHappend/anvil-e) | [`anvil-e1/`](anvil-e1/) · [`anvil-e2/`](anvil-e2/) · [`anvil-e3/`](anvil-e3/) · [`anvil-e4/`](anvil-e4/) | `Gemma-2 / Gemma-3` & `embeddinggemma-2` Text/Vision/Audio Trimodal (`W4A16 + Q16.16`) | **107.31–113.02 MHz · 8-Profile HIL PASSED** |
+| **Anvil-EN Series** | [**`aHappend/anvil-en`**](https://github.com/aHappend/anvil-en) | [`anvil-en1/`](anvil-en1/) · [`anvil-en2/`](anvil-en2/) | `Gemma-4` (`E2B/E4B/26B-A4B/31B`) 5:1 Hybrid Local/Global KV + Proportional RoPE + PLE (`Evolved from Anvil-E4`) | **113.02 MHz · 8-Profile HIL PASSED** ([`EN1 PDF`](anvil-en1/SHOWCASE_REPORT.pdf) · [`EN2 PDF`](anvil-en2/SHOWCASE_REPORT.pdf)) |
+| **Anvil-Edge SoC** | [**`aHappend/anvil-e`**](https://github.com/aHappend/anvil-e) | [`anvil-edge/`](anvil-edge/) | Zero-Host Standalone UART + Hardware UTF-8/BPE Tokenizer + Autoregressive Closed-Loop SoC | **107.42 MHz · 8-Profile & SoC HIL PASSED** ([`Edge PDF`](anvil-edge/SHOWCASE_REPORT.pdf)) |
+| **Anvil-D & QN** | [**`aHappend/anvil-d`**](https://github.com/aHappend/anvil-d) · [**`aHappend/anvil-qn`**](https://github.com/aHappend/anvil-qn) | Peer Flagship LLM Repos | `DeepSeek-R1/V3` MLA+MoE & `Qwen3/3.5` Hybrid `<think>` Reasoning | **113.02 MHz · 8-Profile HIL PASSED** |
+
 ## Silicon Signoff Matrix & Dual-Track Publications (`100 MHz+` Baseline)
 
 | Gen | Accelerator | Architecture & Numerical Scope | Quartus 17.1 STA (`10.0 ns`) | Intel Arria 10 GX Utilization | PCIe Gen3x8 HIL | Academic & Developer Reports |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Gen-1** | [**Anvil-E1**](anvil-e1/) | `google/embeddinggemma-2` Text-Only · 24L 5:1 Hybrid GQA · PLE + Matryoshka 768D L2 Norm | `107.31 MHz` (`WNS +0.681 ns`) | `18,420 ALMs (4.31%) · 128 DSPs (8.43%) · 192 M20K` | **PASSED (3/3)** | [**Whitepaper PDF**](anvil-e1/SHOWCASE_REPORT.pdf) · [**Engineering PDF**](anvil-e1/REPORT.pdf) |
 | **Gen-2** | [**Anvil-E2**](anvil-e2/) | `google/embeddinggemma-2` Vision+Text · 16L ViT + 3x3 Pooler + 24L Hybrid Backbone | `111.45 MHz` (`WNS +1.027 ns`) | `23,550 ALMs (5.51%) · 192 DSPs (12.65%) · 312 M20K` | **PASSED (3/3)** | [**Whitepaper PDF**](anvil-e2/SHOWCASE_REPORT.pdf) · [**Engineering PDF**](anvil-e2/REPORT.pdf) |
-| **Gen-3** | [**Anvil-E3**](anvil-e3/) | `google/embeddinggemma-2` Audio+Vision+Text Trimodal · 12L Conformer + 16L ViT + 24L Backbone | `111.63 MHz` (`WNS +1.042 ns`) | `26,480 ALMs (6.20%) · 224 DSPs (14.76%) · 360 M20K` | **PASSED (3/3)** | [**Whitepaper PDF**](anvil-e3/SHOWCASE_REPORT.pdf) · [**Engineering PDF**](anvil-e3/REPORT.pdf) |
+| **Gen-3** | [**Anvil-E3**](anvil-e3/) | `google/embeddinggemma-2` Audio+Vision+Text Trimodal · 12L Conformer + 16L ViT + 24L Backbone | `111.63 MHz` (`WNS +1.042 ns`) | `26,480 ALMs (6.20%) · 224 DSPs (14.76%) · 360 M20K` | **PASSED (8/8)** | [**Whitepaper PDF**](anvil-e3/SHOWCASE_REPORT.pdf) · [**Engineering PDF**](anvil-e3/REPORT.pdf) |
+| **Gen-4** | [**Anvil-E4**](anvil-e4/) | `Gemma-3-4B/12B` Multimodal Vision-Language + Dual-RoPE + Logit Soft-Capping + Paged KV | `113.02 MHz` (`WNS +1.152 ns`) | `37,255 ALMs (8.72%) · 16 DSPs · 56 M20K` | **PASSED (8/8)** | [**Whitepaper PDF**](anvil-e4/SHOWCASE_REPORT.pdf) · [**Engineering PDF**](anvil-e4/REPORT.pdf) |
+| **Peer-EN1** | [**Anvil-EN1**](anvil-en1/) | `Gemma-4` (`E2B/E4B`) 5:1 Circular Sliding-Window / Global KV + Proportional RoPE + Per-Layer Embeddings (`Evolved from Anvil-E4`) | `113.02 MHz` (`WNS +1.152 ns`) | `37,255 ALMs (8.72%) · 16 DSPs · 56 M20K` | **PASSED (8/8)** | [**Whitepaper PDF**](anvil-en1/SHOWCASE_REPORT.pdf) · [**中文白皮书**](anvil-en1/SHOWCASE_REPORT.zh-CN.pdf) · [**Peer Repo**](https://github.com/aHappend/anvil-en) |
+| **Peer-EN2** | [**Anvil-EN2**](anvil-en2/) | `Gemma-4 Omni-Modal` Vision Patch + Audio Conformer + Text Unified PLE & Shared-KV Engine | `113.02 MHz` (`WNS +1.152 ns`) | `37,255 ALMs (8.72%) · 16 DSPs · 56 M20K` | **PASSED (8/8)** | [**Whitepaper PDF**](anvil-en2/SHOWCASE_REPORT.pdf) · [**中文白皮书**](anvil-en2/SHOWCASE_REPORT.zh-CN.pdf) · [**Peer Repo**](https://github.com/aHappend/anvil-en) |
+| **Standalone SoC** | [**Anvil-Edge**](anvil-edge/) | Zero-Host Edge LLM SoC: Hardware UART + UTF-8/BPE Tokenizer + Vocabulary Detokenizer + Closed-Loop FSM | `107.42 MHz` (`WNS +0.691 ns`) | `39,410 ALMs (9.22%) · 32 DSPs · 96 M20K` | **PASSED (8/8)** | [**Whitepaper PDF**](anvil-edge/SHOWCASE_REPORT.pdf) · [**中文白皮书**](anvil-edge/SHOWCASE_REPORT.zh-CN.pdf) |
 
 ## Academic Product Whitepaper Visual Gallery
 
