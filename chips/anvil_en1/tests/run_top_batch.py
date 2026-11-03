@@ -83,6 +83,10 @@ def main():
                         help="structural wrapper ties only unused text-job inputs to zero")
     parser.add_argument("--compact-code", action="store_true",
                         help="retain shared C++ module bodies instead of aggressive inlining")
+    parser.add_argument("--preserve-processes", action="store_true",
+                        help="disable Verilator procedural splitting for FSM scheduling")
+    parser.add_argument("--profile-cycles", type=int, default=0,
+                        help="optional bounded incomplete run before full numerical execution")
     parser.add_argument("--max-cycles", type=int, default=2000000000)
     args = parser.parse_args()
     models = selected_values(parser, args.models, (1, 2), "--models")
@@ -150,12 +154,26 @@ def main():
             "-O" + args.compiler_optimization, "-Wno-fatal",
             *(["--inline-mult", "0", "--expand-limit", "32",
                "--output-split-cfuncs", "5000"] if args.compact_code else []),
+            *(["-fno-split"] if args.preserve_processes else []),
             "--top-module", top, "--Mdir", str(obj),
             "-j", "2", "-CFLAGS", "-O3",
             *(wrapper_args if args.text_specialization else
               [f"-G{name}={value}" for name, value in parameters.items()]),
             "tests/simulation_schedule.vlt", *sources,
             str(ROOT / "tests/top_smoke.cpp")], 1800)
+        if args.profile_cycles:
+            name, model, precision, seed, tokens, image_path, _ = cases[0]
+            output = exp.run("bounded-profile", [
+                str(obj / "Vanvil_en1_top"), str(image_path.relative_to(ROOT)),
+                str(model), str(precision), str(seed), str(args.profile_cycles),
+                str(tokens)], 2400, (1,))
+            stderr = (exp.out / "bounded-profile.stderr.txt").read_text()
+            if (f"INCOMPLETE cycle_limit={args.profile_cycles} " not in output or
+                    "FAIL cycle limit reached without complete top result" not in stderr):
+                raise RuntimeError("profile failed before the intended incomplete boundary")
+            exp.receipt["incomplete_profile"] = next(
+                line for line in output.splitlines() if line.startswith("PERFORMANCE "))
+            exp.save()
         for name, model, precision, seed, tokens, image_path, expected in cases:
             output = exp.run(name, [
                 str(obj / "Vanvil_en1_top"), str(image_path.relative_to(ROOT)),
