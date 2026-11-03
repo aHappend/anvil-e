@@ -67,6 +67,16 @@ module anvil_en1_native_norm (
     wire [7:0] lookup_type;
     wire [3:0] lookup_error;
     wire [63:0] primitive_directory_bytes, primitive_norm_bytes, primitive_weight_bytes;
+    wire [63:0] primitive_fp_bytes;
+    wire fp_ready, fp_valid;
+    wire [31:0] fp_data;
+    wire [3:0] fp_error;
+    wire scale_phase = scale_state == SCALE_START || scale_state == SCALE_WAIT;
+    wire norm_arithmetic_valid, norm_arithmetic_result_ready;
+    wire weight_arithmetic_valid, weight_arithmetic_result_ready;
+    wire [2:0] norm_arithmetic_operation, weight_arithmetic_operation;
+    wire [31:0] norm_arithmetic_a, norm_arithmetic_b;
+    wire [31:0] weight_arithmetic_a, weight_arithmetic_b;
     anvil_en1_tensor_image directory (
         .controller_bytes(primitive_directory_bytes),
         .clk(clk), .rst_n(rst_n),
@@ -87,7 +97,7 @@ module anvil_en1_native_norm (
     wire norm_scale_valid, norm_scale_rsp_ready;
     wire [31:0] norm_source_index, norm_scale_index;
     wire [3:0] norm_error;
-    anvil_en1_norm norm (
+    anvil_en1_norm #(.EXTERNAL_FP(1)) norm (
         .controller_bytes(primitive_norm_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
@@ -108,13 +118,20 @@ module anvil_en1_native_norm (
         .normalized_index(output_index), .normalized_data(output_data),
         .normalized_last(output_last), .done_valid(norm_valid),
         .done_ready(rst_n && state == NORM_WAIT && scale_state == SCALE_IDLE),
-        .done_error(norm_error)
+        .done_error(norm_error),
+        .arithmetic_valid(norm_arithmetic_valid),
+        .arithmetic_ready(norm_selected && !scale_phase && fp_ready),
+        .arithmetic_operation(norm_arithmetic_operation),
+        .arithmetic_a(norm_arithmetic_a), .arithmetic_b(norm_arithmetic_b),
+        .arithmetic_result_valid(norm_selected && !scale_phase && fp_valid),
+        .arithmetic_result_ready(norm_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     wire weight_ready, weight_valid, weight_cmd_valid, weight_result_ready;
     wire [63:0] weight_addr;
     wire [31:0] weight_data;
     wire [3:0] weight_error;
-    anvil_en1_weight_read scales (
+    anvil_en1_weight_read #(.EXTERNAL_FP(1)) scales (
         .controller_bytes(primitive_weight_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && scale_state == SCALE_START), .start_ready(weight_ready),
@@ -126,7 +143,28 @@ module anvil_en1_native_norm (
         .result_valid(norm_selected && result_valid), .result_ready(weight_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(weight_valid), .done_ready(rst_n && scale_state == SCALE_WAIT),
-        .done_data(weight_data), .done_error(weight_error)
+        .done_data(weight_data), .done_error(weight_error),
+        .arithmetic_valid(weight_arithmetic_valid),
+        .arithmetic_ready(scale_phase && fp_ready),
+        .arithmetic_operation(weight_arithmetic_operation),
+        .arithmetic_a(weight_arithmetic_a), .arithmetic_b(weight_arithmetic_b),
+        .arithmetic_result_valid(scale_phase && fp_valid),
+        .arithmetic_result_ready(weight_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
+    );
+    anvil_en1_fp32 arithmetic (
+        .controller_bytes(primitive_fp_bytes),
+        .clk(clk), .rst_n(rst_n),
+        .start_valid(rst_n && norm_selected &&
+            (scale_phase ? weight_arithmetic_valid : norm_arithmetic_valid)),
+        .start_ready(fp_ready),
+        .operation(scale_phase ? weight_arithmetic_operation : norm_arithmetic_operation),
+        .operand_a(scale_phase ? weight_arithmetic_a : norm_arithmetic_a),
+        .operand_b(scale_phase ? weight_arithmetic_b : norm_arithmetic_b),
+        .done_valid(fp_valid),
+        .done_ready(rst_n && norm_selected &&
+            (scale_phase ? weight_arithmetic_result_ready : norm_arithmetic_result_ready)),
+        .done_data(fp_data), .done_error(fp_error)
     );
     assign start_ready = rst_n && state == IDLE;
     assign source_valid = norm_selected && norm_source_valid;
@@ -149,7 +187,8 @@ module anvil_en1_native_norm (
         $bits(weights_hold) + $bits(base_hold) + $bits(bytes_hold) +
         $bits(scale_hold) + $bits(error_hold) + $bits(scale_error_hold);
     assign controller_bytes = !rst_n ? 64'd0 : 64'((CONTROLLER_BITS + 7) >> 3) +
-        primitive_directory_bytes + primitive_norm_bytes + primitive_weight_bytes;
+        primitive_directory_bytes + primitive_norm_bytes + primitive_weight_bytes +
+        primitive_fp_bytes;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

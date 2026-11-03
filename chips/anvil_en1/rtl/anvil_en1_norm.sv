@@ -1,4 +1,6 @@
-module anvil_en1_norm (
+module anvil_en1_norm #(
+    parameter integer EXTERNAL_FP = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -27,7 +29,15 @@ module anvil_en1_norm (
     output wire done_valid,
     input wire done_ready,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes
+    output wire [63:0] controller_bytes,
+    output wire arithmetic_valid,
+    input wire arithmetic_ready,
+    output wire [2:0] arithmetic_operation,
+    output wire [31:0] arithmetic_a, arithmetic_b,
+    input wire arithmetic_result_valid,
+    output wire arithmetic_result_ready,
+    input wire [31:0] arithmetic_result_data,
+    input wire [3:0] arithmetic_result_error
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, LENGTH_START = 2,
         LENGTH_WAIT = 3, SOURCE_START = 4, SOURCE_WAIT = 5,
@@ -74,14 +84,33 @@ module anvil_en1_norm (
         .done_valid(length_valid), .done_ready(rst_n && state == LENGTH_WAIT),
         .done_data(length_data), .done_error(length_error)
     );
-    anvil_en1_fp32 fp_unit (
-        .controller_bytes(fp_controller_bytes),
-        .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-        .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-        .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
-        .done_data(fp_data), .done_error(fp_error)
-    );
+    initial begin
+        if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
+    end
+    assign arithmetic_valid = rst_n && EXTERNAL_FP == 1 && state == FP_START;
+    assign arithmetic_operation = rst_n && EXTERNAL_FP == 1 ? fp_op : 3'd0;
+    assign arithmetic_a = rst_n && EXTERNAL_FP == 1 ? fp_a : 32'd0;
+    assign arithmetic_b = rst_n && EXTERNAL_FP == 1 ? fp_b : 32'd0;
+    assign arithmetic_result_ready = rst_n && EXTERNAL_FP == 1 && state == FP_WAIT;
+    generate
+        if (EXTERNAL_FP == 1) begin : external_arithmetic
+            assign fp_controller_bytes = 64'd0;
+            assign fp_ready = rst_n && arithmetic_ready;
+            assign fp_valid = rst_n && arithmetic_result_valid;
+            assign fp_data = rst_n ? arithmetic_result_data : 32'd0;
+            assign fp_error = rst_n ? arithmetic_result_error : 4'd0;
+        end else begin : internal_arithmetic
+            anvil_en1_fp32 fp_unit (
+                .controller_bytes(fp_controller_bytes),
+                .clk(clk), .rst_n(rst_n),
+                .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
+                .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
+                .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+                .done_data(fp_data), .done_error(fp_error)
+            );
+        end
+    endgenerate
     anvil_en1_fp32_divsqrt root_divider (
         .controller_bytes(div_controller_bytes),
         .clk(clk), .rst_n(rst_n),

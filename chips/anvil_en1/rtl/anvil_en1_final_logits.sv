@@ -108,10 +108,22 @@ module anvil_en1_final_logits #(
         });
         wire [63:0] lookup_controller_bytes, norm_controller_bytes;
         wire [63:0] weight_controller_bytes, projection_controller_bytes, cap_controller_bytes;
+        wire [63:0] fp_controller_bytes;
+        localparam [1:0] FP_NORM = 0, FP_WEIGHT = 1, FP_PROJECTION = 2, FP_CAP = 3;
+        wire [3:0] arithmetic_valid, arithmetic_result_ready;
+        wire [11:0] arithmetic_operation;
+        wire [127:0] arithmetic_a, arithmetic_b;
+        wire fp_ready, fp_valid;
+        wire [31:0] fp_data;
+        wire [3:0] fp_error;
+        wire scale_phase = scale_state == W_START || scale_state == W_WAIT;
+        wire [1:0] fp_owner = scale_phase ? FP_WEIGHT :
+            (state == NORM_START || state == NORM_WAIT ? FP_NORM :
+            (state == PROJECTION_START || state == PROJECTION_WAIT ? FP_PROJECTION : FP_CAP));
         assign controller_bytes = !rst_n ? 64'd0 :
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             norm_controller_bytes + weight_controller_bytes +
-            projection_controller_bytes + cap_controller_bytes;
+            projection_controller_bytes + cap_controller_bytes + fp_controller_bytes;
         wire lookup_ready, lookup_valid, lookup_cmd_valid, lookup_result_ready;
         wire [63:0] lookup_cmd_addr, lookup_base, lookup_bytes;
         wire [31:0] lookup_rows, lookup_columns, lookup_stride;
@@ -144,7 +156,7 @@ module anvil_en1_final_logits #(
         wire [15:0] normalized_data;
         wire [3:0] norm_error;
         wire norm_output_ready;
-        anvil_en1_norm norm_unit (
+        anvil_en1_norm #(.EXTERNAL_FP(1)) norm_unit (
             .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
@@ -167,13 +179,21 @@ module anvil_en1_final_logits #(
             .normalized_index(normalized_index), .normalized_data(normalized_data),
             .normalized_last(normalized_last),
             .done_valid(norm_valid), .done_ready(rst_n && state == NORM_WAIT),
-            .done_error(norm_error)
+            .done_error(norm_error),
+            .arithmetic_valid(arithmetic_valid[FP_NORM]),
+            .arithmetic_ready(fp_owner == FP_NORM && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_NORM+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_NORM+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_NORM+:32]),
+            .arithmetic_result_valid(fp_owner == FP_NORM && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_NORM]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire scale_ready, scale_valid, scale_cmd_valid, scale_result_ready;
         wire [63:0] scale_cmd_addr;
         wire [31:0] scale_data;
         wire [3:0] scale_error;
-        anvil_en1_weight_read scale_reader (
+        anvil_en1_weight_read #(.EXTERNAL_FP(1)) scale_reader (
             .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && scale_state == W_START), .start_ready(scale_ready),
@@ -188,14 +208,22 @@ module anvil_en1_final_logits #(
             .result_ready(scale_result_ready), .result_data(result_data),
             .result_error(result_error),
             .done_valid(scale_valid), .done_ready(rst_n && scale_state == W_WAIT),
-            .done_data(scale_data), .done_error(scale_error)
+            .done_data(scale_data), .done_error(scale_error),
+            .arithmetic_valid(arithmetic_valid[FP_WEIGHT]),
+            .arithmetic_ready(fp_owner == FP_WEIGHT && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_WEIGHT+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_WEIGHT+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_WEIGHT+:32]),
+            .arithmetic_result_valid(fp_owner == FP_WEIGHT && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_WEIGHT]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire projection_ready, projection_valid, projection_cmd_valid;
         wire projection_result_ready, projection_source_valid, projection_source_rsp_ready;
         wire [63:0] projection_cmd_addr;
         wire [31:0] projection_source_index, projection_data;
         wire [3:0] projection_error;
-        anvil_en1_projection projection_unit (
+        anvil_en1_projection #(.EXTERNAL_FP(1)) projection_unit (
             .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START),
@@ -221,19 +249,46 @@ module anvil_en1_final_logits #(
             .result_error(result_error),
             .done_valid(projection_valid),
             .done_ready(rst_n && state == PROJECTION_WAIT),
-            .done_data(projection_data), .done_error(projection_error)
+            .done_data(projection_data), .done_error(projection_error),
+            .arithmetic_valid(arithmetic_valid[FP_PROJECTION]),
+            .arithmetic_ready(fp_owner == FP_PROJECTION && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_PROJECTION+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_PROJECTION+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_PROJECTION+:32]),
+            .arithmetic_result_valid(fp_owner == FP_PROJECTION && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_PROJECTION]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire softcap_ready, softcap_valid;
         wire [31:0] softcap_data;
         wire [3:0] softcap_error;
-        anvil_en1_softcap softcap_unit (
+        anvil_en1_softcap #(.EXTERNAL_FP(1)) softcap_unit (
             .controller_bytes(cap_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == SOFTCAP_START), .start_ready(softcap_ready),
             .cap_50(1'b0), .input_binary32(1'b0), .output_binary32(1'b0),
             .operand(raw_logit_hold), .done_valid(softcap_valid),
             .done_ready(rst_n && state == SOFTCAP_WAIT),
-            .done_data(softcap_data), .done_error(softcap_error)
+            .done_data(softcap_data), .done_error(softcap_error),
+            .arithmetic_valid(arithmetic_valid[FP_CAP]),
+            .arithmetic_ready(fp_owner == FP_CAP && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_CAP+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_CAP+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_CAP+:32]),
+            .arithmetic_result_valid(fp_owner == FP_CAP && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_CAP]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
+        );
+        anvil_en1_fp32 fp_unit (
+            .controller_bytes(fp_controller_bytes),
+            .clk(clk), .rst_n(rst_n),
+            .start_valid(rst_n && arithmetic_valid[fp_owner]), .start_ready(fp_ready),
+            .operation(arithmetic_operation[3*fp_owner+:3]),
+            .operand_a(arithmetic_a[32*fp_owner+:32]),
+            .operand_b(arithmetic_b[32*fp_owner+:32]),
+            .done_valid(fp_valid),
+            .done_ready(rst_n && arithmetic_result_ready[fp_owner]),
+            .done_data(fp_data), .done_error(fp_error)
         );
         wire norm_beat_valid = normalized_index == normalized_count &&
             normalized_index < hidden_hold &&

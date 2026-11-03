@@ -5,7 +5,95 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current saved increment: serialized projection/activation arithmetic overlay
+## Current saved increment: text-worker arithmetic and post-only elaboration
+
+`anvil_en1_gated_projection`, `anvil_en1_softcap` and
+`anvil_en1_attention_head` now expose validated, default-off `EXTERNAL_FP`
+channels. Standalone use retains its local binary32 unit. External mode
+removes only that unit; all scalar, activation, exponential, checkpoint,
+descriptor, reduction and divider state remains charged.
+
+`anvil_en1_asym_attn_ple` shares one binary32 unit across all six serialized
+arithmetic children and its own residual/scalar FSM. `anvil_en1_embedding_ple`
+similarly shares one across norm, weight decoding, projection and its own
+FSM. `anvil_en1_final_logits` replaces its four child units with one shared
+unit across norm, scale decoding, projection and softcap. Complete registered
+start/wait phases select the owner, with nested scale-reader phases overriding
+normalization only while norm is waiting for its scale callback. Requests,
+memory/source stalls and held results cannot reassign ownership. No new queue,
+stored operands, numerical stage or reduction-order change is introduced.
+
+The replay post worker (`POST_ONLY=1`) now physically omits its unused direct
+projection, rotary and attention subtrees, in addition to its already-absent
+attention payload. Its connected replay attention executor still computes the
+real branch before the post worker loads it and starts post-attention norm.
+Post-attention residual, MLP, gated PLE and scalar processing remain present.
+The ordinary full worker retains real projection/rotary/attention instances.
+Unused outputs in the post-only generate branches are constant zero; reports
+drop only physically absent children, not surviving enclosing scalar state.
+
+SPEC records the exact cycle/degenerate-boundary ownership table and declared
+child-subtree reservations. Full text falls from 2247 to 1839 bytes; post-only
+from 2247 to 1088; embedding from 806 to 602; final logits from 1037 to 833.
+These exclude unchanged enclosing controllers/directories and are per-literal
+worker, not additive system totals. No RAM liveness or FPGA-resource reduction
+is inferred from these scalar declaration changes.
+
+This closes the local text-worker arithmetic overlay and unused post-only
+child-declaration milestones in source. Remaining: whole-system declared-state
+census and any additional physical overlays required to fit the ordinary
+32768/65536-byte text envelopes, bounded native scratch, fallback partitions,
+and production-shadow reservations for all legal cases, including after memo
+eviction/regeneration. Then perform the reserved fast static elaboration and
+immediately hand off to independent Verifier. Legal-workload denial remains
+a failure, not a feasibility result. The design is not ready.
+
+Tools used: glob, view, rg and apply_patch only. No command, experiment,
+static elaboration, functional simulation, synthesis or new preparation
+receipt. Parent and verification sources and runtime-owned records, including
+attempt-0003, are unchanged. No original-failure repair or acceptance claimed.
+
+## Prior saved increment: normalization/rotary arithmetic overlay
+
+`anvil_en1_norm`, `anvil_en1_rope_frequency`, `anvil_en1_sincos`
+and `anvil_en1_rotary_pair` now expose the validated, default-off
+`EXTERNAL_FP` channel. Standalone callers retain a real local binary32 unit.
+Rotary frequency generation and trigonometry select external mode and share
+the rotary service with the pair-rotation FSM.
+
+`anvil_en1_owner_kv_tile` selects external mode in its projection,
+normalization, scale reader and rotary children, using one physical
+binary32 unit instead of six. `anvil_en1_native_norm` similarly shares one
+unit between normalization and scale decoding. Phase selection spans
+registered start/wait intervals. The nested scale callback takes ownership
+only after normalization's previous arithmetic response retired; norm cannot
+issue another arithmetic request until the scale result returns. Memory,
+source and response stalls cannot switch ownership. No arbitration queue,
+new stored state, numerical stage or reduction-order change is introduced.
+
+SPEC freezes the complete cycle/degenerate-boundary table and declared
+reservation totals. Norm, frequency and trigonometry retain every scalar,
+integer-converter and divider reservation in external mode. A standalone
+rotary subtree is now 364 bytes rather than 500; its external mode is 296.
+The owner's projection/norm/scale/rotary arithmetic subtree is 898 bytes
+rather than 1238. Native normalization removes one 68-byte unit per literal
+worker. Nested reductions must not be added again to the owner's total.
+Payload banks and enclosing controllers are unchanged and fully charged.
+
+This closes the local normalization/rotary scalar overlay in source, not
+whole-system accounting or feasibility. Remaining milestones are the
+whole-system declared census, remaining physical overlays and legal-case
+actual/production-shadow fit of ordinary text, native scratch and fallback
+partitions, including memo eviction/regeneration. Then perform the reserved
+fast static elaboration and immediately hand off to independent Verifier.
+Explicit denial of required legal work remains a failure. Not ready.
+
+Tools used: glob, view, rg and apply_patch only. No command, experiment,
+static elaboration, simulation, synthesis or new preparation receipt.
+Parent sources, verification sources and runtime-owned records are
+unchanged. Attempt-0003 is preserved; no repair or acceptance is claimed.
+
+## Prior saved increment: serialized projection/activation arithmetic overlay
 
 `anvil_en1_weight_read`, `anvil_en1_projection`, `anvil_en1_activation`
 and `anvil_en1_geglu_pair` now expose the same validated, default-off

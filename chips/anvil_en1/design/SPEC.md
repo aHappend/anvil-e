@@ -5,7 +5,63 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-Latest saved arithmetic delta: projection and gated-projection subtrees now
+### Native feed-forward binary32 ownership
+
+The native MLP row uses one binary32 service for its down projection, nested
+gate/up projection, GeGLU, audio activation and final BF16 materialization.
+Clipped projection, native normalization and native MLP row expose the same
+default-off `EXTERNAL_FP` channel as the text primitives. External mode removes
+only the local binary32 unit; directories, interval clamps, dividers,
+converters, descriptors, reductions and held results remain fully charged.
+Audio feed-forward and vision post-layer select external mode in their norm
+and MLP children and share their existing residual unit across those phases.
+
+| Boundary | Binary32 ownership and materialization |
+| --- | --- |
+| Reset | Service request/result readiness and payload outputs are zero; all worker FSMs and the one local service reset together |
+| MLP down start/wait | Down projection owns the service except during a registered nested gate/up, GeGLU, activation or materialization start/wait interval |
+| Down source callback | Down projection waits for the intermediate; the selected nested child may use the otherwise idle service, including its weight-decoding phases |
+| Nested completion | Retire the child's last arithmetic result before returning its scalar completion; owner changes only with registered source-state advancement |
+| Clipped source callback | Input/output clamps are comparison-only; their stalled callback never causes arithmetic ownership to change |
+| Norm scale callback | Native norm retains its existing internal scale/norm phase selection and forwards the selected request to the enclosing service |
+| Audio FF / vision post norm start/wait | Native norm owns the service, including nested scale decoding and held responses |
+| Audio FF / vision post MLP start/wait | The MLP row owns the service, including nested projections and activation |
+| Residual / narrowing | Only the enclosing worker owns the service; ascending reduction order and separately rounded operations are unchanged |
+| Memory/source/result/output stall | Keep the registered phase and route both request and response to that same owner |
+| Error | Consume the active child's completion using its original error path; do not launch another owner before the arithmetic result is retired |
+| Single row / first-and-last | The same start/wait and callback sequence applies; no bypass of BF16 materialization |
+| Standalone defaults | `EXTERNAL_FP=0` keeps a local service and does not read the unconnected external inputs; values other than 0/1 explicitly diagnose |
+
+Each surviving `anvil_en1_fp32` contributes its complete 68-byte declared
+reservation. Before this overlay the native MLP row had five such units:
+down, inner, GeGLU, audio activation and materialization. It now has one
+by default, or zero in external mode, saving 272 or 340 bytes respectively
+against that prior row. Audio FF and vision post each retain one enclosing
+unit rather than a local norm unit, five MLP units and a residual unit:
+408 fewer declared bytes per literal subtree. These are nested totals,
+not additive reductions or whole-system feasibility results. No vector RAM,
+clamp, divider or suspended replay-frame reservation is removed.
+
+Latest saved text-path delta: the full text worker shares one binary32 unit
+across norm, scale decoding, projection, rotary, attention, gated MLP/PLE and
+residual/scalar operations. Embedding and final-logit workers similarly share
+one unit across their serialized children. Gated projection, softcap and
+attention expose the validated default-off external service. The POST_ONLY
+build physically omits the unused standalone projection, rotary and attention
+subtrees; it still executes the supplied attention branch's post-normalization,
+residual, MLP, gated PLE and layer scalar. Retained enclosing controllers and
+all surviving child state remain charged. These are source-level declaration
+changes, not demonstrated whole-system feasibility.
+
+The preceding arithmetic delta: normalization and rotary primitives expose
+the default-off external binary32 service. Rotary shares one service across
+frequency generation, trigonometry and pair rotation. Owner projection tiles
+share one physical unit across projection, norm, scale decoding and rotary;
+native normalization shares one across norm and its scale reader. Registered
+phase ownership includes nested scale callbacks. All retained scalar state,
+converters and division units remain fully charged.
+
+The preceding arithmetic delta: projection and gated-projection subtrees now
 share a single binary32 unit across serialized weight decoding, activation,
 exponential, multiplication and reduction phases. Softcap similarly shares
 its binary32 unit with its activation/exponential subtree. Every child FSM
@@ -1545,15 +1601,16 @@ All entries apply to both precisions and both model geometries.
 | `exp` | 220 / 28 | One `fp32` in standalone mode; none in external-arithmetic mode |
 | `activation` | 403 / 51 | One external-arithmetic `exp`, one `fp32_divsqrt`, plus one `fp32` only in standalone mode |
 | `softplus` | 407 / 51 | One `fp32`, one external-arithmetic `exp`, one `fp32_divsqrt` |
-| `norm` | 490 / 62 | One each of `uint_to_fp32`, `fp32`, `fp32_divsqrt` |
-| `rope_frequency` | 134 / 17 | One each of `fp32_divsqrt`, `fp32` |
-| `sincos` | 589 / 74 | One each of `fp32`, `uint_to_fp32`, `fp32_divsqrt`; local reservation conservatively also includes the two combinational quadrant words (64 bits), not additional physical storage |
-| `rotary_pair` | 472 / 59 | One each of `rope_frequency`, `uint_to_fp32`, `sincos`, `fp32` |
-| `softcap` | 208 / 26 | One each of `fp32_divsqrt`, external-arithmetic `activation`, `fp32` |
+| `norm` | 490 / 62 | One each of `uint_to_fp32`, `fp32_divsqrt`, plus one `fp32` only in standalone mode |
+| `rope_frequency` | 134 / 17 | One `fp32_divsqrt`, plus one `fp32` only in standalone mode |
+| `sincos` | 589 / 74 | One each of `uint_to_fp32`, `fp32_divsqrt`, plus one `fp32` only in standalone mode; local reservation conservatively also includes the two combinational quadrant words (64 bits), not additional physical storage |
+| `rotary_pair` | 472 / 59 | One each of external-arithmetic `rope_frequency`, external-arithmetic `sincos`, `uint_to_fp32`, plus one `fp32` only in standalone mode |
+| `softcap` | 208 / 26 | One each of `fp32_divsqrt`, external-arithmetic `activation`, plus one `fp32` only in standalone mode |
 | `geglu_pair` | 179 / 23 | One external-arithmetic `activation`, plus one `fp32` only in standalone mode |
 | `weight_read` | 1335 / 167 | One `fp32` only in standalone mode; local count includes the complete extent/address partial products |
 | `projection` | 514 / 65 | One external-arithmetic `weight_read`, plus one `fp32` only in standalone mode |
-| `gated_projection` | 1226 / 154 | One each of external-arithmetic `projection`, `geglu_pair`, `weight_read`, plus one physical `fp32` |
+| `gated_projection` | 1226 / 154 | One each of external-arithmetic `projection`, `geglu_pair`, `weight_read`, plus one `fp32` only in standalone mode |
+| `attention_head` | 1056 / 132 | One each of external-arithmetic `exp`, `fp32_divsqrt`, plus one `fp32` only in standalone mode |
 
 `exp.EXTERNAL_FP` accepts exactly 0 or 1 and defaults to 0. Mode 0 retains
 the standalone binary32 unit and its full reservation; its additional
@@ -1643,8 +1700,8 @@ equally to actual and production-shadow controller terms.
 | `projection` | 368 | 300 | 232 |
 | `activation` | 210 | 210 | 142 |
 | `geglu_pair` | 301 | 233 | 165 |
-| `gated_projection` | 1126 | 786 | Not exposed |
-| `softcap` | 367 | 299 | Not exposed |
+| `gated_projection` | 1126 | 786 | 718 |
+| `softcap` | 367 | 299 | 231 |
 
 Thus a literal gated projection has one, not six, physical binary32 units,
 removing five 68-byte reservations relative to the immediately preceding
@@ -1679,6 +1736,49 @@ requires source-matched STA. Whole-system census, remaining overlays and
 legal-case ordinary/native/fallback fit remain open; these declaration
 reductions do not establish any system-level storage or traffic pass.
 
+### Normalization/rotary arithmetic ownership
+
+The next scalar overlay uses the existing arithmetic channel for `norm`,
+`rope_frequency`, `sincos` and `rotary_pair`, with `EXTERNAL_FP=0/1`,
+default 0 and an explicit diagnostic for other values. Only the literal
+binary32 unit is optional. Every descriptor, reduction, partial result,
+held response, integer converter and division/square-root unit stays
+declared and fully charged. Normalization's source/scale callbacks,
+reduction order and BF16 boundaries are unchanged.
+
+Rotary frequency generation, position conversion, trigonometry and pair
+rotation are serialized by its existing registered FSM. Frequency and
+trigonometry use external FP mode and share the rotary unit. The owner
+tile selects external mode in projection, normalization, scale reader and
+rotary, serving them with one physical unit. A native normalization worker
+similarly shares one unit between normalization and its scale reader.
+Existing standalone callers need no additional connections.
+
+| Cycle / degenerate boundary | Ownership rule |
+| --- | --- |
+| Reset / first released edge | All existing FSMs and the one unit reset; arithmetic outputs are zero in active reset. Release without a start creates no request |
+| Rotary phase | FREQUENCY_START/WAIT selects frequency; TRIG_START/WAIT selects trigonometry; otherwise only the original FP_START/WAIT can use FP |
+| Owner projection / rotary | Complete PROJECTION_START/WAIT and ROTARY_START/WAIT phases select their respective child |
+| Owner/native normalization | Complete NORM_START/WAIT selects normalization except during SCALE_START/WAIT, which selects the scale reader |
+| Scale callback entry | Norm has retired its preceding FP result before requesting a scale. It waits for the scale response without issuing arithmetic; the nested reader owns FP until its done is accepted |
+| Scale callback exit | Reader's FP result retires before its done response; SCALE_REGISTER/PUBLISH/RESPONSE retain the scale result while the now-idle FP service returns to norm |
+| Pre-edge handshake / post-edge update | Existing starts/results sample pre-edge valid and ready. State and descriptor changes occur post-edge; no newly created valid is consumed at its creation edge |
+| Request, memory, source or result stall | Registered phase and operands hold; no instantaneous-valid priority arbitration or owner change is allowed |
+| Error / child done | Existing error and done paths drain their transactions before ownership changes; no new queue or hidden replay spill |
+| One-element vector, zero index, partial global rotary | Existing loop/identity/error paths apply unchanged. A skipped arithmetic phase has no transaction to retire |
+| C=1/3/64, repeated calls | Capacity does not affect ownership; accepted arithmetic responses return the unit to IDLE before reuse |
+
+Declared reservations (bytes, including descendants, not measured allocations):
+`norm` is 203 standalone / 135 external, `rope_frequency` 148 / 80,
+`sincos` 215 / 147, and `rotary_pair` 364 / 296 after its two child
+overlays (previous rotary total 500). Native normalization removes one
+68-byte unit from its full child sum. The owner's projection/norm/scale/
+rotary arithmetic subtree is 898 bytes instead of 1238; its enclosing
+controller, tensor directory and payload banks are unchanged. Ancestor
+reports consume those literal child reports; these nested reductions must
+not be added a second time. No whole-system feasibility, inferred resource,
+timing or functional result follows from these declared widths.
+
 The cache now exposes actual `resident_live_bytes = 4*resident_count`.
 Insertion increments the count only when replacing an unoccupied slot;
 successful invalidation clears it with the occupied bitmap. Physical
@@ -1688,9 +1788,77 @@ cycle of a stalled fetch response. Alias events occur on accepted successful
 aliased metadata responses. None counts an error or cancelled lookup as a
 hit/miss, or changes the existing metadata/fetch cycle table.
 
+### Text-worker arithmetic ownership and post-only elaboration
+
+`gated_projection`, `softcap` and `attention_head` accept `EXTERNAL_FP=0/1`,
+default 0, with the same arithmetic channel and explicit illegal-parameter
+diagnostic as the preceding primitives. Default standalone use remains
+self-contained. External mode physically omits only the binary32 unit:
+all scalar reductions, tensor descriptors, checkpoint copies, activation
+state, exponential state and divider state remain declared and reported.
+The attention-head subtree is 291 bytes standalone or 223 external, including
+its 132-byte local controller, 28-byte exponential and 63-byte divider.
+
+`asym_attn_ple` selects external mode in its norm, scale reader, projection,
+rotary, attention and gated-projection children. `embedding_ple` selects it
+in norm, weight reader and projection; `final_logits` selects it in norm,
+scale reader, projection and softcap. Each enclosing worker declares exactly
+one binary32 service. Requests and results traverse combinational selection
+of registered phase, operation and operands into the existing unit's
+registered input boundary. Selection adds no queue, numerical stage, operand
+storage or reordered reduction. Every existing response boundary still
+requires acceptance before the dependent next phase starts.
+
+| Cycle / degenerate boundary | Ownership and behavior |
+| --- | --- |
+| Reset / first released edge | Existing FSMs and the one physical unit reset; arithmetic outputs are zero during active reset. Release without an accepted start cannot create a request |
+| Text worker | Complete NORM_START/WAIT, PROJECTION_START/WAIT, ROTARY_START/WAIT, ATTENTION_START/WAIT and GATED_START/WAIT select their respective child; otherwise only local FP_START/WAIT may use the unit |
+| Text norm callback / layer scalar | W_START/WAIT or SCALAR_START/WAIT exclusively select the weight reader, overriding norm selection for the nested scale callback |
+| Embedding worker | Complete PROJECTION_START/WAIT and NORM_START/WAIT select the corresponding child, except WEIGHT_START/WAIT or SCALE_START/WAIT select its weight reader; all other arithmetic belongs to the original local FSM |
+| Final logits | Complete NORM_START/WAIT or PROJECTION_START/WAIT select the child; W_START/WAIT overrides norm for scale decoding; SOFTCAP_START/WAIT selects softcap. All children are idle outside their tasks |
+| Nested callback entry | Norm has retired its preceding arithmetic response before requesting a scale. It cannot issue another arithmetic request while waiting for that scale |
+| Nested callback return | The reader retires its last arithmetic response before publishing its held done. Parent scale-register/publish/response states retain the scale result while the now-idle service returns to norm |
+| Stalled request, source, memory or child done | Keep the same phase owner, registered operation and operands. An idle arithmetic cycle is not permission to reassign an active child task |
+| Stalled arithmetic result | Only the selected child's wait state supplies readiness; neither siblings nor the enclosing local FSM consume it |
+| Error / phase exit | Existing arithmetic, source and memory error paths retire the child normally before changing ownership. No new transaction, spill or success-shaped fallback |
+| Repeated calls, one component, partial Q4, C=1/3/64 | Identical service ownership; original loop counts, row boundaries, nibble order, conversion, reduction and materialization rules remain unchanged |
+| POST_ONLY branch input | Load the supplied hidden attention branch after residual/PLE input, then enter N_POST_ATTENTION directly. No query projection, rotary, attention or output-projection task is started |
+| POST_ONLY physical omission | Elaboration does not declare the direct projection, rotary or attention child. Their reports and unused request/result outputs are constant zero. The enclosing controller, norm, weight reader, gated projection and one binary32 service remain fully charged |
+
+The post-only optimization is not omission of attention from replay inference:
+`replay_text_layer` still invokes its connected attention executor before
+supplying that branch to the post worker. The full ordinary worker retains
+its real attention/projection/rotary instances. Both configurations preserve
+the public source, cache, memory, output and done interfaces and their
+registered behavior. The already-absent POST_ONLY attention payload remains
+absent; no new payload RAM or dynamic reservation is introduced.
+
+The following declared controller-subtree totals exclude the enclosing worker
+controller and tensor directory, which remain separate and unchanged. They
+include every named child exactly once and apply to actual and production
+shadow scalar reservations in both models and precisions.
+
+| Worker arithmetic subtree | Before text-worker overlay | Current |
+| --- | --- | --- |
+| Full text: norm, projection, rotary, attention, gated projection, weight reader and local FP | 2247 bytes | 1839 bytes |
+| POST_ONLY: same previously declared children | 2247 bytes | 1088 bytes |
+| Embedding: norm, projection, weight reader and local FP | 806 bytes | 602 bytes |
+| Final logits: norm, scale reader, projection and softcap, including new shared FP | 1037 bytes | 833 bytes |
+
+The full-text delta is six absent 68-byte units. The post-only delta also
+removes the 232-byte external projection, 296-byte external rotary and
+223-byte external attention subtrees. Embedding and final logits each remove
+three physical units; final logits replaces four child units with one new
+shared unit. These are literal per-worker deltas, not additive hierarchy or
+whole-system totals. Enclosing reports already include them. Physical sharing
+of these scalar units does not retire the whole-system census, other
+overlays, ordinary/native/fallback partition-fit proof or memo-eviction
+feasibility. No synthesis, timing, numerical, traffic or measured allocation
+result is claimed.
+
 No commands, elaboration, simulation, synthesis or preparation probes have
-run for this increment. Independent verification and complete top/allocation
-integration remain pending.
+run for these arithmetic increments. Independent verification remains pending;
+the reserved static elaboration is still unused.
 
 ## Ordinary native-feature routing and disjoint replay backing
 

@@ -1,5 +1,6 @@
 module anvil_en1_rotary_pair #(
-    parameter integer SIGNED_POSITION = 0
+    parameter integer SIGNED_POSITION = 0,
+    parameter integer EXTERNAL_FP = 0
 ) (
     input wire clk, rst_n,
     input wire start_valid,
@@ -13,7 +14,15 @@ module anvil_en1_rotary_pair #(
     input wire done_ready,
     output wire [31:0] done_data,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes
+    output wire [63:0] controller_bytes,
+    output wire arithmetic_valid,
+    input wire arithmetic_ready,
+    output wire [2:0] arithmetic_operation,
+    output wire [31:0] arithmetic_a, arithmetic_b,
+    input wire arithmetic_result_valid,
+    output wire arithmetic_result_ready,
+    input wire [31:0] arithmetic_result_data,
+    input wire [3:0] arithmetic_result_error
 );
     localparam [5:0] IDLE = 0, VALIDATE = 1, FREQUENCY_START = 2,
         FREQUENCY_WAIT = 3, POSITION_START = 4, POSITION_WAIT = 5,
@@ -52,19 +61,35 @@ module anvil_en1_rotary_pair #(
     wire negative_position = SIGNED_POSITION == 1 && position_hold[31];
     wire [31:0] position_magnitude = negative_position ?
         (~position_hold + 32'd1) : position_hold;
+    wire frequency_phase = state == FREQUENCY_START || state == FREQUENCY_WAIT;
+    wire trig_phase = state == TRIG_START || state == TRIG_WAIT;
+    wire frequency_arithmetic_valid, frequency_arithmetic_result_ready;
+    wire trig_arithmetic_valid, trig_arithmetic_result_ready;
+    wire [2:0] frequency_arithmetic_operation, trig_arithmetic_operation;
+    wire [31:0] frequency_arithmetic_a, frequency_arithmetic_b;
+    wire [31:0] trig_arithmetic_a, trig_arithmetic_b;
 
     initial begin
         if (SIGNED_POSITION != 0 && SIGNED_POSITION != 1)
             $fatal(1, "PARAMETER ERROR: SIGNED_POSITION must be 0 or 1");
+        if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
     end
 
-    anvil_en1_rope_frequency frequency_unit (
+    anvil_en1_rope_frequency #(.EXTERNAL_FP(1)) frequency_unit (
         .controller_bytes(frequency_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == FREQUENCY_START), .start_ready(frequency_ready),
         .mode(mode_hold), .dimension(dimension_hold), .pair_index(index_hold),
         .done_valid(frequency_valid), .done_ready(rst_n && state == FREQUENCY_WAIT),
-        .done_data(frequency_data), .done_error(frequency_error)
+        .done_data(frequency_data), .done_error(frequency_error),
+        .arithmetic_valid(frequency_arithmetic_valid),
+        .arithmetic_ready(frequency_phase && fp_ready),
+        .arithmetic_operation(frequency_arithmetic_operation),
+        .arithmetic_a(frequency_arithmetic_a), .arithmetic_b(frequency_arithmetic_b),
+        .arithmetic_result_valid(frequency_phase && fp_valid),
+        .arithmetic_result_ready(frequency_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
     anvil_en1_uint_to_fp32 position_converter (
         .controller_bytes(convert_controller_bytes),
@@ -74,22 +99,54 @@ module anvil_en1_rotary_pair #(
         .done_valid(position_valid), .done_ready(rst_n && state == POSITION_WAIT),
         .done_data(position_data), .done_error(position_error)
     );
-    anvil_en1_sincos trig_unit (
+    anvil_en1_sincos #(.EXTERNAL_FP(1)) trig_unit (
         .controller_bytes(trig_controller_bytes),
         .clk(clk), .rst_n(rst_n),
         .start_valid(rst_n && state == TRIG_START), .start_ready(trig_ready),
         .operand(angle_hold),
         .done_valid(trig_valid), .done_ready(rst_n && state == TRIG_WAIT),
-        .done_sin(trig_sine), .done_cos(trig_cosine), .done_error(trig_error)
+        .done_sin(trig_sine), .done_cos(trig_cosine), .done_error(trig_error),
+        .arithmetic_valid(trig_arithmetic_valid),
+        .arithmetic_ready(trig_phase && fp_ready),
+        .arithmetic_operation(trig_arithmetic_operation),
+        .arithmetic_a(trig_arithmetic_a), .arithmetic_b(trig_arithmetic_b),
+        .arithmetic_result_valid(trig_phase && fp_valid),
+        .arithmetic_result_ready(trig_arithmetic_result_ready),
+        .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
     );
-    anvil_en1_fp32 fp_unit (
-        .controller_bytes(fp_controller_bytes),
-        .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-        .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-        .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
-        .done_data(fp_data), .done_error(fp_error)
-    );
+    wire fp_start_valid = rst_n && (frequency_phase ? frequency_arithmetic_valid :
+        (trig_phase ? trig_arithmetic_valid : state == FP_START));
+    wire fp_done_ready = rst_n && (frequency_phase ? frequency_arithmetic_result_ready :
+        (trig_phase ? trig_arithmetic_result_ready : state == FP_WAIT));
+    wire [2:0] fp_operation = frequency_phase ? frequency_arithmetic_operation :
+        (trig_phase ? trig_arithmetic_operation : fp_op);
+    wire [31:0] fp_operand_a = frequency_phase ? frequency_arithmetic_a :
+        (trig_phase ? trig_arithmetic_a : fp_a);
+    wire [31:0] fp_operand_b = frequency_phase ? frequency_arithmetic_b :
+        (trig_phase ? trig_arithmetic_b : fp_b);
+    assign arithmetic_valid = EXTERNAL_FP == 1 && fp_start_valid;
+    assign arithmetic_operation = rst_n && EXTERNAL_FP == 1 ? fp_operation : 3'd0;
+    assign arithmetic_a = rst_n && EXTERNAL_FP == 1 ? fp_operand_a : 32'd0;
+    assign arithmetic_b = rst_n && EXTERNAL_FP == 1 ? fp_operand_b : 32'd0;
+    assign arithmetic_result_ready = EXTERNAL_FP == 1 && fp_done_ready;
+    generate
+        if (EXTERNAL_FP == 1) begin : external_arithmetic
+            assign fp_controller_bytes = 64'd0;
+            assign fp_ready = rst_n && arithmetic_ready;
+            assign fp_valid = rst_n && arithmetic_result_valid;
+            assign fp_data = rst_n ? arithmetic_result_data : 32'd0;
+            assign fp_error = rst_n ? arithmetic_result_error : 4'd0;
+        end else begin : internal_arithmetic
+            anvil_en1_fp32 fp_unit (
+                .controller_bytes(fp_controller_bytes),
+                .clk(clk), .rst_n(rst_n),
+                .start_valid(fp_start_valid), .start_ready(fp_ready),
+                .operation(fp_operation), .operand_a(fp_operand_a), .operand_b(fp_operand_b),
+                .done_valid(fp_valid), .done_ready(fp_done_ready),
+                .done_data(fp_data), .done_error(fp_error)
+            );
+        end
+    endgenerate
     assign start_ready = rst_n && state == IDLE;
     assign done_valid = rst_n && state == RESPONSE;
     assign done_data = rst_n ? output_hold : 32'd0;

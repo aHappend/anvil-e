@@ -240,6 +240,22 @@ module anvil_en1_asym_attn_ple #(
         wire [63:0] projection_controller_bytes, rotary_controller_bytes;
         wire [63:0] attention_controller_bytes, gated_controller_bytes;
         wire [63:0] weight_controller_bytes, fp_controller_bytes;
+        localparam [2:0] FP_NORM = 0, FP_PROJECTION = 1, FP_ROTARY = 2,
+            FP_ATTENTION = 3, FP_GATED = 4, FP_WEIGHT = 5, FP_LOCAL = 6;
+        wire [5:0] arithmetic_valid, arithmetic_result_ready;
+        wire [17:0] arithmetic_operation;
+        wire [191:0] arithmetic_a, arithmetic_b;
+        wire fp_ready, fp_valid;
+        wire [31:0] fp_data;
+        wire [3:0] fp_error;
+        wire weight_phase = scale_state == W_START || scale_state == W_WAIT ||
+            state == SCALAR_START || state == SCALAR_WAIT;
+        wire [2:0] fp_owner = weight_phase ? FP_WEIGHT :
+            (state == NORM_START || state == NORM_WAIT ? FP_NORM :
+            (state == PROJECTION_START || state == PROJECTION_WAIT ? FP_PROJECTION :
+            (state == ROTARY_START || state == ROTARY_WAIT ? FP_ROTARY :
+            (state == ATTENTION_START || state == ATTENTION_WAIT ? FP_ATTENTION :
+            (state == GATED_START || state == GATED_WAIT ? FP_GATED : FP_LOCAL)))));
         assign controller_bytes = !rst_n ? 64'd0 :
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             norm_controller_bytes + projection_controller_bytes + rotary_controller_bytes +
@@ -280,7 +296,25 @@ module anvil_en1_asym_attn_ple #(
         wire [31:0] projection_data, projection_source_index;
         wire [63:0] projection_cmd_addr;
         wire [3:0] projection_error;
-        anvil_en1_projection projection_unit (
+        if (POST_ONLY) begin : no_projection
+            assign projection_controller_bytes = 0;
+            assign projection_ready = 0;
+            assign projection_valid = 0;
+            assign projection_cmd_valid = 0;
+            assign projection_result_ready = 0;
+            assign projection_source_valid = 0;
+            assign projection_source_rsp_ready = 0;
+            assign projection_data = 0;
+            assign projection_source_index = 0;
+            assign projection_cmd_addr = 0;
+            assign projection_error = 0;
+            assign arithmetic_valid[FP_PROJECTION] = 0;
+            assign arithmetic_result_ready[FP_PROJECTION] = 0;
+            assign arithmetic_operation[3*FP_PROJECTION+:3] = 0;
+            assign arithmetic_a[32*FP_PROJECTION+:32] = 0;
+            assign arithmetic_b[32*FP_PROJECTION+:32] = 0;
+        end else begin : full_projection
+        anvil_en1_projection #(.EXTERNAL_FP(1)) projection_unit (
             .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
@@ -301,14 +335,23 @@ module anvil_en1_asym_attn_ple #(
             .result_ready(projection_result_ready),
             .result_data(result_data), .result_error(result_error),
             .done_valid(projection_valid), .done_ready(rst_n && state == PROJECTION_WAIT),
-            .done_data(projection_data), .done_error(projection_error)
+            .done_data(projection_data), .done_error(projection_error),
+            .arithmetic_valid(arithmetic_valid[FP_PROJECTION]),
+            .arithmetic_ready(fp_owner == FP_PROJECTION && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_PROJECTION+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_PROJECTION+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_PROJECTION+:32]),
+            .arithmetic_result_valid(fp_owner == FP_PROJECTION && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_PROJECTION]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
+        end
         wire norm_ready, norm_valid, norm_source_valid, norm_source_rsp_ready;
         wire norm_scale_valid, norm_scale_rsp_ready, normalized_valid;
         wire [31:0] norm_source_index, norm_scale_index, normalized_index;
         wire [15:0] normalized_data;
         wire [3:0] norm_error;
-        anvil_en1_norm norm_unit (
+        anvil_en1_norm #(.EXTERNAL_FP(1)) norm_unit (
             .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
@@ -331,12 +374,32 @@ module anvil_en1_asym_attn_ple #(
             .normalized_index(normalized_index), .normalized_data(normalized_data),
             .normalized_last(),
             .done_valid(norm_valid), .done_ready(rst_n && state == NORM_WAIT),
-            .done_error(norm_error)
+            .done_error(norm_error),
+            .arithmetic_valid(arithmetic_valid[FP_NORM]),
+            .arithmetic_ready(fp_owner == FP_NORM && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_NORM+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_NORM+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_NORM+:32]),
+            .arithmetic_result_valid(fp_owner == FP_NORM && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_NORM]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire rotary_ready, rotary_valid;
         wire [31:0] rotary_data;
         wire [3:0] rotary_error;
-        anvil_en1_rotary_pair rotary_unit (
+        if (POST_ONLY) begin : no_rotary
+            assign rotary_controller_bytes = 0;
+            assign rotary_ready = 0;
+            assign rotary_valid = 0;
+            assign rotary_data = 0;
+            assign rotary_error = 0;
+            assign arithmetic_valid[FP_ROTARY] = 0;
+            assign arithmetic_result_ready[FP_ROTARY] = 0;
+            assign arithmetic_operation[3*FP_ROTARY+:3] = 0;
+            assign arithmetic_a[32*FP_ROTARY+:32] = 0;
+            assign arithmetic_b[32*FP_ROTARY+:32] = 0;
+        end else begin : full_rotary
+        anvil_en1_rotary_pair #(.EXTERNAL_FP(1)) rotary_unit (
             .controller_bytes(rotary_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == ROTARY_START), .start_ready(rotary_ready),
@@ -344,14 +407,63 @@ module anvil_en1_asym_attn_ple #(
             .pair_index(pair_index[8:0]), .position(token_hold),
             .vector_pair({rotary_second, rotary_first}),
             .done_valid(rotary_valid), .done_ready(rst_n && state == ROTARY_WAIT),
-            .done_data(rotary_data), .done_error(rotary_error)
+            .done_data(rotary_data), .done_error(rotary_error),
+            .arithmetic_valid(arithmetic_valid[FP_ROTARY]),
+            .arithmetic_ready(fp_owner == FP_ROTARY && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_ROTARY+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_ROTARY+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_ROTARY+:32]),
+            .arithmetic_result_valid(fp_owner == FP_ROTARY && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_ROTARY]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
+        end
         wire attention_ready, attention_valid, query_valid, query_rsp_ready;
         wire attention_component_valid, attention_component_last;
         wire [9:0] query_component, attention_component_index;
         wire [15:0] attention_component_data;
         wire [3:0] attention_error;
-        anvil_en1_attention_head #(.COMPACT(COMPACT)) attention_unit (
+        if (POST_ONLY) begin : no_attention
+            assign attention_controller_bytes = 0;
+            assign attention_ready = 0;
+            assign attention_valid = 0;
+            assign query_valid = 0;
+            assign query_rsp_ready = 0;
+            assign query_component = 0;
+            assign attention_component_valid = 0;
+            assign attention_component_last = 0;
+            assign attention_component_index = 0;
+            assign attention_component_data = 0;
+            assign attention_error = 0;
+            assign attention_activity = 0;
+            assign mask_valid = 0;
+            assign mask_token = 0;
+            assign mask_rsp_ready = 0;
+            assign req_valid = 0;
+            assign req_op = 0;
+            assign req_model = 0;
+            assign req_layer = 0;
+            assign req_token = 0;
+            assign req_is_value = 0;
+            assign req_kv_head = 0;
+            assign req_component = 0;
+            assign req_base = 0;
+            assign rsp_ready = 0;
+            assign fetch_valid = 0;
+            assign fetch_model = 0;
+            assign fetch_owner = 0;
+            assign fetch_token = 0;
+            assign fetch_is_value = 0;
+            assign fetch_kv_head = 0;
+            assign fetch_component = 0;
+            assign fetch_rsp_ready = 0;
+            assign arithmetic_valid[FP_ATTENTION] = 0;
+            assign arithmetic_result_ready[FP_ATTENTION] = 0;
+            assign arithmetic_operation[3*FP_ATTENTION+:3] = 0;
+            assign arithmetic_a[32*FP_ATTENTION+:32] = 0;
+            assign arithmetic_b[32*FP_ATTENTION+:32] = 0;
+        end else begin : full_attention
+        anvil_en1_attention_head #(.COMPACT(COMPACT), .EXTERNAL_FP(1)) attention_unit (
             .controller_bytes(attention_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == ATTENTION_START), .start_ready(attention_ready),
@@ -390,14 +502,23 @@ module anvil_en1_asym_attn_ple #(
             .component_data(attention_component_data),
             .component_last(attention_component_last),
             .done_valid(attention_valid), .done_ready(rst_n && state == ATTENTION_WAIT),
-            .done_error(attention_error), .attention_activity(attention_activity)
+            .done_error(attention_error), .attention_activity(attention_activity),
+            .arithmetic_valid(arithmetic_valid[FP_ATTENTION]),
+            .arithmetic_ready(fp_owner == FP_ATTENTION && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_ATTENTION+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_ATTENTION+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_ATTENTION+:32]),
+            .arithmetic_result_valid(fp_owner == FP_ATTENTION && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_ATTENTION]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
+        end
         wire gated_ready, gated_valid, gated_cmd_valid, gated_result_ready;
         wire gated_source_valid, gated_source_rsp_ready, gated_up_valid, gated_up_rsp_ready;
         wire [31:0] gated_data, gated_source_index, gated_up_index;
         wire [63:0] gated_cmd_addr;
         wire [3:0] gated_error;
-        anvil_en1_gated_projection gated_unit (
+        anvil_en1_gated_projection #(.EXTERNAL_FP(1)) gated_unit (
             .controller_bytes(gated_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == GATED_START), .start_ready(gated_ready),
@@ -429,13 +550,21 @@ module anvil_en1_asym_attn_ple #(
             .result_ready(gated_result_ready), .result_data(result_data),
             .result_error(result_error),
             .done_valid(gated_valid), .done_ready(rst_n && state == GATED_WAIT),
-            .done_data(gated_data), .done_error(gated_error)
+            .done_data(gated_data), .done_error(gated_error),
+            .arithmetic_valid(arithmetic_valid[FP_GATED]),
+            .arithmetic_ready(fp_owner == FP_GATED && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_GATED+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_GATED+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_GATED+:32]),
+            .arithmetic_result_valid(fp_owner == FP_GATED && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_GATED]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire weight_ready, weight_valid, weight_cmd_valid, weight_result_ready;
         wire [31:0] weight_data;
         wire [63:0] weight_cmd_addr;
         wire [3:0] weight_error;
-        anvil_en1_weight_read weight_reader (
+        anvil_en1_weight_read #(.EXTERNAL_FP(1)) weight_reader (
             .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && (scale_state == W_START || state == SCALAR_START)),
@@ -453,17 +582,28 @@ module anvil_en1_asym_attn_ple #(
             .result_error(result_error),
             .done_valid(weight_valid),
             .done_ready(rst_n && (scale_state == W_WAIT || state == SCALAR_WAIT)),
-            .done_data(weight_data), .done_error(weight_error)
+            .done_data(weight_data), .done_error(weight_error),
+            .arithmetic_valid(arithmetic_valid[FP_WEIGHT]),
+            .arithmetic_ready(fp_owner == FP_WEIGHT && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_WEIGHT+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_WEIGHT+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_WEIGHT+:32]),
+            .arithmetic_result_valid(fp_owner == FP_WEIGHT && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_WEIGHT]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
-        wire fp_ready, fp_valid;
-        wire [31:0] fp_data;
-        wire [3:0] fp_error;
         anvil_en1_fp32 fp_unit (
             .controller_bytes(fp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
-            .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-            .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-            .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+            .start_valid(rst_n && (fp_owner == FP_LOCAL ?
+                state == FP_START : arithmetic_valid[fp_owner])),
+            .start_ready(fp_ready),
+            .operation(fp_owner == FP_LOCAL ? fp_op : arithmetic_operation[3*fp_owner+:3]),
+            .operand_a(fp_owner == FP_LOCAL ? fp_a : arithmetic_a[32*fp_owner+:32]),
+            .operand_b(fp_owner == FP_LOCAL ? fp_b : arithmetic_b[32*fp_owner+:32]),
+            .done_valid(fp_valid),
+            .done_ready(rst_n && (fp_owner == FP_LOCAL ?
+                state == FP_WAIT : arithmetic_result_ready[fp_owner])),
             .done_data(fp_data), .done_error(fp_error)
         );
 

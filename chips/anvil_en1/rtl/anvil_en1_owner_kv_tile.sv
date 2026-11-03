@@ -131,10 +131,28 @@ module anvil_en1_owner_kv_tile #(
         });
         wire [63:0] lookup_controller_bytes, projection_controller_bytes;
         wire [63:0] norm_controller_bytes, weight_controller_bytes, rotary_controller_bytes;
+        wire [63:0] fp_controller_bytes;
         assign controller_bytes = !rst_n ? 64'd0 :
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             projection_controller_bytes + norm_controller_bytes +
-            weight_controller_bytes + rotary_controller_bytes;
+            weight_controller_bytes + rotary_controller_bytes + fp_controller_bytes;
+        wire projection_phase = state == PROJECTION_START || state == PROJECTION_WAIT;
+        wire norm_phase = state == NORM_START || state == NORM_WAIT;
+        wire scale_phase = scale_state == SCALE_START || scale_state == SCALE_WAIT;
+        wire rotary_phase = state == ROTARY_START || state == ROTARY_WAIT;
+        wire fp_ready, fp_valid;
+        wire [31:0] fp_data;
+        wire [3:0] fp_error;
+        wire projection_arithmetic_valid, projection_arithmetic_result_ready;
+        wire norm_arithmetic_valid, norm_arithmetic_result_ready;
+        wire scale_arithmetic_valid, scale_arithmetic_result_ready;
+        wire rotary_arithmetic_valid, rotary_arithmetic_result_ready;
+        wire [2:0] projection_arithmetic_operation, norm_arithmetic_operation;
+        wire [2:0] scale_arithmetic_operation, rotary_arithmetic_operation;
+        wire [31:0] projection_arithmetic_a, projection_arithmetic_b;
+        wire [31:0] norm_arithmetic_a, norm_arithmetic_b;
+        wire [31:0] scale_arithmetic_a, scale_arithmetic_b;
+        wire [31:0] rotary_arithmetic_a, rotary_arithmetic_b;
         (* ramstyle = "M20K", nomem2reg *)
         reg [15:0] head_payload [0:MAX_D-1];
 
@@ -181,7 +199,7 @@ module anvil_en1_owner_kv_tile #(
         wire [63:0] projection_cmd_addr;
         wire [31:0] projection_row =
             (32'(head_hold) * dimension_hold) + projection_index;
-        anvil_en1_projection projection_unit (
+        anvil_en1_projection #(.EXTERNAL_FP(1)) projection_unit (
             .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
@@ -208,7 +226,14 @@ module anvil_en1_owner_kv_tile #(
             .result_error(result_error),
             .done_valid(projection_valid),
             .done_ready(rst_n && state == PROJECTION_WAIT),
-            .done_data(projection_data), .done_error(projection_error)
+            .done_data(projection_data), .done_error(projection_error),
+            .arithmetic_valid(projection_arithmetic_valid),
+            .arithmetic_ready(projection_phase && fp_ready),
+            .arithmetic_operation(projection_arithmetic_operation),
+            .arithmetic_a(projection_arithmetic_a), .arithmetic_b(projection_arithmetic_b),
+            .arithmetic_result_valid(projection_phase && fp_valid),
+            .arithmetic_result_ready(projection_arithmetic_result_ready),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire norm_ready, norm_valid, norm_source_valid, norm_source_ready;
         wire norm_source_rsp_valid, norm_source_rsp_ready;
@@ -227,7 +252,7 @@ module anvil_en1_owner_kv_tile #(
             (rst_n && src_state == SRC_RESPONSE && !src_is_projection);
         assign norm_source_data = input_norm ? source_rsp_data : src_data_hold;
         assign norm_source_error = input_norm && source_rsp_error;
-        anvil_en1_norm norm_unit (
+        anvil_en1_norm #(.EXTERNAL_FP(1)) norm_unit (
             .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
@@ -249,14 +274,21 @@ module anvil_en1_owner_kv_tile #(
             .normalized_index(normalized_index), .normalized_data(normalized_data),
             .normalized_last(),
             .done_valid(norm_valid), .done_ready(rst_n && state == NORM_WAIT),
-            .done_error(norm_error)
+            .done_error(norm_error),
+            .arithmetic_valid(norm_arithmetic_valid),
+            .arithmetic_ready(norm_phase && !scale_phase && fp_ready),
+            .arithmetic_operation(norm_arithmetic_operation),
+            .arithmetic_a(norm_arithmetic_a), .arithmetic_b(norm_arithmetic_b),
+            .arithmetic_result_valid(norm_phase && !scale_phase && fp_valid),
+            .arithmetic_result_ready(norm_arithmetic_result_ready),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire scale_ready, scale_valid;
         wire [31:0] scale_data;
         wire [3:0] scale_error;
         wire scale_cmd_valid, scale_result_ready;
         wire [63:0] scale_cmd_addr;
-        anvil_en1_weight_read scale_reader (
+        anvil_en1_weight_read #(.EXTERNAL_FP(1)) scale_reader (
             .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && scale_state == SCALE_START), .start_ready(scale_ready),
@@ -270,12 +302,19 @@ module anvil_en1_owner_kv_tile #(
             .result_ready(scale_result_ready), .result_data(result_data),
             .result_error(result_error),
             .done_valid(scale_valid), .done_ready(rst_n && scale_state == SCALE_WAIT),
-            .done_data(scale_data), .done_error(scale_error)
+            .done_data(scale_data), .done_error(scale_error),
+            .arithmetic_valid(scale_arithmetic_valid),
+            .arithmetic_ready(scale_phase && fp_ready),
+            .arithmetic_operation(scale_arithmetic_operation),
+            .arithmetic_a(scale_arithmetic_a), .arithmetic_b(scale_arithmetic_b),
+            .arithmetic_result_valid(scale_phase && fp_valid),
+            .arithmetic_result_ready(scale_arithmetic_result_ready),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire rotary_ready, rotary_valid;
         wire [31:0] rotary_data;
         wire [3:0] rotary_error;
-        anvil_en1_rotary_pair rotary_unit (
+        anvil_en1_rotary_pair #(.EXTERNAL_FP(1)) rotary_unit (
             .controller_bytes(rotary_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == ROTARY_START), .start_ready(rotary_ready),
@@ -283,7 +322,38 @@ module anvil_en1_owner_kv_tile #(
             .pair_index(pair_base[8:0]), .position(token_hold),
             .vector_pair({second_source, first_source}),
             .done_valid(rotary_valid), .done_ready(rst_n && state == ROTARY_WAIT),
-            .done_data(rotary_data), .done_error(rotary_error)
+            .done_data(rotary_data), .done_error(rotary_error),
+            .arithmetic_valid(rotary_arithmetic_valid),
+            .arithmetic_ready(rotary_phase && fp_ready),
+            .arithmetic_operation(rotary_arithmetic_operation),
+            .arithmetic_a(rotary_arithmetic_a), .arithmetic_b(rotary_arithmetic_b),
+            .arithmetic_result_valid(rotary_phase && fp_valid),
+            .arithmetic_result_ready(rotary_arithmetic_result_ready),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
+        );
+        anvil_en1_fp32 fp_unit (
+            .controller_bytes(fp_controller_bytes),
+            .clk(clk), .rst_n(rst_n),
+            .start_valid(rst_n && (scale_phase ? scale_arithmetic_valid :
+                (projection_phase ? projection_arithmetic_valid :
+                (norm_phase ? norm_arithmetic_valid :
+                (rotary_phase && rotary_arithmetic_valid))))),
+            .start_ready(fp_ready),
+            .operation(scale_phase ? scale_arithmetic_operation :
+                (projection_phase ? projection_arithmetic_operation :
+                (norm_phase ? norm_arithmetic_operation : rotary_arithmetic_operation))),
+            .operand_a(scale_phase ? scale_arithmetic_a :
+                (projection_phase ? projection_arithmetic_a :
+                (norm_phase ? norm_arithmetic_a : rotary_arithmetic_a))),
+            .operand_b(scale_phase ? scale_arithmetic_b :
+                (projection_phase ? projection_arithmetic_b :
+                (norm_phase ? norm_arithmetic_b : rotary_arithmetic_b))),
+            .done_valid(fp_valid),
+            .done_ready(rst_n && (scale_phase ? scale_arithmetic_result_ready :
+                (projection_phase ? projection_arithmetic_result_ready :
+                (norm_phase ? norm_arithmetic_result_ready :
+                (rotary_phase && rotary_arithmetic_result_ready))))),
+            .done_data(fp_data), .done_error(fp_error)
         );
 
         wire scratch_norm_write = rst_n && state == NORM_WAIT && normalized_valid;

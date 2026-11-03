@@ -145,6 +145,20 @@ module anvil_en1_embedding_ple #(
         wire [63:0] lookup_controller_bytes, weight_controller_bytes;
         wire [63:0] projection_controller_bytes, norm_controller_bytes;
         wire [63:0] div_controller_bytes, fp_controller_bytes;
+        localparam [1:0] FP_NORM = 0, FP_PROJECTION = 1, FP_WEIGHT = 2,
+            FP_LOCAL = 3;
+        wire [2:0] arithmetic_valid, arithmetic_result_ready;
+        wire [8:0] arithmetic_operation;
+        wire [95:0] arithmetic_a, arithmetic_b;
+        wire fp_ready, fp_valid;
+        wire [31:0] fp_data;
+        wire [3:0] fp_error;
+        wire weight_phase = state == WEIGHT_START || state == WEIGHT_WAIT ||
+            scale_state == SCALE_START || scale_state == SCALE_WAIT;
+        wire [1:0] fp_owner = weight_phase ? FP_WEIGHT :
+            (state == NORM_START || state == NORM_WAIT ? FP_NORM :
+            (state == PROJECTION_START || state == PROJECTION_WAIT ?
+                FP_PROJECTION : FP_LOCAL));
         assign controller_bytes = !rst_n ? 64'd0 :
             64'((CONTROLLER_BITS+7) >> 3) + lookup_controller_bytes +
             weight_controller_bytes + projection_controller_bytes +
@@ -196,7 +210,7 @@ module anvil_en1_embedding_ple #(
             (weight_is_identity ? identity_id : token_id);
         wire [31:0] weight_column = norm_weight ? scale_index_hold :
             (weight_is_identity ? layer_slice + index : index);
-        anvil_en1_weight_read weight_reader (
+        anvil_en1_weight_read #(.EXTERNAL_FP(1)) weight_reader (
             .controller_bytes(weight_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && (state == WEIGHT_START || scale_state == SCALE_START)),
@@ -212,14 +226,22 @@ module anvil_en1_embedding_ple #(
             .result_error(result_error),
             .done_valid(weight_valid),
             .done_ready(rst_n && (state == WEIGHT_WAIT || scale_state == SCALE_WAIT)),
-            .done_data(weight_data), .done_error(weight_error)
+            .done_data(weight_data), .done_error(weight_error),
+            .arithmetic_valid(arithmetic_valid[FP_WEIGHT]),
+            .arithmetic_ready(fp_owner == FP_WEIGHT && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_WEIGHT+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_WEIGHT+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_WEIGHT+:32]),
+            .arithmetic_result_valid(fp_owner == FP_WEIGHT && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_WEIGHT]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire projection_ready, projection_valid, projection_cmd_valid, projection_result_ready;
         wire projection_source_valid, projection_source_rsp_ready;
         wire [31:0] projection_source_index, projection_data;
         wire [63:0] projection_cmd_addr;
         wire [3:0] projection_error;
-        anvil_en1_projection projection_unit (
+        anvil_en1_projection #(.EXTERNAL_FP(1)) projection_unit (
             .controller_bytes(projection_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == PROJECTION_START), .start_ready(projection_ready),
@@ -240,14 +262,22 @@ module anvil_en1_embedding_ple #(
             .result_ready(projection_result_ready), .result_data(result_data),
             .result_error(result_error),
             .done_valid(projection_valid), .done_ready(rst_n && state == PROJECTION_WAIT),
-            .done_data(projection_data), .done_error(projection_error)
+            .done_data(projection_data), .done_error(projection_error),
+            .arithmetic_valid(arithmetic_valid[FP_PROJECTION]),
+            .arithmetic_ready(fp_owner == FP_PROJECTION && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_PROJECTION+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_PROJECTION+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_PROJECTION+:32]),
+            .arithmetic_result_valid(fp_owner == FP_PROJECTION && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_PROJECTION]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
         wire norm_ready, norm_valid, norm_source_valid, norm_source_rsp_ready;
         wire [31:0] norm_source_index, norm_scale_index, normalized_index;
         wire norm_scale_valid, norm_scale_rsp_ready, normalized_valid;
         wire [15:0] normalized_data;
         wire [3:0] norm_error;
-        anvil_en1_norm norm_unit (
+        anvil_en1_norm #(.EXTERNAL_FP(1)) norm_unit (
             .controller_bytes(norm_controller_bytes),
             .clk(clk), .rst_n(rst_n),
             .start_valid(rst_n && state == NORM_START), .start_ready(norm_ready),
@@ -270,11 +300,19 @@ module anvil_en1_embedding_ple #(
             .normalized_index(normalized_index), .normalized_data(normalized_data),
             .normalized_last(),
             .done_valid(norm_valid), .done_ready(rst_n && state == NORM_WAIT),
-            .done_error(norm_error)
+            .done_error(norm_error),
+            .arithmetic_valid(arithmetic_valid[FP_NORM]),
+            .arithmetic_ready(fp_owner == FP_NORM && fp_ready),
+            .arithmetic_operation(arithmetic_operation[3*FP_NORM+:3]),
+            .arithmetic_a(arithmetic_a[32*FP_NORM+:32]),
+            .arithmetic_b(arithmetic_b[32*FP_NORM+:32]),
+            .arithmetic_result_valid(fp_owner == FP_NORM && fp_valid),
+            .arithmetic_result_ready(arithmetic_result_ready[FP_NORM]),
+            .arithmetic_result_data(fp_data), .arithmetic_result_error(fp_error)
         );
-        wire root_ready, root_valid, fp_ready, fp_valid;
-        wire [31:0] root_data, fp_data;
-        wire [3:0] root_error, fp_error;
+        wire root_ready, root_valid;
+        wire [31:0] root_data;
+        wire [3:0] root_error;
         anvil_en1_fp32_divsqrt root_unit (
             .controller_bytes(div_controller_bytes),
             .clk(clk), .rst_n(rst_n),
@@ -287,9 +325,15 @@ module anvil_en1_embedding_ple #(
         anvil_en1_fp32 fp_unit (
             .controller_bytes(fp_controller_bytes),
             .clk(clk), .rst_n(rst_n),
-            .start_valid(rst_n && state == FP_START), .start_ready(fp_ready),
-            .operation(fp_op), .operand_a(fp_a), .operand_b(fp_b),
-            .done_valid(fp_valid), .done_ready(rst_n && state == FP_WAIT),
+            .start_valid(rst_n && (fp_owner == FP_LOCAL ?
+                state == FP_START : arithmetic_valid[fp_owner])),
+            .start_ready(fp_ready),
+            .operation(fp_owner == FP_LOCAL ? fp_op : arithmetic_operation[3*fp_owner+:3]),
+            .operand_a(fp_owner == FP_LOCAL ? fp_a : arithmetic_a[32*fp_owner+:32]),
+            .operand_b(fp_owner == FP_LOCAL ? fp_b : arithmetic_b[32*fp_owner+:32]),
+            .done_valid(fp_valid),
+            .done_ready(rst_n && (fp_owner == FP_LOCAL ?
+                state == FP_WAIT : arithmetic_result_ready[fp_owner])),
             .done_data(fp_data), .done_error(fp_error)
         );
 

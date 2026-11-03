@@ -1,4 +1,6 @@
-module anvil_en1_rope_frequency (
+module anvil_en1_rope_frequency #(
+    parameter integer EXTERNAL_FP = 0
+) (
     input wire clk, rst_n,
     input wire start_valid,
     output wire start_ready,
@@ -9,7 +11,15 @@ module anvil_en1_rope_frequency (
     input wire done_ready,
     output wire [31:0] done_data,
     output wire [3:0] done_error,
-    output wire [63:0] controller_bytes
+    output wire [63:0] controller_bytes,
+    output wire arithmetic_valid,
+    input wire arithmetic_ready,
+    output wire [2:0] arithmetic_operation,
+    output wire [31:0] arithmetic_a, arithmetic_b,
+    input wire arithmetic_result_valid,
+    output wire arithmetic_result_ready,
+    input wire [31:0] arithmetic_result_data,
+    input wire [3:0] arithmetic_result_error
 );
     localparam [3:0] IDLE = 0, VALIDATE = 1, ROOT_START = 2,
         ROOT_WAIT = 3, TEST_BIT = 4, PRODUCT_START = 5,
@@ -48,14 +58,33 @@ module anvil_en1_rope_frequency (
         .done_ready(rst_n && (state == ROOT_WAIT || state == RECIPROCAL_WAIT)),
         .done_data(root_data), .done_error(root_error)
     );
-    anvil_en1_fp32 multiplier (
-        .controller_bytes(fp_controller_bytes),
-        .clk(clk), .rst_n(rst_n),
-        .start_valid(rst_n && state == PRODUCT_START), .start_ready(product_ready),
-        .operation(3'd1), .operand_a(product_hold), .operand_b(root_hold),
-        .done_valid(product_valid), .done_ready(rst_n && state == PRODUCT_WAIT),
-        .done_data(product_data), .done_error(product_error)
-    );
+    initial begin
+        if (EXTERNAL_FP != 0 && EXTERNAL_FP != 1)
+            $fatal(1, "PARAMETER ERROR: EXTERNAL_FP must be 0 or 1");
+    end
+    assign arithmetic_valid = rst_n && EXTERNAL_FP == 1 && state == PRODUCT_START;
+    assign arithmetic_operation = rst_n && EXTERNAL_FP == 1 ? 3'd1 : 3'd0;
+    assign arithmetic_a = rst_n && EXTERNAL_FP == 1 ? product_hold : 32'd0;
+    assign arithmetic_b = rst_n && EXTERNAL_FP == 1 ? root_hold : 32'd0;
+    assign arithmetic_result_ready = rst_n && EXTERNAL_FP == 1 && state == PRODUCT_WAIT;
+    generate
+        if (EXTERNAL_FP == 1) begin : external_arithmetic
+            assign fp_controller_bytes = 64'd0;
+            assign product_ready = rst_n && arithmetic_ready;
+            assign product_valid = rst_n && arithmetic_result_valid;
+            assign product_data = rst_n ? arithmetic_result_data : 32'd0;
+            assign product_error = rst_n ? arithmetic_result_error : 4'd0;
+        end else begin : internal_arithmetic
+            anvil_en1_fp32 multiplier (
+                .controller_bytes(fp_controller_bytes),
+                .clk(clk), .rst_n(rst_n),
+                .start_valid(rst_n && state == PRODUCT_START), .start_ready(product_ready),
+                .operation(3'd1), .operand_a(product_hold), .operand_b(root_hold),
+                .done_valid(product_valid), .done_ready(rst_n && state == PRODUCT_WAIT),
+                .done_data(product_data), .done_error(product_error)
+            );
+        end
+    endgenerate
 
     assign start_ready = rst_n && state == IDLE;
     assign done_valid = rst_n && state == RESPONSE;
