@@ -5,7 +5,37 @@ Target device: Intel Arria 10 GX `10AX115N2F45E1SG`, synchronous clock period
 at most 10 ns. This document freezes implementation choices; it is not an
 engineering acceptance or a claim that every described engine exists.
 
-### Current repair: immutable-job tensor reuse and narrow workspace updates
+### Current repair: separate audio fold request and completion payloads
+
+The production-native synthesis failure is retained at
+`evidence/preparation/synthesis-lifetime-production-20261103T060319Z-cb39904a/receipt.json`.
+Yosys reached `check -assert` and rejected 32 conflicting drivers; it did not
+time out. `anvil_en1_replay_audio_history` now connects the fold's
+`work_req_data` to `fold_work_data` and its `done_data` to `fold_done_data`.
+Only the request net feeds the work-request mux. Only the completion net is
+captured into `fold_data_hold` on the existing completion handshake.
+No FSM, arithmetic, allocation or protocol edge changes.
+
+The separate text-only failure remains unresolved:
+`evidence/preparation/top-lifetime-completion-20261103T060319Z-d4ab0218/receipt.json`.
+E2B/BF16/seed17/C3 exited 1 without timeout, with error 7 at cycle 2860065,
+54765 accepted reads and zero logits. The last aggregate sample names layer-3
+tensors, but does not locate the first error or prove a layer-4 transition
+failure. The audio repair is not an explanation for that text failure.
+
+Independent Verifier must capture the first error event, not another unchanged
+completion run: record native/schedule/task error handshakes and the active
+task operation/layer/token; denied allocation responses with candidate
+component/bytes/shadow bytes and the prospective ledger's limit/ratio results;
+frontier `admission_fault`, `reservation_overrun` and their individual predicates;
+and the first source/cache/frontier response error with its descriptor.
+Also record `native_fault` and `allocation_failed`, since top converts either
+to error 7 independently of a native numerical error. Stop after the originating
+event and its completion propagation, using bounded aggregate diagnostics.
+Preserve all allocation and numerical assertions. No text-path RTL repair is
+justified by the retained aggregate log alone.
+
+### Retained repair: immutable-job tensor reuse and narrow workspace updates
 
 The retained completion failure is
 `evidence/preparation/top-repaired-completion-20261103T045853Z-895deeba/receipt.json`.
@@ -73,8 +103,10 @@ Replacement changes no image or tensor contents.
 | Revocation with an already stalled done response | Invalidate retained metadata without changing that response's stable payload; drain it before mutation or another lifetime |
 | New job, changed image/configuration, or permitted between-job mutation | Force full certification again, even if the numeric base address is unchanged |
 
-Each reader now charges **3965 bits / 496 rounded bytes**, versus the historical
-1606 bits / 201 bytes. Added storage is 2112 descriptor bits, 232 read-register
+Each reader now charges **3743 bits / 468 rounded bytes**. Reconciling the
+current register declarations gives 1384 bits / 173 bytes before lookaside and
+lifetime additions; the earlier 1606-bit / 201-byte base census was incorrect
+for this source. Added storage is 2112 descriptor bits, 232 read-register
 bits, eight validity bits, a three-bit replacement cursor and four lifetime
 bits: 2359 bits, or 295 additional rounded bytes per connected reader. The
 charge includes invalid entries and unused payload registers, not just hits.
@@ -82,7 +114,7 @@ All parents retain their existing summed controller reports; the extra storage
 therefore enters both the live/shadow ledger and physical-reservation report
 through the connected controller terms. The single static production
 elaboration contains 49 readers: three frontier and 46 replay-binding, adding
-14,455 rounded bytes. A literal source traversal overcounts mutually exclusive
+14,455 rounded bytes (22,932 bytes total reader state). A literal source traversal overcounts mutually exclusive
 generate alternatives (62 readers); it is not the physical census. The
 subsequent wire-only control repair does not change module multiplicity or
 retained storage, but final source-matched reporting remains for Verifier.

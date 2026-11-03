@@ -5,7 +5,29 @@ owner rematerialization. Aliasing alone is insufficient for the E4B reduction.
 `SPEC.md` freezes the geometry, tensor-image ABI, BF16 operation boundaries,
 registered protocols, storage accounting, and unchanged acceptance criteria.
 
-## Current handoff: job-scoped descriptor reuse and slot-local bookkeeping
+## Current handoff: audio fold wiring repair and unresolved text error
+
+`rtl/anvil_en1_replay_audio_history.sv` separates the fold work-request payload
+from its completion result. `fold_work_data` feeds the work mux;
+`fold_done_data` feeds the completion register on the existing handshake.
+This removes the dual-output connection responsible for the 32 conflicting
+drivers in
+`evidence/preparation/synthesis-lifetime-production-20261103T060319Z-cb39904a/receipt.json`.
+That run reached Yosys `check -assert`; it was not a timeout. Independent
+whole-top synthesis and affected audio functional checks remain necessary.
+
+The text-only E2B/BF16/seed17/C3 failure remains retained at
+`evidence/preparation/top-lifetime-completion-20261103T060319Z-d4ab0218/receipt.json`:
+error 7 at cycle 2860065, 54765 reads, zero logits, exit 1 without timeout.
+Static tracing finds distinct error-7 routes through denied allocation grants,
+reservation/source/cache errors, native protocol faults and top's allocation
+guard. The aggregate layer-3 heartbeat does not discriminate among them or
+establish that first-global-layer dispatch failed. No speculative text change
+or assertion relaxation is made. SPEC's current repair section gives the
+bounded first-origin observation request for independent Verifier; an unchanged
+completion rerun cannot supply the missing attribution.
+
+## Retained handoff: job-scoped descriptor reuse and slot-local bookkeeping
 
 The repeated-validation failure is retained at
 `evidence/preparation/top-repaired-completion-20261103T045853Z-895deeba/receipt.json`.
@@ -35,12 +57,15 @@ requires a drained lifetime and invalidation/new job. Revocation during work
 cannot publish a new stale successful descriptor; already offered stalled
 responses remain stable until retired. SPEC freezes the cycle table.
 
-The reader's complete retained state rises from 201 to 496 rounded bytes,
-including all lookaside payloads and the registered read. Existing summed
+The reader's reconciled complete retained state is 3743 bits / 468 rounded
+bytes, including all lookaside payloads and the registered read. Current
+pre-addition registers total 1384 bits / 173 bytes, not the previously stated
+1606 bits / 201 bytes. The 2359 added bits increase the rounded charge by
+295 bytes per reader. Existing summed
 controller reports charge every connected instance in both live/shadow and
 physical reporting, regardless of occupancy. Static production elaboration
 contains 49 readers (three frontier, 46 replay-binding), an additional 14,455
-rounded bytes; a literal traversal incorrectly counts mutually exclusive
+rounded bytes and 22,932 total reader bytes; a literal traversal incorrectly counts mutually exclusive
 generate alternatives as well. Final source-matched reporting remains an
 independent verification task. There is no
 uncounted directory archive or numerical-result cache.

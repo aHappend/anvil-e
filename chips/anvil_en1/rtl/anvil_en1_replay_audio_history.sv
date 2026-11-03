@@ -201,7 +201,7 @@ module anvil_en1_replay_audio_history #(
     wire fold_bank;
     wire [63:0] fold_addr, fold_live, fold_physical, fold_control, fold_nested;
     wire [3:0] fold_error;
-    wire [31:0] fold_data;
+    wire [31:0] fold_work_data, fold_done_data;
     anvil_en1_audio_history_fold #(
         .FUSE_LEADING_PADDING(1), .SINGLE_CHANNEL(1)
     ) fold (
@@ -221,7 +221,7 @@ module anvil_en1_replay_audio_history #(
         .work_req_token(fold_token), .work_req_layer(fold_layer),
         .work_req_length(fold_length), .work_req_component(fold_component),
         .work_req_slot(fold_slot), .work_req_bank(fold_bank),
-        .work_req_scalar_index(fold_scalar), .work_req_data(fold_data),
+        .work_req_scalar_index(fold_scalar), .work_req_data(fold_work_data),
         .work_rsp_valid(fold_selected && work_rsp_valid),
         .work_rsp_ready(fold_work_rsp_ready), .work_rsp_data(work_rsp_data),
         .work_rsp_error(work_rsp_error),
@@ -230,7 +230,7 @@ module anvil_en1_replay_audio_history #(
         .result_valid(fold_selected && result_valid), .result_ready(fold_result_ready),
         .result_data(result_data), .result_error(result_error),
         .done_valid(fold_valid), .done_ready(rst_n && state == FOLD_WAIT),
-        .done_error(fold_error), .done_data(fold_data),
+        .done_error(fold_error), .done_data(fold_done_data),
         .source_read_event(fold_source_event),
         .source_read_bytes(fold_source_bytes), .projection_event(fold_projection_event),
         .projection_bytes(fold_projection_bytes),
@@ -287,7 +287,7 @@ module anvil_en1_replay_audio_history #(
                 work_req_slot = fold_slot;
                 work_req_bank = fold_bank;
                 work_req_scalar_index = fold_scalar;
-                work_req_data = fold_data;
+                work_req_data = fold_work_data;
             end else begin
                 work_req_domain = 2;
                 work_req_token = query_hold;
@@ -564,7 +564,7 @@ module anvil_en1_replay_audio_history #(
                     state <= FOLD_WAIT;
                 FOLD_WAIT: if (fold_valid) begin
                     work_error_hold <= fold_error;
-                    fold_data_hold <= fold_data;
+                    fold_data_hold <= fold_done_data;
                     state <= FOLD_CHECK;
                 end
                 FOLD_CHECK: begin
