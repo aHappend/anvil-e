@@ -79,6 +79,8 @@ def main():
     parser.add_argument("--fallback", action="store_true")
     parser.add_argument("--compiler-optimization", choices=("0", "1", "2", "3"), default="3",
                         help="Verilator optimization level; C++ remains -O3")
+    parser.add_argument("--text-specialization", action="store_true",
+                        help="structural wrapper ties only unused text-job inputs to zero")
     parser.add_argument("--max-cycles", type=int, default=2000000000)
     args = parser.parse_args()
     models = selected_values(parser, args.models, (1, 2), "--models")
@@ -128,12 +130,35 @@ def main():
         obj = exp.relative / "compile-obj"
         sources = [str(path.relative_to(ROOT)) for path in source_inputs()
                    if path.suffix == ".sv" and path.parent != ROOT / "tests"]
+        top = "anvil_en1_top"
+        wrapper_args = []
+        if args.text_specialization:
+            declaration = (ROOT / "rtl/anvil_en1_top.sv").read_text()
+            ports = declaration.split(") (", 1)[1].split(");", 1)[0]
+            zero_inputs = ("job_mode", "job_patch_rows", "job_patch_cols",
+                           "job_audio_frames", "vision_weights_base", "audio_weights_base",
+                           "image_base", "audio_base")
+            wrapper = exp.out / "text_top.sv"
+            wrapper.write_text(
+                "module text_top (" + ports + ");\n"
+                "anvil_en1_top #(" +
+                ", ".join(f".{name}({value})" for name, value in parameters.items()) +
+                ") product (" +
+                ", ".join(f".{name}('0)" for name in zero_inputs) +
+                ", .*);\nendmodule\n")
+            exp.receipt["structural_wrapper_sha256"] = hashlib.sha256(
+                wrapper.read_bytes()).hexdigest()
+            exp.receipt["constant_public_inputs"] = dict.fromkeys(zero_inputs, 0)
+            exp.save()
+            top = "text_top"
+            wrapper_args = ["--prefix", "Vanvil_en1_top", str(wrapper.relative_to(ROOT))]
         exp.run("compile", [
             "verilator", "--cc", "--exe", "--build",
             "-O" + args.compiler_optimization, "-Wno-fatal",
-            "--top-module", "anvil_en1_top", "--Mdir", str(obj),
+            "--top-module", top, "--Mdir", str(obj),
             "-j", "2", "-CFLAGS", "-O3",
-            *[f"-G{name}={value}" for name, value in parameters.items()],
+            *(wrapper_args if args.text_specialization else
+              [f"-G{name}={value}" for name, value in parameters.items()]),
             "tests/simulation_schedule.vlt", *sources,
             str(ROOT / "tests/top_smoke.cpp")], 1800)
         for name, model, precision, seed, tokens, image_path, expected in cases:
